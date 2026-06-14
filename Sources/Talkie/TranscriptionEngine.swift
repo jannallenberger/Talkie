@@ -71,11 +71,6 @@ actor TranscriptionEngine {
         self.onUpdate = handler
     }
 
-    /// Set (or clear with nil) the per-session finalized-segment handler.
-    func setSegmentHandler(_ handler: (@Sendable (String) -> Void)?) {
-        self.onSegment = handler
-    }
-
     /// Phrases that bias recognition toward the user's custom vocabulary
     /// (names, brand terms, jargon). Applied per session via `AnalysisContext`.
     func setContextualStrings(_ phrases: [String]) {
@@ -198,12 +193,28 @@ actor TranscriptionEngine {
     /// (`AudioCapture` converts the mic to this) plus the continuation to push
     /// `AnalyzerInput` buffers into. Idempotent guard: a session must be finished
     /// before another begins.
-    func beginSession() async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation) {
+    func beginSession(
+        segmentHandler: (@Sendable (String) -> Void)? = nil
+    ) async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation) {
         guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
 
-        // Reset accumulators.
+        // Exclusivity: never run two sessions on one engine. Tear down any
+        // lingering/finishing session before starting a new one, so a slow
+        // finishSession of a prior session can't stomp this one.
+        if analyzer != nil {
+            inputContinuation?.finish()
+            inputContinuation = nil
+            if let analyzer { await analyzer.cancelAndFinishNow() }
+            resultsTask?.cancel()
+            resultsTask = nil
+            self.analyzer = nil
+            self.transcriber = nil
+        }
+
+        // Reset accumulators + bind the per-session segment handler.
         finalizedText = ""
         volatileText = ""
+        onSegment = segmentHandler
 
         let loc = try await resolvedLocale()
         let transcriber = makeTranscriber(locale: loc)
@@ -288,6 +299,7 @@ actor TranscriptionEngine {
         analyzer = nil
         transcriber = nil
         resultsTask = nil
+        onSegment = nil
         // Surface as completion so the UI doesn't hang in "listening".
         volatileText = ""
         emit(isComplete: true)
@@ -312,9 +324,12 @@ actor TranscriptionEngine {
         await resultsTask?.value
         resultsTask = nil
 
-        // Combine both buffers so a volatile tail that finalization didn't fold
-        // in (e.g. on the finalize-throws path) isn't lost. No-op on the happy
-        // path, where volatileText is already empty.
+        // If finalization left a volatile tail (the finalize-throws path), route
+        // it to the segment handler too, so the assembler's combined output
+        // includes it. No-op on the happy path (volatileText already empty).
+        if !volatileText.isEmpty {
+            onSegment?(volatileText)
+        }
         let joiner = finalizedText.isEmpty || volatileText.isEmpty ? "" : " "
         let result = finalizedText + joiner + volatileText
         volatileText = ""
@@ -322,6 +337,7 @@ actor TranscriptionEngine {
         // Emit a terminal update so the HUD can dismiss cleanly.
         emit(isComplete: true)
 
+        onSegment = nil
         analyzer = nil
         transcriber = nil
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -338,6 +354,7 @@ actor TranscriptionEngine {
         resultsTask = nil
         finalizedText = ""
         volatileText = ""
+        onSegment = nil
         analyzer = nil
         transcriber = nil
     }

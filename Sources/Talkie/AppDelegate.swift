@@ -40,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentTarget: TargetApp = .unknown
     /// Cleans finalized segments incrementally and combines them on stop.
     private var currentAssembler: DictationAssembler?
+    /// Cleanup config captured at the START of the session (so a mid-session
+    /// settings toggle can't skew the end-of-session accounting).
+    private var sessionCleanup: (appAdaptive: Bool, style: CleanupStyle, level: CleanupLevel)?
     /// The project file index snapshot to apply to the current dictation (vibe coding).
     private var currentVibeSnapshot: ProjectIndexSnapshot = .empty
 
@@ -54,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentLocaleID = settings.spokenLanguages.first ?? settings.localeIdentifier
         engine = TranscriptionEngine(localeIdentifier: currentLocaleID)
         meetingRecorder = MeetingRecorder(engine: engine, store: meetingStore)
+        meetingRecorder.isDictating = { [weak self] in self?.isDictating == true }
+        meetingRecorder.recoverPartialIfNeeded()
 
         setupMainMenu()
         setupStatusItem()
@@ -347,6 +352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let assembler = DictationAssembler(clean: cleanFn)
         currentAssembler = assembler
+        sessionCleanup = (appAdaptive: appAdaptive, style: adaptiveStyle, level: cleanupLevel)
 
         Task {
             let micOK = await AudioCapture.requestMicrophoneAccess()
@@ -361,9 +367,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             do {
-                await engine.setSegmentHandler { segment in assembler.add(segment) }
                 await engine.setContextualStrings(phrases)
-                let session = try await engine.beginSession()
+                let session = try await engine.beginSession(segmentHandler: { segment in assembler.add(segment) })
                 // Re-check after the (async) model load / session setup.
                 guard self.isDictating, self.sessionID == myID else {
                     await engine.cancelSession()
@@ -412,15 +417,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let replacements = dictionary.replacementsSnapshot()
         let autoCap = settings.autoCapitalize
         let removeFillers = settings.cleanupFillers
-        let cleanupLevel = settings.cleanupLevel
-        let appAdaptive = settings.appAdaptiveCleanup
         let mode = settings.insertionMode
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
         let vibeSnapshot = currentVibeSnapshot
         let target = currentTarget
-        let adaptiveStyle = settings.cleanupStyle(for: target.category)
         let selfBundle = AppPaths.bundleIdentifier
+        // Reuse the cleanup config captured at session start, so a mid-session
+        // toggle can't make the stats/filler accounting disagree with what the
+        // assembler actually cleaned.
+        let sessionCfg = sessionCleanup
+        sessionCleanup = nil
+        let appAdaptive = sessionCfg?.appAdaptive ?? settings.appAdaptiveCleanup
+        let adaptiveStyle = sessionCfg?.style ?? settings.cleanupStyle(for: target.category)
+        let cleanupLevel = sessionCfg?.level ?? settings.cleanupLevel
 
         Task {
             let raw = await engine.finishSession()

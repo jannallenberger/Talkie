@@ -11,6 +11,10 @@ final class MeetingRecorder: ObservableObject {
     @Published private(set) var isFinishing = false
     @Published private(set) var elapsed: TimeInterval = 0
 
+    /// Probe for whether a dictation session is live (the engine is shared, so
+    /// the two can't run at once). Injected by AppDelegate.
+    var isDictating: (() -> Bool)?
+
     private let engine: TranscriptionEngine
     private let store: MeetingStore
     private let summarizer = MeetingSummarizer()
@@ -30,7 +34,9 @@ final class MeetingRecorder: ObservableObject {
     /// or a session is already in progress.
     @discardableResult
     func start() async -> Bool {
-        guard !isRecording, TranscriptionEngine.isAvailable else { return false }
+        guard !isRecording, !isFinishing, TranscriptionEngine.isAvailable else { return false }
+        // Reverse exclusivity: never start over a live dictation (shared engine).
+        guard isDictating?() != true else { return false }
         guard await AudioCapture.requestMicrophoneAccess() else { return false }
 
         let buffer = DictationAssembler(clean: { _ in nil }) // raw transcript, no per-segment LLM
@@ -39,13 +45,11 @@ final class MeetingRecorder: ObservableObject {
         try? Data().write(to: pURL)
 
         do {
-            await engine.setSegmentHandler { segment in buffer.add(segment) }
             await engine.setContextualStrings([])
-            let session = try await engine.beginSession()
+            let session = try await engine.beginSession(segmentHandler: { segment in buffer.add(segment) })
             try audio.start(targetFormat: session.format, continuation: session.continuation)
         } catch {
             await engine.cancelSession()
-            await engine.setSegmentHandler(nil)
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
@@ -79,8 +83,7 @@ final class MeetingRecorder: ObservableObject {
         timer = nil
         audio.stop()
 
-        let transcript = await engine.finishSession()
-        await engine.setSegmentHandler(nil)
+        let transcript = await engine.finishSession() // also clears the segment handler
 
         let start = startedAt ?? Date()
         let duration = Date().timeIntervalSince(start)
@@ -105,10 +108,33 @@ final class MeetingRecorder: ObservableObject {
         isFinishing = false
     }
 
-    private static func makeTitle(start: Date) -> String {
+    /// On launch, recover a transcript left behind by a crash mid-recording into
+    /// a Meeting (no summary). Must run before any new recording overwrites the file.
+    func recoverPartialIfNeeded() {
+        let pURL = AppPaths.meetingsDirectory().appendingPathComponent(".recording.partial.txt")
+        guard let raw = try? String(contentsOf: pURL, encoding: .utf8) else { return }
+        try? FileManager.default.removeItem(at: pURL)
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let date = Date()
+        store.add(Meeting(
+            title: "Recovered meeting · " + Self.titleFormatter.string(from: date),
+            startUnix: date.timeIntervalSince1970,
+            durationSec: 0,
+            transcript: trimmed,
+            summary: "",
+            fileName: MeetingStore.fileName(for: date)
+        ))
+    }
+
+    private static let titleFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .short
-        return "Meeting · \(f.string(from: start))"
+        return f
+    }()
+
+    private static func makeTitle(start: Date) -> String {
+        "Meeting · " + titleFormatter.string(from: start)
     }
 }
