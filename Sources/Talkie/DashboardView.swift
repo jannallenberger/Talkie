@@ -119,11 +119,10 @@ private struct BriefCard: View {
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.inkSecondary)
         } else {
-            Text(summary.summary)
+            MarkdownText(markdown: summary.summary, bulletColor: Theme.coral)
                 .font(.system(size: 13.5))
                 .foregroundStyle(Theme.ink)
                 .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

@@ -178,11 +178,10 @@ private struct MeetingRow: View {
             }
 
             if !meeting.summary.isEmpty {
-                Text(meeting.summary)
+                MarkdownText(markdown: meeting.summary, bulletColor: Theme.coral)
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.ink)
                     .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             DisclosureGroup(isExpanded: $expanded) {
