@@ -13,6 +13,33 @@ private final class SingleShotInput: @unchecked Sendable {
     }
 }
 
+/// Thread-safe accumulator of converted PCM buffers, capped by total frames, so
+/// a session can be re-transcribed in a different language. Appended on the
+/// real-time tap thread, drained on the main thread.
+private final class CapturedAudio: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffers: [AVAudioPCMBuffer] = []
+    private var totalFrames: AVAudioFramePosition = 0
+    private let maxFrames: AVAudioFramePosition
+
+    init(maxFrames: AVAudioFramePosition) { self.maxFrames = maxFrames }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        lock.lock(); defer { lock.unlock() }
+        guard totalFrames < maxFrames else { return } // stop buffering past the cap
+        buffers.append(buffer)
+        totalFrames += AVAudioFramePosition(buffer.frameLength)
+    }
+
+    func drain() -> [AVAudioPCMBuffer] {
+        lock.lock(); defer { lock.unlock() }
+        let out = buffers
+        buffers = []
+        totalFrames = 0
+        return out
+    }
+}
+
 /// Captures the default microphone via `AVAudioEngine`, converts each buffer to
 /// the format `SpeechAnalyzer` requested, and yields it into the analyzer's
 /// input stream. The converter is captured by value inside the tap block (never
@@ -21,6 +48,7 @@ private final class SingleShotInput: @unchecked Sendable {
 final class AudioCapture: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private var isRunning = false // touched only on the main thread (start/stop)
+    private var captured: CapturedAudio?
 
     /// Ask for microphone access. Returns true if granted.
     static func requestMicrophoneAccess() async -> Bool {
@@ -41,6 +69,7 @@ final class AudioCapture: @unchecked Sendable {
     func start(
         targetFormat: AVAudioFormat,
         continuation: AsyncStream<AnalyzerInput>.Continuation,
+        bufferAudio: Bool = false,
         onLevel: (@Sendable (Float) -> Void)? = nil
     ) throws {
         guard !isRunning else { return }
@@ -57,18 +86,30 @@ final class AudioCapture: @unchecked Sendable {
         }
         converter.primeMethod = .none // avoid timestamp drift on streamed buffers
 
+        // Retain up to ~90 s of converted audio when language auto-detect is on.
+        let capture = bufferAudio
+            ? CapturedAudio(maxFrames: AVAudioFramePosition(targetFormat.sampleRate * 90))
+            : nil
+        self.captured = capture
+
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
             if let onLevel {
                 onLevel(Self.level(of: buffer))
             }
             guard let converted = Self.convert(buffer: buffer, using: converter, to: targetFormat) else { return }
             if converted.frameLength > 0 {
+                capture?.append(converted)
                 continuation.yield(AnalyzerInput(buffer: converted))
             }
         }
 
         try engine.start()
         isRunning = true
+    }
+
+    /// The converted audio captured during the last session (for re-transcription).
+    func bufferedAudio() -> [AVAudioPCMBuffer] {
+        captured?.drain() ?? []
     }
 
     /// Perceptual 0…1 level (dB-mapped RMS) of a mic buffer, for the HUD waveform.

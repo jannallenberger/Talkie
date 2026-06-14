@@ -10,6 +10,11 @@ struct Replacement: Codable, Identifiable, Hashable {
     var caseSensitive: Bool = false
     /// Only replace when `from` stands as a whole word.
     var wholeWord: Bool = true
+    /// True if Talkie added this automatically by watching you edit (optional for
+    /// back-compat with older saved files).
+    var learned: Bool?
+
+    var isLearned: Bool { learned ?? false }
 }
 
 /// User vocabulary + substitutions. Backs both the dictionary UI and the
@@ -79,6 +84,17 @@ final class DictionaryStore: ObservableObject {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !vocabulary.contains(trimmed) else { return }
         vocabulary.append(trimmed)
+    }
+
+    /// Auto-add a correction Talkie learned from watching the user edit text.
+    func addLearnedReplacement(from: String, to: String) {
+        let f = from.trimmingCharacters(in: .whitespaces)
+        let t = to.trimmingCharacters(in: .whitespaces)
+        guard !f.isEmpty, !t.isEmpty, f.lowercased() != t.lowercased() else { return }
+        // Skip if we already have this exact correction.
+        if replacements.contains(where: { $0.from.lowercased() == f.lowercased() && $0.to == t }) { return }
+        replacements.append(Replacement(from: f, to: t, caseSensitive: false, wholeWord: true, learned: true))
+        save()
     }
 
     func removeVocabulary(at offsets: IndexSet) {

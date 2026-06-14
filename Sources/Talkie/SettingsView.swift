@@ -3,6 +3,7 @@ import SwiftUI
 
 enum SettingsTab: Hashable {
     case history
+    case stats
     case general
     case dictionary
     case permissions
@@ -24,6 +25,7 @@ final class MainWindowController {
         dictionary: DictionaryStore,
         permissions: PermissionsModel,
         history: HistoryStore,
+        stats: StatsStore,
         onRetryHotKey: @escaping () -> Void
     ) {
         let root = MainView(
@@ -31,6 +33,7 @@ final class MainWindowController {
             dictionary: dictionary,
             permissions: permissions,
             history: history,
+            stats: stats,
             router: router,
             onRetryHotKey: onRetryHotKey
         )
@@ -59,6 +62,7 @@ struct MainView: View {
     @ObservedObject var dictionary: DictionaryStore
     @ObservedObject var permissions: PermissionsModel
     @ObservedObject var history: HistoryStore
+    @ObservedObject var stats: StatsStore
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Void
 
@@ -67,6 +71,10 @@ struct MainView: View {
             HistorySettings(history: history)
                 .tabItem { Label("History", systemImage: "clock") }
                 .tag(SettingsTab.history)
+
+            StatsSettings(stats: stats, history: history)
+                .tabItem { Label("Stats", systemImage: "chart.bar.fill") }
+                .tag(SettingsTab.stats)
 
             GeneralSettings(settings: settings)
                 .tabItem { Label("General", systemImage: "gearshape") }
@@ -189,11 +197,93 @@ private struct HistoryRow: View {
     }
 }
 
+// MARK: - Stats (scoreboard)
+
+private struct StatsSettings: View {
+    @ObservedObject var stats: StatsStore
+    @ObservedObject var history: HistoryStore
+
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Your Dictation Stats")
+                .font(.headline)
+
+            LazyVGrid(columns: columns, spacing: 12) {
+                StatCard(title: "Total words", value: stats.totalWords.formatted(), icon: "text.word.spacing")
+                StatCard(title: "Dictations", value: stats.totalDictations.formatted(), icon: "mic.fill")
+                StatCard(title: "Average speed",
+                         value: stats.averageWPM > 0 ? "\(Int(stats.averageWPM.rounded())) wpm" : "—",
+                         icon: "speedometer")
+                StatCard(title: "Best speed",
+                         value: stats.bestWPM > 0 ? "\(Int(stats.bestWPM.rounded())) wpm" : "—",
+                         icon: "bolt.fill")
+                StatCard(title: "Words (last 7 days)", value: history.wordsLast7Days.formatted(), icon: "calendar")
+                StatCard(title: "Time spoken", value: formatDuration(stats.totalDurationSec), icon: "clock.fill")
+            }
+
+            Spacer()
+
+            HStack {
+                Spacer()
+                Button(role: .destructive) { stats.reset() } label: {
+                    Label("Reset stats", systemImage: "arrow.counterclockwise")
+                }
+            }
+        }
+        .padding()
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        let total = Int(seconds)
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 { return "\(m)m \(s)s" }
+        return "\(s)s"
+    }
+}
+
+private struct StatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            Text(value)
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.4)))
+    }
+}
+
 // MARK: - General
 
 private struct GeneralSettings: View {
     @ObservedObject var settings: AppSettings
-    @State private var localeDraft: String = ""
+
+    private func toggleLanguage(_ id: String, on: Bool) {
+        var langs = settings.spokenLanguages
+        if on {
+            if !langs.contains(id) { langs.append(id) }
+        } else {
+            guard langs.count > 1 else { return } // always keep at least one
+            langs.removeAll { $0 == id }
+        }
+        settings.spokenLanguages = langs
+    }
 
     var body: some View {
         Form {
@@ -222,10 +312,23 @@ private struct GeneralSettings: View {
                 Toggle("Remove filler words (um, uh, hmm…)", isOn: $settings.cleanupFillers)
             }
 
-            Section("Language") {
-                TextField("Locale (e.g. en-US)", text: $localeDraft)
-                    .onSubmit { settings.localeIdentifier = localeDraft.trimmingCharacters(in: .whitespaces) }
-                Text("Press Return to apply. Locale changes take effect after you reopen Talkie.")
+            Section("Learning") {
+                Toggle("Learn from my edits (auto-improve the dictionary)", isOn: $settings.learnFromEdits)
+                Text("When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Languages you speak") {
+                ForEach(talkieLanguageCatalog) { lang in
+                    Toggle(lang.name, isOn: Binding(
+                        get: { settings.spokenLanguages.contains(lang.id) },
+                        set: { toggleLanguage(lang.id, on: $0) }
+                    ))
+                }
+                Text(settings.spokenLanguages.count > 1
+                     ? "Talkie auto-detects which of these you're speaking each time."
+                     : "Pick more than one to have Talkie auto-detect your language.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -237,7 +340,6 @@ private struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         .padding()
-        .onAppear { localeDraft = settings.localeIdentifier }
     }
 }
 
@@ -324,6 +426,12 @@ private struct ReplacementRow: View {
                 .foregroundStyle(.secondary)
             TextField("written", text: $rule.to)
                 .textFieldStyle(.roundedBorder)
+            if rule.isLearned {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.purple)
+                    .help("Learned automatically from your edits")
+            }
             Toggle("Aa", isOn: $rule.caseSensitive)
                 .toggleStyle(.button)
                 .help("Case sensitive")

@@ -42,7 +42,7 @@ enum TalkieEngineError: LocalizedError {
 /// on-device, low-latency dictation. One instance is reused across sessions;
 /// the heavy model load happens once and lingers for the process lifetime.
 actor TranscriptionEngine {
-    private let locale: Locale
+    private var locale: Locale
     private var contextualStrings: [String] = []
 
     private var transcriber: SpeechTranscriber?
@@ -57,6 +57,11 @@ actor TranscriptionEngine {
 
     init(localeIdentifier: String) {
         self.locale = Locale(identifier: localeIdentifier)
+    }
+
+    /// Switch the language used for subsequent live sessions (language auto-detect).
+    func setLocaleIdentifier(_ id: String) {
+        locale = Locale(identifier: id)
     }
 
     func setUpdateHandler(_ handler: @escaping @Sendable (TranscriptUpdate) -> Void) {
@@ -119,6 +124,54 @@ actor TranscriptionEngine {
         try await ensureModelInstalled(for: t)
         // Best-effort: keep the locale asset reserved so it isn't reclaimed.
         _ = try? await AssetInventory.reserve(locale: loc)
+    }
+
+    /// One-shot re-transcription of already-captured audio in a different locale
+    /// (used by language auto-detect). Returns nil on any failure, so the caller
+    /// keeps the original transcript.
+    func transcribeBuffered(_ buffers: [AVAudioPCMBuffer], localeIdentifier id: String) async -> String? {
+        guard SpeechTranscriber.isAvailable, !buffers.isEmpty else { return nil }
+        guard let loc = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) else { return nil }
+
+        let transcriber = makeTranscriber(locale: loc)
+        do { try await ensureModelInstalled(for: transcriber) } catch { return nil }
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else { return nil }
+        // Apple's speech models share a 16 kHz mono format, so the captured audio
+        // normally matches; if it doesn't, bail rather than feed a bad format.
+        guard let firstFormat = buffers.first?.format, firstFormat == format else { return nil }
+
+        let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        if !contextualStrings.isEmpty {
+            let ctx = AnalysisContext()
+            ctx.contextualStrings = [.general: contextualStrings]
+            try? await analyzer.setContext(ctx)
+        }
+
+        var collected = ""
+        let reader = Task {
+            do {
+                for try await result in transcriber.results where result.isFinal {
+                    collected = appendCommitted(collected, String(result.text.characters))
+                }
+            } catch {}
+        }
+
+        do {
+            try await analyzer.start(inputSequence: stream)
+        } catch {
+            reader.cancel()
+            return nil
+        }
+        for buffer in buffers {
+            continuation.yield(AnalyzerInput(buffer: buffer))
+        }
+        continuation.finish()
+        try? await analyzer.finalizeAndFinishThroughEndOfInput()
+        await reader.value
+
+        let result = collected.trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? nil : result
     }
 
     /// Begin a dictation session. Returns the audio format the caller must feed

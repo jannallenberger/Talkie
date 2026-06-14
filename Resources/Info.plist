@@ -10,6 +10,10 @@
     <string>Talkie</string>
     <key>CFBundleExecutable</key>
     <string>Talkie</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleInfoDictionaryVersion</key>

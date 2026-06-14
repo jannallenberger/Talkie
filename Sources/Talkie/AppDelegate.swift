@@ -7,10 +7,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let dictionary = DictionaryStore()
     let permissions = PermissionsModel()
     let history = HistoryStore()
+    let stats = StatsStore()
 
     private var engine: TranscriptionEngine!
     private let audio = AudioCapture()
     private let hud = HUDController()
+    private let learning = LearningEngine()
     private var hotKey: HotKeyMonitor?
 
     private var statusItem: NSStatusItem?
@@ -22,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sessionID = 0
     /// True only once audio is actually flowing into a live analyzer session.
     private var sessionLive = false
+    /// When the current recording actually started flowing (for WPM/duration).
+    private var recordingStartedAt: Date?
+    /// The language currently used for live transcription (sticky; switches when
+    /// language auto-detect finds you spoke a different one of your languages).
+    private var currentLocaleID: String = ""
 
     // MARK: App lifecycle
 
@@ -31,7 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
 
         Feedback.enabled = settings.playSounds
-        engine = TranscriptionEngine(localeIdentifier: settings.localeIdentifier)
+        currentLocaleID = settings.spokenLanguages.first ?? settings.localeIdentifier
+        engine = TranscriptionEngine(localeIdentifier: currentLocaleID)
 
         setupMainMenu()
         setupStatusItem()
@@ -242,6 +250,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Feedback.enabled = self.settings.playSounds
                 self.hotKey?.update(config: .init(key: self.settings.activationKey, mode: self.settings.activationMode))
                 self.updateStatusUI()
+
+                // If the primary language changed, switch the live engine to it.
+                let primary = self.settings.spokenLanguages.first ?? self.settings.localeIdentifier
+                if primary != self.currentLocaleID {
+                    self.currentLocaleID = primary
+                    await self.engine.setLocaleIdentifier(primary)
+                    Task { try? await self.engine.warmUp() }
+                }
             }
         }
     }
@@ -255,6 +271,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hud.showError("On-device speech isn't available on this Mac.")
             return
         }
+
+        // Recursive self-improvement: learn from any edits the user made to the
+        // previous dictation before starting this one.
+        if settings.learnFromEdits {
+            for correction in learning.collectCorrections() {
+                dictionary.addLearnedReplacement(from: correction.from, to: correction.to)
+            }
+        }
+
         isDictating = true
         sessionLive = false
         sessionID += 1
@@ -264,6 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showListening()
 
         let phrases = dictionary.contextualPhrasesSnapshot()
+        let multiLang = settings.spokenLanguages.count > 1
 
         Task {
             let micOK = await AudioCapture.requestMicrophoneAccess()
@@ -288,11 +314,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try audio.start(
                     targetFormat: session.format,
                     continuation: session.continuation,
+                    bufferAudio: multiLang,
                     onLevel: { level in
                         Task { @MainActor in AppDelegate.sharedHUD?.updateLevel(level) }
                     }
                 )
                 self.sessionLive = true
+                self.recordingStartedAt = Date()
             } catch {
                 self.isDictating = false
                 self.updateStatusUI()
@@ -315,6 +343,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         sessionLive = false
+        let duration = Date().timeIntervalSince(recordingStartedAt ?? Date())
+        recordingStartedAt = nil
 
         Feedback.stop()
         audio.stop()
@@ -324,14 +354,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let autoCap = settings.autoCapitalize
         let removeFillers = settings.cleanupFillers
         let mode = settings.insertionMode
+        let spokenLanguages = settings.spokenLanguages
 
         Task {
             let raw = await engine.finishSession()
+
+            // Language auto-detect: if the transcript looks like a different one
+            // of your languages, re-transcribe the captured audio in that language.
+            var finalRaw = raw
+            if spokenLanguages.count > 1, !raw.isEmpty,
+               let detected = LanguageDetector.detect(raw, among: spokenLanguages),
+               detected != self.currentLocaleID {
+                let buffers = self.audio.bufferedAudio()
+                if let reText = await self.engine.transcribeBuffered(buffers, localeIdentifier: detected) {
+                    finalRaw = reText
+                    self.currentLocaleID = detected
+                    await self.engine.setLocaleIdentifier(detected) // stick to it next time
+                }
+            }
+
             let processed = TextProcessor.apply(
                 replacements: replacements,
                 removeFillers: removeFillers,
                 autoCapitalize: autoCap,
-                to: raw
+                to: finalRaw
             )
 
             guard !processed.isEmpty else {
@@ -339,14 +385,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
-            // Log it (copyable in the History tab) even if insertion fell back to clipboard.
-            self.history.add(processed)
+            // Log it (copyable in the History tab) + lifetime stats, even if
+            // insertion fell back to the clipboard.
+            let words = WordCounter.count(processed)
+            self.history.add(processed, wordCount: words, durationSec: duration)
+            self.stats.record(words: words, durationSec: duration)
 
             let outcome = TextInjector.insert(processed, mode: mode)
             switch outcome {
             case .inserted:
                 Feedback.done()
                 self.hud.hide(after: 0.15)
+                // Snapshot the field after the paste lands, so we can learn from
+                // any edits the user makes before the next dictation.
+                if self.settings.learnFromEdits {
+                    let learnedText = processed
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(350))
+                        self.learning.recordInsertion(learnedText)
+                    }
+                }
             case .leftOnClipboard(let reason):
                 Feedback.abort()
                 self.hud.showError(reason)
@@ -369,6 +427,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 dictionary: dictionary,
                 permissions: permissions,
                 history: history,
+                stats: stats,
                 onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }
             )
         }

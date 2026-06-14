@@ -52,6 +52,19 @@ if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
   cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
 
+# App icon from the Icon Composer .icon bundle (macOS 26 Liquid Glass).
+# actool emits AppIcon.icns (Finder/Dock fallback) + Assets.car (glass icon).
+if [[ -d "$ROOT/Resources/AppIcon.icon" ]]; then
+  echo "▶ Compiling app icon…"
+  xcrun actool "$ROOT/Resources/AppIcon.icon" \
+    --compile "$APP/Contents/Resources" \
+    --app-icon AppIcon \
+    --platform macosx \
+    --minimum-deployment-target 26.0 \
+    --output-partial-info-plist /tmp/talkie_icon_partial.plist \
+    --errors --warnings >/dev/null 2>&1 || echo "  (icon compile skipped)"
+fi
+
 echo "▶ Signing (identity: $SIGN_ID)…"
 SIGN_ARGS=(--force --sign "$SIGN_ID" --identifier com.coralate.talkie
            --entitlements "$ROOT/Resources/talkie.entitlements")

@@ -48,6 +48,27 @@ enum InsertionMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// A language Talkie can transcribe / auto-detect. `id` is a locale identifier.
+struct TalkieLanguage: Identifiable, Hashable {
+    let id: String
+    let name: String
+}
+
+/// Common languages offered in Settings (a subset of SpeechTranscriber's locales).
+let talkieLanguageCatalog: [TalkieLanguage] = [
+    .init(id: "en-US", name: "English (US)"),
+    .init(id: "en-GB", name: "English (UK)"),
+    .init(id: "de-DE", name: "German"),
+    .init(id: "fr-FR", name: "French"),
+    .init(id: "es-ES", name: "Spanish"),
+    .init(id: "it-IT", name: "Italian"),
+    .init(id: "pt-BR", name: "Portuguese (Brazil)"),
+    .init(id: "nl-NL", name: "Dutch"),
+    .init(id: "ja-JP", name: "Japanese"),
+    .init(id: "ko-KR", name: "Korean"),
+    .init(id: "zh-CN", name: "Chinese (Simplified)"),
+]
+
 /// Scalar app preferences, persisted in `UserDefaults`.
 @MainActor
 final class AppSettings: ObservableObject {
@@ -65,11 +86,24 @@ final class AppSettings: ObservableObject {
     @Published var localeIdentifier: String {
         didSet { defaults.set(localeIdentifier, forKey: Keys.localeIdentifier) }
     }
+    /// Languages the user speaks. The first is the primary; when there's more
+    /// than one, Talkie auto-detects which language each dictation was in.
+    @Published var spokenLanguages: [String] {
+        didSet {
+            defaults.set(spokenLanguages, forKey: Keys.spokenLanguages)
+            // Keep the primary locale in sync with the first selected language.
+            if let first = spokenLanguages.first { localeIdentifier = first }
+            notifyChanged()
+        }
+    }
     @Published var autoCapitalize: Bool {
         didSet { defaults.set(autoCapitalize, forKey: Keys.autoCapitalize) }
     }
     @Published var cleanupFillers: Bool {
         didSet { defaults.set(cleanupFillers, forKey: Keys.cleanupFillers) }
+    }
+    @Published var learnFromEdits: Bool {
+        didSet { defaults.set(learnFromEdits, forKey: Keys.learnFromEdits) }
     }
     @Published var playSounds: Bool {
         didSet { defaults.set(playSounds, forKey: Keys.playSounds); notifyChanged() }
@@ -94,15 +128,20 @@ final class AppSettings: ObservableObject {
             Keys.localeIdentifier: Locale.current.identifier,
             Keys.autoCapitalize: true,
             Keys.cleanupFillers: true,
+            Keys.learnFromEdits: true,
             Keys.playSounds: true,
             Keys.launchAtLogin: false,
         ])
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
         activationMode = ActivationMode(rawValue: d.string(forKey: Keys.activationMode) ?? "") ?? .holdToTalk
         insertionMode = InsertionMode(rawValue: d.string(forKey: Keys.insertionMode) ?? "") ?? .paste
-        localeIdentifier = d.string(forKey: Keys.localeIdentifier) ?? Locale.current.identifier
+        let primary = d.string(forKey: Keys.localeIdentifier) ?? Locale.current.identifier
+        localeIdentifier = primary
+        let storedLanguages = d.stringArray(forKey: Keys.spokenLanguages)
+        spokenLanguages = (storedLanguages?.isEmpty == false) ? storedLanguages! : [primary]
         autoCapitalize = d.bool(forKey: Keys.autoCapitalize)
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
+        learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
         playSounds = d.bool(forKey: Keys.playSounds)
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
     }
@@ -112,8 +151,10 @@ final class AppSettings: ObservableObject {
         static let activationMode = "activationMode"
         static let insertionMode = "insertionMode"
         static let localeIdentifier = "localeIdentifier"
+        static let spokenLanguages = "spokenLanguages"
         static let autoCapitalize = "autoCapitalize"
         static let cleanupFillers = "cleanupFillers"
+        static let learnFromEdits = "learnFromEdits"
         static let playSounds = "playSounds"
         static let launchAtLogin = "launchAtLogin"
     }

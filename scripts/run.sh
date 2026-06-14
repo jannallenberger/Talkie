@@ -19,7 +19,13 @@ echo "▶ Installing to $DEST…"
 rm -rf "$DEST"
 cp -R "$ROOT/Talkie.app" "$DEST"
 
+# Register with LaunchServices so `open` doesn't fail with -600 right after the
+# bundle is replaced.
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+[[ -x "$LSREGISTER" ]] && "$LSREGISTER" -f "$DEST" 2>/dev/null || true
+
 echo "▶ Launching…"
-open "$DEST"
+sleep 0.5
+open "$DEST" || { sleep 1; open "$DEST"; }
 echo "✓ Talkie is running — it's a Dock app now (window opens on launch); there's"
 echo "  also a 🎤 in the menu bar. First run: grant the 3 permissions, Quit & Reopen once."
