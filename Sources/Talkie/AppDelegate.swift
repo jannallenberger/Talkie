@@ -8,6 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissions = PermissionsModel()
     let history = HistoryStore()
     let stats = StatsStore()
+    let appUsage = AppUsageStore()
+    let activity = ActivityStore()
+    let projectIndex = ProjectIndexStore()
 
     private var engine: TranscriptionEngine!
     private let audio = AudioCapture()
@@ -30,6 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The language currently used for live transcription (sticky; switches when
     /// language auto-detect finds you spoke a different one of your languages).
     private var currentLocaleID: String = ""
+    /// The app captured at the start of the current dictation (for usage stats).
+    private var currentTarget: TargetApp = .unknown
+    /// The project file index snapshot to apply to the current dictation (vibe coding).
+    private var currentVibeSnapshot: ProjectIndexSnapshot = .empty
 
     // MARK: App lifecycle
 
@@ -295,7 +302,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Feedback.start()
         hud.showListening()
 
-        let phrases = dictionary.contextualPhrasesSnapshot()
+        // Context awareness: capture who you're dictating into (always, for the
+        // usage dashboard) and — when enabled — mine names worth spelling right.
+        let captured = ContextCapture.capture(
+            selfBundleID: AppPaths.bundleIdentifier,
+            minePhrases: settings.contextAwareness
+        )
+        currentTarget = captured.target
+        currentVibeSnapshot = settings.vibeCoding ? projectIndex.snapshot : .empty
+
+        // Bias the recognizer with the union of: custom vocabulary, on-screen
+        // names from the target app, and (in vibe mode) your project's filenames.
+        var bias = dictionary.contextualPhrasesSnapshot()
+        bias.append(contentsOf: captured.phrases)
+        if settings.vibeCoding { bias.append(contentsOf: currentVibeSnapshot.biasPhrases) }
+        let phrases = Array(Set(bias)).prefix(180).map { $0 }
         let multiLang = settings.spokenLanguages.count > 1
 
         Task {
@@ -363,6 +384,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let cleanupLevel = settings.cleanupLevel
         let mode = settings.insertionMode
         let spokenLanguages = settings.spokenLanguages
+        let vibeOn = settings.vibeCoding
+        let vibeSnapshot = currentVibeSnapshot
+        let target = currentTarget
+        let selfBundle = AppPaths.bundleIdentifier
 
         Task {
             let raw = await engine.finishSession()
@@ -400,7 +425,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 autoCapitalize: autoCap,
                 to: cleaned
             )
-            let finalText = processed.text
+            var finalText = processed.text
+
+            // Vibe coding: snap spoken filenames to the real files in your project
+            // ("exercise library dot tsx" → "ExerciseLibrary.tsx").
+            var fileFixes = 0
+            if vibeOn, !vibeSnapshot.isEmpty {
+                let (vibed, hits) = SpokenFileMatcher.format(finalText, snapshot: vibeSnapshot)
+                finalText = vibed
+                fileFixes = hits
+            }
 
             guard !finalText.isEmpty else {
                 self.hud.hide()
@@ -413,10 +447,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.history.add(finalText, wordCount: words, durationSec: duration)
             self.stats.record(words: words, durationSec: duration)
             self.stats.recordFixes(
-                dictionary: processed.replacementHits,
+                dictionary: processed.replacementHits + fileFixes,
                 fillers: processed.fillersRemoved,
                 aiWords: aiWordsChanged
             )
+            // Per-day activity (streak + heatmap) and where your words went.
+            self.activity.record(words: words)
+            if target.bundleID != selfBundle {
+                self.appUsage.record(target: target, words: words)
+            }
 
             let outcome = TextInjector.insert(finalText, mode: mode)
             switch outcome {
@@ -456,6 +495,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 permissions: permissions,
                 history: history,
                 stats: stats,
+                appUsage: appUsage,
+                activity: activity,
+                projectIndex: projectIndex,
                 onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }
             )
         }

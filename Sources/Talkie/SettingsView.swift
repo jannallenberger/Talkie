@@ -1,20 +1,44 @@
 import AppKit
 import SwiftUI
 
-enum SettingsTab: Hashable {
+enum SettingsTab: Hashable, CaseIterable {
+    case dashboard
     case history
-    case stats
-    case general
     case dictionary
+    case vibeCoding
+    case general
     case permissions
+
+    var title: String {
+        switch self {
+        case .dashboard:   return "Dashboard"
+        case .history:     return "History"
+        case .dictionary:  return "Dictionary"
+        case .vibeCoding:  return "Vibe Coding"
+        case .general:     return "Settings"
+        case .permissions: return "Permissions"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .dashboard:   return "square.grid.2x2.fill"
+        case .history:     return "clock.fill"
+        case .dictionary:  return "character.book.closed.fill"
+        case .vibeCoding:  return "chevron.left.forwardslash.chevron.right"
+        case .general:     return "gearshape.fill"
+        case .permissions: return "lock.shield.fill"
+        }
+    }
 }
 
 @MainActor
 final class SettingsRouter: ObservableObject {
-    @Published var selectedTab: SettingsTab = .history
+    @Published var selectedTab: SettingsTab = .dashboard
 }
 
-/// The app's main window (Dock app). Hosts History + settings tabs.
+/// The app's main window (Dock app). A Claude-style sidebar shell hosting the
+/// dashboard, history, and settings panes.
 @MainActor
 final class MainWindowController {
     private let window: NSWindow
@@ -26,6 +50,9 @@ final class MainWindowController {
         permissions: PermissionsModel,
         history: HistoryStore,
         stats: StatsStore,
+        appUsage: AppUsageStore,
+        activity: ActivityStore,
+        projectIndex: ProjectIndexStore,
         onRetryHotKey: @escaping () -> Void
     ) {
         let root = MainView(
@@ -34,16 +61,26 @@ final class MainWindowController {
             permissions: permissions,
             history: history,
             stats: stats,
+            appUsage: appUsage,
+            activity: activity,
+            projectIndex: projectIndex,
             router: router,
             onRetryHotKey: onRetryHotKey
         )
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            contentRect: NSRect(x: 0, y: 0, width: 980, height: 700),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Talkie"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(hex: 0x191815) : NSColor(hex: 0xF4F2EA)
+        }
         window.contentView = NSHostingView(rootView: root)
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("TalkieMainWindow")
@@ -63,32 +100,144 @@ struct MainView: View {
     @ObservedObject var permissions: PermissionsModel
     @ObservedObject var history: HistoryStore
     @ObservedObject var stats: StatsStore
+    @ObservedObject var appUsage: AppUsageStore
+    @ObservedObject var activity: ActivityStore
+    @ObservedObject var projectIndex: ProjectIndexStore
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Void
 
     var body: some View {
-        TabView(selection: $router.selectedTab) {
-            HistorySettings(history: history)
-                .tabItem { Label("History", systemImage: "clock") }
-                .tag(SettingsTab.history)
-
-            StatsSettings(stats: stats, history: history)
-                .tabItem { Label("Stats", systemImage: "chart.bar.fill") }
-                .tag(SettingsTab.stats)
-
-            GeneralSettings(settings: settings)
-                .tabItem { Label("General", systemImage: "gearshape") }
-                .tag(SettingsTab.general)
-
-            DictionarySettings(dictionary: dictionary)
-                .tabItem { Label("Dictionary", systemImage: "character.book.closed") }
-                .tag(SettingsTab.dictionary)
-
-            PermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
-                .tabItem { Label("Permissions", systemImage: "lock.shield") }
-                .tag(SettingsTab.permissions)
+        HStack(spacing: 0) {
+            Sidebar(router: router, settings: settings, permissions: permissions)
+            Rectangle().fill(Theme.hairline).frame(width: 1)
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(Theme.canvas)
         }
-        .frame(minWidth: 680, minHeight: 620)
+        .frame(minWidth: 900, minHeight: 640)
+        .background(Theme.canvas)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch router.selectedTab {
+        case .dashboard:
+            DashboardView(settings: settings, stats: stats, history: history,
+                          activity: activity, appUsage: appUsage, router: router)
+        case .history:
+            HistorySettings(history: history)
+        case .dictionary:
+            DictionarySettings(dictionary: dictionary)
+        case .vibeCoding:
+            VibeCodingView(projectIndex: projectIndex, settings: settings)
+        case .general:
+            GeneralSettings(settings: settings)
+        case .permissions:
+            PermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
+        }
+    }
+}
+
+// MARK: - Sidebar
+
+private struct Sidebar: View {
+    @ObservedObject var router: SettingsRouter
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var permissions: PermissionsModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // Brand lockup — the actual app icon + serif wordmark.
+            HStack(spacing: 10) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 30, height: 30)
+                Text("Talkie")
+                    .font(.talkieDisplay(21))
+                    .foregroundStyle(Theme.ink)
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 18)
+
+            ForEach(SettingsTab.allCases, id: \.self) { tab in
+                SidebarButton(
+                    tab: tab,
+                    isActive: router.selectedTab == tab,
+                    badge: tab == .permissions && !permissions.allGranted
+                ) { router.selectedTab = tab }
+            }
+
+            Spacer()
+
+            // Footer: live activation hint.
+            VStack(alignment: .leading, spacing: 3) {
+                Eyebrow(text: settings.activationMode == .holdToTalk ? "Hold to talk" : "Tap to toggle")
+                Text(settings.activationKey.displayName)
+                    .font(.talkieHeading(12, weight: .medium))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 14)
+        }
+        .padding(.top, 44) // clear the transparent titlebar / traffic lights
+        .frame(width: 214)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Theme.canvasRaised)
+    }
+}
+
+private struct SidebarButton: View {
+    let tab: SettingsTab
+    let isActive: Bool
+    var badge: Bool = false
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 11) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 18)
+                    .foregroundStyle(isActive ? Theme.coral : Theme.inkSecondary)
+                Text(tab.title)
+                    .font(.talkieHeading(13.5, weight: isActive ? .semibold : .medium))
+                    .foregroundStyle(isActive ? Theme.ink : Theme.inkSecondary)
+                Spacer()
+                if badge {
+                    Circle().fill(Theme.coral).frame(width: 7, height: 7)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .fill(isActive ? Theme.coralWash : (hovering ? Theme.surfaceSunken : .clear))
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// Page header used by the non-dashboard panes — serif title + subtitle.
+struct PageHeader: View {
+    let title: String
+    var subtitle: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.talkieDisplay(26))
+                .foregroundStyle(Theme.ink)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.talkieHeading(13, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -105,10 +254,9 @@ private struct HistorySettings: View {
     }()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Dictation History")
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                PageHeader(title: "History", subtitle: "Everything you've dictated in the last 7 days.")
                 Spacer()
                 Button {
                     copyToClipboard(history.allAsText())
@@ -128,31 +276,31 @@ private struct HistorySettings: View {
                 VStack(spacing: 8) {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 28))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.inkTertiary)
                     Text("No dictations yet")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .font(.talkieHeading(15))
+                        .foregroundStyle(Theme.inkSecondary)
                     Text("Hold your dictation key and speak — what you say will show up here.")
                         .font(.callout)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.inkTertiary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List {
-                    ForEach(history.entries) { entry in
-                        HistoryRow(entry: entry, formatter: Self.dateFormatter) {
-                            copyToClipboard(entry.text)
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(history.entries) { entry in
+                            HistoryRow(entry: entry, formatter: Self.dateFormatter) {
+                                copyToClipboard(entry.text)
+                            } onDelete: {
+                                history.delete(entry)
+                            }
                         }
                     }
-                    .onDelete { offsets in
-                        for index in offsets { history.delete(history.entries[index]) }
-                    }
                 }
-                .listStyle(.inset)
             }
         }
-        .padding()
+        .padding(28)
     }
 
     private func copyToClipboard(_ text: String) {
@@ -166,15 +314,26 @@ private struct HistoryRow: View {
     let entry: DictationEntry
     let formatter: DateFormatter
     let onCopy: () -> Void
+    let onDelete: () -> Void
     @State private var copied = false
+    @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(formatter.string(from: entry.date))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .font(.talkieEyebrow)
+                    .foregroundStyle(Theme.inkTertiary)
                 Spacer()
+                if hovering {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.inkTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete")
+                }
                 Button {
                     onCopy()
                     copied = true
@@ -182,100 +341,20 @@ private struct HistoryRow: View {
                 } label: {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(copied ? .green : .secondary)
+                        .foregroundStyle(copied ? Theme.positive : Theme.inkSecondary)
                 }
                 .buttonStyle(.plain)
                 .help("Copy this dictation")
             }
             Text(entry.text)
-                .font(.system(size: 13))
-                .foregroundStyle(.primary)
+                .font(.system(size: 13.5))
+                .foregroundStyle(Theme.ink)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 4)
-    }
-}
-
-// MARK: - Stats (scoreboard)
-
-private struct StatsSettings: View {
-    @ObservedObject var stats: StatsStore
-    @ObservedObject var history: HistoryStore
-
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-
-    var body: some View {
-        ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Your Dictation Stats")
-                .font(.headline)
-
-            LazyVGrid(columns: columns, spacing: 12) {
-                StatCard(title: "Total words", value: stats.totalWords.formatted(), icon: "text.word.spacing")
-                StatCard(title: "Dictations", value: stats.totalDictations.formatted(), icon: "mic.fill")
-                StatCard(title: "Average speed",
-                         value: stats.averageWPM > 0 ? "\(Int(stats.averageWPM.rounded())) wpm" : "—",
-                         icon: "speedometer")
-                StatCard(title: "Best speed",
-                         value: stats.bestWPM > 0 ? "\(Int(stats.bestWPM.rounded())) wpm" : "—",
-                         icon: "bolt.fill")
-                StatCard(title: "Words (last 7 days)", value: history.wordsLast7Days.formatted(), icon: "calendar")
-                StatCard(title: "Time spoken", value: formatDuration(stats.totalDurationSec), icon: "clock.fill")
-            }
-
-            Text("Fixes by Talkie")
-                .font(.headline)
-                .padding(.top, 4)
-            LazyVGrid(columns: columns, spacing: 12) {
-                StatCard(title: "Total fixes", value: stats.totalFixes.formatted(), icon: "wand.and.stars")
-                StatCard(title: "Words polished", value: stats.wordsCorrected.formatted(), icon: "sparkles")
-                StatCard(title: "Dictionary fixes", value: stats.dictionaryFixes.formatted(), icon: "character.book.closed")
-            }
-
-            HStack {
-                Spacer()
-                Button(role: .destructive) { stats.reset() } label: {
-                    Label("Reset stats", systemImage: "arrow.counterclockwise")
-                }
-            }
-            .padding(.top, 4)
-        }
-        .padding()
-        }
-    }
-
-    private func formatDuration(_ seconds: Double) -> String {
-        let total = Int(seconds)
-        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-        if h > 0 { return "\(h)h \(m)m" }
-        if m > 0 { return "\(m)m \(s)s" }
-        return "\(s)s"
-    }
-}
-
-private struct StatCard: View {
-    let title: String
-    let value: String
-    let icon: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            Text(value)
-                .font(.system(size: 26, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.4)))
+        .talkieCard(padding: 14)
+        .onHover { hovering = $0 }
     }
 }
 
@@ -296,84 +375,98 @@ private struct GeneralSettings: View {
     }
 
     var body: some View {
-        Form {
-            Section("Activation") {
-                Picker("Dictation key", selection: $settings.activationKey) {
-                    ForEach(ActivationKey.allCases) { Text($0.displayName).tag($0) }
-                }
-                Picker("Mode", selection: $settings.activationMode) {
-                    ForEach(ActivationMode.allCases) { Text($0.displayName).tag($0) }
-                }
-                Text(settings.activationMode == .holdToTalk
-                     ? "Hold the key, speak, release to insert the text."
-                     : "Tap the key to start, tap again to stop and insert.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                PageHeader(title: "Settings")
+                Form {
+                    Section("Activation") {
+                        Picker("Dictation key", selection: $settings.activationKey) {
+                            ForEach(ActivationKey.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        Picker("Mode", selection: $settings.activationMode) {
+                            ForEach(ActivationMode.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        Text(settings.activationMode == .holdToTalk
+                             ? "Hold the key, speak, release to insert the text."
+                             : "Tap the key to start, tap again to stop and insert.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
 
-            Section("Insertion") {
-                Picker("Insert text by", selection: $settings.insertionMode) {
-                    ForEach(InsertionMode.allCases) { Text($0.displayName).tag($0) }
-                }
-            }
+                    Section("Insertion") {
+                        Picker("Insert text by", selection: $settings.insertionMode) {
+                            ForEach(InsertionMode.allCases) { Text($0.displayName).tag($0) }
+                        }
+                    }
 
-            Section("Smart cleanup") {
-                Picker("Cleanup level", selection: $settings.cleanupLevel) {
-                    ForEach(CleanupLevel.allCases) { Text($0.displayName).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                Text(settings.cleanupLevel.detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                if settings.cleanupLevel != .none, let warning = CleanupEngine.unavailableMessage {
-                    Label(warning, systemImage: "exclamationmark.triangle.fill")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                } else if settings.cleanupLevel != .none {
-                    Text("Resolves spoken self-corrections and fixes grammar. Runs entirely on your Mac; nothing leaves the device.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
+                    Section("Smart cleanup") {
+                        Picker("Cleanup level", selection: $settings.cleanupLevel) {
+                            ForEach(CleanupLevel.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        Text(settings.cleanupLevel.detail)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        if settings.cleanupLevel != .none, let warning = CleanupEngine.unavailableMessage {
+                            Label(warning, systemImage: "exclamationmark.triangle.fill")
+                                .font(.callout)
+                                .foregroundStyle(.orange)
+                        } else if settings.cleanupLevel != .none {
+                            Text("Resolves spoken self-corrections and fixes grammar. Runs entirely on your Mac; nothing leaves the device.")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
 
-            Section("Basic cleanup") {
-                Toggle("Capitalize the first letter", isOn: $settings.autoCapitalize)
-                Toggle("Remove filler words (um, uh, hmm…)", isOn: $settings.cleanupFillers)
-                if settings.cleanupLevel != .none {
-                    Text("Filler removal only applies when Smart cleanup is set to None.")
-                        .font(.callout)
-                        .foregroundStyle(.tertiary)
+                    Section("Basic cleanup") {
+                        Toggle("Capitalize the first letter", isOn: $settings.autoCapitalize)
+                        Toggle("Remove filler words (um, uh, hmm…)", isOn: $settings.cleanupFillers)
+                        if settings.cleanupLevel != .none {
+                            Text("Filler removal only applies when Smart cleanup is set to None.")
+                                .font(.callout)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+
+                    Section("Context awareness") {
+                        Toggle("Use the app I'm dictating into for context", isOn: $settings.contextAwareness)
+                        Text("Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Section("Learning") {
+                        Toggle("Learn from my edits (auto-improve the dictionary)", isOn: $settings.learnFromEdits)
+                        Text("When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Section("Languages you speak") {
+                        ForEach(talkieLanguageCatalog) { lang in
+                            Toggle(lang.name, isOn: Binding(
+                                get: { settings.spokenLanguages.contains(lang.id) },
+                                set: { toggleLanguage(lang.id, on: $0) }
+                            ))
+                        }
+                        Text(settings.spokenLanguages.count > 1
+                             ? "Talkie auto-detects which of these you're speaking each time."
+                             : "Pick more than one to have Talkie auto-detect your language.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Section("Behavior") {
+                        Toggle("Play sounds", isOn: $settings.playSounds)
+                        Toggle("Open Talkie at login", isOn: $settings.launchAtLogin)
+                    }
                 }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 720)
             }
-
-            Section("Learning") {
-                Toggle("Learn from my edits (auto-improve the dictionary)", isOn: $settings.learnFromEdits)
-                Text("When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Languages you speak") {
-                ForEach(talkieLanguageCatalog) { lang in
-                    Toggle(lang.name, isOn: Binding(
-                        get: { settings.spokenLanguages.contains(lang.id) },
-                        set: { toggleLanguage(lang.id, on: $0) }
-                    ))
-                }
-                Text(settings.spokenLanguages.count > 1
-                     ? "Talkie auto-detects which of these you're speaking each time."
-                     : "Pick more than one to have Talkie auto-detect your language.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Behavior") {
-                Toggle("Play sounds", isOn: $settings.playSounds)
-                Toggle("Open Talkie at login", isOn: $settings.launchAtLogin)
-            }
+            .padding(28)
         }
-        .formStyle(.grouped)
-        .padding()
     }
 }
 
@@ -385,11 +478,8 @@ private struct DictionarySettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Custom Vocabulary")
-                .font(.headline)
-            Text("Names, brands, and jargon Talkie should recognize and spell correctly.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            PageHeader(title: "Dictionary",
+                       subtitle: "Names, brands, and jargon Talkie should spell correctly.")
 
             HStack {
                 TextField("Add a word or phrase…", text: $newTerm)
@@ -402,7 +492,7 @@ private struct DictionarySettings: View {
             if dictionary.vocabulary.isEmpty {
                 Text("No custom words yet.")
                     .font(.callout)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.inkTertiary)
             } else {
                 List {
                     ForEach(dictionary.vocabulary, id: \.self) { term in
@@ -410,15 +500,15 @@ private struct DictionarySettings: View {
                     }
                     .onDelete { dictionary.removeVocabulary(at: $0) }
                 }
-                .frame(height: 110)
-                .border(.quaternary)
+                .frame(height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline))
             }
-
-            Divider()
 
             HStack {
                 Text("Replacements")
-                    .font(.headline)
+                    .font(.talkieDisplay(17))
+                    .foregroundStyle(Theme.ink)
                 Spacer()
                 Button {
                     dictionary.addReplacement()
@@ -426,9 +516,10 @@ private struct DictionarySettings: View {
                     Label("Add", systemImage: "plus")
                 }
             }
+            .padding(.top, 4)
             Text("Rewrite what was heard into what you meant — e.g. “correlate” → “Coralate”.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.inkSecondary)
 
             List {
                 ForEach($dictionary.replacements) { $rule in
@@ -436,9 +527,10 @@ private struct DictionarySettings: View {
                 }
                 .onDelete { dictionary.removeReplacements(at: $0) }
             }
-            .border(.quaternary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline))
         }
-        .padding()
+        .padding(28)
         .onChange(of: dictionary.replacements) { _, _ in dictionary.save() }
         .onChange(of: dictionary.vocabulary) { _, _ in dictionary.save() }
     }
@@ -463,7 +555,7 @@ private struct ReplacementRow: View {
             if rule.isLearned {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(Theme.coral)
                     .help("Learned automatically from your edits")
             }
             Toggle("Aa", isOn: $rule.caseSensitive)
@@ -484,8 +576,8 @@ private struct PermissionsSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Talkie needs three permissions to work.")
-                .font(.headline)
+            PageHeader(title: "Permissions",
+                       subtitle: "Talkie needs three permissions to work — all local.")
 
             PermissionRow(
                 title: "Microphone",
@@ -518,7 +610,7 @@ private struct PermissionsSettings: View {
 
             Text("After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect.")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.inkTertiary)
 
             HStack {
                 Button("Re-check") { permissions.refresh() }
@@ -526,11 +618,11 @@ private struct PermissionsSettings: View {
                 Spacer()
                 if permissions.allGranted {
                     Label("All set", systemImage: "checkmark.seal.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Theme.positive)
                 }
             }
         }
-        .padding()
+        .padding(28)
         .onAppear { permissions.refresh() }
     }
 
@@ -555,10 +647,11 @@ private struct PermissionRow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                 .font(.system(size: 20))
-                .foregroundStyle(granted ? .green : .orange)
+                .foregroundStyle(granted ? Theme.positive : Theme.warning)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.body.weight(.semibold))
-                Text(detail).font(.callout).foregroundStyle(.secondary)
+                Text(title).font(.talkieHeading(14))
+                    .foregroundStyle(Theme.ink)
+                Text(detail).font(.callout).foregroundStyle(Theme.inkSecondary)
             }
             Spacer()
             if !granted {
@@ -570,7 +663,6 @@ private struct PermissionRow: View {
                 }
             }
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary.opacity(0.4)))
+        .talkieCard(padding: 14)
     }
 }

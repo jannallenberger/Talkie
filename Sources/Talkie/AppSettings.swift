@@ -109,6 +109,14 @@ final class AppSettings: ObservableObject {
     @Published var cleanupLevel: CleanupLevel {
         didSet { defaults.set(cleanupLevel.rawValue, forKey: Keys.cleanupLevel) }
     }
+    /// Bias recognition with names/identifiers from the app you're dictating into.
+    @Published var contextAwareness: Bool {
+        didSet { defaults.set(contextAwareness, forKey: Keys.contextAwareness) }
+    }
+    /// Vibe coding: snap spoken filenames to the real files in your project.
+    @Published var vibeCoding: Bool {
+        didSet { defaults.set(vibeCoding, forKey: Keys.vibeCoding) }
+    }
     @Published var playSounds: Bool {
         didSet { defaults.set(playSounds, forKey: Keys.playSounds); notifyChanged() }
     }
@@ -134,6 +142,8 @@ final class AppSettings: ObservableObject {
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
             Keys.cleanupLevel: CleanupLevel.medium.rawValue,
+            Keys.contextAwareness: true,
+            Keys.vibeCoding: false,
             Keys.playSounds: true,
             Keys.launchAtLogin: false,
         ])
@@ -148,6 +158,8 @@ final class AppSettings: ObservableObject {
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
         cleanupLevel = CleanupLevel(rawValue: d.string(forKey: Keys.cleanupLevel) ?? "") ?? .medium
+        contextAwareness = d.bool(forKey: Keys.contextAwareness)
+        vibeCoding = d.bool(forKey: Keys.vibeCoding)
         playSounds = d.bool(forKey: Keys.playSounds)
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
     }
@@ -162,6 +174,8 @@ final class AppSettings: ObservableObject {
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
         static let cleanupLevel = "cleanupLevel"
+        static let contextAwareness = "contextAwareness"
+        static let vibeCoding = "vibeCoding"
         static let playSounds = "playSounds"
         static let launchAtLogin = "launchAtLogin"
     }
