@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settings.spokenLanguages.first ?? self?.settings.localeIdentifier ?? "en-US"
         }
         meetingRecorder.spokenLanguages = { [weak self] in self?.settings.spokenLanguages ?? [] }
+        meetingRecorder.contextGraph = contextGraph
         meetingRecorder.recoverPartialIfNeeded()
 
         setupMainMenu()
@@ -89,6 +90,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // The Brief renders as a projection of the context graph.
         contextSummary.graphProvider = { [weak self] in self?.contextGraph.snapshot() ?? .empty }
+
+        // HUD cleanup-style switcher (feature 14): show + cycle the active level in-pill.
+        hud.bindCleanupSwitcher(
+            label: { [weak self] in self?.settings.cleanupLevel.displayName },
+            cycle: { [weak self] in
+                guard let self else { return }
+                let all = CleanupLevel.allCases
+                if let i = all.firstIndex(of: self.settings.cleanupLevel) {
+                    self.settings.cleanupLevel = all[(i + 1) % all.count]
+                }
+            }
+        )
 
         // Seed the context graph + search index from existing dictations + meetings
         // so recall, search, and the brief are useful immediately.
