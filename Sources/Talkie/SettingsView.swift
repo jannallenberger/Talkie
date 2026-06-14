@@ -100,10 +100,11 @@ final class MainWindowController {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
-        // Non-opaque so the sidebar's behind-window material frosts the desktop —
-        // the native macOS sidebar translucency.
-        window.isOpaque = false
-        window.backgroundColor = .clear
+        // Opaque v2 canvas; NavigationSplitView supplies the Liquid Glass sidebar.
+        window.backgroundColor = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(hex: 0x000000) : NSColor(hex: 0xFFFFFF)
+        }
         window.contentView = NSHostingView(rootView: root)
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("TalkieMainWindow")
@@ -133,8 +134,9 @@ struct MainView: View {
     let onRetryHotKey: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
-            Sidebar(router: router, settings: settings, permissions: permissions)
+        NavigationSplitView {
+            SidebarList(router: router, settings: settings, permissions: permissions)
+        } detail: {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .background(Theme.canvas)
@@ -165,87 +167,54 @@ struct MainView: View {
     }
 }
 
-// MARK: - Sidebar
+// MARK: - Sidebar (native macOS 26 Liquid Glass)
 
-private struct Sidebar: View {
+/// The system sidebar: a `List` inside `NavigationSplitView` gets the floating
+/// Liquid Glass material automatically on macOS 26. Per-row feather tints come
+/// from `.listItemTint`; the wordmark rides the toolbar, the activation hint
+/// pins to the bottom.
+private struct SidebarList: View {
     @ObservedObject var router: SettingsRouter
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
 
+    private var selection: Binding<SettingsTab?> {
+        Binding(
+            get: { router.selectedTab },
+            set: { router.selectedTab = $0 ?? router.selectedTab }
+        )
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            // Brand lockup — the actual app icon + serif wordmark.
-            HStack(spacing: 10) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 30, height: 30)
-                Text("Talkie")
-                    .font(.talkieDisplay(21))
-                    .foregroundStyle(Theme.ink)
+        List(SettingsTab.allCases, id: \.self, selection: selection) { tab in
+            Label(tab.title, systemImage: tab.icon)
+                .listItemTint(tab.tint)
+                .badge(tab == .permissions && !permissions.allGranted ? 1 : 0)
+        }
+        .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 8) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable().frame(width: 22, height: 22)
+                    Text("Talkie")
+                        .font(.talkieDisplay(17))
+                        .foregroundStyle(Theme.ink)
+                }
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 18)
-
-            ForEach(SettingsTab.allCases, id: \.self) { tab in
-                SidebarButton(
-                    tab: tab,
-                    isActive: router.selectedTab == tab,
-                    badge: tab == .permissions && !permissions.allGranted
-                ) { router.selectedTab = tab }
-            }
-
-            Spacer()
-
-            // Footer: live activation hint.
+        }
+        .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 3) {
                 Eyebrow(text: settings.activationMode == .holdToTalk ? "Hold to talk" : "Tap to toggle")
                 Text(settings.activationKey.displayName)
                     .font(.talkieHeading(12, weight: .medium))
                     .foregroundStyle(Theme.inkSecondary)
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
         }
-        .padding(.top, 44) // clear the transparent titlebar / traffic lights
-        .frame(width: 214)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(VisualEffectView(material: .sidebar, blending: .behindWindow))
-    }
-}
-
-private struct SidebarButton: View {
-    let tab: SettingsTab
-    let isActive: Bool
-    var badge: Bool = false
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 11) {
-                Image(systemName: tab.icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 18)
-                    .foregroundStyle(isActive ? tab.tint : Theme.inkSecondary)
-                Text(tab.title)
-                    .font(.talkieHeading(13.5, weight: isActive ? .semibold : .medium))
-                    .foregroundStyle(isActive ? Theme.ink : Theme.inkSecondary)
-                Spacer()
-                if badge {
-                    Circle().fill(Theme.danger).frame(width: 7, height: 7)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .fill(isActive ? tab.tint.opacity(0.15)
-                                   : (hovering ? Theme.inkSecondary.opacity(0.10) : .clear))
-            )
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 8)
-        .onHover { hovering = $0 }
     }
 }
 

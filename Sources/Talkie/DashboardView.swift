@@ -23,6 +23,7 @@ struct DashboardView: View {
     @ObservedObject var router: SettingsRouter
 
     var body: some View {
+        ZStack(alignment: .bottomTrailing) {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.section) {
                 HStack(alignment: .firstTextBaseline) {
@@ -56,6 +57,8 @@ struct DashboardView: View {
             }
             .padding(28)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        MicFAB().padding(24)
         }
     }
 
@@ -512,6 +515,29 @@ private struct EmptyHint: View {
         }
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
     }
+}
+
+// MARK: - Mic FAB
+
+/// Floating macaw-blue Liquid Glass mic button — tap to start/stop dictation.
+private struct MicFAB: View {
+    var body: some View {
+        Button {
+            NotificationCenter.default.post(name: .talkieToggleDictation, object: nil)
+        } label: {
+            Image(systemName: "mic.fill")
+                .font(.system(size: 19, weight: .semibold))
+                .frame(width: 54, height: 54)
+        }
+        .buttonStyle(.glassProminent)
+        .tint(Theme.coral)
+        .clipShape(Circle())
+        .help("Start or stop dictation")
+    }
+}
+
+extension Notification.Name {
+    static let talkieToggleDictation = Notification.Name("talkieToggleDictation")
 }
 
 func formatDuration(_ seconds: Double) -> String {

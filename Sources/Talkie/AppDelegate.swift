@@ -82,6 +82,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(appBecameActive),
             name: NSApplication.didBecomeActiveNotification, object: nil
         )
+        // The dashboard mic FAB toggles dictation through this.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(toggleDictationFromUI),
+            name: .talkieToggleDictation, object: nil
+        )
+    }
+
+    /// Tap-to-toggle dictation from the dashboard mic button (works regardless
+    /// of the configured hold/toggle activation mode).
+    @objc private func toggleDictationFromUI() {
+        if isDictating { endDictation() } else { beginDictation() }
     }
 
     /// Clicking the Dock icon (with no window open) reopens the main window.
