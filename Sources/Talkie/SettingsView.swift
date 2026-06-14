@@ -360,6 +360,38 @@ private struct HistoryRow: View {
 
 // MARK: - General
 
+/// Per-app-category cleanup-style pickers. Extracted into its own view so the
+/// (large) GeneralSettings body stays inside the Swift type-checker's budget.
+private struct AppStylePickers: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        ForEach(AppCategory.allCases, id: \.self) { category in
+            AppStyleRow(settings: settings, category: category)
+        }
+    }
+}
+
+private struct AppStyleRow: View {
+    @ObservedObject var settings: AppSettings
+    let category: AppCategory
+
+    var body: some View {
+        Picker(category.label, selection: binding) {
+            ForEach(CleanupStyle.allCases) { style in
+                Text(style.displayName).tag(style)
+            }
+        }
+    }
+
+    private var binding: Binding<CleanupStyle> {
+        Binding(
+            get: { settings.cleanupStyle(for: category) },
+            set: { settings.appCleanupStyles[category.rawValue] = $0.rawValue }
+        )
+    }
+}
+
 private struct GeneralSettings: View {
     @ObservedObject var settings: AppSettings
 
@@ -400,18 +432,28 @@ private struct GeneralSettings: View {
                     }
 
                     Section("Smart cleanup") {
-                        Picker("Cleanup level", selection: $settings.cleanupLevel) {
-                            ForEach(CleanupLevel.allCases) { Text($0.displayName).tag($0) }
+                        Toggle("Adapt the style to the app", isOn: $settings.appAdaptiveCleanup)
+
+                        if settings.appAdaptiveCleanup {
+                            Text("Talkie picks a personality per app — friendly for Messages, professional for Mail, faithful for code.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            AppStylePickers(settings: settings)
+                        } else {
+                            Picker("Cleanup level", selection: $settings.cleanupLevel) {
+                                ForEach(CleanupLevel.allCases) { Text($0.displayName).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                            Text(settings.cleanupLevel.detail)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
                         }
-                        .pickerStyle(.segmented)
-                        Text(settings.cleanupLevel.detail)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        if settings.cleanupLevel != .none, let warning = CleanupEngine.unavailableMessage {
+
+                        if let warning = CleanupEngine.unavailableMessage {
                             Label(warning, systemImage: "exclamationmark.triangle.fill")
                                 .font(.callout)
                                 .foregroundStyle(.orange)
-                        } else if settings.cleanupLevel != .none {
+                        } else {
                             Text("Resolves spoken self-corrections and fixes grammar. Runs entirely on your Mac; nothing leaves the device.")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
@@ -421,11 +463,9 @@ private struct GeneralSettings: View {
                     Section("Basic cleanup") {
                         Toggle("Capitalize the first letter", isOn: $settings.autoCapitalize)
                         Toggle("Remove filler words (um, uh, hmm…)", isOn: $settings.cleanupFillers)
-                        if settings.cleanupLevel != .none {
-                            Text("Filler removal only applies when Smart cleanup is set to None.")
-                                .font(.callout)
-                                .foregroundStyle(.tertiary)
-                        }
+                        Text("These apply when Smart cleanup isn't rewriting the text.")
+                            .font(.callout)
+                            .foregroundStyle(.tertiary)
                     }
 
                     Section("Context awareness") {

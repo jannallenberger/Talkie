@@ -109,6 +109,15 @@ final class AppSettings: ObservableObject {
     @Published var cleanupLevel: CleanupLevel {
         didSet { defaults.set(cleanupLevel.rawValue, forKey: Keys.cleanupLevel) }
     }
+    /// When on, the cleanup personality adapts to the app you're dictating into
+    /// (Messages → friendly, Mail → professional, code → faithful, …).
+    @Published var appAdaptiveCleanup: Bool {
+        didSet { defaults.set(appAdaptiveCleanup, forKey: Keys.appAdaptiveCleanup) }
+    }
+    /// Per-app-category style overrides (AppCategory.rawValue → CleanupStyle.rawValue).
+    @Published var appCleanupStyles: [String: String] {
+        didSet { defaults.set(appCleanupStyles, forKey: Keys.appCleanupStyles) }
+    }
     /// Bias recognition with names/identifiers from the app you're dictating into.
     @Published var contextAwareness: Bool {
         didSet { defaults.set(contextAwareness, forKey: Keys.contextAwareness) }
@@ -142,6 +151,7 @@ final class AppSettings: ObservableObject {
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
             Keys.cleanupLevel: CleanupLevel.medium.rawValue,
+            Keys.appAdaptiveCleanup: true,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
             Keys.playSounds: true,
@@ -158,10 +168,34 @@ final class AppSettings: ObservableObject {
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
         cleanupLevel = CleanupLevel(rawValue: d.string(forKey: Keys.cleanupLevel) ?? "") ?? .medium
+        appAdaptiveCleanup = d.bool(forKey: Keys.appAdaptiveCleanup)
+        appCleanupStyles = (d.dictionary(forKey: Keys.appCleanupStyles) as? [String: String])
+            ?? AppSettings.defaultAppCleanupStyles
         contextAwareness = d.bool(forKey: Keys.contextAwareness)
         vibeCoding = d.bool(forKey: Keys.vibeCoding)
         playSounds = d.bool(forKey: Keys.playSounds)
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
+    }
+
+    /// Sensible per-category defaults for the adaptive cleanup personality.
+    static let defaultAppCleanupStyles: [String: String] = [
+        AppCategory.coding.rawValue: CleanupStyle.faithful.rawValue,
+        AppCategory.terminal.rawValue: CleanupStyle.faithful.rawValue,
+        AppCategory.mail.rawValue: CleanupStyle.professional.rawValue,
+        AppCategory.chat.rawValue: CleanupStyle.friendly.rawValue,
+        AppCategory.notes.rawValue: CleanupStyle.neutral.rawValue,
+        AppCategory.browser.rawValue: CleanupStyle.neutral.rawValue,
+        AppCategory.design.rawValue: CleanupStyle.neutral.rawValue,
+        AppCategory.other.rawValue: CleanupStyle.neutral.rawValue,
+    ]
+
+    /// The cleanup style for an app category (user override, else default).
+    func cleanupStyle(for category: AppCategory) -> CleanupStyle {
+        if let raw = appCleanupStyles[category.rawValue], let style = CleanupStyle(rawValue: raw) {
+            return style
+        }
+        return AppSettings.defaultAppCleanupStyles[category.rawValue]
+            .flatMap(CleanupStyle.init) ?? .neutral
     }
 
     private enum Keys {
@@ -174,6 +208,8 @@ final class AppSettings: ObservableObject {
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
         static let cleanupLevel = "cleanupLevel"
+        static let appAdaptiveCleanup = "appAdaptiveCleanup"
+        static let appCleanupStyles = "appCleanupStyles"
         static let contextAwareness = "contextAwareness"
         static let vibeCoding = "vibeCoding"
         static let playSounds = "playSounds"

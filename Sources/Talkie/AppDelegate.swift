@@ -382,11 +382,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let autoCap = settings.autoCapitalize
         let removeFillers = settings.cleanupFillers
         let cleanupLevel = settings.cleanupLevel
+        let appAdaptive = settings.appAdaptiveCleanup
         let mode = settings.insertionMode
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
         let vibeSnapshot = currentVibeSnapshot
         let target = currentTarget
+        let adaptiveStyle = settings.cleanupStyle(for: target.category)
         let selfBundle = AppPaths.bundleIdentifier
 
         Task {
@@ -406,13 +408,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            // On-device LLM cleanup at the chosen intensity. If it runs, it already
-            // handled fillers (skip the deterministic strip).
+            // On-device LLM cleanup. When app-adaptive is on, use the per-app
+            // personality (Messages → friendly, Mail → professional, code →
+            // faithful); otherwise the global intensity level. If it runs, it
+            // already handled fillers (skip the deterministic strip).
             var cleaned = finalRaw
             var aiHandledFillers = false
             var aiWordsChanged = 0
-            if cleanupLevel != .none, !finalRaw.isEmpty,
-               let polished = await self.cleanup.clean(finalRaw, level: cleanupLevel) {
+            let polished: String?
+            if appAdaptive {
+                polished = (adaptiveStyle != .off && !finalRaw.isEmpty)
+                    ? await self.cleanup.clean(finalRaw, style: adaptiveStyle) : nil
+            } else {
+                polished = (cleanupLevel != .none && !finalRaw.isEmpty)
+                    ? await self.cleanup.clean(finalRaw, level: cleanupLevel) : nil
+            }
+            if let polished {
                 aiWordsChanged = Self.wordEditCount(from: finalRaw, to: polished)
                 cleaned = polished
                 aiHandledFillers = true
