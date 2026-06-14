@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Talkie privacy manifest (Apple PrivacyInfo).
+
+      Talkie ships provably zero-network by default: no tracking, and no data of
+      any kind is collected or transmitted off your Mac. Everything below is
+      empty on purpose — and that emptiness is the honest, accurate declaration,
+      not a placeholder. The on-device core (Sources/Talkie + Sources/TalkieMCP)
+      contains no networking code at all (see scripts/check-no-network.sh and
+      docs/PRIVACY.md). Your audio, transcripts, and meetings never leave the
+      machine.
+    -->
+
+    <!-- Talkie does not track. There is no advertising, no analytics, no
+         cross-app or cross-site identification. -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+
+    <!-- No tracking domains, because nothing is tracked and nothing is sent. -->
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <!-- No data types are collected. Talkie processes your speech entirely
+         on-device; none of it is gathered, stored off-machine, or linked to you
+         by anyone. -->
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+
+    <!--
+      Required-reason API declarations.
+
+      Apple requires a reason for a small set of APIs that have legitimate uses
+      but have been abused for fingerprinting. Talkie reads UserDefaults to store
+      your own settings on your own device (the standard CA92.1 reason: accessing
+      user defaults written by the app itself, within the same app). No other
+      required-reason API category applies — Talkie does not read file
+      timestamps, disk space, system boot time, or active-keyboard info for
+      fingerprinting purposes.
+    -->
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
