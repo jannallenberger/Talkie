@@ -105,6 +105,7 @@ final class DictionaryStore: ObservableObject {
 enum TextProcessor {
     static func apply(
         replacements: [Replacement],
+        removeFillers: Bool,
         autoCapitalize: Bool,
         to input: String
     ) -> String {
@@ -112,10 +113,36 @@ enum TextProcessor {
         for r in replacements {
             text = applyOne(r, to: text)
         }
+        if removeFillers {
+            text = stripFillers(text)
+        }
         if autoCapitalize {
             text = capitalizeFirstLetter(text)
         }
         return text
+    }
+
+    /// Common spoken disfluencies to drop. Kept conservative so real words survive.
+    private static let fillerWords: Set<String> = [
+        "um", "uh", "umm", "uhh", "uhm", "erm", "hmm", "mhm", "mmm", "uh-huh",
+    ]
+
+    /// Remove standalone filler tokens ("um", "uh", …) and tidy the leftover spacing.
+    private static func stripFillers(_ text: String) -> String {
+        guard !text.isEmpty else { return text }
+        let punctuation = CharacterSet(charactersIn: ",.!?;:…")
+        let kept = text.split(separator: " ", omittingEmptySubsequences: true).filter { token in
+            let bare = String(token).trimmingCharacters(in: punctuation).lowercased()
+            return !fillerWords.contains(bare)
+        }
+        var result = kept.joined(separator: " ")
+        // Tidy artifacts left behind (" ," → ",", doubled spaces).
+        result = result.replacingOccurrences(of: " ,", with: ",")
+        result = result.replacingOccurrences(of: " .", with: ".")
+        while result.contains("  ") {
+            result = result.replacingOccurrences(of: "  ", with: " ")
+        }
+        return result.trimmingCharacters(in: .whitespaces)
     }
 
     private static func applyOne(_ r: Replacement, to text: String) -> String {

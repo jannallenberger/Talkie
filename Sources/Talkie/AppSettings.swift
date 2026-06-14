@@ -6,7 +6,8 @@ enum ActivationKey: String, CaseIterable, Codable, Identifiable {
     case rightOption
     case leftOption
     case rightControl
-    case fnGlobe
+    // NOTE: Fn/Globe was removed — macOS reserves it for "Change Input Source"
+    // (language switch), so it can't be cleanly used as a hold-to-talk key.
 
     var id: String { rawValue }
 
@@ -15,7 +16,6 @@ enum ActivationKey: String, CaseIterable, Codable, Identifiable {
         case .rightOption: return "Right ⌥ Option"
         case .leftOption: return "Left ⌥ Option"
         case .rightControl: return "Right ⌃ Control"
-        case .fnGlobe: return "🌐 Fn (Globe)"
         }
     }
 }
@@ -68,6 +68,9 @@ final class AppSettings: ObservableObject {
     @Published var autoCapitalize: Bool {
         didSet { defaults.set(autoCapitalize, forKey: Keys.autoCapitalize) }
     }
+    @Published var cleanupFillers: Bool {
+        didSet { defaults.set(cleanupFillers, forKey: Keys.cleanupFillers) }
+    }
     @Published var playSounds: Bool {
         didSet { defaults.set(playSounds, forKey: Keys.playSounds); notifyChanged() }
     }
@@ -90,6 +93,7 @@ final class AppSettings: ObservableObject {
             Keys.insertionMode: InsertionMode.paste.rawValue,
             Keys.localeIdentifier: Locale.current.identifier,
             Keys.autoCapitalize: true,
+            Keys.cleanupFillers: true,
             Keys.playSounds: true,
             Keys.launchAtLogin: false,
         ])
@@ -98,6 +102,7 @@ final class AppSettings: ObservableObject {
         insertionMode = InsertionMode(rawValue: d.string(forKey: Keys.insertionMode) ?? "") ?? .paste
         localeIdentifier = d.string(forKey: Keys.localeIdentifier) ?? Locale.current.identifier
         autoCapitalize = d.bool(forKey: Keys.autoCapitalize)
+        cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         playSounds = d.bool(forKey: Keys.playSounds)
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
     }
@@ -108,6 +113,7 @@ final class AppSettings: ObservableObject {
         static let insertionMode = "insertionMode"
         static let localeIdentifier = "localeIdentifier"
         static let autoCapitalize = "autoCapitalize"
+        static let cleanupFillers = "cleanupFillers"
         static let playSounds = "playSounds"
         static let launchAtLogin = "launchAtLogin"
     }

@@ -139,68 +139,49 @@ private struct HUDView: View {
 
     @ViewBuilder
     private var pill: some View {
-        HStack(spacing: 12) {
-            leading
-            content
-        }
-        .padding(.leading, 16)
-        .padding(.trailing, 20)
-        .padding(.vertical, 11)
-        .background(
-            Capsule(style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.35), radius: 18, x: 0, y: 8)
-        .fixedSize()
+        inner
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.35), radius: 18, x: 0, y: 8)
+            .fixedSize()
     }
 
+    // The pill shows ONLY the waveform while active — the transcript goes to the
+    // focused app and the History log, never into the pill.
     @ViewBuilder
-    private var leading: some View {
+    private var inner: some View {
         switch model.phase {
         case .listening, .transcribing:
             Waveform(levels: model.levels)
-                .frame(width: 92, height: 30)
+                .frame(width: 124, height: 30)
         case .inserting:
-            Image(systemName: "checkmark")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.green)
-        case .error:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.orange)
-        case .hidden:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch model.phase {
-        case .listening:
-            Text("Listening…")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.secondary)
-        case .transcribing:
-            Text(model.text.isEmpty ? "…" : model.text)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.head)
-                .frame(maxWidth: 320, alignment: .leading)
-        case .inserting:
-            Text("Inserted")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.green)
+                Text("Inserted")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
         case .error(let message):
-            Text(message)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .frame(maxWidth: 360, alignment: .leading)
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.orange)
+                Text(message)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .frame(maxWidth: 360, alignment: .leading)
+            }
         case .hidden:
             EmptyView()
         }

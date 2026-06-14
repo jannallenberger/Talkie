@@ -21,5 +21,5 @@ cp -R "$ROOT/Talkie.app" "$DEST"
 
 echo "▶ Launching…"
 open "$DEST"
-echo "✓ Talkie is running from /Applications — look for the 🎤 in your menu bar."
-echo "  (First run: grant the 3 permissions in Settings, then Quit & Reopen once.)"
+echo "✓ Talkie is running — it's a Dock app now (window opens on launch); there's"
+echo "  also a 🎤 in the menu bar. First run: grant the 3 permissions, Quit & Reopen once."

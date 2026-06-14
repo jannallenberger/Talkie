@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsTab: Hashable {
+    case history
     case general
     case dictionary
     case permissions
@@ -9,11 +10,12 @@ enum SettingsTab: Hashable {
 
 @MainActor
 final class SettingsRouter: ObservableObject {
-    @Published var selectedTab: SettingsTab = .general
+    @Published var selectedTab: SettingsTab = .history
 }
 
+/// The app's main window (Dock app). Hosts History + settings tabs.
 @MainActor
-final class SettingsWindowController {
+final class MainWindowController {
     private let window: NSWindow
     private let router = SettingsRouter()
 
@@ -21,42 +23,51 @@ final class SettingsWindowController {
         settings: AppSettings,
         dictionary: DictionaryStore,
         permissions: PermissionsModel,
+        history: HistoryStore,
         onRetryHotKey: @escaping () -> Void
     ) {
-        let root = SettingsView(
+        let root = MainView(
             settings: settings,
             dictionary: dictionary,
             permissions: permissions,
+            history: history,
             router: router,
             onRetryHotKey: onRetryHotKey
         )
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 580),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 620),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Talkie"
         window.contentView = NSHostingView(rootView: root)
         window.isReleasedWhenClosed = false
+        window.setFrameAutosaveName("TalkieMainWindow")
         window.center()
     }
 
     func show(tab: SettingsTab) {
         router.selectedTab = tab
         window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
-struct SettingsView: View {
+struct MainView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var dictionary: DictionaryStore
     @ObservedObject var permissions: PermissionsModel
+    @ObservedObject var history: HistoryStore
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Void
 
     var body: some View {
         TabView(selection: $router.selectedTab) {
+            HistorySettings(history: history)
+                .tabItem { Label("History", systemImage: "clock") }
+                .tag(SettingsTab.history)
+
             GeneralSettings(settings: settings)
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
@@ -69,7 +80,112 @@ struct SettingsView: View {
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
                 .tag(SettingsTab.permissions)
         }
-        .frame(width: 600, height: 580)
+        .frame(minWidth: 680, minHeight: 620)
+    }
+}
+
+// MARK: - History
+
+private struct HistorySettings: View {
+    @ObservedObject var history: HistoryStore
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Dictation History")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    copyToClipboard(history.allAsText())
+                } label: {
+                    Label("Copy All", systemImage: "doc.on.doc")
+                }
+                .disabled(history.entries.isEmpty)
+                Button(role: .destructive) {
+                    history.clearAll()
+                } label: {
+                    Label("Clear", systemImage: "trash")
+                }
+                .disabled(history.entries.isEmpty)
+            }
+
+            if history.entries.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.tertiary)
+                    Text("No dictations yet")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text("Hold your dictation key and speak — what you say will show up here.")
+                        .font(.callout)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(history.entries) { entry in
+                        HistoryRow(entry: entry, formatter: Self.dateFormatter) {
+                            copyToClipboard(entry.text)
+                        }
+                    }
+                    .onDelete { offsets in
+                        for index in offsets { history.delete(history.entries[index]) }
+                    }
+                }
+                .listStyle(.inset)
+            }
+        }
+        .padding()
+    }
+
+    private func copyToClipboard(_ text: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+    }
+}
+
+private struct HistoryRow: View {
+    let entry: DictationEntry
+    let formatter: DateFormatter
+    let onCopy: () -> Void
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(formatter.string(from: entry.date))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Button {
+                    onCopy()
+                    copied = true
+                    Task { try? await Task.sleep(for: .seconds(1.4)); copied = false }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(copied ? .green : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy this dictation")
+            }
+            Text(entry.text)
+                .font(.system(size: 13))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 4)
     }
 }
 
@@ -99,7 +215,11 @@ private struct GeneralSettings: View {
                 Picker("Insert text by", selection: $settings.insertionMode) {
                     ForEach(InsertionMode.allCases) { Text($0.displayName).tag($0) }
                 }
+            }
+
+            Section("Text cleanup") {
                 Toggle("Capitalize the first letter", isOn: $settings.autoCapitalize)
+                Toggle("Remove filler words (um, uh, hmm…)", isOn: $settings.cleanupFillers)
             }
 
             Section("Language") {

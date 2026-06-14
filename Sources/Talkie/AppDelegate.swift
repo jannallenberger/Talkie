@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
     let dictionary = DictionaryStore()
     let permissions = PermissionsModel()
+    let history = HistoryStore()
 
     private var engine: TranscriptionEngine!
     private let audio = AudioCapture()
@@ -13,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKey: HotKeyMonitor?
 
     private var statusItem: NSStatusItem?
-    private var settingsWindow: SettingsWindowController?
+    private var mainWindow: MainWindowController?
 
     private var isDictating = false
     /// Bumped on every begin; lets an in-flight async setup detect that the
@@ -26,11 +27,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("Talkie: applicationDidFinishLaunching")
-        NSApp.setActivationPolicy(.accessory)
+        // Regular Dock app: shows in the Dock with a real window (not menu-bar-only).
+        NSApp.setActivationPolicy(.regular)
 
         Feedback.enabled = settings.playSounds
         engine = TranscriptionEngine(localeIdentifier: settings.localeIdentifier)
 
+        setupMainMenu()
         setupStatusItem()
         setupEngineHandler()
         setupHotKey()
@@ -41,14 +44,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Warm the model in the background so first dictation is instant.
         Task { try? await engine.warmUp() }
 
-        // Nudge for permissions on first run, then re-check when the user returns.
-        if !permissions.allGranted {
-            openSettings(tab: .permissions)
-        }
+        // Open the main window on launch — Permissions first if not set up yet,
+        // otherwise the History log.
+        openSettings(tab: permissions.allGranted ? .history : .permissions)
+
         NotificationCenter.default.addObserver(
             self, selector: #selector(appBecameActive),
             name: NSApplication.didBecomeActiveNotification, object: nil
         )
+    }
+
+    /// Clicking the Dock icon (with no window open) reopens the main window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { openSettings(tab: .history) }
+        return true
+    }
+
+    /// Closing the window keeps Talkie running in the background for dictation.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 
     @objc private func appBecameActive() {
@@ -56,6 +70,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // If Input Monitoring was just granted, the tap can now install.
         if hotKey?.start() == true { updateStatusUI() }
         updateStatusUI()
+    }
+
+    // MARK: Main menu
+
+    /// A regular (Dock) app needs a main menu for ⌘Q and, importantly, an Edit
+    /// menu so ⌘C/⌘V/⌘A work in the History list and text fields.
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+
+        let appItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        let appMenu = NSMenu()
+        appItem.submenu = appMenu
+        appMenu.addItem(withTitle: "About Talkie",
+                        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        let settingsItem = appMenu.addItem(withTitle: "Settings…",
+                                           action: #selector(openSettingsMenu), keyEquivalent: ",")
+        settingsItem.target = self
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide Talkie",
+                        action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit Talkie",
+                        action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        let editItem = NSMenuItem()
+        mainMenu.addItem(editItem)
+        let editMenu = NSMenu(title: "Edit")
+        editItem.submenu = editMenu
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        let windowItem = NSMenuItem()
+        mainMenu.addItem(windowItem)
+        let windowMenu = NSMenu(title: "Window")
+        windowItem.submenu = windowMenu
+        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+
+        NSApp.mainMenu = mainMenu
+        NSApp.windowsMenu = windowMenu
     }
 
     // MARK: Status bar
@@ -262,16 +322,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let replacements = dictionary.replacementsSnapshot()
         let autoCap = settings.autoCapitalize
+        let removeFillers = settings.cleanupFillers
         let mode = settings.insertionMode
 
         Task {
             let raw = await engine.finishSession()
-            let processed = TextProcessor.apply(replacements: replacements, autoCapitalize: autoCap, to: raw)
+            let processed = TextProcessor.apply(
+                replacements: replacements,
+                removeFillers: removeFillers,
+                autoCapitalize: autoCap,
+                to: raw
+            )
 
             guard !processed.isEmpty else {
                 self.hud.hide()
                 return
             }
+
+            // Log it (copyable in the History tab) even if insertion fell back to clipboard.
+            self.history.add(processed)
 
             let outcome = TextInjector.insert(processed, mode: mode)
             switch outcome {
@@ -294,16 +363,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func openSettings(tab: SettingsTab) {
         permissions.refresh()
-        if settingsWindow == nil {
-            settingsWindow = SettingsWindowController(
+        if mainWindow == nil {
+            mainWindow = MainWindowController(
                 settings: settings,
                 dictionary: dictionary,
                 permissions: permissions,
+                history: history,
                 onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }
             )
         }
-        settingsWindow?.show(tab: tab)
-        NSApp.activate(ignoringOtherApps: true)
+        mainWindow?.show(tab: tab)
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

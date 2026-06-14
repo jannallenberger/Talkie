@@ -247,19 +247,16 @@ private extension ActivationKey {
         case .rightOption: return 61   // 0x3D
         case .leftOption: return 58    // 0x3A
         case .rightControl: return 62  // 0x3E
-        case .fnGlobe: return 63       // kVK_Function
         }
     }
 
     /// Device-dependent flag bit that distinguishes left vs right of a modifier
     /// pair (the merged `.maskAlternate` / `.maskControl` can't tell sides apart).
-    /// Fn uses the secondary-Fn mask.
     func isDown(in flags: CGEventFlags) -> Bool {
         switch self {
         case .rightOption: return flags.rawValue & 0x40 != 0   // NX_DEVICERALTKEYMASK
         case .leftOption: return flags.rawValue & 0x20 != 0    // NX_DEVICELALTKEYMASK
         case .rightControl: return flags.rawValue & 0x2000 != 0 // NX_DEVICERCTLKEYMASK
-        case .fnGlobe: return flags.contains(.maskSecondaryFn)
         }
     }
 }

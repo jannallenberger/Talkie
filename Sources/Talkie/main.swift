@@ -15,9 +15,9 @@ if let bundleID = Bundle.main.bundleIdentifier {
     }
 }
 
-// Talkie is a menu-bar-only (accessory) app: no Dock icon, no main menu bar.
+// Talkie is a regular Dock app (with a menu-bar status item too).
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
-app.setActivationPolicy(.accessory)
+app.setActivationPolicy(.regular)
 app.run()
