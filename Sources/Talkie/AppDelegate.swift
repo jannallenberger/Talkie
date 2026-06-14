@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: App lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSLog("Talkie: applicationDidFinishLaunching")
         NSApp.setActivationPolicy(.accessory)
 
         Feedback.enabled = settings.playSounds
@@ -61,10 +62,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Talkie")
-        item.button?.image?.isTemplate = true
+        if let button = item.button {
+            if let image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Talkie") {
+                image.isTemplate = true
+                button.image = image
+            }
+            // Guarantee the item is visible even if the SF Symbol fails to load —
+            // an image-less, title-less status item is zero-width (invisible).
+            if button.image == nil {
+                button.title = "Talkie"
+            }
+            button.toolTip = "Talkie — hold your key to dictate"
+        }
         item.menu = buildMenu()
         statusItem = item
+        NSLog("Talkie: status item created (hasButton=\(item.button != nil), hasImage=\(item.button?.image != nil))")
     }
 
     private func buildMenu() -> NSMenu {
@@ -213,7 +225,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await engine.cancelSession()
                     return
                 }
-                try audio.start(targetFormat: session.format, continuation: session.continuation)
+                try audio.start(
+                    targetFormat: session.format,
+                    continuation: session.continuation,
+                    onLevel: { level in
+                        Task { @MainActor in AppDelegate.sharedHUD?.updateLevel(level) }
+                    }
+                )
                 self.sessionLive = true
             } catch {
                 self.isDictating = false

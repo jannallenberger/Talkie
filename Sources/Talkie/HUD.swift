@@ -14,21 +14,28 @@ enum HUDPhase: Equatable {
 final class HUDModel: ObservableObject {
     @Published var phase: HUDPhase = .hidden
     @Published var text: String = ""
+    /// Rolling history of recent mic levels (newest last) driving the waveform.
+    @Published var levels: [CGFloat] = Array(repeating: 0, count: HUDModel.barCount)
+
+    static let barCount = 28
 }
 
-/// A floating, non-activating panel that shows the live transcript near the
-/// bottom of the active screen — like Wispr Flow's dictation pill.
+/// A floating, non-activating pill near the bottom of the active screen — like
+/// Wispr Flow's dictation pill. The waveform reacts live to your voice.
 @MainActor
 final class HUDController {
     private let model = HUDModel()
     private var panel: NSPanel?
+    private var hideTask: Task<Void, Never>?
+
+    private static let panelSize = NSSize(width: 540, height: 80)
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
 
         let hosting = NSHostingView(rootView: HUDView(model: model))
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 64),
+            contentRect: NSRect(origin: .zero, size: Self.panelSize),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
@@ -39,7 +46,7 @@ final class HUDController {
         panel.isMovableByWindowBackground = false
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        panel.hasShadow = false // the SwiftUI pill draws its own shadow
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.contentView = hosting
@@ -53,24 +60,35 @@ final class HUDController {
         guard let frame = screen?.visibleFrame else { return }
         let size = panel.frame.size
         let x = frame.midX - size.width / 2
-        let y = frame.minY + 120
+        let y = frame.minY + 96
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
-
-    private var hideTask: Task<Void, Never>?
 
     private func cancelHide() {
         hideTask?.cancel()
         hideTask = nil
     }
 
+    private func resetLevels() {
+        model.levels = Array(repeating: 0, count: HUDModel.barCount)
+    }
+
     func showListening() {
         cancelHide()
+        resetLevels()
         model.phase = .listening
         model.text = ""
         let panel = ensurePanel()
         reposition()
         panel.orderFrontRegardless()
+    }
+
+    /// Push a fresh mic level into the rolling waveform history.
+    func updateLevel(_ level: Float) {
+        var l = model.levels
+        l.removeFirst()
+        l.append(CGFloat(max(0, min(1, level))))
+        model.levels = l
     }
 
     func updateTranscribing(_ text: String) {
@@ -111,36 +129,45 @@ private struct HUDView: View {
     @ObservedObject var model: HUDModel
 
     var body: some View {
-        HStack(spacing: 12) {
-            indicator
-            content
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
-        )
-        .padding(6)
-        .opacity(model.phase == .hidden ? 0 : 1)
-        .animation(.easeInOut(duration: 0.18), value: model.phase)
+        // Centered compact pill within the (larger, transparent) panel.
+        pill
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scaleEffect(model.phase == .hidden ? 0.85 : 1)
+            .opacity(model.phase == .hidden ? 0 : 1)
+            .animation(.spring(response: 0.28, dampingFraction: 0.8), value: model.phase)
     }
 
     @ViewBuilder
-    private var indicator: some View {
+    private var pill: some View {
+        HStack(spacing: 12) {
+            leading
+            content
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 20)
+        .padding(.vertical, 11)
+        .background(
+            Capsule(style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 18, x: 0, y: 8)
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private var leading: some View {
         switch model.phase {
         case .listening, .transcribing:
-            PulsingDot()
+            Waveform(levels: model.levels)
+                .frame(width: 92, height: 30)
         case .inserting:
-            Image(systemName: "text.cursor")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.secondary)
+            Image(systemName: "checkmark")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.green)
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 16, weight: .semibold))
@@ -155,39 +182,56 @@ private struct HUDView: View {
         switch model.phase {
         case .listening:
             Text("Listening…")
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.secondary)
         case .transcribing:
             Text(model.text.isEmpty ? "…" : model.text)
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(.primary)
-                .lineLimit(2)
+                .lineLimit(1)
                 .truncationMode(.head)
+                .frame(maxWidth: 320, alignment: .leading)
         case .inserting:
-            Text("Inserting…")
-                .font(.system(size: 15, weight: .medium))
+            Text("Inserted")
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.secondary)
         case .error(let message):
             Text(message)
-                .font(.system(size: 14, weight: .regular))
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
+                .frame(maxWidth: 360, alignment: .leading)
         case .hidden:
             EmptyView()
         }
     }
 }
 
-private struct PulsingDot: View {
-    @State private var animating = false
+/// A live, reactive waveform: a row of capsule bars whose heights follow the
+/// rolling mic-level history (newest on the right), so it "moves" with your voice.
+private struct Waveform: View {
+    let levels: [CGFloat]
+    var tint: Color = .red
 
     var body: some View {
-        Circle()
-            .fill(Color.red)
-            .frame(width: 12, height: 12)
-            .scaleEffect(animating ? 1.0 : 0.6)
-            .opacity(animating ? 1.0 : 0.5)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: animating)
-            .onAppear { animating = true }
+        GeometryReader { geo in
+            let count = levels.count
+            let spacing: CGFloat = 2.5
+            let barWidth = max(2, (geo.size.width - spacing * CGFloat(count - 1)) / CGFloat(count))
+            HStack(alignment: .center, spacing: spacing) {
+                ForEach(Array(levels.enumerated()), id: \.offset) { _, level in
+                    Capsule(style: .continuous)
+                        .fill(tint.opacity(0.55 + 0.45 * level))
+                        .frame(width: barWidth, height: barHeight(level, in: geo.size.height))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
+        }
+        .animation(.easeOut(duration: 0.11), value: levels)
+    }
+
+    private func barHeight(_ level: CGFloat, in maxHeight: CGFloat) -> CGFloat {
+        let floor: CGFloat = 3
+        return floor + level * (maxHeight - floor)
     }
 }

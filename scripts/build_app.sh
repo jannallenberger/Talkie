@@ -16,7 +16,22 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${1:-release}"
 APP="$ROOT/Talkie.app"
-SIGN_ID="${TALKIE_SIGN_ID:--}"
+
+# Resolve a signing identity. A STABLE identity (Apple Development / Developer ID)
+# keeps the same code-signing "designated requirement" across rebuilds, so macOS
+# does NOT wipe granted permissions every time you rebuild. Ad-hoc ("-") changes
+# its hash on every build and is the cause of the "permissions keep resetting" bug.
+SIGN_ID="${TALKIE_SIGN_ID:-}"
+if [[ -z "$SIGN_ID" ]]; then
+  SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+              | grep -m1 'Apple Development' | sed -E 's/.*"(.*)".*/\1/')"
+  if [[ -z "$SIGN_ID" ]]; then
+    SIGN_ID="-"
+    echo "⚠  No Apple Development identity found — falling back to ad-hoc."
+    echo "   macOS will re-ask for permissions after every rebuild."
+    echo "   Set TALKIE_SIGN_ID to a stable identity to fix that."
+  fi
+fi
 
 echo "▶ Building ($CONFIG)…"
 swift build -c "$CONFIG"
@@ -40,9 +55,9 @@ fi
 echo "▶ Signing (identity: $SIGN_ID)…"
 SIGN_ARGS=(--force --sign "$SIGN_ID" --identifier com.coralate.talkie
            --entitlements "$ROOT/Resources/talkie.entitlements")
-# Hardened Runtime only makes sense for a real identity (and is required for
-# notarization); ad-hoc dev builds skip it.
-if [[ "$SIGN_ID" != "-" ]]; then
+# Hardened Runtime + timestamp are only needed for Developer ID notarization;
+# Apple Development local builds stay simple (still a stable signature → TCC sticks).
+if [[ "$SIGN_ID" == *"Developer ID"* ]]; then
   SIGN_ARGS+=(--options runtime --timestamp)
 fi
 codesign "${SIGN_ARGS[@]}" "$APP"

@@ -35,9 +35,13 @@ final class AudioCapture: @unchecked Sendable {
     }
 
     /// Begin tapping the mic, pushing converted buffers into `continuation`.
+    /// `onLevel` is called ~12×/sec with a normalized 0…1 mic level for the HUD
+    /// waveform. Both `onLevel` and `converter` are captured by value so the
+    /// render thread never reads a property the main thread mutates.
     func start(
         targetFormat: AVAudioFormat,
-        continuation: AsyncStream<AnalyzerInput>.Continuation
+        continuation: AsyncStream<AnalyzerInput>.Continuation,
+        onLevel: (@Sendable (Float) -> Void)? = nil
     ) throws {
         guard !isRunning else { return }
 
@@ -53,9 +57,10 @@ final class AudioCapture: @unchecked Sendable {
         }
         converter.primeMethod = .none // avoid timestamp drift on streamed buffers
 
-        // `converter` is captured by value here — the render thread never touches
-        // a property that the main thread mutates.
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
+            if let onLevel {
+                onLevel(Self.level(of: buffer))
+            }
             guard let converted = Self.convert(buffer: buffer, using: converter, to: targetFormat) else { return }
             if converted.frameLength > 0 {
                 continuation.yield(AnalyzerInput(buffer: converted))
@@ -64,6 +69,22 @@ final class AudioCapture: @unchecked Sendable {
 
         try engine.start()
         isRunning = true
+    }
+
+    /// Perceptual 0…1 level (dB-mapped RMS) of a mic buffer, for the HUD waveform.
+    private static func level(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let channels = buffer.floatChannelData else { return 0 }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return 0 }
+        let samples = channels[0]
+        var sumSquares: Float = 0
+        for i in 0..<frames {
+            let s = samples[i]
+            sumSquares += s * s
+        }
+        let rms = (sumSquares / Float(frames)).squareRoot()
+        let db = 20 * log10(max(rms, 1e-7)) // ~ -140…0
+        return max(0, min(1, (db + 55) / 55)) // -55 dB → 0, 0 dB → 1
     }
 
     func stop() {
