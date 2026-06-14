@@ -54,6 +54,9 @@ actor TranscriptionEngine {
     private var volatileText: String = ""
 
     private var onUpdate: (@Sendable (TranscriptUpdate) -> Void)?
+    /// Fired once per finalized segment (a "batch") so the caller can clean
+    /// each one incrementally. Set per session.
+    private var onSegment: (@Sendable (String) -> Void)?
 
     init(localeIdentifier: String) {
         self.locale = Locale(identifier: localeIdentifier)
@@ -66,6 +69,11 @@ actor TranscriptionEngine {
 
     func setUpdateHandler(_ handler: @escaping @Sendable (TranscriptUpdate) -> Void) {
         self.onUpdate = handler
+    }
+
+    /// Set (or clear with nil) the per-session finalized-segment handler.
+    func setSegmentHandler(_ handler: (@Sendable (String) -> Void)?) {
+        self.onSegment = handler
     }
 
     /// Phrases that bias recognition toward the user's custom vocabulary
@@ -240,10 +248,13 @@ actor TranscriptionEngine {
     }
 
     /// Fold one recognizer result into the running transcript and notify the UI.
+    /// When a segment finalizes, also emit it on its own so the caller can clean
+    /// each batch incrementally (instead of one huge pass at the end).
     private func ingest(text: String, isFinal: Bool) {
         if isFinal {
             if !text.isEmpty {
                 finalizedText = appendCommitted(finalizedText, text)
+                onSegment?(text)
             }
             volatileText = ""
         } else {

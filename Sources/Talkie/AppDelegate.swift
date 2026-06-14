@@ -35,6 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentLocaleID: String = ""
     /// The app captured at the start of the current dictation (for usage stats).
     private var currentTarget: TargetApp = .unknown
+    /// Cleans finalized segments incrementally and combines them on stop.
+    private var currentAssembler: DictationAssembler?
     /// The project file index snapshot to apply to the current dictation (vibe coding).
     private var currentVibeSnapshot: ProjectIndexSnapshot = .empty
 
@@ -319,6 +321,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let phrases = Array(Set(bias)).prefix(180).map { $0 }
         let multiLang = settings.spokenLanguages.count > 1
 
+        // Batched cleanup: each finalized segment is cleaned as it arrives and the
+        // results are combined on stop. Skipped for multi-language (the language
+        // isn't known until the end), where cleanup runs once on stop instead.
+        let cleanupEngine = self.cleanup
+        let appAdaptive = settings.appAdaptiveCleanup
+        let adaptiveStyle = settings.cleanupStyle(for: captured.target.category)
+        let cleanupLevel = settings.cleanupLevel
+        let cleanFn: @Sendable (String) async -> String? = { segment in
+            guard !multiLang else { return nil }
+            if appAdaptive {
+                return adaptiveStyle == .off ? nil : await cleanupEngine.clean(segment, style: adaptiveStyle)
+            }
+            return cleanupLevel == .none ? nil : await cleanupEngine.clean(segment, level: cleanupLevel)
+        }
+        let assembler = DictationAssembler(clean: cleanFn)
+        currentAssembler = assembler
+
         Task {
             let micOK = await AudioCapture.requestMicrophoneAccess()
             // The user may have released the key (or started a new session)
@@ -332,6 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             do {
+                await engine.setSegmentHandler { segment in assembler.add(segment) }
                 await engine.setContextualStrings(phrases)
                 let session = try await engine.beginSession()
                 // Re-check after the (async) model load / session setup.
@@ -367,6 +387,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // setup), the begin task will see the generation change and abort — we
         // just reset the UI here.
         guard sessionLive else {
+            currentAssembler = nil
             hud.hide()
             return
         }
@@ -408,26 +429,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            // On-device LLM cleanup. When app-adaptive is on, use the per-app
-            // personality (Messages → friendly, Mail → professional, code →
-            // faithful); otherwise the global intensity level. If it runs, it
-            // already handled fillers (skip the deterministic strip).
-            var cleaned = finalRaw
-            var aiHandledFillers = false
-            var aiWordsChanged = 0
-            let polished: String?
-            if appAdaptive {
-                polished = (adaptiveStyle != .off && !finalRaw.isEmpty)
-                    ? await self.cleanup.clean(finalRaw, style: adaptiveStyle) : nil
+            // Cleanup. Non-multi-language sessions were cleaned incrementally,
+            // segment by segment, as you spoke (the assembler) — so a long
+            // dictation never hits the model as one huge transcript. Multi-language
+            // is cleaned here, once, on the (possibly re-transcribed) full text.
+            let multiLang = spokenLanguages.count > 1
+            let cleanupEnabled = appAdaptive ? (adaptiveStyle != .off) : (cleanupLevel != .none)
+            var cleaned: String
+            if !multiLang, let assembler = self.currentAssembler {
+                cleaned = await assembler.cleaned()
+                if cleaned.isEmpty { cleaned = finalRaw }
+            } else if cleanupEnabled, !finalRaw.isEmpty {
+                let polished = appAdaptive
+                    ? await self.cleanup.clean(finalRaw, style: adaptiveStyle)
+                    : await self.cleanup.clean(finalRaw, level: cleanupLevel)
+                cleaned = polished ?? finalRaw
             } else {
-                polished = (cleanupLevel != .none && !finalRaw.isEmpty)
-                    ? await self.cleanup.clean(finalRaw, level: cleanupLevel) : nil
+                cleaned = finalRaw
             }
-            if let polished {
-                aiWordsChanged = Self.wordEditCount(from: finalRaw, to: polished)
-                cleaned = polished
-                aiHandledFillers = true
-            }
+            self.currentAssembler = nil
+            let aiHandledFillers = cleanupEnabled && CleanupEngine.isAvailable && cleaned != finalRaw
+            let aiWordsChanged = aiHandledFillers ? Self.wordEditCount(from: finalRaw, to: cleaned) : 0
 
             // Apply the dictionary AFTER the LLM so your exact spellings always win.
             let processed = TextProcessor.apply(
