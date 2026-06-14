@@ -171,7 +171,6 @@ private struct MeetingRow: View {
                 if hovering {
                     Button(action: onCopy) { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("Copy transcript")
                     Button(action: onReveal) { Image(systemName: "folder") }.buttonStyle(.plain).help("Reveal note in Finder")
-                    Button(action: onDelete) { Image(systemName: "trash") }.buttonStyle(.plain).help("Delete")
                 }
             }
 

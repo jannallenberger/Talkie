@@ -302,7 +302,6 @@ private struct HistoryRow: View {
     let onCopy: () -> Void
     let onDelete: () -> Void
     @State private var copied = false
-    @State private var hovering = false
 
     private var appSymbol: String {
         AppCategory(rawValue: entry.appCategory ?? "")?.symbol ?? "app.dashed"
@@ -323,13 +322,6 @@ private struct HistoryRow: View {
                     .foregroundStyle(Theme.inkTertiary)
                 }
                 Spacer()
-                if hovering {
-                    Button(action: onDelete) {
-                        ClayIcon(name: "IconTrash", size: 17)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Delete")
-                }
                 Button {
                     onCopy()
                     copied = true
@@ -350,7 +342,6 @@ private struct HistoryRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .talkieCard(padding: 14)
-        .onHover { hovering = $0 }
     }
 }
 
@@ -1007,11 +998,6 @@ private struct ReplacementRow: View {
                 .toggleStyle(.button).help("Case sensitive")
             Toggle("W", isOn: $rule.wholeWord)
                 .toggleStyle(.button).help("Whole word only")
-            Button(action: onDelete) {
-                ClayIcon(name: "IconTrash", size: 18)
-            }
-            .buttonStyle(.plain)
-            .help("Delete rule")
         }
     }
 }
