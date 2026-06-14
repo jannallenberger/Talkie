@@ -49,8 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         permissions.refresh()
         observeSettings()
 
-        // Warm the model in the background so first dictation is instant.
-        Task { try? await engine.warmUp() }
+        // Warm each spoken language's model in the background so the first
+        // dictation — and any language switch — is instant (no inline download).
+        for lang in settings.spokenLanguages {
+            Task { try? await engine.warmUp(localeIdentifier: lang) }
+        }
 
         // Open the main window on launch — Permissions first if not set up yet,
         // otherwise the History log.
@@ -251,12 +254,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.hotKey?.update(config: .init(key: self.settings.activationKey, mode: self.settings.activationMode))
                 self.updateStatusUI()
 
+                // Pre-warm every spoken language so a switch never downloads inline.
+                for lang in self.settings.spokenLanguages {
+                    Task { try? await self.engine.warmUp(localeIdentifier: lang) }
+                }
                 // If the primary language changed, switch the live engine to it.
                 let primary = self.settings.spokenLanguages.first ?? self.settings.localeIdentifier
                 if primary != self.currentLocaleID {
                     self.currentLocaleID = primary
                     await self.engine.setLocaleIdentifier(primary)
-                    Task { try? await self.engine.warmUp() }
                 }
             }
         }

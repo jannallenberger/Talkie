@@ -116,10 +116,16 @@ actor TranscriptionEngine {
         )
     }
 
-    /// One-time warm-up so the first real dictation isn't gated on a download.
-    func warmUp() async throws {
+    /// One-time warm-up so the first real dictation (or language switch) isn't
+    /// gated on a model download. Pass a locale id to pre-warm a specific language.
+    func warmUp(localeIdentifier id: String? = nil) async throws {
         guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
-        let loc = try await resolvedLocale()
+        let loc: Locale
+        if let id, let resolved = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) {
+            loc = resolved
+        } else {
+            loc = try await resolvedLocale()
+        }
         let t = makeTranscriber(locale: loc)
         try await ensureModelInstalled(for: t)
         // Best-effort: keep the locale asset reserved so it isn't reclaimed.
@@ -134,11 +140,17 @@ actor TranscriptionEngine {
         guard let loc = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) else { return nil }
 
         let transcriber = makeTranscriber(locale: loc)
-        do { try await ensureModelInstalled(for: transcriber) } catch { return nil }
+        // Never download a model inline here — that would freeze the insert for
+        // seconds. If the language isn't installed yet, bail; warmUp() installs
+        // it in the background so the NEXT switch is instant.
+        guard await AssetInventory.status(forModules: [transcriber]) == .installed else { return nil }
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else { return nil }
-        // Apple's speech models share a 16 kHz mono format, so the captured audio
-        // normally matches; if it doesn't, bail rather than feed a bad format.
-        guard let firstFormat = buffers.first?.format, firstFormat == format else { return nil }
+        // Compare load-bearing format fields rather than AVAudioFormat.== (which
+        // also compares channel layout and can spuriously differ between locales).
+        guard let firstFormat = buffers.first?.format,
+              firstFormat.sampleRate == format.sampleRate,
+              firstFormat.channelCount == format.channelCount,
+              firstFormat.commonFormat == format.commonFormat else { return nil }
 
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         let analyzer = SpeechAnalyzer(modules: [transcriber])

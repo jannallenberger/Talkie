@@ -47,8 +47,8 @@ final class LearningEngine {
         let system = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-              let focused = focusedRef else { return nil }
-        // CFTypeRef from the AX API is an AXUIElement.
+              let focused = focusedRef,
+              CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
         let element = focused as! AXUIElement
 
         var valueRef: CFTypeRef?
@@ -63,40 +63,38 @@ enum CorrectionExtractor {
     static func extract(
         before: String,
         after: String,
-        inserted: String,
-        maxLearned: Int = 3
+        inserted: String
     ) -> [(from: String, to: String)] {
         let beforeTokens = tokenize(before)
         let afterTokens = tokenize(after)
         let insertedWords = Set(tokenize(inserted).map(normalized))
 
-        // A big change is a rewrite, not a one-word fix — don't learn from it.
+        // Only learn from an UNAMBIGUOUS single-word swap: exactly one word
+        // removed and one inserted. CollectionDifference's remove/insert offsets
+        // live in different coordinate spaces (before vs after), so pairing them
+        // for multi-word edits mis-aligns and would poison the dictionary. The
+        // single-swap case is the only one we can pair with certainty.
         let diff = afterTokens.difference(from: beforeTokens)
-        guard !diff.isEmpty, diff.count <= 8 else { return [] }
+        guard diff.removals.count == 1, diff.insertions.count == 1 else { return [] }
 
-        var removes: [Int: String] = [:]
-        var inserts: [Int: String] = [:]
+        var oldWord: String?
+        var newWord: String?
         for change in diff {
             switch change {
-            case .remove(let offset, let element, _): removes[offset] = element
-            case .insert(let offset, let element, _): inserts[offset] = element
+            case .remove(_, let element, _): oldWord = element
+            case .insert(_, let element, _): newWord = element
             }
         }
+        guard let old = oldWord, let new = newWord else { return [] }
 
-        var learned: [(String, String)] = []
-        for (offset, old) in removes.sorted(by: { $0.key < $1.key }) {
-            // Pair a removal with an insertion at (about) the same position.
-            guard let new = inserts[offset] ?? inserts[offset + 1] ?? inserts[offset - 1] else { continue }
-            let on = normalized(old), nn = normalized(new)
-            guard on != nn, on.count >= 2, nn.count >= 2,
-                  isWordLike(old), isWordLike(new),
-                  insertedWords.contains(on) else { continue }
-            let fromWord = stripped(old), toWord = stripped(new)
-            guard !fromWord.isEmpty, !toWord.isEmpty else { continue }
-            learned.append((fromWord, toWord))
-            if learned.count >= maxLearned { break }
-        }
-        return learned
+        let on = normalized(old), nn = normalized(new)
+        guard on != nn, on.count >= 2, nn.count >= 2,
+              isWordLike(old), isWordLike(new),
+              insertedWords.contains(on) else { return [] }
+
+        let fromWord = stripped(old), toWord = stripped(new)
+        guard !fromWord.isEmpty, !toWord.isEmpty else { return [] }
+        return [(fromWord, toWord)]
     }
 
     private static func tokenize(_ text: String) -> [String] {
