@@ -63,9 +63,7 @@ struct MeetingsView: View {
                     .foregroundStyle(Theme.inkSecondary)
                 Spacer()
             } else {
-                Image(systemName: "mic.circle.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(Theme.coral)
+                ClayIcon(name: "IconMic", size: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Record a meeting")
                         .font(.talkieHeading(15, weight: .semibold))

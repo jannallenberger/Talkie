@@ -28,50 +28,52 @@ struct VibeCodingView: View {
                 }
                 .talkieCard()
 
-                // Project folder.
+                // Project folders.
                 VStack(alignment: .leading, spacing: 12) {
-                    Eyebrow(text: "Project folder")
+                    HStack {
+                        Eyebrow(text: "Project folders")
+                        Spacer()
+                        if projectIndex.isScanning { ProgressView().controlSize(.small) }
+                    }
 
-                    if let folder = projectIndex.folderName {
-                        HStack(spacing: 12) {
-                            Image(systemName: "folder.fill")
-                                .font(.system(size: 22))
-                                .foregroundStyle(Theme.coral)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(folder)
-                                    .font(.talkieHeading(15, weight: .semibold))
-                                    .foregroundStyle(Theme.ink)
-                                Text(statusLine)
-                                    .font(.talkieHeading(12, weight: .regular))
-                                    .foregroundStyle(Theme.inkSecondary)
-                            }
-                            Spacer()
-                            if projectIndex.isScanning {
-                                ProgressView().controlSize(.small)
+                    if projectIndex.hasFolders {
+                        // The chosen roots, in a sunken well for a touch of depth.
+                        VStack(spacing: 0) {
+                            ForEach(Array(projectIndex.folders.enumerated()), id: \.element.id) { idx, folder in
+                                if idx > 0 {
+                                    Divider().overlay(Theme.hairline).padding(.leading, 48)
+                                }
+                                FolderRow(folder: folder) { projectIndex.removeFolder(folder.path) }
                             }
                         }
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                                .fill(Theme.surfaceSunken)
+                        )
+
                         HStack(spacing: 10) {
+                            Button(action: chooseFolders) {
+                                Label("Add folder…", systemImage: "folder.badge.plus")
+                            }
                             Button {
                                 Task { await projectIndex.rescan() }
                             } label: { Label("Rescan", systemImage: "arrow.clockwise") }
                                 .disabled(projectIndex.isScanning)
-                            Button("Change…", action: chooseFolder)
                             Spacer()
-                            Button(role: .destructive) { projectIndex.clear() } label: {
-                                Label("Remove", systemImage: "trash")
-                            }
+                            Text(statusLine)
+                                .font(.talkieHeading(12, weight: .regular))
+                                .foregroundStyle(Theme.inkTertiary)
                         }
                     } else {
-                        Button(action: chooseFolder) {
-                            HStack(spacing: 10) {
-                                Image(systemName: "folder.badge.plus")
-                                    .font(.system(size: 16, weight: .semibold))
-                                Text("Choose project folder…")
+                        Button(action: chooseFolders) {
+                            VStack(spacing: 10) {
+                                ClayIcon(name: "IconFolderPlus", size: 42)
+                                Text("Choose project folders…")
                                     .font(.talkieHeading(14, weight: .semibold))
+                                    .foregroundStyle(Theme.coral)
                             }
-                            .foregroundStyle(Theme.coral)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 22)
+                            .padding(.vertical, 26)
                             .background(
                                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
@@ -79,7 +81,7 @@ struct VibeCodingView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        Text("Everything stays on your Mac — Talkie only reads filenames, never file contents.")
+                        Text("Add one or more project roots — Talkie indexes them all. Everything stays on your Mac; it only reads filenames, never file contents.")
                             .font(.callout)
                             .foregroundStyle(Theme.inkTertiary)
                     }
@@ -100,7 +102,9 @@ struct VibeCodingView: View {
     }
 
     private var statusLine: String {
-        var parts: [String] = ["\(projectIndex.fileCount) files indexed"]
+        let folders = projectIndex.folders.count
+        var parts: [String] = ["\(projectIndex.fileCount) files"]
+        if folders > 1 { parts[0] += " · \(folders) folders" }
         if let scanned = projectIndex.lastScanned {
             let fmt = RelativeDateTimeFormatter()
             fmt.unitsStyle = .full
@@ -109,16 +113,53 @@ struct VibeCodingView: View {
         return parts.joined(separator: " · ")
     }
 
-    private func chooseFolder() {
+    private func chooseFolders() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Use Folder"
-        panel.message = "Pick the root of the project you're vibe coding in."
-        if panel.runModal() == .OK, let url = panel.url {
-            projectIndex.setFolder(url)
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add Folder"
+        panel.message = "Pick one or more project roots you're vibe coding in."
+        if panel.runModal() == .OK {
+            projectIndex.addFolders(panel.urls)
         }
+    }
+}
+
+/// One chosen project root inside the folders well: folder glyph, name, the
+/// abbreviated parent path, and a remove button that reddens on hover.
+private struct FolderRow: View {
+    let folder: ProjectFolder
+    let onRemove: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ClayIcon(name: "IconFolder", size: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(folder.name)
+                    .font(.talkieHeading(14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
+                Text(folder.location)
+                    .font(.talkieHeading(11.5, weight: .regular))
+                    .foregroundStyle(Theme.inkTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 8)
+            Button(action: onRemove) {
+                Image(systemName: "minus.circle.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(hovering ? Theme.danger : Theme.inkTertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove this folder")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
     }
 }
 
@@ -127,9 +168,7 @@ private struct ExampleRow: View {
     let result: String
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "waveform")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.inkTertiary)
+            ClayIcon(name: "IconWaveform", size: 18)
             Text(spoken)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
