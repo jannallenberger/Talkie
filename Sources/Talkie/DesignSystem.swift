@@ -180,6 +180,22 @@ struct Eyebrow: View {
     }
 }
 
+// MARK: - Brand assets (the real logo + generated art, bundled in Resources/Brand)
+
+/// Loads brand imagery shipped in the app bundle. Use the *actual* parrot logo
+/// here — not `NSApp.applicationIconImage` (the rounded-square app icon).
+enum Brand {
+    /// The scarlet-macaw logo on transparent — the in-app mark.
+    @MainActor static let logo: NSImage = image("TalkieLogo") ?? NSApp.applicationIconImage
+
+    /// Any bundled brand PNG by name (generated feather art, backgrounds, …).
+    static func image(_ name: String) -> NSImage? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
+              let img = NSImage(contentsOf: url) else { return nil }
+        return img
+    }
+}
+
 // MARK: - Native material (vibrancy / translucency)
 
 /// A real macOS vibrancy material — the system sidebar/HUD translucency the

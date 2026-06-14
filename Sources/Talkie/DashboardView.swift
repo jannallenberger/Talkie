@@ -94,7 +94,7 @@ struct DashboardView: View {
 private struct Wordmark: View {
     var body: some View {
         HStack(spacing: 9) {
-            Image(nsImage: NSApp.applicationIconImage)
+            Image(nsImage: Brand.logo)
                 .resizable()
                 .frame(width: 26, height: 26)
             Text("Talkie")
@@ -148,13 +148,15 @@ private struct BriefBanner: View {
                 colors: [Color(nsColor: NSColor(hex: 0x16181D)), Color(nsColor: NSColor(hex: 0x0B0C0F))],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
-            // Faint parrot motif on the right.
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable().scaledToFit()
-                .frame(width: 150)
-                .opacity(0.10)
-                .offset(x: 34)
-                .blur(radius: 0.5)
+            // Clay-feather wings bleeding off the right edge (generated brand art).
+            if let wings = Brand.image("FeatherWings") {
+                Image(nsImage: wings)
+                    .resizable().scaledToFit()
+                    .frame(width: 152)
+                    .opacity(0.9)
+                    .offset(x: 42, y: 6)
+                    .accessibilityHidden(true)
+            }
         }
     }
 

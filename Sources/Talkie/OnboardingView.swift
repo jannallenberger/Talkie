@@ -10,12 +10,13 @@ struct OnboardingView: View {
 
     @State private var step = 0
     private let total = 3
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 30)
             VStack(spacing: 24) {
-                Image(nsImage: NSApp.applicationIconImage)
+                Image(nsImage: Brand.logo)
                     .resizable()
                     .frame(width: 74, height: 74)
                     .shadow(color: .black.opacity(0.12), radius: 14, y: 8)
@@ -28,8 +29,25 @@ struct OnboardingView: View {
             footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.canvas)
+        .background(onboardingBackground)
         .onAppear { permissions.refresh() }
+    }
+
+    /// Cream canvas in light; in dark, the generated feather-bokeh ambient art
+    /// (its center stays dark so the text reads). Decorative — accessibility-hidden.
+    private var onboardingBackground: some View {
+        ZStack {
+            Theme.canvas
+            if colorScheme == .dark, let bg = Brand.image("AmbientDark") {
+                Image(nsImage: bg)
+                    .resizable()
+                    .scaledToFill()
+                    .opacity(0.9)
+                    .accessibilityHidden(true)
+            }
+        }
+        .ignoresSafeArea()
+        .clipped()
     }
 
     // MARK: Steps

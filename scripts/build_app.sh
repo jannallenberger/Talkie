@@ -59,6 +59,12 @@ if [[ -d "$ROOT/Resources/Fonts" ]]; then
   cp "$ROOT/Resources/Fonts/"*.otf "$APP/Contents/Resources/Fonts/" 2>/dev/null || true
 fi
 
+# Brand art (the real logo + Higgsfield-generated feather/background assets),
+# loaded at runtime via Brand.image(_:). Copied flat into Resources/.
+if [[ -d "$ROOT/Resources/Brand" ]]; then
+  cp "$ROOT/Resources/Brand/"*.png "$APP/Contents/Resources/" 2>/dev/null || true
+fi
+
 # App icon from the Icon Composer .icon bundle (macOS 26 Liquid Glass).
 # actool emits AppIcon.icns (Finder/Dock fallback) + Assets.car (glass icon).
 if [[ -d "$ROOT/Resources/AppIcon.icon" ]]; then
