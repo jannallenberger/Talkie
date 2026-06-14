@@ -87,6 +87,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { try? await engine.warmUp(localeIdentifier: lang) }
         }
 
+        // Seed the context graph + search index from existing dictations + meetings
+        // so recall, search, and the brief are useful immediately.
+        Task { @MainActor in
+            contextGraph.backfill(dictations: history.entries, meetings: meetingStore.meetings)
+            searchEngine.rebuild(dictations: history.entries,
+                                 meetings: meetingStore.meetings,
+                                 graph: contextGraph.snapshot())
+        }
+
         // Open the main window on launch — onboarding/permissions are handled
         // inside the window now; just land on the Dashboard.
         openSettings(tab: .dashboard)
@@ -355,6 +364,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var bias = dictionary.contextualPhrasesSnapshot()
         bias.append(contentsOf: captured.phrases)
         if settings.vibeCoding { bias.append(contentsOf: currentVibeSnapshot.biasPhrases) }
+        // Context graph: bias toward the people/projects/terms you actually use.
+        bias.append(contentsOf: contextGraph.snapshot().biasPhrases())
         let phrases = Array(Set(bias)).prefix(180).map { $0 }
         let multiLang = settings.spokenLanguages.count > 1
 
@@ -555,6 +566,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if target.bundleID != selfBundle {
                 self.appUsage.record(target: target, words: words)
             }
+            // Feed the on-device context graph from what was just dictated.
+            self.contextGraph.ingest(
+                ContextGraphExtractor.candidates(from: finalText),
+                provenance: Provenance(source: .dictation, sourceID: nil,
+                                       dateUnix: Date().timeIntervalSince1970,
+                                       snippet: String(finalText.prefix(120)))
+            )
 
             let outcome = TextInjector.insert(finalText, mode: mode)
             switch outcome {
