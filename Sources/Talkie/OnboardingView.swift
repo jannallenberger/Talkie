@@ -1,128 +1,179 @@
 import SwiftUI
 import AppKit
 
-/// First-run welcome: meet the bird, set your name, learn the gesture, grant the
-/// three permissions. Shown in place of the main window until completed.
+/// First-run welcome — a live aurora-glass backdrop with each step floating on a
+/// frosted panel.
+///
+/// Shaped by the archetype review:
+///   • The on-device **privacy promise gets its own panel, before any permission**
+///     is requested (a dictation app asking for Accessibility + Input Monitoring
+///     is keylogger-shaped until you explain it).
+///   • Each permission row carries a one-line *why*.
+///   • **No required typing** before first use — the name lives in Settings.
+///   • A short, skippable spine: impatient users can jump straight to permissions.
+///   • The final panel is an **accessible try-it**: it adapts to hold vs. toggle,
+///     and confirms visually (the words land in the field), not by sound alone.
+///   • Motion + transparency defer to the system accessibility settings — handled
+///     by `LiveBackground` and `GlassCard`.
 struct OnboardingView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
     let onRetryHotKey: () -> Void
 
+    private enum Step: CaseIterable { case welcome, privacy, gesture, permissions, ready }
+    private let steps = Step.allCases
     @State private var step = 0
-    private let total = 3
-    @Environment(\.colorScheme) private var colorScheme
+    @State private var tryText = ""
+
+    private var current: Step { steps[step] }
+    private var permissionsIndex: Int { steps.firstIndex(of: .permissions) ?? 3 }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 30)
-            VStack(spacing: 24) {
-                Image(nsImage: Brand.logo)
-                    .resizable()
-                    .frame(width: 74, height: 74)
-                    .shadow(color: .black.opacity(0.12), radius: 14, y: 8)
-                content
-                    .frame(maxWidth: 440)
-                    .multilineTextAlignment(.center)
+        ZStack {
+            LiveBackground(mood: .hero)
+
+            VStack(spacing: 22) {
+                Spacer(minLength: 16)
+                card
+                footer
+                Spacer(minLength: 16)
             }
-            .padding(.horizontal, 44)
-            Spacer(minLength: 30)
-            footer
+            .frame(maxWidth: 480)
+            .padding(.horizontal, 36)
+            .padding(.vertical, 28)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(onboardingBackground)
         .onAppear { permissions.refresh() }
     }
 
-    /// Cream canvas in light; in dark, the generated feather-bokeh ambient art
-    /// (its center stays dark so the text reads). Decorative — accessibility-hidden.
-    private var onboardingBackground: some View {
-        ZStack {
-            Theme.canvas
-            if colorScheme == .dark, let bg = Brand.image("AmbientDark") {
-                Image(nsImage: bg)
+    // MARK: Card
+
+    private var card: some View {
+        GlassCard {
+            VStack(spacing: 22) {
+                Image(nsImage: Brand.logo)
                     .resizable()
-                    .scaledToFill()
-                    .opacity(0.9)
-                    .accessibilityHidden(true)
+                    .frame(width: 60, height: 60)
+                    .shadow(color: .black.opacity(0.22), radius: 12, y: 6)
+
+                content
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+                    .id(current)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .offset(y: 8)),
+                        removal: .opacity
+                    ))
             }
+            .padding(.horizontal, 34)
+            .padding(.vertical, 38)
+            .frame(maxWidth: .infinity)
         }
-        .ignoresSafeArea()
-        .clipped()
+        .frame(maxWidth: 460)
+        .animation(.smooth(duration: 0.32), value: step)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch current {
+        case .welcome:     welcome
+        case .privacy:     privacy
+        case .gesture:     gesture
+        case .permissions: permissionsStep
+        case .ready:       ready
+        }
     }
 
     // MARK: Steps
 
-    @ViewBuilder
-    private var content: some View {
-        switch step {
-        case 0: welcome
-        case 1: gesture
-        default: permissionsStep
+    private var welcome: some View {
+        VStack(spacing: 14) {
+            Text("Welcome to Talkie")
+                .font(.talkieDisplay(32))
+                .foregroundStyle(Theme.ink)
+            Text("Speak, and Talkie writes it for you — in any app, wherever your cursor is. It all runs on this Mac.")
+                .font(.talkieHeading(15, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var welcome: some View {
+    private var privacy: some View {
         VStack(spacing: 16) {
-            Text("Welcome to Talkie")
-                .font(.talkieDisplay(34))
+            Text("Private by design")
+                .font(.talkieDisplay(30))
                 .foregroundStyle(Theme.ink)
-            Text("Your private, on-device dictation companion.\nFirst — what should we call you?")
+            Text("Your voice never leaves this Mac. Talkie transcribes and tidies your words entirely on-device — no servers, no account, nothing uploaded.")
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
-            TextField("Your name", text: $settings.userName)
-                .textFieldStyle(.plain)
-                .font(.talkieDisplay(22))
-                .multilineTextAlignment(.center)
-                .padding(.vertical, 13)
-                .padding(.horizontal, 18)
-                .frame(width: 290)
-                .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(Theme.surface))
-                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Theme.hairline))
-                .onSubmit(advance)
-                .padding(.top, 4)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 9) {
+                PrivacyChip(icon: "lock.fill", text: "On-device")
+                PrivacyChip(icon: "wifi.slash", text: "No cloud")
+                PrivacyChip(icon: "person.crop.circle.badge.xmark", text: "No account")
+            }
+            .padding(.top, 2)
         }
     }
 
     private var gesture: some View {
-        VStack(spacing: 16) {
-            Text(settings.userName.isEmpty ? "Hold, speak, release" : "Nice to meet you, \(settings.userName)")
+        let hold = settings.activationMode == .holdToTalk
+        return VStack(spacing: 16) {
+            Text(hold ? "Hold, speak, release" : "Tap, speak, tap")
                 .font(.talkieDisplay(30))
                 .foregroundStyle(Theme.ink)
-            Text("Hold your key, say what you want to write, and let go. Talkie types it wherever your cursor is — fully on your Mac.")
+            Text(hold
+                 ? "Hold your key, say what you want to write, and let go. Talkie drops the text in wherever you're typing."
+                 : "Tap your key to start, say what you want to write, then tap again. Talkie drops the text in wherever you're typing.")
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
-            HStack(spacing: 10) {
+                .fixedSize(horizontal: false, vertical: true)
+            FlowLayout(spacing: 9) {
                 Keycap(text: settings.activationKey.displayName)
-                Image(systemName: "arrow.right").foregroundStyle(Theme.inkTertiary)
+                stepArrow
                 Label("Speak", systemImage: "mic.fill").foregroundStyle(Theme.coral)
-                Image(systemName: "arrow.right").foregroundStyle(Theme.inkTertiary)
-                Label("Inserted", systemImage: "text.cursor").foregroundStyle(Theme.positive)
+                stepArrow
+                Label("Typed for you", systemImage: "text.cursor").foregroundStyle(Theme.positive)
             }
             .font(.talkieHeading(13, weight: .semibold))
-            .padding(.top, 6)
+            .padding(.top, 2)
         }
     }
 
+    private var stepArrow: some View {
+        Image(systemName: "arrow.right")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Theme.inkTertiary)
+    }
+
     private var permissionsStep: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 15) {
             Text("Three quick permissions")
-                .font(.talkieDisplay(30))
+                .font(.talkieDisplay(27))
                 .foregroundStyle(Theme.ink)
-            Text("All local — Talkie never sends your audio anywhere.")
-                .font(.talkieHeading(15, weight: .regular))
+            Text("Talkie needs these to hear your key and place your text. Each is used only on this Mac.")
+                .font(.talkieHeading(14, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             VStack(spacing: 9) {
-                OnboardPermissionRow(title: "Microphone", granted: permissions.microphone) {
-                    Task { await permissions.requestMicrophone() }
-                }
-                OnboardPermissionRow(title: "Input Monitoring", granted: permissions.inputMonitoring) {
-                    permissions.requestInputMonitoring(); onRetryHotKey()
-                }
-                OnboardPermissionRow(title: "Accessibility", granted: permissions.accessibility) {
-                    permissions.promptAccessibility()
-                }
+                OnboardPermissionRow(
+                    title: "Microphone",
+                    why: "To hear you while you dictate.",
+                    granted: permissions.microphone
+                ) { Task { await permissions.requestMicrophone() } }
+                OnboardPermissionRow(
+                    title: "Input Monitoring",
+                    why: "To notice your one dictation key — nothing else you type.",
+                    granted: permissions.inputMonitoring
+                ) { permissions.requestInputMonitoring(); onRetryHotKey() }
+                OnboardPermissionRow(
+                    title: "Accessibility",
+                    why: "To place the finished text into the app you're using.",
+                    granted: permissions.accessibility
+                ) { permissions.promptAccessibility() }
             }
-            .padding(.top, 4)
+            .padding(.top, 2)
+
             if permissions.allGranted {
                 Label("All set", systemImage: "checkmark.seal.fill")
                     .font(.talkieHeading(13, weight: .semibold))
@@ -136,42 +187,123 @@ struct OnboardingView: View {
         }
     }
 
+    private var ready: some View {
+        let hold = settings.activationMode == .holdToTalk
+        return VStack(spacing: 15) {
+            Text("You're ready")
+                .font(.talkieDisplay(30))
+                .foregroundStyle(Theme.ink)
+            Text("Give it a go right here — or jump straight in.")
+                .font(.talkieHeading(14.5, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(
+                    "Click here, then \(hold ? "hold" : "tap") \(settings.activationKey.displayName) and speak…",
+                    text: $tryText,
+                    axis: .vertical
+                )
+                .textFieldStyle(.plain)
+                .font(.talkieHeading(14, weight: .regular))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(2...4)
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
+                .accessibilityLabel("Try dictation here")
+                .accessibilityHint("Hold your dictation key and speak; the words appear in this field.")
+
+                if !permissions.allGranted {
+                    Label("Grant the permissions to try it now — or skip and start using Talkie.",
+                          systemImage: "info.circle")
+                        .font(.talkieHeading(11.5, weight: .regular))
+                        .foregroundStyle(Theme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
     // MARK: Footer
 
     private var footer: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             HStack(spacing: 8) {
-                ForEach(0..<total, id: \.self) { i in
+                ForEach(steps.indices, id: \.self) { i in
                     Capsule()
-                        .fill(i == step ? Theme.coral : Theme.hairline)
-                        .frame(width: i == step ? 20 : 7, height: 7)
+                        .fill(i == step ? Theme.coral : Theme.inkTertiary.opacity(0.4))
+                        .frame(width: i == step ? 22 : 7, height: 7)
+                        .animation(.smooth(duration: 0.3), value: step)
                 }
             }
+
             HStack {
                 if step > 0 {
-                    Button("Back") { withAnimation(.easeInOut(duration: 0.2)) { step -= 1 } }
+                    Button("Back") { back() }
                         .buttonStyle(.plain)
                         .foregroundStyle(Theme.inkSecondary)
+                } else {
+                    Button("Skip intro") { jumpToPermissions() }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.inkTertiary)
+                        .help("Jump straight to granting permissions")
                 }
                 Spacer()
-                Button(step == total - 1 ? "Start dictating" : "Continue", action: advance)
+                Button(primaryTitle, action: advance)
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.coral)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
             }
-            .frame(maxWidth: 440)
         }
-        .padding(.horizontal, 44)
-        .padding(.bottom, 40)
+        .frame(maxWidth: 460)
     }
 
-    private func advance() {
-        if step < total - 1 {
-            withAnimation(.easeInOut(duration: 0.2)) { step += 1 }
-            if step == total - 1 { permissions.refresh() }
-        } else {
-            settings.hasOnboarded = true
+    private var primaryTitle: String {
+        switch current {
+        case .welcome:     return "Get started"
+        case .ready:       return "Start dictating"
+        default:           return "Continue"
         }
+    }
+
+    // MARK: Navigation
+
+    private func advance() {
+        if step >= steps.count - 1 {
+            settings.hasOnboarded = true
+            return
+        }
+        withAnimation(.smooth(duration: 0.32)) { step += 1 }
+        if current == .permissions { permissions.refresh() }
+    }
+
+    private func back() {
+        withAnimation(.smooth(duration: 0.32)) { step = max(0, step - 1) }
+    }
+
+    private func jumpToPermissions() {
+        withAnimation(.smooth(duration: 0.32)) { step = permissionsIndex }
+        permissions.refresh()
+    }
+}
+
+// MARK: - Pieces
+
+private struct PrivacyChip: View {
+    let icon: String
+    let text: String
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 10, weight: .semibold))
+            Text(text).font(.talkieHeading(11.5, weight: .semibold))
+        }
+        .foregroundStyle(Theme.inkSecondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Theme.surface.opacity(0.6)))
+        .overlay(Capsule().strokeBorder(Theme.hairline))
     }
 }
 
@@ -190,6 +322,7 @@ private struct Keycap: View {
 
 private struct OnboardPermissionRow: View {
     let title: String
+    let why: String
     let granted: Bool
     let action: () -> Void
 
@@ -198,10 +331,17 @@ private struct OnboardPermissionRow: View {
             Image(systemName: granted ? "checkmark.circle.fill" : "circle.dashed")
                 .font(.system(size: 18))
                 .foregroundStyle(granted ? Theme.positive : Theme.inkTertiary)
-            Text(title)
-                .font(.talkieHeading(14, weight: .medium))
-                .foregroundStyle(Theme.ink)
-            Spacer()
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.talkieHeading(14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text(why)
+                    .font(.talkieHeading(11.5, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
             if !granted {
                 Button("Grant", action: action)
                     .buttonStyle(.bordered)
@@ -209,9 +349,11 @@ private struct OnboardPermissionRow: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .frame(width: 320)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface))
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(why) \(granted ? "Granted." : "Not granted.")")
     }
 }

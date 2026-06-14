@@ -123,6 +123,8 @@ struct ProcessedText {
     var text: String
     var replacementHits: Int = 0
     var fillersRemoved: Int = 0
+    /// The `to` values of every replacement rule that fired, in order, deduped.
+    var replacedWords: [String] = []
 }
 
 /// Pure, Sendable text post-processing — runs off the main actor after a session.
@@ -135,10 +137,14 @@ enum TextProcessor {
     ) -> ProcessedText {
         var text = input
         var replacementHits = 0
+        var replacedWords: [String] = []
         for r in replacements {
             let (out, hits) = applyOne(r, to: text)
             text = out
             replacementHits += hits
+            if hits > 0, !replacedWords.contains(r.to) {
+                replacedWords.append(r.to)
+            }
         }
         var fillersRemoved = 0
         if removeFillers {
@@ -149,7 +155,37 @@ enum TextProcessor {
         if autoCapitalize {
             text = capitalizeFirstLetter(text)
         }
-        return ProcessedText(text: text, replacementHits: replacementHits, fillersRemoved: fillersRemoved)
+        return ProcessedText(text: text, replacementHits: replacementHits,
+                             fillersRemoved: fillersRemoved, replacedWords: replacedWords)
+    }
+
+    /// Replacement targets the recognizer produced on its own because it was biased
+    /// toward them (every rule's `to` is fed to the recognizer as a contextual
+    /// string), so `apply`'s find-and-replace never had a `from` to match. That's
+    /// invisible in the post-cleanup text alone, so we compare the raw transcript
+    /// with what we actually inserted: a rule counts when it's a genuine respelling
+    /// (`from` ≠ `to`), the user did NOT speak the `from` (that's the find-and-
+    /// replace path, already tallied by `apply`), and the `to` is present — as a
+    /// whole word — in both the raw transcript and the final text. Returned in rule
+    /// order, deduped; these complement the literal hits from `apply`.
+    static func biasAppliedTargets(rules: [Replacement], raw: String, output: String) -> [String] {
+        var out: [String] = []
+        for r in rules {
+            let from = r.from.trimmingCharacters(in: .whitespaces)
+            let to = r.to.trimmingCharacters(in: .whitespaces)
+            guard !from.isEmpty, !to.isEmpty,
+                  from.lowercased() != to.lowercased() else { continue }
+            // The user literally spoke the `from` → find-and-replace path, already
+            // counted by `apply`. Skip so we don't double-report.
+            if occurs(from, in: raw, wholeWord: r.wholeWord, caseSensitive: r.caseSensitive) { continue }
+            // Bias path: the corrected spelling is in the raw transcript and made it
+            // all the way into the inserted text.
+            guard occurs(to, in: raw, wholeWord: r.wholeWord, caseSensitive: r.caseSensitive),
+                  occurs(to, in: output, wholeWord: r.wholeWord, caseSensitive: r.caseSensitive)
+            else { continue }
+            if !out.contains(to) { out.append(to) }
+        }
+        return out
     }
 
     /// Common spoken disfluencies to drop. Kept conservative so real words survive.
@@ -215,6 +251,25 @@ enum TextProcessor {
             search = r.upperBound..<haystack.endIndex
         }
         return count
+    }
+
+    /// Whole-word / case-sensitivity–aware presence test, matching `applyOne`'s
+    /// matching rules so application and detection agree on what "present" means.
+    private static func occurs(_ needle: String, in haystack: String, wholeWord: Bool, caseSensitive: Bool) -> Bool {
+        guard !needle.isEmpty else { return false }
+        if wholeWord {
+            let escaped = NSRegularExpression.escapedPattern(for: needle)
+            var options: NSRegularExpression.Options = []
+            if !caseSensitive { options.insert(.caseInsensitive) }
+            guard let regex = try? NSRegularExpression(pattern: "\\b\(escaped)\\b", options: options) else {
+                return false
+            }
+            let range = NSRange(haystack.startIndex..<haystack.endIndex, in: haystack)
+            return regex.firstMatch(in: haystack, options: [], range: range) != nil
+        } else {
+            let opts: String.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
+            return haystack.range(of: needle, options: opts) != nil
+        }
     }
 
     private static func capitalizeFirstLetter(_ text: String) -> String {

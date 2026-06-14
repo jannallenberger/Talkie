@@ -15,13 +15,16 @@ struct VibeCodingView: View {
 
                 // Enable toggle.
                 VStack(alignment: .leading, spacing: 8) {
-                    Toggle(isOn: $settings.vibeCoding) {
+                    HStack(spacing: 12) {
                         Text("Snap spoken filenames to my project files")
                             .font(.talkieHeading(14, weight: .semibold))
                             .foregroundStyle(Theme.ink)
+                        Spacer(minLength: 12)
+                        Toggle("", isOn: $settings.vibeCoding)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .tint(Theme.coral)
                     }
-                    .toggleStyle(.switch)
-                    .tint(Theme.coral)
                     Text("When on, Talkie matches what you dictate against the files below and inserts the exact, correctly-cased name. It also biases recognition toward your project's vocabulary.")
                         .font(.callout)
                         .foregroundStyle(Theme.inkSecondary)

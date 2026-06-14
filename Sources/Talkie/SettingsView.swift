@@ -139,11 +139,14 @@ struct MainView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .background(Theme.canvas)
                 }
+                .transition(.opacity)
             } else {
                 OnboardingView(settings: settings, permissions: permissions, onRetryHotKey: onRetryHotKey)
+                    .transition(.opacity)
             }
         }
         .frame(minWidth: 900, minHeight: 640)
+        .animation(.easeInOut(duration: 0.4), value: settings.hasOnboarded)
     }
 
     @ViewBuilder
@@ -348,7 +351,7 @@ private struct HistoryRow: View {
 // MARK: - General
 
 private enum SettingsRoute: Hashable {
-    case profile, activation, cleanup, languages, context, behavior, permissions
+    case profile, activation, cleanup, languages, context, behavior, permissions, developer
 }
 
 /// Settings landing — a tidy index of category rows, each pushing a focused
@@ -373,6 +376,12 @@ private struct SettingsHome: View {
                         SettingsRowView(icon: "IconShield", title: "Permissions",
                                         subtitle: permissions.allGranted ? "All granted" : "Action needed",
                                         badge: !permissions.allGranted, route: .permissions)
+                        if Dev.isEnabled {
+                            Divider().overlay(Theme.hairline).padding(.leading, 64)
+                            SettingsRowView(icon: "", title: "Developer",
+                                            subtitle: "Replay onboarding · debug tools",
+                                            route: .developer, systemIcon: "hammer.fill")
+                        }
                     }
                     .talkieSurface()
                 }
@@ -412,6 +421,52 @@ private struct SettingsHome: View {
         case .context:     ContextSettings(settings: settings)
         case .behavior:    BehaviorSettings(settings: settings)
         case .permissions: PermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
+        case .developer:   DeveloperSettings(settings: settings)
+        }
+    }
+}
+
+/// Developer-only tools, surfaced when `Dev.isEnabled` (Debug builds, or a
+/// release build with `TalkieDevMode` set). Replays the first-run onboarding
+/// without wiping any of the user's data.
+private struct DeveloperSettings: View {
+    @ObservedObject var settings: AppSettings
+    @AppStorage(Dev.devModeKey) private var devMode = false
+    @State private var replaying = false
+
+    var body: some View {
+        SubPage(title: "Developer",
+                subtitle: "Tools for building Talkie. Hidden from normal users.") {
+            SettingsCard(
+                header: "Onboarding",
+                footer: "Replays the first-run flow so you can review it. Your name, settings, history, and dictionary are untouched."
+            ) {
+                SettingsRow(
+                    title: "First-run onboarding",
+                    subtitle: replaying ? "Opening the welcome flow…" : "Show the welcome flow again"
+                ) {
+                    Button("Replay") {
+                        replaying = true
+                        // Defer a tick so the button's press settles before the
+                        // whole window crossfades over to onboarding.
+                        DispatchQueue.main.async { settings.hasOnboarded = false }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+                    .disabled(replaying)
+                }
+            }
+
+            SettingsCard(
+                header: "Developer mode",
+                footer: "Keeps this Developer page available in a Release build too. Debug builds always show it."
+            ) {
+                SettingsToggleRow(
+                    title: "Keep developer mode on",
+                    subtitle: "Persists across launches.",
+                    isOn: $devMode
+                )
+            }
         }
     }
 }
@@ -424,13 +479,20 @@ private struct SettingsRowView: View {
     let subtitle: String
     var badge: Bool = false
     let route: SettingsRoute
+    /// When set, renders an SF Symbol instead of a Brand clay icon (e.g. the
+    /// Developer row, which has no clay asset).
+    var systemIcon: String? = nil
     @State private var hovering = false
 
     var body: some View {
         NavigationLink(value: route) {
             HStack(spacing: 14) {
                 Group {
-                    if let img = Brand.image(icon) {
+                    if let systemIcon {
+                        Image(systemName: systemIcon)
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(Theme.inkSecondary)
+                    } else if let img = Brand.image(icon) {
                         Image(nsImage: img).resizable().scaledToFit()
                     } else {
                         Image(systemName: "square.dashed").foregroundStyle(Theme.inkTertiary)

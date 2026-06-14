@@ -2,14 +2,54 @@ import Foundation
 
 // MARK: - Project index (auto-scan a folder you pick)
 
-/// Persisted snapshot of a scanned project: which folder, when, and the files
-/// found. Spoken filenames are matched against this so "exercise library dot
-/// tsx" snaps to the real `ExerciseLibrary.tsx`.
+/// Persisted snapshot of a scanned project: which folders, when, and the files
+/// found across all of them. Spoken filenames are matched against this so
+/// "exercise library dot tsx" snaps to the real `ExerciseLibrary.tsx`.
 struct ProjectIndexData: Codable {
-    var folderPath: String?
+    var folderPaths: [String] = []  // the project roots, in the order picked
     var scannedAtUnix: Double?
-    var files: [String] = []      // basenames, e.g. "ExerciseLibrary.tsx"
-    var symbols: [String] = []    // bare identifiers, e.g. "ExerciseLibrary"
+    var files: [String] = []        // basenames, e.g. "ExerciseLibrary.tsx"
+    var symbols: [String] = []      // bare identifiers, e.g. "ExerciseLibrary"
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case folderPaths, folderPath, scannedAtUnix, files, symbols
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let paths = try c.decodeIfPresent([String].self, forKey: .folderPaths) {
+            folderPaths = paths
+        } else if let single = try c.decodeIfPresent(String.self, forKey: .folderPath),
+                  !single.isEmpty {
+            folderPaths = [single]  // migrate the old single-folder field
+        }
+        scannedAtUnix = try c.decodeIfPresent(Double.self, forKey: .scannedAtUnix)
+        files = try c.decodeIfPresent([String].self, forKey: .files) ?? []
+        symbols = try c.decodeIfPresent([String].self, forKey: .symbols) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(folderPaths, forKey: .folderPaths)
+        try c.encodeIfPresent(scannedAtUnix, forKey: .scannedAtUnix)
+        try c.encode(files, forKey: .files)
+        try c.encode(symbols, forKey: .symbols)
+    }
+}
+
+/// A single chosen project root, for display in the Vibe Coding pane.
+struct ProjectFolder: Identifiable, Hashable {
+    let path: String
+    var id: String { path }
+    /// The folder's own name, e.g. "Talkie".
+    var name: String { URL(fileURLWithPath: path).lastPathComponent }
+    /// The abbreviated parent location, e.g. "~/Developer".
+    var location: String {
+        let parent = (path as NSString).deletingLastPathComponent
+        return (parent as NSString).abbreviatingWithTildeInPath
+    }
 }
 
 /// An immutable, Sendable view of the index used off the main actor during
@@ -31,6 +71,10 @@ final class ProjectIndexStore: ObservableObject {
     @Published private(set) var snapshot = ProjectIndexSnapshot.empty
 
     private let fileURL: URL
+    /// Bumped on every change to the desired folder set. A scan that finishes
+    /// after a newer change (or a `clear`) sees a mismatch and discards its stale
+    /// result, so an in-flight scan can never clobber a later edit.
+    private var scanGeneration = 0
 
     init() {
         fileURL = AppPaths.supportDirectory().appendingPathComponent("project_index.json")
@@ -38,32 +82,67 @@ final class ProjectIndexStore: ObservableObject {
         rebuildSnapshot()
     }
 
-    var folderName: String? {
-        guard let p = data.folderPath else { return nil }
-        return URL(fileURLWithPath: p).lastPathComponent
-    }
+    /// The chosen project roots, in the order they were added.
+    var folders: [ProjectFolder] { data.folderPaths.map { ProjectFolder(path: $0) } }
+    var hasFolders: Bool { !data.folderPaths.isEmpty }
     var fileCount: Int { data.files.count }
     var lastScanned: Date? { data.scannedAtUnix.map { Date(timeIntervalSince1970: $0) } }
 
-    func setFolder(_ url: URL) {
-        data.folderPath = url.path
+    /// Add a project root (ignoring duplicates), then rescan everything.
+    func addFolder(_ url: URL) { addFolders([url]) }
+
+    /// Add several project roots at once (ignoring duplicates) and rescan a
+    /// single time, so picking five folders doesn't kick off five scans.
+    func addFolders(_ urls: [URL]) {
+        var added = false
+        for url in urls where !data.folderPaths.contains(url.path) {
+            data.folderPaths.append(url.path)
+            added = true
+        }
+        guard added else { return }
+        save()
+        Task { await rescan() }
+    }
+
+    /// Drop a project root and rescan so its files leave the index.
+    func removeFolder(_ path: String) {
+        guard data.folderPaths.contains(path) else { return }
+        data.folderPaths.removeAll { $0 == path }
         save()
         Task { await rescan() }
     }
 
     func clear() {
         data = ProjectIndexData()
+        scanGeneration += 1   // supersede any in-flight scan so it can't refill
+        isScanning = false
         save()
         rebuildSnapshot()
     }
 
-    /// Walk the chosen folder off the main actor and refresh the file list.
+    /// Walk every chosen folder off the main actor and rebuild the merged file
+    /// list. With no folders left, the index empties. A generation token makes
+    /// overlapping scans safe: only the latest one may write its result.
     func rescan() async {
-        guard let path = data.folderPath else { return }
+        scanGeneration += 1
+        let generation = scanGeneration
+        let paths = data.folderPaths
+        guard !paths.isEmpty else {
+            data.files = []
+            data.symbols = []
+            data.scannedAtUnix = nil
+            isScanning = false
+            save()
+            rebuildSnapshot()
+            return
+        }
         isScanning = true
         let result = await Task.detached(priority: .utility) {
-            ProjectScanner.scan(root: URL(fileURLWithPath: path))
+            ProjectScanner.scanAll(roots: paths.map { URL(fileURLWithPath: $0) })
         }.value
+        // A newer change/scan superseded us — drop this stale result untouched and
+        // let the newest scan settle `isScanning`.
+        guard generation == scanGeneration else { return }
         data.files = result.files
         data.symbols = result.symbols
         data.scannedAtUnix = Date().timeIntervalSince1970
@@ -105,6 +184,26 @@ enum ProjectScanner {
     static let maxFiles = 6000
 
     struct Result { var files: [String]; var symbols: [String] }
+
+    /// Scan several roots and merge them into one index, de-duping filenames
+    /// across folders (first folder wins a colliding basename) and capping the
+    /// total so a stack of monorepos can't blow up memory.
+    static func scanAll(roots: [URL]) -> Result {
+        var files: [String] = []
+        var symbolSet = Set<String>()
+        var seen = Set<String>()
+        for root in roots {
+            if files.count >= maxFiles { break }
+            let r = scan(root: root)
+            for f in r.files {
+                if files.count >= maxFiles { break }
+                guard seen.insert(f.lowercased()).inserted else { continue }
+                files.append(f)
+            }
+            symbolSet.formUnion(r.symbols)
+        }
+        return Result(files: files, symbols: Array(symbolSet))
+    }
 
     static func scan(root: URL) -> Result {
         var files: [String] = []
