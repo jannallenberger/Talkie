@@ -1,22 +1,49 @@
 {
   "fill" : {
-    "solid" : "display-p3:0.00000,0.00000,0.00000,1.00000"
+    "linear-gradient" : [
+      "display-p3:0.00000,0.00000,0.00000,1.00000",
+      "display-p3:0.00000,0.00000,0.00000,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 1
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.3
+      }
+    }
   },
   "groups" : [
     {
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "talkie_parrot_transparent.png",
-          "name" : "talkie_parrot_transparent",
+          "hidden" : false,
+          "image-name" : "parrot_flat_recraft_1_transparent.png",
+          "name" : "parrot_flat_recraft_1_transparent",
           "position" : {
-            "scale" : 0.96,
+            "scale" : 0.63,
             "translation-in-points" : [
-              14,
-              62
+              0,
+              0
             ]
           }
         }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+
       ],
       "shadow" : {
         "kind" : "neutral",
