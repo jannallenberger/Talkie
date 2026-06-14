@@ -134,12 +134,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Hotkey
 
+    private enum DictationEvent: Sendable { case begin, end }
+    private var eventTask: Task<Void, Never>?
+
     private func setupHotKey() {
+        // Funnel press/release edges through ONE ordered stream so a begin can
+        // never be scheduled after its matching end (two independent Tasks have
+        // no FIFO guarantee on the MainActor executor).
+        let (stream, continuation) = AsyncStream<DictationEvent>.makeStream()
+        eventTask = Task { @MainActor [weak self] in
+            for await event in stream {
+                guard let self else { return }
+                switch event {
+                case .begin: self.beginDictation()
+                case .end: self.endDictation()
+                }
+            }
+        }
+
         let config = HotKeyMonitor.Config(key: settings.activationKey, mode: settings.activationMode)
         let monitor = HotKeyMonitor(
             config: config,
-            onActivate: { Task { @MainActor in AppDelegate.shared?.beginDictation() } },
-            onDeactivate: { Task { @MainActor in AppDelegate.shared?.endDictation() } }
+            onActivate: { continuation.yield(.begin) },
+            onDeactivate: { continuation.yield(.end) }
         )
         _ = monitor.start()
         hotKey = monitor

@@ -45,7 +45,9 @@ final class DictionaryStore: ObservableObject {
     }
 
     func save() {
-        let payload = Payload(replacements: replacements, vocabulary: vocabulary)
+        // Don't persist a blank draft row the user is still filling in.
+        let persistable = replacements.filter { !$0.from.trimmingCharacters(in: .whitespaces).isEmpty }
+        let payload = Payload(replacements: persistable, vocabulary: vocabulary)
         guard let data = try? JSONEncoder().encode(payload) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }
@@ -61,26 +63,26 @@ final class DictionaryStore: ObservableObject {
 
     // MARK: Mutations (UI calls these)
 
+    // Mutations only touch the @Published arrays; persistence is driven by the
+    // view's `.onChange` (which also catches direct text-field edits). Keeping a
+    // single save path avoids the double-write the two-path version had.
+
     func addReplacement() {
         replacements.append(Replacement(from: "", to: ""))
-        save()
     }
 
     func removeReplacements(at offsets: IndexSet) {
         replacements.remove(atOffsets: offsets)
-        save()
     }
 
     func addVocabularyTerm(_ term: String) {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !vocabulary.contains(trimmed) else { return }
         vocabulary.append(trimmed)
-        save()
     }
 
     func removeVocabulary(at offsets: IndexSet) {
         vocabulary.remove(atOffsets: offsets)
-        save()
     }
 
     // MARK: Snapshots for the engine (Sendable plain values)

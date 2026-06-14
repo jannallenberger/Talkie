@@ -4,27 +4,32 @@ import CoreGraphics
 /// Watches a single global activation key (a modifier, or Fn) and reports
 /// press/release. Implemented with a listen-only `CGEventTap` so it needs only
 /// the Input Monitoring permission (never swallows the key, so the modifier
-/// still works normally in other apps). Runs the tap on a dedicated thread with
-/// its own run loop so a busy main thread can't trip the system's tap-timeout.
+/// still works normally in other apps). The tap is created synchronously on the
+/// caller's thread; its run-loop source runs on a dedicated thread so a busy
+/// main thread can't trip the system's tap-timeout. All shared state is guarded
+/// by a lock because `handle()` runs on the tap thread while start/stop/update
+/// run on the main thread.
 final class HotKeyMonitor: @unchecked Sendable {
-    struct Config: Sendable {
+    struct Config: Sendable, Equatable {
         var key: ActivationKey
         var mode: ActivationMode
     }
 
-    private var config: Config
     private let onActivate: @Sendable () -> Void
     private let onDeactivate: @Sendable () -> Void
 
+    private let lock = NSLock()
+    // --- all guarded by `lock` ---
+    private var config: Config
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var thread: Thread?
     private var threadRunLoop: CFRunLoop?
-    private var healthTimer: DispatchSourceTimer?
-
-    // Press/release state machine.
+    private var isStarted = false
     private var isKeyDown = false
     private var toggledOn = false
+    // -----------------------------
+
+    private var healthTimer: DispatchSourceTimer?
 
     init(
         config: Config,
@@ -36,67 +41,31 @@ final class HotKeyMonitor: @unchecked Sendable {
         self.onDeactivate = onDeactivate
     }
 
+    deinit {
+        stop()
+    }
+
     // MARK: Lifecycle
 
     /// Installs the tap. Returns false if Input Monitoring isn't granted yet
     /// (the tap cannot be created); call again after the user grants it.
     @discardableResult
     func start() -> Bool {
-        guard tap == nil else { return true }
+        lock.lock()
+        if isStarted {
+            lock.unlock()
+            return true
+        }
+        lock.unlock()
+
         guard CGPreflightListenEventAccess() else { return false }
 
-        let thread = Thread { [weak self] in
-            guard let self else { return }
-            self.threadRunLoop = CFRunLoopGetCurrent()
-            self.installTap()
-            CFRunLoopRun()
-        }
-        thread.name = "com.coralate.talkie.hotkey"
-        thread.start()
-        self.thread = thread
-
-        startHealthTimer()
-        return true
-    }
-
-    func stop() {
-        healthTimer?.cancel()
-        healthTimer = nil
-        if let tap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-        }
-        // Stopping the run loop lets the dedicated thread exit and tears down its source.
-        if let threadRunLoop {
-            CFRunLoopStop(threadRunLoop)
-        }
-        tap = nil
-        runLoopSource = nil
-        threadRunLoop = nil
-        thread = nil
-        isKeyDown = false
-        toggledOn = false
-    }
-
-    /// Swap the bound key / mode without reinstalling the tap (the event mask
-    /// is identical for all supported keys).
-    func update(config: Config) {
-        // Reset any in-flight activation when the binding changes.
-        if isKeyDown || toggledOn {
-            onDeactivate()
-        }
-        self.config = config
-        isKeyDown = false
-        toggledOn = false
-    }
-
-    // MARK: Tap installation
-
-    private func installTap() {
+        // Create the tap synchronously so `isStarted`/`tap` are set before we
+        // return — no window where a second start() spawns a duplicate thread.
         let mask: CGEventMask =
             (1 << CGEventType.flagsChanged.rawValue) |
             (1 << CGEventType.keyDown.rawValue) |
             (1 << CGEventType.keyUp.rawValue)
-
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -106,23 +75,94 @@ final class HotKeyMonitor: @unchecked Sendable {
             callback: hotKeyEventCallback,
             userInfo: refcon
         ) else {
-            return
+            return false
         }
+
+        lock.lock()
         self.tap = tap
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        self.runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
+        self.isStarted = true
+        lock.unlock()
+
+        let thread = Thread { [weak self] in
+            guard let self else { return }
+            // Read the tap from `self` rather than capturing the CFMachPort into
+            // this @Sendable closure (keeps Swift 6 concurrency happy).
+            self.lock.lock()
+            let tap = self.tap
+            self.lock.unlock()
+            guard let tap else { return }
+            let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+            self.lock.lock()
+            self.runLoopSource = source
+            self.threadRunLoop = CFRunLoopGetCurrent()
+            self.lock.unlock()
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+            CGEvent.tapEnable(tap: tap, enable: true)
+            CFRunLoopRun()
+        }
+        thread.name = "com.coralate.talkie.hotkey"
+        thread.start()
+
+        startHealthTimer()
+        return true
+    }
+
+    func stop() {
+        healthTimer?.cancel()
+        healthTimer = nil
+
+        lock.lock()
+        let tap = self.tap
+        let runLoop = self.threadRunLoop
+        self.tap = nil
+        self.runLoopSource = nil
+        self.threadRunLoop = nil
+        self.isStarted = false
+        self.isKeyDown = false
+        self.toggledOn = false
+        lock.unlock()
+
+        if let tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+        if let runLoop {
+            CFRunLoopStop(runLoop)
+        }
+    }
+
+    /// Swap the bound key / mode. Only tears down an in-flight activation when
+    /// the binding actually changed (rebinding during an unrelated hold must not
+    /// force-end dictation).
+    func update(config newConfig: Config) {
+        lock.lock()
+        let changed = newConfig != self.config
+        let wasActive = isKeyDown || toggledOn
+        self.config = newConfig
+        if changed {
+            isKeyDown = false
+            toggledOn = false
+        }
+        lock.unlock()
+
+        if changed && wasActive {
+            onDeactivate()
+        }
     }
 
     private func startHealthTimer() {
         let timer = DispatchSource.makeTimerSource(queue: .global())
         timer.schedule(deadline: .now() + 3, repeating: 3)
         timer.setEventHandler { [weak self] in
-            guard let self, let tap = self.tap else { return }
+            guard let self else { return }
+            self.lock.lock()
+            let tap = self.tap
+            let started = self.isStarted
+            self.lock.unlock()
+            guard started, let tap else { return }
             if !CGEvent.tapIsEnabled(tap: tap) {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
+            self.reconcileLiveState()
         }
         timer.resume()
         healthTimer = timer
@@ -132,35 +172,69 @@ final class HotKeyMonitor: @unchecked Sendable {
 
     fileprivate func handle(type: CGEventType, event: CGEvent) {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            lock.lock()
+            let tap = self.tap
+            lock.unlock()
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            reconcileLiveState()
             return
         }
 
         guard type == .flagsChanged else { return } // all supported keys are modifiers/Fn
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        guard keyCode == config.key.keyCode else { return }
-        let down = event.flags.contains(config.key.flagMask)
+        let flags = event.flags
 
-        switch config.mode {
+        lock.lock()
+        let cfg = config
+        guard keyCode == cfg.key.keyCode else { lock.unlock(); return }
+        let down = cfg.key.isDown(in: flags)
+        var fire: (@Sendable () -> Void)?
+
+        switch cfg.mode {
         case .holdToTalk:
             if down && !isKeyDown {
                 isKeyDown = true
-                onActivate()
+                fire = onActivate
             } else if !down && isKeyDown {
                 isKeyDown = false
-                onDeactivate()
+                fire = onDeactivate
             }
         case .toggle:
-            // Fire on the press edge only.
             if down && !isKeyDown {
                 isKeyDown = true
                 toggledOn.toggle()
-                if toggledOn { onActivate() } else { onDeactivate() }
+                fire = toggledOn ? onActivate : onDeactivate
             } else if !down {
                 isKeyDown = false
             }
         }
+        lock.unlock()
+
+        fire?()
+    }
+
+    /// If we think a key is held but the live modifier state says it isn't (a
+    /// key-up event was dropped), synthesize the release so dictation can't latch on.
+    private func reconcileLiveState() {
+        lock.lock()
+        let cfg = config
+        let keyDown = isKeyDown
+        lock.unlock()
+        guard keyDown else { return }
+
+        let live = CGEventSource.flagsState(.combinedSessionState)
+        guard !cfg.key.isDown(in: live) else { return }
+
+        var fire: (@Sendable () -> Void)?
+        lock.lock()
+        if isKeyDown {
+            isKeyDown = false
+            toggledOn = false
+            fire = onDeactivate
+        }
+        lock.unlock()
+        fire?()
     }
 }
 
@@ -177,12 +251,15 @@ private extension ActivationKey {
         }
     }
 
-    /// The flag whose presence means "this key is now down".
-    var flagMask: CGEventFlags {
+    /// Device-dependent flag bit that distinguishes left vs right of a modifier
+    /// pair (the merged `.maskAlternate` / `.maskControl` can't tell sides apart).
+    /// Fn uses the secondary-Fn mask.
+    func isDown(in flags: CGEventFlags) -> Bool {
         switch self {
-        case .rightOption, .leftOption: return .maskAlternate
-        case .rightControl: return .maskControl
-        case .fnGlobe: return .maskSecondaryFn
+        case .rightOption: return flags.rawValue & 0x40 != 0   // NX_DEVICERALTKEYMASK
+        case .leftOption: return flags.rawValue & 0x20 != 0    // NX_DEVICELALTKEYMASK
+        case .rightControl: return flags.rawValue & 0x2000 != 0 // NX_DEVICERCTLKEYMASK
+        case .fnGlobe: return flags.contains(.maskSecondaryFn)
         }
     }
 }

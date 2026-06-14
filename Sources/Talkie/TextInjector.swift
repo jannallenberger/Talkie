@@ -55,9 +55,17 @@ enum TextInjector {
 
     // MARK: Clipboard paste
 
+    /// Bumped on each paste; a stale restore (from an earlier, very recent
+    /// dictation) checks this and bails so it can't clobber a newer paste.
+    private static var restoreGeneration = 0
+
     private static func pasteViaClipboard(_ text: String) {
         let pb = NSPasteboard.general
-        let savedChangeCount = pb.changeCount
+        restoreGeneration &+= 1
+        let myGen = restoreGeneration
+
+        // Best-effort snapshot. Promised / lazy pasteboard types (e.g. dragged
+        // files) can't be captured eagerly — a known limitation of save/restore.
         let saved = snapshot(pb)
 
         pb.clearContents()
@@ -66,13 +74,22 @@ enum TextInjector {
         // Mark transient so other clipboard managers skip recording it.
         item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
         pb.writeObjects([item])
+        let mineChangeCount = pb.changeCount // the count OUR write produced
+
+        // Focus may have moved to a secure (password) field between the entry
+        // guard and now — never post synthetic keys into one.
+        guard !IsSecureEventInputEnabled() else { return }
 
         postCommandV()
 
-        // Restore only if no third party wrote in between; wait for the target to
-        // consume the paste (it reads the pasteboard asynchronously).
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            guard pb.changeCount == savedChangeCount + 1 else { return }
+        // Restore after the target consumed the paste (it reads the pasteboard
+        // asynchronously). Skip if a newer paste superseded us, or if anyone else
+        // wrote to the pasteboard in the meantime.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard myGen == restoreGeneration else { return }
+            let pb = NSPasteboard.general
+            guard pb.changeCount == mineChangeCount else { return }
             restore(saved, to: pb)
         }
     }
@@ -107,12 +124,14 @@ enum TextInjector {
     // MARK: Synthetic key events
 
     private static func postCommandV() {
-        let source = CGEventSource(stateID: .combinedSessionState)
+        // `.privateState` so the synthetic event doesn't inherit ambient hardware
+        // modifiers (e.g. the Option key the user is still releasing).
+        let source = CGEventSource(stateID: .privateState)
         let vKey = CGKeyCode(kVK_ANSI_V) // 9
         let down = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: true)
         down?.flags = .maskCommand
         let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
-        up?.flags = .maskCommand
+        up?.flags = [] // clear ⌘ on key-up so no stray modifier latches
         down?.post(tap: .cgSessionEventTap)
         up?.post(tap: .cgSessionEventTap)
     }

@@ -38,7 +38,14 @@ if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
 fi
 
 echo "▶ Signing (identity: $SIGN_ID)…"
-codesign --force --sign "$SIGN_ID" --identifier com.coralate.talkie "$APP"
+SIGN_ARGS=(--force --sign "$SIGN_ID" --identifier com.coralate.talkie
+           --entitlements "$ROOT/Resources/talkie.entitlements")
+# Hardened Runtime only makes sense for a real identity (and is required for
+# notarization); ad-hoc dev builds skip it.
+if [[ "$SIGN_ID" != "-" ]]; then
+  SIGN_ARGS+=(--options runtime --timestamp)
+fi
+codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --verbose "$APP" 2>&1 | sed 's/^/   /' || true
 
 echo "✓ Built $APP"

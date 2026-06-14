@@ -57,7 +57,15 @@ final class HUDController {
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
+    private var hideTask: Task<Void, Never>?
+
+    private func cancelHide() {
+        hideTask?.cancel()
+        hideTask = nil
+    }
+
     func showListening() {
+        cancelHide()
         model.phase = .listening
         model.text = ""
         let panel = ensurePanel()
@@ -66,15 +74,18 @@ final class HUDController {
     }
 
     func updateTranscribing(_ text: String) {
+        cancelHide()
         if model.phase != .transcribing { model.phase = .transcribing }
         model.text = text
     }
 
     func showInserting() {
+        cancelHide()
         model.phase = .inserting
     }
 
     func showError(_ message: String) {
+        cancelHide()
         let panel = ensurePanel()
         model.phase = .error(message)
         reposition()
@@ -83,10 +94,13 @@ final class HUDController {
     }
 
     func hide(after delay: TimeInterval = 0.25) {
-        Task { @MainActor in
+        hideTask?.cancel()
+        hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
             self.model.phase = .hidden
             self.panel?.orderOut(nil)
+            self.hideTask = nil
         }
     }
 }

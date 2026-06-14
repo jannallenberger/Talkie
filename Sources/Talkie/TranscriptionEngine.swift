@@ -201,7 +201,17 @@ actor TranscriptionEngine {
         onUpdate?(update)
     }
 
-    private func handleResultsError(_ error: Error) {
+    private func handleResultsError(_ error: Error) async {
+        // Fully tear the session down so a failed results stream doesn't leak an
+        // un-finalized analyzer into the next session.
+        inputContinuation?.finish()
+        inputContinuation = nil
+        if let analyzer {
+            await analyzer.cancelAndFinishNow()
+        }
+        analyzer = nil
+        transcriber = nil
+        resultsTask = nil
         // Surface as completion so the UI doesn't hang in "listening".
         volatileText = ""
         emit(isComplete: true)
@@ -226,7 +236,11 @@ actor TranscriptionEngine {
         await resultsTask?.value
         resultsTask = nil
 
-        let result = finalizedText.isEmpty ? volatileText : finalizedText
+        // Combine both buffers so a volatile tail that finalization didn't fold
+        // in (e.g. on the finalize-throws path) isn't lost. No-op on the happy
+        // path, where volatileText is already empty.
+        let joiner = finalizedText.isEmpty || volatileText.isEmpty ? "" : " "
+        let result = finalizedText + joiner + volatileText
         volatileText = ""
 
         // Emit a terminal update so the HUD can dismiss cleanly.

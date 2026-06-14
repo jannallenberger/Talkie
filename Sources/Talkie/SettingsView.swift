@@ -77,6 +77,7 @@ struct SettingsView: View {
 
 private struct GeneralSettings: View {
     @ObservedObject var settings: AppSettings
+    @State private var localeDraft: String = ""
 
     var body: some View {
         Form {
@@ -102,8 +103,9 @@ private struct GeneralSettings: View {
             }
 
             Section("Language") {
-                TextField("Locale (e.g. en-US)", text: $settings.localeIdentifier)
-                Text("Locale changes apply after you quit and reopen Talkie.")
+                TextField("Locale (e.g. en-US)", text: $localeDraft)
+                    .onSubmit { settings.localeIdentifier = localeDraft.trimmingCharacters(in: .whitespaces) }
+                Text("Press Return to apply. Locale changes take effect after you reopen Talkie.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -115,6 +117,7 @@ private struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         .padding()
+        .onAppear { localeDraft = settings.localeIdentifier }
     }
 }
 

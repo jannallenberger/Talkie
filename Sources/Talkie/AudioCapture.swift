@@ -15,12 +15,12 @@ private final class SingleShotInput: @unchecked Sendable {
 
 /// Captures the default microphone via `AVAudioEngine`, converts each buffer to
 /// the format `SpeechAnalyzer` requested, and yields it into the analyzer's
-/// input stream. Marked `@unchecked Sendable` because the tap block and the
-/// converter are only ever touched on the single real-time audio thread.
+/// input stream. The converter is captured by value inside the tap block (never
+/// read from a mutable property on the render thread), so start/stop on the main
+/// thread can't race the real-time callback.
 final class AudioCapture: @unchecked Sendable {
     private let engine = AVAudioEngine()
-    private var converter: AVAudioConverter?
-    private var isRunning = false
+    private var isRunning = false // touched only on the main thread (start/stop)
 
     /// Ask for microphone access. Returns true if granted.
     static func requestMicrophoneAccess() async -> Bool {
@@ -42,21 +42,26 @@ final class AudioCapture: @unchecked Sendable {
         guard !isRunning else { return }
 
         let inputNode = engine.inputNode
+        engine.prepare() // resolve the input device/format before we read it
+
         let inputFormat = inputNode.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw TalkieEngineError.noCompatibleAudioFormat
+        }
+        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+            throw TalkieEngineError.noCompatibleAudioFormat
+        }
+        converter.primeMethod = .none // avoid timestamp drift on streamed buffers
 
-        let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
-        converter?.primeMethod = .none // avoid timestamp drift on streamed buffers
-        self.converter = converter
-
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            guard let self, let converter = self.converter else { return }
+        // `converter` is captured by value here — the render thread never touches
+        // a property that the main thread mutates.
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
             guard let converted = Self.convert(buffer: buffer, using: converter, to: targetFormat) else { return }
             if converted.frameLength > 0 {
                 continuation.yield(AnalyzerInput(buffer: converted))
             }
         }
 
-        engine.prepare()
         try engine.start()
         isRunning = true
     }
@@ -65,7 +70,6 @@ final class AudioCapture: @unchecked Sendable {
         guard isRunning else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
-        converter = nil
         isRunning = false
     }
 
