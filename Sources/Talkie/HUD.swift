@@ -15,6 +15,10 @@ import SwiftUI
 ///   inserting    — text delivered to the focused app.
 ///   copyPrompt   — couldn't paste (no editable field); tap the pill to copy.
 ///   copied       — brief confirmation after a tap-to-copy.
+///   commandPreview — a voice command produced a proposed replacement; the pill
+///                  shows it and waits for you to Insert or Undo before anything
+///                  touches the focused app.
+///   commandReverted — brief "Reverted" confirmation after an Undo.
 ///   error        — something went wrong; shown briefly then auto-hidden.
 enum HUDPhase: Equatable {
     case hidden
@@ -25,6 +29,8 @@ enum HUDPhase: Equatable {
     case inserting([String])   // replaced words to show as chips; empty if none
     case copyPrompt(String)
     case copied
+    case commandPreview(String) // the proposed replacement text, awaiting confirm
+    case commandReverted        // brief "Reverted" confirmation (mirrors .copied)
     case error(String)
 }
 
@@ -42,6 +48,22 @@ final class HUDModel: ObservableObject {
     @Published var copyText: String = ""
     /// Invoked when the user taps the pill in the `.copyPrompt` state.
     var onCopyTap: () -> Void = {}
+    /// Invoked when the user taps "Insert" on a command preview.
+    var onCommandConfirm: () -> Void = {}
+    /// Invoked when the user taps "Undo" on a command preview.
+    var onCommandUndo: () -> Void = {}
+
+    /// The active cleanup label to surface in the capture pill (feature 14).
+    /// Bumped by the controller so the pill re-reads after a cycle. The hub injects
+    /// `cleanupLabel`/`cycleCleanup` so reads/writes go through the live
+    /// settings/profile; the defaults keep the pill silent (and inert) when no hub
+    /// is wired, which is exactly today's behaviour.
+    @Published var cleanupNudge: Int = 0
+    /// Returns the short style/level label for the app being dictated into (e.g.
+    /// "Neutral", "Faithful · High"), or nil to hide the switcher entirely.
+    var cleanupLabel: () -> String? = { nil }
+    /// Advances to the next cleanup style/level for the current app and persists it.
+    var cycleCleanup: () -> Void = {}
 
     static let barCount = 14
 
@@ -64,10 +86,19 @@ final class HUDController {
     // and the drop-in entrance.
     private static let panelSize = NSSize(width: 440, height: 72)
 
+    /// The pill's frame within the panel's content view, published by the SwiftUI
+    /// layer. The pass-through hosting view consults it so clicks on the large
+    /// transparent headroom fall through to the app underneath, while taps on the
+    /// pill itself (the cleanup switcher, the Insert/Undo chips) are claimed.
+    private let pillFrame = PillFrameBox()
+
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
 
-        let hosting = NSHostingView(rootView: HUDView(model: model))
+        let hosting = PassthroughHostingView(
+            rootView: HUDView(model: model, pillFrame: pillFrame),
+            pillFrame: pillFrame
+        )
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: Self.panelSize),
             styleMask: [.nonactivatingPanel, .borderless],
@@ -134,7 +165,10 @@ final class HUDController {
         model.phase = .arming
         model.text = ""
         let panel = ensurePanel()
-        panel.ignoresMouseEvents = true
+        // Accept mouse events so the cleanup switcher is tappable while you talk.
+        // The pass-through hosting view only claims clicks over the pill itself, so
+        // the transparent headroom still falls through to the app underneath.
+        panel.ignoresMouseEvents = false
         reposition()
         panel.orderFrontRegardless()
     }
@@ -146,6 +180,7 @@ final class HUDController {
         let panel = ensurePanel()
         // Re-pin in case the active display changed during the arming→live gap.
         reposition()
+        panel.ignoresMouseEvents = false   // keep the switcher tappable while live
         model.phase = .listening
         model.recordStartID &+= 1   // fire the one-shot waveform sweep
         panel.orderFrontRegardless()
@@ -175,6 +210,8 @@ final class HUDController {
 
     func showProcessing() {
         cancelHide()
+        // Recording's over — the switcher is gone, so stop claiming clicks again.
+        panel?.ignoresMouseEvents = true
         model.phase = .processing
     }
 
@@ -216,9 +253,63 @@ final class HUDController {
         hide(after: 0.9)
     }
 
+    // MARK: - Voice command preview / undo
+
+    /// A voice command produced a proposed replacement. Show it in the pill and
+    /// wait — nothing is inserted until you tap "Insert". Mouse events are enabled
+    /// (like `.copyPrompt`) so both chips are tappable. There's no auto-hide: a
+    /// preview is a decision, so the pill stays until you act (or the hub dismisses
+    /// it). `onConfirm`/`onUndo` are the hub's closures (inject the replacement via
+    /// `TextInjector`, or restore the prior selection from the undo token).
+    func showCommandPreview(_ text: String,
+                            onConfirm: @escaping () -> Void,
+                            onUndo: @escaping () -> Void) {
+        cancelHide()
+        let panel = ensurePanel()
+        model.onCommandConfirm = { [weak self] in
+            self?.panel?.ignoresMouseEvents = true
+            onConfirm()
+        }
+        model.onCommandUndo = onUndo
+        panel.ignoresMouseEvents = false   // let the user tap Insert / Undo
+        model.phase = .commandPreview(text)
+        reposition()
+        panel.orderFrontRegardless()
+    }
+
+    /// Brief "Reverted" confirmation after an Undo — mirrors `.copied`.
+    func showReverted() {
+        cancelHide()
+        let panel = ensurePanel()
+        panel.ignoresMouseEvents = true
+        model.phase = .commandReverted
+        reposition()
+        panel.orderFrontRegardless()
+        hide(after: 0.9)
+    }
+
+    // MARK: - Cleanup-style switcher (feature 14)
+
+    /// Wire the capture pill's cleanup switcher to the live settings/profile. The
+    /// hub passes a `label` that resolves the active style/level for the current
+    /// target app, and a `cycle` that advances + persists it. Called once at setup;
+    /// safe to call again to re-wire.
+    func bindCleanupSwitcher(label: @escaping () -> String?,
+                             cycle: @escaping () -> Void) {
+        model.cleanupLabel = label
+        model.cycleCleanup = { [weak self] in
+            cycle()
+            // Nudge so the pill re-reads the (now-changed) label, and give a small
+            // tactile confirmation that the tap landed (no sound — you're mid-record).
+            self?.model.cleanupNudge &+= 1
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+    }
+
     func showError(_ message: String) {
         cancelHide()
         let panel = ensurePanel()
+        panel.ignoresMouseEvents = true   // nothing to tap here
         model.phase = .error(message)
         reposition()
         panel.orderFrontRegardless()
@@ -242,6 +333,9 @@ final class HUDController {
 
 private struct HUDView: View {
     @ObservedObject var model: HUDModel
+    let pillFrame: PillFrameBox
+
+    private static let hudSpace = "talkieHUD"
 
     var body: some View {
         // Top-anchored within the (larger, transparent) panel so the pill hugs
@@ -255,6 +349,7 @@ private struct HUDView: View {
             .offset(y: model.phase == .hidden ? -8 : 0)
             .opacity(model.phase == .hidden ? 0 : 1)
             .animation(.spring(response: 0.26, dampingFraction: 0.6), value: model.phase)
+            .coordinateSpace(name: Self.hudSpace)
     }
 
     @ViewBuilder
@@ -275,6 +370,16 @@ private struct HUDView: View {
             .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
             .fixedSize()
             .contentShape(Capsule(style: .continuous))
+            .background(
+                // Publish the pill's frame (SwiftUI top-left coords) so the panel's
+                // hosting view only claims clicks here — the transparent headroom
+                // keeps passing through to the app underneath.
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
+                        .onChange(of: model.phase) { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
+                }
+            )
             .onTapGesture {
                 if case .copyPrompt = model.phase { model.onCopyTap() }
             }
@@ -299,6 +404,10 @@ private struct HUDView: View {
                 // voice. A one-shot wave of opacity sweeps across it the instant
                 // recording starts, then it settles to steady red.
                 Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
+                // Feature 14: the active cleanup style/level, tappable to cycle —
+                // change how Talkie polishes this dictation without leaving the
+                // record. Hidden entirely when no switcher is wired (today's pill).
+                CleanupSwitcher(model: model)
             }
             .transition(.blurReplace)
         case .processing:
@@ -361,6 +470,34 @@ private struct HUDView: View {
                     .foregroundStyle(.white.opacity(0.85))
             }
             .transition(.blurReplace)
+        case .commandPreview(let text):
+            // A voice command's proposed replacement — nothing's been inserted yet.
+            // The pill widens to show it, with two chips: Insert (apply it) and Undo
+            // (drop it, keep what was there). Reuses the `.inserting` chip styling.
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.coral)
+                Text(text)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(2)
+                    .frame(maxWidth: 320, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                CommandChip(title: "Insert", prominent: true) { model.onCommandConfirm() }
+                CommandChip(title: "Undo", prominent: false) { model.onCommandUndo() }
+            }
+            .transition(.blurReplace)
+        case .commandReverted:
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.85))
+                Text("Reverted")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .transition(.blurReplace)
         case .error(let message):
             HStack(spacing: 7) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -375,6 +512,73 @@ private struct HUDView: View {
             .transition(.blurReplace)
         case .hidden:
             EmptyView()
+        }
+    }
+}
+
+/// A tappable capsule chip used in the command-preview pill (Insert / Undo).
+/// Reuses the `.inserting` chip treatment — a `.white.opacity(0.13)` capsule — so
+/// it sits in the same visual family as the replaced-word chips. The primary
+/// action carries a coral tint to read as the affirmative choice.
+private struct CommandChip: View {
+    let title: String
+    let prominent: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(prominent ? Theme.coral : .white.opacity(0.72))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(.white.opacity(prominent ? 0.18 : 0.13))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Theme.coral.opacity(prominent ? 0.5 : 0), lineWidth: 1)
+            )
+            .opacity(hovering ? 0.85 : 1)
+            .contentShape(Capsule(style: .continuous))
+            .onTapGesture(perform: action)
+            .onHover { hovering = $0 }
+    }
+}
+
+/// Feature 14 — the in-pill cleanup-style switcher. While you're talking it shows
+/// the active style/level for the app you're dictating into; tap it to cycle to
+/// the next one (persisted through the injected settings/profile). It renders
+/// nothing at all when the hub hasn't wired a label, so the bare pill is unchanged.
+private struct CleanupSwitcher: View {
+    @ObservedObject var model: HUDModel
+    @State private var hovering = false
+
+    var body: some View {
+        // `cleanupNudge` is read so the label re-resolves after each cycle.
+        let _ = model.cleanupNudge
+        if let label = model.cleanupLabel() {
+            HStack(spacing: 4) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+                Text(label)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(.white.opacity(hovering ? 0.18 : 0.13))
+            )
+            .contentShape(Capsule(style: .continuous))
+            .onTapGesture { model.cycleCleanup() }
+            .onHover { hovering = $0 }
+            .help("Cleanup style — tap to change how Talkie polishes this dictation")
+            .transition(.blurReplace)
         }
     }
 }
@@ -467,5 +671,53 @@ private struct Waveform: View {
                 opacities[i] = 1
             }
         }
+    }
+}
+
+// MARK: - Pass-through hit-testing
+
+/// A tiny reference box the SwiftUI pill writes its current frame into (in SwiftUI
+/// top-left coordinates within the panel) so the hosting view knows where the only
+/// clickable region is. Only ever touched on the main thread (SwiftUI layout +
+/// AppKit hit-testing both run there), so `@unchecked Sendable` is accurate.
+private final class PillFrameBox: @unchecked Sendable {
+    /// `.null` until the pill has laid out — until then nothing is claimed, which
+    /// is the safe default (clicks pass straight through).
+    var rect: CGRect = .null
+}
+
+/// An `NSHostingView` that only claims clicks landing on the pill itself. The HUD
+/// panel is much larger than the pill (it holds the shadow and the drop-in
+/// headroom), so when mouse events are enabled — needed for the cleanup switcher
+/// and the command-preview chips — we must NOT swallow clicks on the transparent
+/// area, or we'd block the app the user is working in. Everything outside the
+/// published pill rect returns `nil`, letting those clicks fall through.
+private final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
+    private let pillFrame: PillFrameBox
+
+    @MainActor init(rootView: Content, pillFrame: PillFrameBox) {
+        self.pillFrame = pillFrame
+        super.init(rootView: rootView)
+    }
+
+    @MainActor required init(rootView: Content) {
+        self.pillFrame = PillFrameBox()
+        super.init(rootView: rootView)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let rect = pillFrame.rect
+        guard !rect.isNull else { return nil }
+        // `point` is in this view's superview coordinates (the content view), which
+        // is flipped vs. SwiftUI's top-left frame. Convert into top-left space, with
+        // a small slop so the pill's edge is comfortably tappable.
+        let local = convert(point, from: superview)
+        let topLeftY = bounds.height - local.y
+        let probe = CGPoint(x: local.x, y: topLeftY)
+        guard rect.insetBy(dx: -4, dy: -4).contains(probe) else { return nil }
+        return super.hitTest(point)
     }
 }

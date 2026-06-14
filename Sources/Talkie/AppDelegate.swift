@@ -13,6 +13,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let projectIndex = ProjectIndexStore()
     let contextSummary = ContextSummaryStore()
     let meetingStore = MeetingStore()
+    // Integration spine: the cores' stores, wired into the live app
+    // (features 05 graph, 08/11 commands+macros, 13 per-app profiles, 19 search).
+    let contextGraph = ContextGraphStore()
+    let macros = MacroStore()
+    let profiles = AppProfileStore()
+    let searchEngine = SearchEngine()
+    private lazy var commandRouter = CommandRouter(macros: macros)
 
     private var engine: TranscriptionEngine!
     private var meetingRecorder: MeetingRecorder!
@@ -595,6 +602,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 contextSummary: contextSummary,
                 meetingRecorder: meetingRecorder,
                 meetingStore: meetingStore,
+                contextGraph: contextGraph,
+                macros: macros,
+                profiles: profiles,
+                searchEngine: searchEngine,
                 onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }
             )
         }
