@@ -6,6 +6,7 @@ enum SettingsTab: Hashable, CaseIterable {
     case history
     case meetings
     case search
+    case memory
     case dictionary
     case vibeCoding
     case general
@@ -16,6 +17,7 @@ enum SettingsTab: Hashable, CaseIterable {
         case .history:     return "History"
         case .meetings:    return "Meetings"
         case .search:      return "Search"
+        case .memory:      return "Memory"
         case .dictionary:  return "Dictionary"
         case .vibeCoding:  return "Vibe Coding"
         case .general:     return "Settings"
@@ -28,6 +30,7 @@ enum SettingsTab: Hashable, CaseIterable {
         case .history:     return "clock.fill"
         case .meetings:    return "person.2.fill"
         case .search:      return "magnifyingglass"
+        case .memory:      return "brain.head.profile"
         case .dictionary:  return "character.book.closed.fill"
         case .vibeCoding:  return "chevron.left.forwardslash.chevron.right"
         case .general:     return "gearshape.fill"
@@ -42,6 +45,7 @@ enum SettingsTab: Hashable, CaseIterable {
         case .history:     return Theme.featherGold
         case .meetings:    return Theme.featherPlum
         case .search:      return Theme.featherBlue
+        case .memory:      return Theme.featherGold
         case .dictionary:  return Theme.featherGreen
         case .vibeCoding:  return Theme.featherBlue
         case .general:     return Theme.coral
@@ -178,6 +182,8 @@ struct MainView: View {
             MeetingsView(recorder: meetingRecorder, store: meetingStore)
         case .search:
             SearchView(engine: searchEngine, history: history, meetingStore: meetingStore)
+        case .memory:
+            MemoryView(graph: contextGraph)
         case .dictionary:
             DictionarySettings(dictionary: dictionary)
         case .vibeCoding:
