@@ -536,6 +536,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            // Voice command mode (the on-device copilot): a leading-imperative over
+            // a selection ("make this a list", "translate to German") or a
+            // whole-utterance macro runs the command INSTEAD of inserting as
+            // dictation. Conservative — CommandRouter only matches imperatives /
+            // macros, and rewrites require an actual AX selection — so normal
+            // speech falls straight through to the dictation path below.
+            if let intent = self.commandRouter.intent(for: finalText) {
+                let selection = intent.needsSelection ? AXSelection.selectedText() : nil
+                if !intent.needsSelection || (selection?.isEmpty == false) {
+                    let ctx = CommandContext(
+                        spokenCommand: finalText, selection: selection, target: target,
+                        graph: self.contextGraph.snapshot(), summarizer: OnDeviceLLM()
+                    )
+                    if let result = await intent.run(ctx) {
+                        self.isProcessing = false
+                        if result.preview {
+                            // Nothing is inserted until the user confirms in the pill.
+                            self.hud.showCommandPreview(
+                                result.replacement,
+                                onConfirm: { _ = TextInjector.insert(result.replacement, mode: mode) },
+                                onUndo: { [weak self] in self?.hud.hide() }
+                            )
+                        } else {
+                            _ = TextInjector.insert(result.replacement, mode: mode)
+                            self.hud.hide()
+                        }
+                        return
+                    }
+                }
+            }
+
             // Which replacements to surface (HUD pings + fix tally). The recognizer
             // is biased toward replacement *targets*, so a respelling like
             // "correlate"→"coralate" often arrives already corrected in the raw
