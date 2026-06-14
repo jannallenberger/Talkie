@@ -8,3 +8,6 @@ DerivedData/
 /Talkie Icon final.icon/
 /Assets/
 /icon.json
+
+# built Claude Desktop connector bundle (produced by scripts/build_mcpb.sh)
+/connector/Talkie.mcpb
