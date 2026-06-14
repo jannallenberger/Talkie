@@ -13,6 +13,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let projectIndex = ProjectIndexStore()
     let contextSummary = ContextSummaryStore()
     let meetingStore = MeetingStore()
+    // Integration spine: the cores' stores, wired into the live app
+    // (features 05 graph, 08/11 commands+macros, 13 per-app profiles, 19 search).
+    let contextGraph = ContextGraphStore()
+    let macros = MacroStore()
+    let profiles = AppProfileStore()
+    let searchEngine = SearchEngine()
+    private lazy var commandRouter = CommandRouter(macros: macros)
 
     private var engine: TranscriptionEngine!
     private var meetingRecorder: MeetingRecorder!
@@ -26,6 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindow: MainWindowController?
 
     private var isDictating = false
+    /// True from key-release until the transcript has been polished + inserted.
+    /// Blocks a new session from overlapping the in-flight one (which shares the
+    /// engine + audio); a re-press during this window just nudges the pill.
+    private var isProcessing = false
     /// Bumped on every begin; lets an in-flight async setup detect that the
     /// user already released the key (or started a newer session) and bail.
     private var sessionID = 0
@@ -60,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settings.spokenLanguages.first ?? self?.settings.localeIdentifier ?? "en-US"
         }
         meetingRecorder.spokenLanguages = { [weak self] in self?.settings.spokenLanguages ?? [] }
+        meetingRecorder.contextGraph = contextGraph
         meetingRecorder.recoverPartialIfNeeded()
 
         setupMainMenu()
@@ -74,6 +86,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // dictation — and any language switch — is instant (no inline download).
         for lang in settings.spokenLanguages {
             Task { try? await engine.warmUp(localeIdentifier: lang) }
+        }
+
+        // The Brief renders as a projection of the context graph.
+        contextSummary.graphProvider = { [weak self] in self?.contextGraph.snapshot() ?? .empty }
+
+        // HUD cleanup-style switcher (feature 14): show + cycle the active level in-pill.
+        hud.bindCleanupSwitcher(
+            label: { [weak self] in self?.settings.cleanupLevel.displayName },
+            cycle: { [weak self] in
+                guard let self else { return }
+                let all = CleanupLevel.allCases
+                if let i = all.firstIndex(of: self.settings.cleanupLevel) {
+                    self.settings.cleanupLevel = all[(i + 1) % all.count]
+                }
+            }
+        )
+
+        // Seed the context graph + search index from existing dictations + meetings
+        // so recall, search, and the brief are useful immediately.
+        Task { @MainActor in
+            contextGraph.backfill(dictations: history.entries, meetings: meetingStore.meetings)
+            searchEngine.rebuild(dictations: history.entries,
+                                 meetings: meetingStore.meetings,
+                                 graph: contextGraph.snapshot())
         }
 
         // Open the main window on launch — onboarding/permissions are handled
@@ -294,6 +330,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func beginDictation() {
         guard !isDictating else { return }
+        // A previous dictation is still being polished/inserted. Starting now
+        // would overlap two sessions on the shared engine + audio, so just flash
+        // the pill to acknowledge the press and bail.
+        guard !isProcessing else {
+            hud.nudgeBusy()
+            return
+        }
         guard TranscriptionEngine.isAvailable else {
             hud.showError("On-device speech isn't available on this Mac.")
             return
@@ -319,7 +362,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let myID = sessionID
         updateStatusUI()
         Feedback.start()
-        hud.showListening()
+        // Acknowledge the press immediately — but the dot stays GRAY (arming) until
+        // audio is genuinely flowing; only then does it turn red (recording).
+        hud.showArming()
 
         // Context awareness: capture who you're dictating into (always, for the
         // usage dashboard) and — when enabled — mine names worth spelling right.
@@ -335,6 +380,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var bias = dictionary.contextualPhrasesSnapshot()
         bias.append(contentsOf: captured.phrases)
         if settings.vibeCoding { bias.append(contentsOf: currentVibeSnapshot.biasPhrases) }
+        // Context graph: bias toward the people/projects/terms you actually use.
+        bias.append(contentsOf: contextGraph.snapshot().biasPhrases())
         let phrases = Array(Set(bias)).prefix(180).map { $0 }
         let multiLang = settings.spokenLanguages.count > 1
 
@@ -378,7 +425,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 self.sessionLive = true
                 self.recordingStartedAt = Date()
+                // Audio is live now — flip the pill to the red "recording" state.
+                self.hud.showListening()
             } catch {
+                // The user may have released the key (or started a newer session)
+                // before this error surfaced — tear down silently rather than
+                // flashing an error pill for a session they already abandoned.
+                guard self.isDictating, self.sessionID == myID else {
+                    await engine.cancelSession()
+                    return
+                }
                 self.isDictating = false
                 self.updateStatusUI()
                 self.hud.showError(error.localizedDescription)
@@ -405,6 +461,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Feedback.stop()
         audio.stop()
+        isProcessing = true
         hud.showProcessing()
 
         let replacements = dictionary.replacementsSnapshot()
@@ -426,6 +483,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let cleanupLevel = sessionCfg?.level ?? settings.cleanupLevel
 
         Task {
+            // Always release the processing latch when this task finishes — even
+            // on an early or unexpected exit — so a stalled/abandoned pipeline can
+            // never permanently block the next dictation.
+            defer { self.isProcessing = false }
             let raw = await engine.finishSession()
 
             // Language auto-detect: if the transcript looks like a different one
@@ -488,6 +549,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            // Voice command mode (the on-device copilot): a leading-imperative over
+            // a selection ("make this a list", "translate to German") or a
+            // whole-utterance macro runs the command INSTEAD of inserting as
+            // dictation. Conservative — CommandRouter only matches imperatives /
+            // macros, and rewrites require an actual AX selection — so normal
+            // speech falls straight through to the dictation path below.
+            if let intent = self.commandRouter.intent(for: finalText) {
+                let selection = intent.needsSelection ? AXSelection.selectedText() : nil
+                if !intent.needsSelection || (selection?.isEmpty == false) {
+                    let ctx = CommandContext(
+                        spokenCommand: finalText, selection: selection, target: target,
+                        graph: self.contextGraph.snapshot(), summarizer: OnDeviceLLM()
+                    )
+                    if let result = await intent.run(ctx) {
+                        self.isProcessing = false
+                        if result.preview {
+                            // Nothing is inserted until the user confirms in the pill.
+                            self.hud.showCommandPreview(
+                                result.replacement,
+                                onConfirm: { _ = TextInjector.insert(result.replacement, mode: mode) },
+                                onUndo: { [weak self] in self?.hud.hide() }
+                            )
+                        } else {
+                            _ = TextInjector.insert(result.replacement, mode: mode)
+                            self.hud.hide()
+                        }
+                        return
+                    }
+                }
+            }
+
+            // Which replacements to surface (HUD pings + fix tally). The recognizer
+            // is biased toward replacement *targets*, so a respelling like
+            // "correlate"→"coralate" often arrives already corrected in the raw
+            // transcript — the literal find-and-replace then has nothing to match
+            // and the fix would go unreported. Recover those by comparing the raw
+            // transcript with what we actually inserted, and count them as
+            // dictionary fixes too so the tally and the HUD agree.
+            var replacedWords = processed.replacedWords
+            let biasApplied = TextProcessor.biasAppliedTargets(
+                rules: replacements, raw: finalRaw, output: finalText
+            )
+            for word in biasApplied where !replacedWords.contains(word) {
+                replacedWords.append(word)
+            }
+
             // Log it (copyable in the History tab) + lifetime stats + fix tally,
             // even if insertion fell back to the clipboard.
             let words = WordCounter.count(finalText)
@@ -497,7 +604,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             self.stats.record(words: words, durationSec: duration)
             self.stats.recordFixes(
-                dictionary: processed.replacementHits + fileFixes,
+                dictionary: processed.replacementHits + biasApplied.count + fileFixes,
                 fillers: processed.fillersRemoved,
                 aiWords: aiWordsChanged
             )
@@ -506,13 +613,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if target.bundleID != selfBundle {
                 self.appUsage.record(target: target, words: words)
             }
+            // Feed the on-device context graph from what was just dictated.
+            self.contextGraph.ingest(
+                ContextGraphExtractor.candidates(from: finalText),
+                provenance: Provenance(source: .dictation, sourceID: nil,
+                                       dateUnix: Date().timeIntervalSince1970,
+                                       snippet: String(finalText.prefix(120)))
+            )
 
             let outcome = TextInjector.insert(finalText, mode: mode)
             switch outcome {
             case .inserted:
                 Feedback.done()
-                self.hud.showInserting()
-                self.hud.hide(after: 0.4)
+                self.hud.showInserting(replacedWords: replacedWords)
+                self.hud.hide(after: replacedWords.isEmpty ? 0.4 : 1.4)
                 // Snapshot the field after the paste lands, so we can learn from
                 // any edits the user makes before the next dictation.
                 if self.settings.learnFromEdits {
@@ -523,8 +637,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             case .leftOnClipboard(let reason):
-                Feedback.abort()
-                self.hud.showError(reason)
+                Feedback.notPasted()
+                // Couldn't paste — the text is on the clipboard; offer a tap to
+                // (re)copy it straight from the pill.
+                self.hud.showCopyPrompt(text: finalText, message: reason)
             case .empty:
                 self.hud.hide()
             }
@@ -551,6 +667,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 contextSummary: contextSummary,
                 meetingRecorder: meetingRecorder,
                 meetingStore: meetingStore,
+                contextGraph: contextGraph,
+                macros: macros,
+                profiles: profiles,
+                searchEngine: searchEngine,
                 onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }
             )
         }

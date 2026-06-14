@@ -16,10 +16,11 @@ actor MeetingNotesFusion {
     private static let instructions = """
     You merge a person's rough live meeting notes with the meeting transcript. \
     Expand and clarify their notes using ONLY facts supported by the transcript — \
-    never invent anything not in it. Output markdown with exactly two sections: \
-    "## Notes" (their points, cleaned and expanded with transcript detail) then \
-    "## Summary" (a one or two sentence overview, plus "**Decisions:**" and \
-    "**Action items:**" bullets with owners only if present). Output only the markdown.
+    never invent anything not in it. Output markdown: a one or two sentence overview, \
+    then their points cleaned and expanded into bullets with transcript detail, then \
+    "**Decisions:**" and "**Action items:**" bullets (with owners) only if present. \
+    Do NOT add section headings (no "## Notes" / "## Summary") — this text is placed \
+    under an existing heading. Output only the markdown.
     """
 
     /// Returns the fused body, or nil if there's nothing to work with / the model

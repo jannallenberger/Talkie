@@ -22,6 +22,13 @@ final class MeetingRecorder: ObservableObject {
     /// when it fell back to mic-only. Drives the UI's honest status copy.
     @Published private(set) var capturingFarEnd = false
 
+    /// The user's live notes typed during the meeting (the Granola magic — fused
+    /// with the transcript on stop). Two-way bound by MeetingsView.
+    @Published var notes = ""
+
+    /// Injected by AppDelegate so meetings feed the on-device context graph.
+    weak var contextGraph: ContextGraphStore?
+
     /// Probe for whether a dictation session is live (the mic engine is shared, so
     /// the two can't run at once). Injected by AppDelegate.
     var isDictating: (() -> Bool)?
@@ -61,6 +68,11 @@ final class MeetingRecorder: ObservableObject {
     private var micLocale = "en-US"
     private var farLocale = "en-US"
 
+    /// Calendar context captured at start() (opt-in): used to title the note and
+    /// pre-bias attendee names, and to seed the graph with the people present.
+    private var eventTitle: String?
+    private var eventAttendees: [String] = []
+
     init(engine: TranscriptionEngine, store: MeetingStore) {
         self.engine = engine
         self.store = store
@@ -94,6 +106,17 @@ final class MeetingRecorder: ObservableObject {
         micLocale = primaryLocale?() ?? "en-US"
         farLocale = micLocale
 
+        // Calendar (opt-in): if granted, title the meeting from the overlapping
+        // event and pre-bias attendee names into both recognizers. Returns nil when
+        // not authorized — no permission prompt mid-recording.
+        eventTitle = nil
+        eventAttendees = []
+        if CalendarMeetingContext.isAuthorized,
+           let event = await CalendarMeetingContext().eventContext(at: start) {
+            eventTitle = event.title
+            eventAttendees = event.attendeeNames
+        }
+
         // 1. Mic stream → "Me" on the shared engine. Pin it to the primary locale
         //    first: dictation may have left the shared engine stuck on a previously
         //    auto-detected language (it calls setLocaleIdentifier to "stick"), which
@@ -101,7 +124,7 @@ final class MeetingRecorder: ObservableObject {
         //    baseline (micLocale is the primary).
         do {
             await engine.setLocaleIdentifier(micLocale)
-            await engine.setContextualStrings([])
+            await engine.setContextualStrings(eventAttendees)
             let session = try await engine.beginSession(segmentHandler: { segment in
                 log.add(.me, segment)
             })
@@ -128,7 +151,7 @@ final class MeetingRecorder: ObservableObject {
             let locale = primaryLocale?() ?? "en-US"
             let far = TranscriptionEngine(localeIdentifier: locale)
             do {
-                await far.setContextualStrings([])
+                await far.setContextualStrings(eventAttendees)
                 let farSession = try await far.beginSession(segmentHandler: { segment in
                     log.add(.them, segment)
                 })
@@ -200,6 +223,7 @@ final class MeetingRecorder: ObservableObject {
         let log = turnLog
         let wasFarEnd = capturingFarEnd
         let langs = langsAtStart
+        let userNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Per-stream language correction (before render, while timestamps still drive
         // interleaving): if a stream's speech was actually in a different one of your
@@ -224,15 +248,28 @@ final class MeetingRecorder: ObservableObject {
 
         let transcript = MeetingTranscriptRenderer.render(log?.snapshot() ?? [])
         let clean = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { isFinishing = false; capturingFarEnd = false; return }
+        guard !clean.isEmpty else {
+            isFinishing = false; capturingFarEnd = false; notes = ""
+            return
+        }
 
         // Participants reflect what was *captured*, not just who happened to speak,
         // so a captured-but-silent far end is still reported honestly (and stays
         // consistent with `source`).
         let participants = wasFarEnd ? ["Me", "Them"] : ["Me"]
-        let summary = await summarizer.summarize(clean) ?? ""
+
+        // Granola magic: if you jotted notes during the call, fuse them with the
+        // transcript (expanded, never invented); otherwise the plain on-device summary.
+        let summary: String
+        if !userNotes.isEmpty,
+           let fused = await MeetingNotesFusion().fuse(notes: userNotes, transcript: clean, using: OnDeviceLLM()) {
+            summary = fused.bodyMarkdown
+        } else {
+            summary = await summarizer.summarize(clean) ?? ""
+        }
+
         let meeting = Meeting(
-            title: Self.makeTitle(start: start),
+            title: eventTitle ?? Self.makeTitle(start: start),
             startUnix: start.timeIntervalSince1970,
             durationSec: duration,
             transcript: clean,
@@ -242,6 +279,21 @@ final class MeetingRecorder: ObservableObject {
             fileName: MeetingStore.fileName(for: start)
         )
         store.add(meeting)
+
+        // Feed the context graph: calendar attendees as people + transcript entities.
+        if let graph = contextGraph {
+            let provenance = Provenance(source: .meeting, sourceID: meeting.id.uuidString,
+                                        dateUnix: start.timeIntervalSince1970, snippet: nil)
+            var candidates = eventAttendees.map {
+                ContextGraphExtractor.Candidate(kind: .person, displayName: $0)
+            }
+            candidates += ContextGraphExtractor.candidates(from: clean)
+            graph.ingest(candidates, provenance: provenance)
+        }
+
+        notes = ""
+        eventTitle = nil
+        eventAttendees = []
         isFinishing = false
         capturingFarEnd = false
     }

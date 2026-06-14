@@ -154,18 +154,28 @@ enum TalkieFonts {
 // MARK: - Card surface
 
 extension View {
+    /// The brand surface treatment, padding-free: a squircle fill, clipped to the
+    /// corner so stacked rows / dividers can't poke past it, lifted by two whisper
+    /// shadows. `talkieCard` adds padding on top; grouped row-stacks (the settings
+    /// cards) apply it directly so their hairlines clip cleanly.
+    func talkieSurface(cornerRadius: CGFloat = Theme.Radius.card) -> some View {
+        self
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Theme.surface)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
+    }
+
     /// Standard Talkie card: borderless — a clean surface lifted by a single
     /// whisper shadow, squircle corner. No outline (v2).
     func talkieCard(padding: CGFloat = Theme.Space.card) -> some View {
         self
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                    .fill(Theme.surface)
-            )
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
+            .talkieSurface()
     }
 }
 
@@ -188,10 +198,20 @@ enum Brand {
     /// The scarlet-macaw logo on transparent — the in-app mark.
     @MainActor static let logo: NSImage = image("TalkieLogo") ?? NSApp.applicationIconImage
 
-    /// Any bundled brand PNG by name (generated feather art, backgrounds, …).
-    static func image(_ name: String) -> NSImage? {
+    /// Decoded-once cache. Without it, `image(_:)` re-read the PNG from the
+    /// bundle on every SwiftUI `body` pass, handing `Image` a fresh `NSImage`
+    /// each time — so a hover-driven re-render re-decoded the bitmap and the tile
+    /// flickered instead of just scaling. Caching keeps the instance (and thus
+    /// `Image`'s identity) stable across re-renders.
+    @MainActor private static var cache: [String: NSImage] = [:]
+
+    /// Any bundled brand PNG by name (generated feather art, flags, …), memoized
+    /// so repeated lookups return the same instance.
+    @MainActor static func image(_ name: String) -> NSImage? {
+        if let cached = cache[name] { return cached }
         guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
               let img = NSImage(contentsOf: url) else { return nil }
+        cache[name] = img
         return img
     }
 }

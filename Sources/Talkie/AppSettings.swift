@@ -52,6 +52,45 @@ enum InsertionMode: String, CaseIterable, Codable, Identifiable {
 struct TalkieLanguage: Identifiable, Hashable {
     let id: String
     let name: String
+
+    /// The region's flag emoji, derived from the locale's region subtag
+    /// ("en-US" → 🇺🇸, "de-DE" → 🇩🇪). Falls back to a white flag.
+    var flag: String {
+        let region = id.split(separator: "-").last.map(String.init)?.uppercased() ?? ""
+        guard region.count == 2 else { return "🏳️" }
+        let base: UInt32 = 0x1F1E6 - 0x41  // regional-indicator A − ASCII 'A'
+        var emoji = ""
+        for scalar in region.unicodeScalars {
+            guard ("A"..."Z").contains(Character(scalar)),
+                  let flagScalar = UnicodeScalar(base + scalar.value) else { return "🏳️" }
+            emoji.unicodeScalars.append(flagScalar)
+        }
+        return emoji
+    }
+
+    /// The language name without the parenthetical region qualifier, e.g.
+    /// "English (US)" → "English", "Portuguese (Brazil)" → "Portuguese".
+    var shortName: String {
+        guard let paren = name.firstIndex(of: "(") else { return name }
+        return String(name[..<paren]).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The country name for the locale's region subtag, e.g. "en-US" → "United
+    /// States", "de-DE" → "Germany". Pinned to English so it matches the
+    /// hardcoded English catalog names rather than localizing to the system UI.
+    /// Used as the card's second line so every tile has a uniform two-line label.
+    var regionName: String {
+        let region = id.split(separator: "-").last.map(String.init) ?? ""
+        return Locale(identifier: "en_US").localizedString(forRegionCode: region) ?? region
+    }
+
+    /// The language grid tile's primary label: the short name, but the full
+    /// qualified name when another catalog entry shares that short name — so the
+    /// two English variants don't both read just "English".
+    var gridTitle: String {
+        let collides = talkieLanguageCatalog.filter { $0.shortName == shortName }.count > 1
+        return collides ? name : shortName
+    }
 }
 
 /// Common languages offered in Settings (a subset of SpeechTranscriber's locales).
@@ -189,14 +228,22 @@ final class AppSettings: ObservableObject {
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
         activationMode = ActivationMode(rawValue: d.string(forKey: Keys.activationMode) ?? "") ?? .holdToTalk
         insertionMode = InsertionMode(rawValue: d.string(forKey: Keys.insertionMode) ?? "") ?? .paste
-        let primary = canonicalLocaleID(d.string(forKey: Keys.localeIdentifier) ?? Locale.current.identifier)
-        localeIdentifier = primary
+        // The Languages grid only renders catalog locales, so the stored set must
+        // stay catalog-authoritative: canonicalize, drop anything not in the
+        // catalog (e.g. a Swedish/Polish Mac whose `sv-SE` canonicalizes to a
+        // non-catalog id), de-dupe preserving order, and fall back to en-US if
+        // that empties the set. This keeps the grid's count, highlighted tiles,
+        // and "keep at least one" guard from ever diverging from what's stored.
+        let catalogIDs = Set(talkieLanguageCatalog.map(\.id))
+        let rawPrimary = canonicalLocaleID(d.string(forKey: Keys.localeIdentifier) ?? Locale.current.identifier)
         let storedLanguages = d.stringArray(forKey: Keys.spokenLanguages)
-        // Canonicalize every stored language (migrating any junk region-override id
-        // like `en_US@rg=dezzzz` to `en-US`) and de-dupe, preserving order.
-        let rawLanguages = (storedLanguages?.isEmpty == false) ? storedLanguages! : [primary]
+        let rawLanguages = (storedLanguages?.isEmpty == false) ? storedLanguages! : [rawPrimary]
         var seenLocales = Set<String>()
-        spokenLanguages = rawLanguages.map(canonicalLocaleID).filter { seenLocales.insert($0).inserted }
+        let seeded = rawLanguages.map(canonicalLocaleID)
+            .filter { catalogIDs.contains($0) && seenLocales.insert($0).inserted }
+        let finalLanguages = seeded.isEmpty ? ["en-US"] : seeded
+        spokenLanguages = finalLanguages
+        localeIdentifier = finalLanguages.first ?? "en-US"
         autoCapitalize = d.bool(forKey: Keys.autoCapitalize)
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)

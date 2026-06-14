@@ -30,18 +30,25 @@ enum TextInjector {
         // Secure-input fields (passwords) reject synthetic events — never force it.
         if IsSecureEventInputEnabled() {
             copyToClipboard(text)
-            return .leftOnClipboard(reason: "A password field is focused — text copied; press ⌘V where you want it.")
+            return .leftOnClipboard(reason: "Password field — tap to copy")
         }
 
         // Check silently here (don't spam the system prompt on every dictation);
         // the Permissions tab is where the user is asked to grant it.
         guard ensureTrusted(prompt: false) else {
             copyToClipboard(text)
-            return .leftOnClipboard(reason: "Grant Accessibility to Talkie to paste automatically — text copied for now.")
+            return .leftOnClipboard(reason: "Can't auto-paste — tap to copy")
         }
 
         switch mode {
         case .paste:
+            // If nothing editable is focused, a ⌘V would land nowhere — and the
+            // restore below would then wipe the text. Leave it on the clipboard
+            // and let the user copy it from the HUD instead of pasting into the void.
+            guard hasEditableFocus() else {
+                copyToClipboard(text)
+                return .leftOnClipboard(reason: "Not pasted — tap to copy")
+            }
             pasteViaClipboard(text)
         case .type:
             // The per-character usleep loop must not run on the main actor.
@@ -51,6 +58,33 @@ enum TextInjector {
             }
         }
         return .inserted
+    }
+
+    /// Best-effort check: is the current keyboard focus an editable text element?
+    /// In paste mode we use this to avoid firing ⌘V into the void (e.g. focus on
+    /// the desktop or a non-text view) — instead the text stays on the clipboard
+    /// and the user copies it from the HUD. Accessibility is already verified by
+    /// the caller, so this AX query can succeed.
+    private static func hasEditableFocus() -> Bool {
+        let system = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+              let focusedRef, CFGetTypeID(focusedRef) == AXUIElementGetTypeID()
+        else { return false }
+        let element = focusedRef as! AXUIElement
+
+        // Most native text inputs expose a settable AXValue.
+        var settable: DarwinBoolean = false
+        if AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success,
+           settable.boolValue {
+            return true
+        }
+        // Otherwise accept known editable roles (some editors don't flag settability).
+        var roleRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
+              let role = roleRef as? String
+        else { return false }
+        return role == kAXTextFieldRole || role == kAXTextAreaRole || role == kAXComboBoxRole
     }
 
     // MARK: Clipboard paste

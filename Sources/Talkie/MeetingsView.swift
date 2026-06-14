@@ -18,6 +18,7 @@ struct MeetingsView: View {
                 }
 
                 recordCard
+                if recorder.isRecording { notesCard }
                 folderRow
 
                 if store.meetings.isEmpty {
@@ -77,6 +78,44 @@ struct MeetingsView: View {
                     .controlSize(.large)
                     .disabled(!MeetingSummarizer.isAvailable && !TranscriptionEngine.isAvailable)
             }
+        }
+        .talkieCard()
+        .frame(maxWidth: .infinity)
+    }
+
+    // Live notes during a recording — fused with the transcript on stop (the
+    // "Granola magic"). Jot sparse points; Talkie expands them from what was said.
+    private var notesCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.inkTertiary)
+                Text("Your notes")
+                    .font(.talkieEyebrow)
+                    .foregroundStyle(Theme.inkSecondary)
+                Spacer()
+                Text("Fused with the transcript when you stop")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            TextEditor(text: $recorder.notes)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.ink)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 88, maxHeight: 170)
+                .padding(8)
+                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if recorder.notes.isEmpty {
+                        Text("Jot key points — Talkie expands them with the transcript…")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.inkTertiary)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
+                }
         }
         .talkieCard()
         .frame(maxWidth: .infinity)

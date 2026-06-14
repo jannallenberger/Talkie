@@ -56,7 +56,8 @@ struct DashboardView: View {
                 .padding(28)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Theme.canvas)
+            .background(LiveBackground(mood: .ambient))
+            .scrollContentBackground(.hidden)
             .navigationDestination(for: BriefRoute.self) { _ in
                 BriefDetailView(summary: contextSummary, history: history)
             }

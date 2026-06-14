@@ -5,6 +5,7 @@ enum SettingsTab: Hashable, CaseIterable {
     case dashboard
     case history
     case meetings
+    case search
     case dictionary
     case vibeCoding
     case general
@@ -14,6 +15,7 @@ enum SettingsTab: Hashable, CaseIterable {
         case .dashboard:   return "Dashboard"
         case .history:     return "History"
         case .meetings:    return "Meetings"
+        case .search:      return "Search"
         case .dictionary:  return "Dictionary"
         case .vibeCoding:  return "Vibe Coding"
         case .general:     return "Settings"
@@ -25,6 +27,7 @@ enum SettingsTab: Hashable, CaseIterable {
         case .dashboard:   return "square.grid.2x2.fill"
         case .history:     return "clock.fill"
         case .meetings:    return "person.2.fill"
+        case .search:      return "magnifyingglass"
         case .dictionary:  return "character.book.closed.fill"
         case .vibeCoding:  return "chevron.left.forwardslash.chevron.right"
         case .general:     return "gearshape.fill"
@@ -38,6 +41,7 @@ enum SettingsTab: Hashable, CaseIterable {
         case .dashboard:   return Theme.featherCoral
         case .history:     return Theme.featherGold
         case .meetings:    return Theme.featherPlum
+        case .search:      return Theme.featherBlue
         case .dictionary:  return Theme.featherGreen
         case .vibeCoding:  return Theme.featherBlue
         case .general:     return Theme.coral
@@ -69,6 +73,10 @@ final class MainWindowController {
         contextSummary: ContextSummaryStore,
         meetingRecorder: MeetingRecorder,
         meetingStore: MeetingStore,
+        contextGraph: ContextGraphStore,
+        macros: MacroStore,
+        profiles: AppProfileStore,
+        searchEngine: SearchEngine,
         onRetryHotKey: @escaping () -> Void
     ) {
         let root = MainView(
@@ -83,6 +91,10 @@ final class MainWindowController {
             contextSummary: contextSummary,
             meetingRecorder: meetingRecorder,
             meetingStore: meetingStore,
+            contextGraph: contextGraph,
+            macros: macros,
+            profiles: profiles,
+            searchEngine: searchEngine,
             router: router,
             onRetryHotKey: onRetryHotKey
         )
@@ -126,6 +138,10 @@ struct MainView: View {
     @ObservedObject var contextSummary: ContextSummaryStore
     @ObservedObject var meetingRecorder: MeetingRecorder
     @ObservedObject var meetingStore: MeetingStore
+    @ObservedObject var contextGraph: ContextGraphStore
+    @ObservedObject var macros: MacroStore
+    @ObservedObject var profiles: AppProfileStore
+    @ObservedObject var searchEngine: SearchEngine
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Void
 
@@ -139,11 +155,14 @@ struct MainView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .background(Theme.canvas)
                 }
+                .transition(.opacity)
             } else {
                 OnboardingView(settings: settings, permissions: permissions, onRetryHotKey: onRetryHotKey)
+                    .transition(.opacity)
             }
         }
         .frame(minWidth: 900, minHeight: 640)
+        .animation(.easeInOut(duration: 0.4), value: settings.hasOnboarded)
     }
 
     @ViewBuilder
@@ -157,12 +176,16 @@ struct MainView: View {
             HistorySettings(history: history)
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore)
+        case .search:
+            SearchView(engine: searchEngine, history: history, meetingStore: meetingStore)
         case .dictionary:
             DictionarySettings(dictionary: dictionary)
         case .vibeCoding:
             VibeCodingView(projectIndex: projectIndex, settings: settings)
         case .general:
-            SettingsHome(settings: settings, permissions: permissions, onRetryHotKey: onRetryHotKey)
+            SettingsHome(settings: settings, permissions: permissions,
+                         macros: macros, profiles: profiles,
+                         onRetryHotKey: onRetryHotKey)
         }
     }
 }
@@ -348,7 +371,9 @@ private struct HistoryRow: View {
 // MARK: - General
 
 private enum SettingsRoute: Hashable {
-    case profile, activation, cleanup, languages, context, behavior, permissions
+    case profile, activation, cleanup, languages, context, behavior
+    case voiceCommands, appProfiles, calendar, export, privacy
+    case permissions, developer
 }
 
 /// Settings landing — a tidy index of category rows, each pushing a focused
@@ -356,6 +381,8 @@ private enum SettingsRoute: Hashable {
 private struct SettingsHome: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
+    @ObservedObject var macros: MacroStore
+    @ObservedObject var profiles: AppProfileStore
     let onRetryHotKey: () -> Void
 
     var body: some View {
@@ -373,6 +400,12 @@ private struct SettingsHome: View {
                         SettingsRowView(icon: "IconShield", title: "Permissions",
                                         subtitle: permissions.allGranted ? "All granted" : "Action needed",
                                         badge: !permissions.allGranted, route: .permissions)
+                        if Dev.isEnabled {
+                            Divider().overlay(Theme.hairline).padding(.leading, 64)
+                            SettingsRowView(icon: "", title: "Developer",
+                                            subtitle: "Replay onboarding · debug tools",
+                                            route: .developer, systemIcon: "hammer.fill")
+                        }
                     }
                     .talkieSurface()
                 }
@@ -398,20 +431,82 @@ private struct SettingsHome: View {
              "\(settings.spokenLanguages.count) selected"),
             (.context, "IconBrain", "Context & learning",
              settings.contextAwareness ? "Context on" : "Context off"),
+            (.voiceCommands, "IconWand", "Voice commands",
+             macros.macros.count == 1 ? "1 macro" : "\(macros.macros.count) macros"),
+            (.appProfiles, "IconSliders", "Per-app rules",
+             profiles.customizedCount == 0 ? "Same everywhere"
+                : (profiles.customizedCount == 1 ? "1 app customized" : "\(profiles.customizedCount) apps customized")),
+            (.calendar, "IconBrain", "Calendar",
+             CalendarMeetingContext.isAuthorized ? "Connected" : "Off"),
+            (.export, "IconGlobe", "Export destinations",
+             ExportPreferences.shared.summary),
             (.behavior, "IconSliders", "Behavior", "Sounds, open at login"),
+            (.privacy, "IconShield", "Privacy",
+             "Nothing leaves your Mac"),
         ]
     }
 
     @ViewBuilder
     private func subpage(_ route: SettingsRoute) -> some View {
         switch route {
-        case .profile:     ProfileSettings(settings: settings)
-        case .activation:  ActivationSettings(settings: settings)
-        case .cleanup:     CleanupSettings(settings: settings)
-        case .languages:   LanguageSettings(settings: settings)
-        case .context:     ContextSettings(settings: settings)
-        case .behavior:    BehaviorSettings(settings: settings)
-        case .permissions: PermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
+        case .profile:       ProfileSettings(settings: settings)
+        case .activation:    ActivationSettings(settings: settings)
+        case .cleanup:       CleanupSettings(settings: settings)
+        case .languages:     LanguageSettings(settings: settings)
+        case .context:       ContextSettings(settings: settings)
+        case .behavior:      BehaviorSettings(settings: settings)
+        case .voiceCommands: VoiceCommandsSettings(macros: macros)
+        case .appProfiles:   AppProfilesSettings(profiles: profiles, settings: settings)
+        case .calendar:      CalendarSettings()
+        case .export:        ExportDestinationsSettings()
+        case .privacy:       PrivacySettings()
+        case .permissions:   PermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
+        case .developer:     DeveloperSettings(settings: settings)
+        }
+    }
+}
+
+/// Developer-only tools, surfaced when `Dev.isEnabled` (Debug builds, or a
+/// release build with `TalkieDevMode` set). Replays the first-run onboarding
+/// without wiping any of the user's data.
+private struct DeveloperSettings: View {
+    @ObservedObject var settings: AppSettings
+    @AppStorage(Dev.devModeKey) private var devMode = false
+    @State private var replaying = false
+
+    var body: some View {
+        SubPage(title: "Developer",
+                subtitle: "Tools for building Talkie. Hidden from normal users.") {
+            SettingsCard(
+                header: "Onboarding",
+                footer: "Replays the first-run flow so you can review it. Your name, settings, history, and dictionary are untouched."
+            ) {
+                SettingsRow(
+                    title: "First-run onboarding",
+                    subtitle: replaying ? "Opening the welcome flow…" : "Show the welcome flow again"
+                ) {
+                    Button("Replay") {
+                        replaying = true
+                        // Defer a tick so the button's press settles before the
+                        // whole window crossfades over to onboarding.
+                        DispatchQueue.main.async { settings.hasOnboarded = false }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+                    .disabled(replaying)
+                }
+            }
+
+            SettingsCard(
+                header: "Developer mode",
+                footer: "Keeps this Developer page available in a Release build too. Debug builds always show it."
+            ) {
+                SettingsToggleRow(
+                    title: "Keep developer mode on",
+                    subtitle: "Persists across launches.",
+                    isOn: $devMode
+                )
+            }
         }
     }
 }
@@ -424,13 +519,20 @@ private struct SettingsRowView: View {
     let subtitle: String
     var badge: Bool = false
     let route: SettingsRoute
+    /// When set, renders an SF Symbol instead of a Brand clay icon (e.g. the
+    /// Developer row, which has no clay asset).
+    var systemIcon: String? = nil
     @State private var hovering = false
 
     var body: some View {
         NavigationLink(value: route) {
             HStack(spacing: 14) {
                 Group {
-                    if let img = Brand.image(icon) {
+                    if let systemIcon {
+                        Image(systemName: systemIcon)
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(Theme.inkSecondary)
+                    } else if let img = Brand.image(icon) {
                         Image(nsImage: img).resizable().scaledToFit()
                     } else {
                         Image(systemName: "square.dashed").foregroundStyle(Theme.inkTertiary)
@@ -463,7 +565,11 @@ private struct SettingsRowView: View {
 /// vertical stack of brand-surface cards on the pure canvas. Replaces the old
 /// bare grouped `Form` so each subpage matches the Dictionary / Vibe Coding /
 /// Permissions panes — one unified, layered-surface look.
-private struct SubPage<Content: View>: View {
+///
+/// Internal (not `private`) so the new panes under `Settings/` — Voice commands,
+/// Per-app rules, Calendar, Export, Privacy — reuse the exact same scaffold and
+/// row/card vocabulary rather than inventing a parallel look.
+struct SubPage<Content: View>: View {
     let title: String
     var subtitle: String? = nil
     @ViewBuilder var content: Content
@@ -485,7 +591,7 @@ private struct SubPage<Content: View>: View {
 /// A titled settings card: an optional all-caps eyebrow header, a raised brand
 /// surface holding hairline-divided rows, and an optional footer note on the
 /// canvas. The single building block that unifies the subpages.
-private struct SettingsCard<Content: View>: View {
+struct SettingsCard<Content: View>: View {
     var header: String? = nil
     var footer: String? = nil
     @ViewBuilder var content: Content
@@ -507,7 +613,7 @@ private struct SettingsCard<Content: View>: View {
 
 /// A hairline divider between rows inside a `SettingsCard`, inset past any
 /// leading control so it reads as a row separator, never an element outline.
-private struct SettingsDivider: View {
+struct SettingsDivider: View {
     var leadingInset: CGFloat = 16
     var body: some View {
         Divider().overlay(Theme.hairline).padding(.leading, leadingInset)
@@ -516,7 +622,7 @@ private struct SettingsDivider: View {
 
 /// One row inside a `SettingsCard`: a leading title (+ optional subtitle) and an
 /// arbitrary trailing control, consistently padded so every row lines up.
-private struct SettingsRow<Trailing: View>: View {
+struct SettingsRow<Trailing: View>: View {
     let title: String
     var subtitle: String? = nil
     @ViewBuilder var trailing: Trailing
@@ -543,7 +649,7 @@ private struct SettingsRow<Trailing: View>: View {
 /// A switch row on a card surface — title/subtitle left, brand-tinted switch
 /// right. Built as an explicit HStack (not a labelled `Toggle`) so the row
 /// always spans the card width instead of hugging and centering.
-private struct SettingsToggleRow: View {
+struct SettingsToggleRow: View {
     let title: String
     var subtitle: String? = nil
     @Binding var isOn: Bool
@@ -571,7 +677,7 @@ private struct SettingsToggleRow: View {
 }
 
 /// An explanatory note rendered as a full-width row inside a card.
-private struct SettingsNote: View {
+struct SettingsNote: View {
     let text: String
     var tone: Color = Theme.inkSecondary
     var icon: String? = nil
