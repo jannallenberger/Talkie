@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let audio = AudioCapture()
     private let hud = HUDController()
     private let learning = LearningEngine()
+    private let cleanup = CleanupEngine()
     private var hotKey: HotKeyMonitor?
 
     private var statusItem: NSStatusItem?
@@ -354,11 +355,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Feedback.stop()
         audio.stop()
-        hud.showInserting()
+        hud.showProcessing()
 
         let replacements = dictionary.replacementsSnapshot()
         let autoCap = settings.autoCapitalize
         let removeFillers = settings.cleanupFillers
+        let aiCleanup = settings.aiCleanup
         let mode = settings.insertionMode
         let spokenLanguages = settings.spokenLanguages
 
@@ -379,11 +381,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
+            // On-device LLM cleanup: resolve self-corrections, fix grammar/fillers.
+            // If it runs, it already handled fillers (skip the deterministic strip).
+            var cleaned = finalRaw
+            var aiHandledFillers = false
+            if aiCleanup, !finalRaw.isEmpty, let polished = await self.cleanup.clean(finalRaw) {
+                cleaned = polished
+                aiHandledFillers = true
+            }
+
+            // Apply the dictionary AFTER the LLM so your exact spellings always win.
             let processed = TextProcessor.apply(
                 replacements: replacements,
-                removeFillers: removeFillers,
+                removeFillers: aiHandledFillers ? false : removeFillers,
                 autoCapitalize: autoCap,
-                to: finalRaw
+                to: cleaned
             )
 
             guard !processed.isEmpty else {
@@ -401,7 +413,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch outcome {
             case .inserted:
                 Feedback.done()
-                self.hud.hide(after: 0.15)
+                self.hud.showInserting()
+                self.hud.hide(after: 0.4)
                 // Snapshot the field after the paste lands, so we can learn from
                 // any edits the user makes before the next dictation.
                 if self.settings.learnFromEdits {

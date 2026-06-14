@@ -307,9 +307,27 @@ private struct GeneralSettings: View {
                 }
             }
 
-            Section("Text cleanup") {
+            Section("Smart cleanup") {
+                Toggle("Clean up with on-device AI", isOn: $settings.aiCleanup)
+                if let warning = CleanupEngine.unavailableMessage {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("Resolves spoken self-corrections (“Tuesday — no, Wednesday”), and fixes grammar, punctuation, and fillers. Runs entirely on your Mac; nothing leaves the device.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Basic cleanup") {
                 Toggle("Capitalize the first letter", isOn: $settings.autoCapitalize)
                 Toggle("Remove filler words (um, uh, hmm…)", isOn: $settings.cleanupFillers)
+                if settings.aiCleanup {
+                    Text("Filler removal only applies when Smart cleanup is off or unavailable.")
+                        .font(.callout)
+                        .foregroundStyle(.tertiary)
+                }
             }
 
             Section("Learning") {

@@ -6,6 +6,7 @@ enum HUDPhase: Equatable {
     case hidden
     case listening
     case transcribing
+    case processing
     case inserting
     case error(String)
 }
@@ -97,6 +98,11 @@ final class HUDController {
         model.text = text
     }
 
+    func showProcessing() {
+        cancelHide()
+        model.phase = .processing
+    }
+
     func showInserting() {
         cancelHide()
         model.phase = .inserting
@@ -162,6 +168,14 @@ private struct HUDView: View {
         case .listening, .transcribing:
             Waveform(levels: model.levels)
                 .frame(width: 124, height: 30)
+        case .processing:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Polishing…")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
         case .inserting:
             HStack(spacing: 8) {
                 Image(systemName: "checkmark")
