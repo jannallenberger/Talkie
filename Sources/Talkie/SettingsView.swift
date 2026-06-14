@@ -635,16 +635,14 @@ private struct DictionarySettings: View {
     @ObservedObject var dictionary: DictionaryStore
     @State private var newTerm: String = ""
 
-    private let chipCols = [GridItem(.adaptive(minimum: 116), spacing: 8)]
-
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 PageHeader(title: "Dictionary",
                            subtitle: "Names, brands, and jargon Talkie should spell correctly.")
 
                 // Custom vocabulary.
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     Eyebrow(text: "Custom vocabulary")
                     HStack(spacing: 8) {
                         TextField("Add a word or phrase…", text: $newTerm)
@@ -655,12 +653,13 @@ private struct DictionarySettings: View {
                             .tint(Theme.coral)
                             .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
+                    .controlSize(.large)
                     if dictionary.vocabulary.isEmpty {
                         Text("No custom words yet — add names or jargon Talkie keeps mishearing.")
                             .font(.talkieHeading(13, weight: .regular))
                             .foregroundStyle(Theme.inkTertiary)
                     } else {
-                        LazyVGrid(columns: chipCols, alignment: .leading, spacing: 8) {
+                        FlowLayout(spacing: 8) {
                             ForEach(dictionary.vocabulary, id: \.self) { term in
                                 VocabChip(term: term) { removeVocab(term) }
                             }
@@ -670,7 +669,7 @@ private struct DictionarySettings: View {
                 .talkieCard()
 
                 // Replacements.
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     HStack {
                         Eyebrow(text: "Replacements")
                         Spacer()
@@ -688,7 +687,7 @@ private struct DictionarySettings: View {
                             .font(.talkieHeading(13, weight: .regular))
                             .foregroundStyle(Theme.inkTertiary)
                     } else {
-                        VStack(spacing: 8) {
+                        VStack(spacing: 10) {
                             ForEach($dictionary.replacements) { $rule in
                                 ReplacementRow(rule: $rule) { removeRule(rule) }
                             }
@@ -757,12 +756,13 @@ private struct ReplacementRow: View {
                 .foregroundStyle(Theme.inkTertiary)
             TextField("written", text: $rule.to)
                 .textFieldStyle(.roundedBorder)
-            if rule.isLearned {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.coral)
-                    .help("Learned automatically from your edits")
-            }
+            // Fixed-width slot so the toggles line up across every row, learned or not.
+            Image(systemName: "sparkles")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.coral)
+                .opacity(rule.isLearned ? 1 : 0)
+                .frame(width: 13)
+                .help(rule.isLearned ? "Learned automatically from your edits" : "")
             Toggle("Aa", isOn: $rule.caseSensitive)
                 .toggleStyle(.button).help("Case sensitive")
             Toggle("W", isOn: $rule.wholeWord)
