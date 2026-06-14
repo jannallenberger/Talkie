@@ -145,18 +145,12 @@ private struct HUDView: View {
 
     @ViewBuilder
     private var pill: some View {
+        // Real macOS 26 Liquid Glass — floats above whatever app you're in.
         inner
             .padding(.horizontal, 18)
             .padding(.vertical, 11)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(.ultraThinMaterial)
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.35), radius: 18, x: 0, y: 8)
+            .glassEffect(.regular, in: Capsule(style: .continuous))
+            .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 8)
             .fixedSize()
     }
 

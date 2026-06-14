@@ -1,72 +1,84 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Talkie Design System
+// MARK: - Talkie Design System (v2 — native macOS 26)
 //
-// Brand DNA: the layered-clay scarlet macaw in `icon_assets/talkie_parrot_transparent.png`
-// meets Anthropic's warm, editorial "Claude" canvas.
+// Brand DNA: the layered scarlet-macaw logo on a clean, system-native canvas.
 //
-//   • Canvas  — warm ivory paper (Claude's signature cream), not clinical white.
-//   • Accent  — clay-coral: the macaw's body AND Anthropic's terracotta, one and
-//               the same hue. This is the single brand color.
-//   • Data    — the parrot's four feathers (coral / gold / blue / green) form the
-//               categorical palette used by the dashboard charts + heatmap.
-//   • Type    — a serif display voice (New York) for headlines and hero numbers,
-//               SF Pro for everything functional. Editorial, human, calm.
+//   • Canvas  — pure white in light, true black in dark. Surfaces lift by
+//               contrast + one whisper shadow, never an outline (borderless).
+//   • Accent  — macaw BLUE leads the chrome (primary action, selection, focus,
+//               the HUD, the mic FAB). Kept here under the historical name
+//               `coral` so every existing call site stays valid — the *value*
+//               is now blue. New code can read it as the brand accent.
+//   • Data    — the macaw's feathers (red / gold / blue / green / plum) are the
+//               categorical palette: charts, the streak heatmap, per-item nav
+//               tints. `featherCoral` is the macaw RED.
+//   • Type    — Young Serif (bundled) for titles & hero numbers; SF Pro for the
+//               functional UI. Squircle (superellipse) corners.
 //
-// Every token adapts to light & dark; the cream identity is preserved in both.
-// See `docs/BRAND.md` for the full guideline.
+// Mirrors the finished design tokens in Talkie.zip / talkie.css. Every token
+// adapts to light & dark. See `docs/BRAND.md` + the migration pipeline in the vault.
 
 enum Theme {
 
     // MARK: Surfaces
 
-    /// App background — warm ivory paper.
-    static let canvas        = dyn(light: 0xF4F2EA, dark: 0x191815)
-    /// Sidebar / chrome — a half-step from the canvas.
-    static let canvasRaised  = dyn(light: 0xEDEADF, dark: 0x211F1B)
-    /// Card / panel fill.
-    static let surface       = dyn(light: 0xFBFAF5, dark: 0x24221D)
+    /// App background — pure white / true black.
+    static let canvas        = dyn(light: 0xFFFFFF, dark: 0x000000)
+    /// Sidebar / chrome fallback (the real sidebar is Liquid Glass).
+    static let canvasRaised  = dyn(light: 0xEFF1F3, dark: 0x121214)
+    /// Card / panel fill — the higher surface.
+    static let surface       = dyn(light: 0xF5F6F8, dark: 0x1B1B1E)
     /// Inset wells, chart tracks, empty heatmap cells.
-    static let surfaceSunken = dyn(light: 0xEAE7DC, dark: 0x2C2A23)
+    static let surfaceSunken = dyn(light: 0xE9EBEE, dark: 0x29292D)
 
     // MARK: Ink
 
-    static let ink           = dyn(light: 0x21201B, dark: 0xF3F0E8)
-    static let inkSecondary  = dyn(light: 0x6C685E, dark: 0xAEA99D)
-    static let inkTertiary   = dyn(light: 0x9B9588, dark: 0x7B766B)
-    static let hairline      = dyn(light: 0xE3DFD3, dark: 0x37342D)
+    static let ink           = dyn(light: 0x1C1D20, dark: 0xF4F5F6)
+    static let inkSecondary  = dyn(light: 0x5E626A, dark: 0xA6AAB0)
+    static let inkTertiary   = dyn(light: 0x969AA1, dark: 0x70747B)
+    /// Row dividers only — never an element outline.
+    static let hairline      = dyn(light: 0xE6E8EB, dark: 0x2B2B2F)
 
-    // MARK: Brand accent (clay-coral)
+    // MARK: Brand accent — macaw blue (leads the chrome)
 
-    /// The single brand color — buttons, gauges, active states, the parrot's body.
-    static let coral         = dyn(light: 0xD65A3F, dark: 0xE67D60)
-    /// A deeper press/hover state.
-    static let coralDeep     = dyn(light: 0xBE4B33, dark: 0xCF6A4E)
-    /// A soft coral wash for selected rows / tinted fills.
-    static let coralWash     = dyn(light: 0xF6E2D8, dark: 0x3A2A22)
+    /// The brand accent. Buttons, selection, focus, the HUD, the mic FAB.
+    /// (Named `coral` for call-site compatibility; the value is macaw blue.)
+    static let coral         = dyn(light: 0x1F66B3, dark: 0x4AA0E6)
+    /// Deeper press/emphasis state.
+    static let coralDeep     = dyn(light: 0x18548F, dark: 0x79B8EE)
+    /// Soft wash for selected rows / tinted fills.
+    static let coralWash     = dyn(light: 0xE1ECF6, dark: 0x122739)
+    /// Semantic alias — prefer this name in new code.
+    static var brand: Color { coral }
+    static var brandDeep: Color { coralDeep }
+    static var brandWash: Color { coralWash }
 
-    // MARK: Feather palette (categorical data)
+    // MARK: Feather palette (categorical data + nav tints)
 
-    static let featherCoral  = dyn(light: 0xDB5A40, dark: 0xE8775C)
-    static let featherGold   = dyn(light: 0xE6A02B, dark: 0xF2B748)
-    static let featherBlue   = dyn(light: 0x3B82C4, dark: 0x5B9BD8)
-    static let featherGreen  = dyn(light: 0x2FA368, dark: 0x49BC82)
-    static let featherPlum   = dyn(light: 0x8A6FB0, dark: 0xA58BC9)
+    /// The macaw RED — data, the Dashboard nav tint, the speed gauge, the streak.
+    static let featherCoral  = dyn(light: 0xE0342B, dark: 0xF0473B)
+    static let featherGold   = dyn(light: 0xEFA21E, dark: 0xF4B33E)
+    static let featherBlue   = dyn(light: 0x2585CE, dark: 0x4AA0E6)
+    static let featherGreen  = dyn(light: 0x1FA85C, dark: 0x34C172)
+    static let featherPlum   = dyn(light: 0x8A6FB0, dark: 0xA98FCB)
+    /// Clearer alias for the macaw red.
+    static var featherRed: Color { featherCoral }
 
     /// Ordered categorical ramp for charts (app-usage bars, etc).
     static let categorical: [Color] = [featherCoral, featherGold, featherBlue, featherGreen, featherPlum]
 
-    // MARK: Heatmap ramp (coral, low → high)
+    // MARK: Heatmap ramp (deep red, low → high)
 
-    /// 0 = empty, then four warming steps. Used by the streak calendar.
+    /// 0 = empty, then four warming steps toward the deep-red `heat.hot`.
     static func heat(_ level: Int) -> Color {
         switch max(0, min(4, level)) {
         case 0:  return surfaceSunken
-        case 1:  return dyn(light: 0xF1CDB9, dark: 0x4A3328)
-        case 2:  return dyn(light: 0xE3A07C, dark: 0x7E4A33)
-        case 3:  return dyn(light: 0xD67049, dark: 0xB5613E)
-        default: return dyn(light: 0xBE4B2C, dark: 0xDC7551)
+        case 1:  return dyn(light: 0xD99D9A, dark: 0x793533)
+        case 2:  return dyn(light: 0xD07570, dark: 0xA03B35)
+        case 3:  return dyn(light: 0xC84E46, dark: 0xC84138)
+        default: return dyn(light: 0xC0271C, dark: 0xF0473B)
         }
     }
 
@@ -74,20 +86,21 @@ enum Theme {
 
     static let positive      = featherGreen
     static let warning       = featherGold
-    static let danger        = dyn(light: 0xC8462F, dark: 0xE07254)
+    static let danger        = featherCoral
 
     // MARK: Metrics
 
     enum Radius {
-        static let card: CGFloat = 18
-        static let control: CGFloat = 10
-        static let chip: CGFloat = 8
+        /// Squircle (superellipse) card corner.
+        static let card: CGFloat = 22
+        static let control: CGFloat = 13
+        static let chip: CGFloat = 9
     }
 
     enum Space {
         static let card: CGFloat = 20
         static let gridGap: CGFloat = 14
-        static let section: CGFloat = 22
+        static let section: CGFloat = 24
     }
 
     // MARK: Dynamic color helper
@@ -104,13 +117,14 @@ enum Theme {
 // MARK: - Typography
 
 extension Font {
-    /// Editorial serif (New York) — page titles & hero headlines.
-    static func talkieDisplay(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .serif)
+    /// Display serif (Young Serif, bundled) — page titles & hero headlines.
+    /// Falls back to the system serif if the bundled face isn't registered.
+    static func talkieDisplay(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        TalkieFonts.display(size: size, weight: weight)
     }
-    /// Serif for big metric numbers (e.g. "2,119").
-    static func talkieMetric(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .serif)
+    /// Serif for big metric numbers (e.g. "184,920").
+    static func talkieMetric(_ size: CGFloat, weight: Font.Weight = .medium) -> Font {
+        TalkieFonts.display(size: size, weight: weight)
     }
     /// Functional UI heading (SF Pro).
     static func talkieHeading(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
@@ -120,11 +134,28 @@ extension Font {
     static var talkieEyebrow: Font { .system(size: 11, weight: .semibold) }
 }
 
+/// Resolves the bundled display serif once, with a graceful serif fallback so
+/// debug builds (which don't assemble the .app) still render a serif headline.
+enum TalkieFonts {
+    static let displayName = "Young Serif"
+
+    /// True when the bundled face is registered (it's installed via the app
+    /// bundle's `ATSApplicationFontsPath` at launch).
+    static let hasDisplay: Bool = NSFont(name: displayName, size: 12) != nil
+
+    static func display(size: CGFloat, weight: Font.Weight) -> Font {
+        if hasDisplay {
+            return .custom(displayName, size: size).weight(weight)
+        }
+        return .system(size: size, weight: weight, design: .serif)
+    }
+}
+
 // MARK: - Card surface
 
 extension View {
-    /// Standard Talkie card: ivory surface, generous radius, hairline border,
-    /// a whisper of warm elevation.
+    /// Standard Talkie card: borderless — a clean surface lifted by a single
+    /// whisper shadow, squircle corner. No outline (v2).
     func talkieCard(padding: CGFloat = Theme.Space.card) -> some View {
         self
             .padding(padding)
@@ -133,11 +164,8 @@ extension View {
                 RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                     .fill(Theme.surface)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                    .strokeBorder(Theme.hairline, lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.045), radius: 14, x: 0, y: 6)
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
     }
 }
 

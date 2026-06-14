@@ -52,6 +52,13 @@ if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
   cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
 
+# Bundled fonts (Young Serif display face) — registered at launch via the
+# Info.plist `ATSApplicationFontsPath = Fonts` key.
+if [[ -d "$ROOT/Resources/Fonts" ]]; then
+  mkdir -p "$APP/Contents/Resources/Fonts"
+  cp "$ROOT/Resources/Fonts/"*.otf "$APP/Contents/Resources/Fonts/" 2>/dev/null || true
+fi
+
 # App icon from the Icon Composer .icon bundle (macOS 26 Liquid Glass).
 # actool emits AppIcon.icns (Finder/Dock fallback) + Assets.car (glass icon).
 if [[ -d "$ROOT/Resources/AppIcon.icon" ]]; then
