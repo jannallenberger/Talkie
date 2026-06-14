@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let appUsage = AppUsageStore()
     let activity = ActivityStore()
     let projectIndex = ProjectIndexStore()
+    let contextSummary = ContextSummaryStore()
 
     private var engine: TranscriptionEngine!
     private let audio = AudioCapture()
@@ -534,6 +535,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appUsage: appUsage,
                 activity: activity,
                 projectIndex: projectIndex,
+                contextSummary: contextSummary,
                 onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }
             )
         }

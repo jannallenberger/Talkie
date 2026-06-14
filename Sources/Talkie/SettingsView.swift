@@ -53,6 +53,7 @@ final class MainWindowController {
         appUsage: AppUsageStore,
         activity: ActivityStore,
         projectIndex: ProjectIndexStore,
+        contextSummary: ContextSummaryStore,
         onRetryHotKey: @escaping () -> Void
     ) {
         let root = MainView(
@@ -64,6 +65,7 @@ final class MainWindowController {
             appUsage: appUsage,
             activity: activity,
             projectIndex: projectIndex,
+            contextSummary: contextSummary,
             router: router,
             onRetryHotKey: onRetryHotKey
         )
@@ -103,6 +105,7 @@ struct MainView: View {
     @ObservedObject var appUsage: AppUsageStore
     @ObservedObject var activity: ActivityStore
     @ObservedObject var projectIndex: ProjectIndexStore
+    @ObservedObject var contextSummary: ContextSummaryStore
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Void
 
@@ -123,7 +126,8 @@ struct MainView: View {
         switch router.selectedTab {
         case .dashboard:
             DashboardView(settings: settings, stats: stats, history: history,
-                          activity: activity, appUsage: appUsage, router: router)
+                          activity: activity, appUsage: appUsage,
+                          contextSummary: contextSummary, router: router)
         case .history:
             HistorySettings(history: history)
         case .dictionary:

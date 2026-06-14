@@ -19,6 +19,7 @@ struct DashboardView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var activity: ActivityStore
     @ObservedObject var appUsage: AppUsageStore
+    @ObservedObject var contextSummary: ContextSummaryStore
     @ObservedObject var router: SettingsRouter
 
     var body: some View {
@@ -30,6 +31,9 @@ struct DashboardView: View {
                     Spacer()
                     StreakPill(days: activity.currentStreak)
                 }
+
+                // Today's on-device brief of what you worked on.
+                BriefCard(summary: contextSummary, history: history)
 
                 // Row 1 — speed gauge · fixes · words.
                 HStack(alignment: .top, spacing: Theme.Space.gridGap) {
@@ -59,6 +63,75 @@ struct DashboardView: View {
         let total = stats.totalWords
         if total == 0 { return "Hold your dictation key and speak — your stats will fill in here." }
         return "\(total.formatted()) words dictated, all on-device."
+    }
+}
+
+// MARK: - Today's Brief (on-device context summary)
+
+private struct BriefCard: View {
+    @ObservedObject var summary: ContextSummaryStore
+    @ObservedObject var history: HistoryStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Today's Brief", systemImage: "sparkles")
+                    .font(.talkieHeading(14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+                if let at = summary.generatedAt {
+                    Text(relativeTime(at))
+                        .font(.talkieEyebrow)
+                        .foregroundStyle(Theme.inkTertiary)
+                }
+                Button {
+                    Task { await summary.refresh(from: history) }
+                } label: {
+                    if summary.isGenerating {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.inkSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(summary.isGenerating || !summary.isAvailable)
+                .help("Generate a brief from your recent dictations")
+            }
+
+            content
+        }
+        .talkieCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if !summary.isAvailable {
+            Text("Turn on Apple Intelligence to get an on-device brief of what you worked on.")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.inkSecondary)
+        } else if summary.summary.isEmpty {
+            Text(history.entries.isEmpty
+                 ? "Dictate through your day, then generate a brief of what you worked on."
+                 : "Tap ↻ to generate a brief from your recent dictations.")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.inkSecondary)
+        } else {
+            Text(summary.summary)
+                .font(.system(size: 13.5))
+                .foregroundStyle(Theme.ink)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f.localizedString(for: date, relativeTo: Date())
     }
 }
 
