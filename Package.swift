@@ -14,5 +14,15 @@ let package = Package(
                 .swiftLanguageMode(.v6),
             ]
         ),
+        // Feature 06: a SEPARATE, always-local stdio MCP server over the on-disk
+        // Talkie stores. Zero dependencies (vendored JSON-RPC), no network, no
+        // import of the app target — so the privacy wall stays structural.
+        .executableTarget(
+            name: "talkie-mcp",
+            path: "Sources/TalkieMCP",
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
     ]
 )
