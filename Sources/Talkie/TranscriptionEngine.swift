@@ -1,0 +1,248 @@
+import AVFoundation
+import Foundation
+import Speech
+
+/// A single in-flight transcript update, pushed to the UI as recognition progresses.
+struct TranscriptUpdate: Sendable {
+    /// Text that the recognizer has committed (will not change).
+    var finalizedText: String
+    /// The live, still-changing tail.
+    var volatileText: String
+    /// True only on the final update of a session.
+    var isComplete: Bool
+
+    /// The full string as it should appear right now.
+    var combined: String {
+        let joiner = finalizedText.isEmpty || volatileText.isEmpty ? "" : " "
+        return finalizedText + joiner + volatileText
+    }
+}
+
+enum TalkieEngineError: LocalizedError {
+    case transcriberUnavailable
+    case noSupportedLocale
+    case modelInstallFailed(String)
+    case noCompatibleAudioFormat
+
+    var errorDescription: String? {
+        switch self {
+        case .transcriberUnavailable:
+            return "On-device speech recognition is not available on this Mac."
+        case .noSupportedLocale:
+            return "No supported speech locale could be resolved."
+        case .modelInstallFailed(let detail):
+            return "The speech model could not be installed: \(detail)"
+        case .noCompatibleAudioFormat:
+            return "No compatible audio format was found for the microphone."
+        }
+    }
+}
+
+/// Wraps Apple's macOS 26 `SpeechAnalyzer` + `SpeechTranscriber` for live,
+/// on-device, low-latency dictation. One instance is reused across sessions;
+/// the heavy model load happens once and lingers for the process lifetime.
+actor TranscriptionEngine {
+    private let locale: Locale
+    private var contextualStrings: [String] = []
+
+    private var transcriber: SpeechTranscriber?
+    private var analyzer: SpeechAnalyzer?
+    private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
+    private var resultsTask: Task<Void, Never>?
+
+    private var finalizedText: String = ""
+    private var volatileText: String = ""
+
+    private var onUpdate: (@Sendable (TranscriptUpdate) -> Void)?
+
+    init(localeIdentifier: String) {
+        self.locale = Locale(identifier: localeIdentifier)
+    }
+
+    func setUpdateHandler(_ handler: @escaping @Sendable (TranscriptUpdate) -> Void) {
+        self.onUpdate = handler
+    }
+
+    /// Phrases that bias recognition toward the user's custom vocabulary
+    /// (names, brand terms, jargon). Applied per session via `AnalysisContext`.
+    func setContextualStrings(_ phrases: [String]) {
+        self.contextualStrings = phrases
+    }
+
+    /// True if on-device transcription exists at all on this hardware/OS.
+    static var isAvailable: Bool {
+        SpeechTranscriber.isAvailable
+    }
+
+    /// Resolve the best locale we can actually transcribe in.
+    private func resolvedLocale() async throws -> Locale {
+        if let match = await SpeechTranscriber.supportedLocale(equivalentTo: locale) {
+            return match
+        }
+        if let enUS = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: "en-US")) {
+            return enUS
+        }
+        throw TalkieEngineError.noSupportedLocale
+    }
+
+    /// Ensure the on-device model for `transcriber` is downloaded & installed.
+    /// First run on a given locale triggers a one-time download.
+    private func ensureModelInstalled(for transcriber: SpeechTranscriber) async throws {
+        let status = await AssetInventory.status(forModules: [transcriber])
+        guard status != .installed else { return }
+        do {
+            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+                try await request.downloadAndInstall()
+            }
+        } catch {
+            throw TalkieEngineError.modelInstallFailed(error.localizedDescription)
+        }
+    }
+
+    /// Build a transcriber configured for live progressive dictation. We request
+    /// `.volatileResults` explicitly so the HUD gets partial hypotheses as the
+    /// user speaks (not just the final string).
+    private func makeTranscriber(locale loc: Locale) -> SpeechTranscriber {
+        SpeechTranscriber(
+            locale: loc,
+            transcriptionOptions: [],
+            reportingOptions: [.volatileResults],
+            attributeOptions: []
+        )
+    }
+
+    /// One-time warm-up so the first real dictation isn't gated on a download.
+    func warmUp() async throws {
+        guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
+        let loc = try await resolvedLocale()
+        let t = makeTranscriber(locale: loc)
+        try await ensureModelInstalled(for: t)
+        // Best-effort: keep the locale asset reserved so it isn't reclaimed.
+        _ = try? await AssetInventory.reserve(locale: loc)
+    }
+
+    /// Begin a dictation session. Returns the audio format the caller must feed
+    /// (`AudioCapture` converts the mic to this) plus the continuation to push
+    /// `AnalyzerInput` buffers into. Idempotent guard: a session must be finished
+    /// before another begins.
+    func beginSession() async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation) {
+        guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
+
+        // Reset accumulators.
+        finalizedText = ""
+        volatileText = ""
+
+        let loc = try await resolvedLocale()
+        let transcriber = makeTranscriber(locale: loc)
+        try await ensureModelInstalled(for: transcriber)
+        self.transcriber = transcriber
+
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            throw TalkieEngineError.noCompatibleAudioFormat
+        }
+
+        // Build the analyzer and its input stream.
+        let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        self.inputContinuation = continuation
+
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        self.analyzer = analyzer
+
+        // Dictionary biasing: feed custom vocabulary as contextual strings.
+        if !contextualStrings.isEmpty {
+            let ctx = AnalysisContext()
+            ctx.contextualStrings = [.general: contextualStrings]
+            try await analyzer.setContext(ctx)
+        }
+
+        // Consume results as they stream in.
+        self.resultsTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                for try await result in transcriber.results {
+                    let text = String(result.text.characters)
+                    await self.ingest(text: text, isFinal: result.isFinal)
+                }
+            } catch is CancellationError {
+                // Expected on teardown.
+            } catch {
+                await self.handleResultsError(error)
+            }
+        }
+
+        try await analyzer.start(inputSequence: stream)
+        return (format, continuation)
+    }
+
+    /// Fold one recognizer result into the running transcript and notify the UI.
+    private func ingest(text: String, isFinal: Bool) {
+        if isFinal {
+            if !text.isEmpty {
+                finalizedText = appendCommitted(finalizedText, text)
+            }
+            volatileText = ""
+        } else {
+            volatileText = text
+        }
+        emit(isComplete: false)
+    }
+
+    private func appendCommitted(_ base: String, _ next: String) -> String {
+        guard !base.isEmpty else { return next }
+        return base + " " + next
+    }
+
+    private func emit(isComplete: Bool) {
+        let update = TranscriptUpdate(
+            finalizedText: finalizedText,
+            volatileText: volatileText,
+            isComplete: isComplete
+        )
+        onUpdate?(update)
+    }
+
+    private func handleResultsError(_ error: Error) {
+        // Surface as completion so the UI doesn't hang in "listening".
+        volatileText = ""
+        emit(isComplete: true)
+    }
+
+    /// Stop feeding audio, flush the analyzer, and return the final transcript.
+    func finishSession() async -> String {
+        inputContinuation?.finish()
+        inputContinuation = nil
+
+        if let analyzer {
+            try? await analyzer.finalizeAndFinishThroughEndOfInput()
+        }
+
+        // Let the results loop drain any remaining finalized text.
+        await resultsTask?.value
+        resultsTask = nil
+
+        let result = finalizedText.isEmpty ? volatileText : finalizedText
+        volatileText = ""
+
+        // Emit a terminal update so the HUD can dismiss cleanly.
+        emit(isComplete: true)
+
+        analyzer = nil
+        transcriber = nil
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Hard-cancel without producing a transcript (e.g. user aborted).
+    func cancelSession() async {
+        inputContinuation?.finish()
+        inputContinuation = nil
+        if let analyzer {
+            await analyzer.cancelAndFinishNow()
+        }
+        resultsTask?.cancel()
+        resultsTask = nil
+        finalizedText = ""
+        volatileText = ""
+        analyzer = nil
+        transcriber = nil
+    }
+}

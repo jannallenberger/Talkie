@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.coralate.talkie</string>
+    <key>CFBundleName</key>
+    <string>Talkie</string>
+    <key>CFBundleDisplayName</key>
+    <string>Talkie</string>
+    <key>CFBundleExecutable</key>
+    <string>Talkie</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Talkie listens to your microphone while you hold the dictation key, so it can turn your speech into text.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Talkie uses on-device speech recognition to transcribe what you say. Audio stays on your Mac.</string>
+    <key>NSInputMonitoringUsageDescription</key>
+    <string>Talkie watches for your dictation key so you can start talking from any app.</string>
+</dict>
+</plist>
