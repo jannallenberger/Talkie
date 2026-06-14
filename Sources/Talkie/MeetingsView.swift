@@ -63,9 +63,7 @@ struct MeetingsView: View {
                     .foregroundStyle(Theme.inkSecondary)
                 Spacer()
             } else {
-                Image(systemName: "mic.circle.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(Theme.coral)
+                ClayIcon(name: "IconMic", size: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Record a meeting")
                         .font(.talkieHeading(15, weight: .semibold))
@@ -173,7 +171,6 @@ private struct MeetingRow: View {
                 if hovering {
                     Button(action: onCopy) { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("Copy transcript")
                     Button(action: onReveal) { Image(systemName: "folder") }.buttonStyle(.plain).help("Reveal note in Finder")
-                    Button(action: onDelete) { Image(systemName: "trash") }.buttonStyle(.plain).help("Delete")
                 }
             }
 

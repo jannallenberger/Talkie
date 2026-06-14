@@ -196,6 +196,24 @@ enum Brand {
     }
 }
 
+/// A bundled clay brand icon (Resources/Brand/<name>.png), with an SF Symbol
+/// fallback if the asset is missing (e.g. an un-assembled debug run).
+struct ClayIcon: View {
+    let name: String
+    var size: CGFloat = 24
+    var fallback: String = "app.dashed"
+
+    var body: some View {
+        if let img = Brand.image(name) {
+            Image(nsImage: img).resizable().scaledToFit().frame(width: size, height: size)
+        } else {
+            Image(systemName: fallback)
+                .font(.system(size: size * 0.78, weight: .semibold))
+                .frame(width: size, height: size)
+        }
+    }
+}
+
 // MARK: - Native material (vibrancy / translucency)
 
 /// A real macOS vibrancy material — the system sidebar/HUD translucency the

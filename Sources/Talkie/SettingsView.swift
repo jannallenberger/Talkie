@@ -302,7 +302,6 @@ private struct HistoryRow: View {
     let onCopy: () -> Void
     let onDelete: () -> Void
     @State private var copied = false
-    @State private var hovering = false
 
     private var appSymbol: String {
         AppCategory(rawValue: entry.appCategory ?? "")?.symbol ?? "app.dashed"
@@ -323,15 +322,6 @@ private struct HistoryRow: View {
                     .foregroundStyle(Theme.inkTertiary)
                 }
                 Spacer()
-                if hovering {
-                    Button(action: onDelete) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Theme.inkTertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Delete")
-                }
                 Button {
                     onCopy()
                     copied = true
@@ -352,43 +342,10 @@ private struct HistoryRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .talkieCard(padding: 14)
-        .onHover { hovering = $0 }
     }
 }
 
 // MARK: - General
-
-/// Per-app-category cleanup-style pickers. Extracted into its own view so the
-/// (large) GeneralSettings body stays inside the Swift type-checker's budget.
-private struct AppStylePickers: View {
-    @ObservedObject var settings: AppSettings
-
-    var body: some View {
-        ForEach(AppCategory.allCases, id: \.self) { category in
-            AppStyleRow(settings: settings, category: category)
-        }
-    }
-}
-
-private struct AppStyleRow: View {
-    @ObservedObject var settings: AppSettings
-    let category: AppCategory
-
-    var body: some View {
-        Picker(category.label, selection: binding) {
-            ForEach(CleanupStyle.allCases) { style in
-                Text(style.displayName).tag(style)
-            }
-        }
-    }
-
-    private var binding: Binding<CleanupStyle> {
-        Binding(
-            get: { settings.cleanupStyle(for: category) },
-            set: { settings.appCleanupStyles[category.rawValue] = $0.rawValue }
-        )
-    }
-}
 
 private enum SettingsRoute: Hashable {
     case profile, activation, cleanup, languages, context, behavior, permissions
@@ -417,10 +374,7 @@ private struct SettingsHome: View {
                                         subtitle: permissions.allGranted ? "All granted" : "Action needed",
                                         badge: !permissions.allGranted, route: .permissions)
                     }
-                    .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-                    .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
+                    .talkieSurface()
                 }
                 .padding(28)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -505,24 +459,136 @@ private struct SettingsRowView: View {
     }
 }
 
-/// Shared scaffold: serif title pinned above a grouped form that scrolls.
+/// Shared scaffold for every settings subpage: a serif page header above a
+/// vertical stack of brand-surface cards on the pure canvas. Replaces the old
+/// bare grouped `Form` so each subpage matches the Dictionary / Vibe Coding /
+/// Permissions panes — one unified, layered-surface look.
 private struct SubPage<Content: View>: View {
     let title: String
     var subtitle: String? = nil
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            PageHeader(title: title, subtitle: subtitle)
-                .padding(.horizontal, 28)
-                .padding(.top, 28)
-            Form { content }
-                .formStyle(.grouped)
-                .scrollContentBackground(.hidden)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                PageHeader(title: title, subtitle: subtitle)
+                content
+            }
+            .padding(28)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.canvas)
         .navigationTitle("")
+    }
+}
+
+/// A titled settings card: an optional all-caps eyebrow header, a raised brand
+/// surface holding hairline-divided rows, and an optional footer note on the
+/// canvas. The single building block that unifies the subpages.
+private struct SettingsCard<Content: View>: View {
+    var header: String? = nil
+    var footer: String? = nil
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if let header { Eyebrow(text: header).padding(.horizontal, 4) }
+            VStack(alignment: .leading, spacing: 0) { content }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .talkieSurface()
+            if let footer {
+                Text(footer).font(.callout).foregroundStyle(Theme.inkTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+            }
+        }
+    }
+}
+
+/// A hairline divider between rows inside a `SettingsCard`, inset past any
+/// leading control so it reads as a row separator, never an element outline.
+private struct SettingsDivider: View {
+    var leadingInset: CGFloat = 16
+    var body: some View {
+        Divider().overlay(Theme.hairline).padding(.leading, leadingInset)
+    }
+}
+
+/// One row inside a `SettingsCard`: a leading title (+ optional subtitle) and an
+/// arbitrary trailing control, consistently padded so every row lines up.
+private struct SettingsRow<Trailing: View>: View {
+    let title: String
+    var subtitle: String? = nil
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                if let subtitle {
+                    Text(subtitle).font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 12)
+            trailing
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+}
+
+/// A switch row on a card surface — title/subtitle left, brand-tinted switch
+/// right. Built as an explicit HStack (not a labelled `Toggle`) so the row
+/// always spans the card width instead of hugging and centering.
+private struct SettingsToggleRow: View {
+    let title: String
+    var subtitle: String? = nil
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                if let subtitle {
+                    Text(subtitle).font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 12)
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(Theme.coral)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+}
+
+/// An explanatory note rendered as a full-width row inside a card.
+private struct SettingsNote: View {
+    let text: String
+    var tone: Color = Theme.inkSecondary
+    var icon: String? = nil
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            if let icon {
+                Image(systemName: icon).font(.system(size: 11, weight: .semibold))
+            }
+            Text(text)
+        }
+        .font(.callout)
+        .foregroundStyle(tone)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
     }
 }
 
@@ -530,10 +596,12 @@ private struct ProfileSettings: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
         SubPage(title: "Profile", subtitle: "What Talkie calls you.") {
-            Section {
-                TextField("Your name", text: $settings.userName)
-            } footer: {
-                Text("Shown on your dashboard as “Welcome back”. Stays on your Mac.")
+            SettingsCard(footer: "Shown on your dashboard as “Welcome back”. Stays on your Mac.") {
+                SettingsRow(title: "Name") {
+                    TextField("Your name", text: $settings.userName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 240)
+                }
             }
         }
     }
@@ -542,22 +610,34 @@ private struct ProfileSettings: View {
 private struct ActivationSettings: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
-        SubPage(title: "Activation & insertion") {
-            Section("Activation") {
-                Picker("Dictation key", selection: $settings.activationKey) {
-                    ForEach(ActivationKey.allCases) { Text($0.displayName).tag($0) }
+        SubPage(title: "Activation & insertion",
+                subtitle: "The key that starts Talkie, and how it places your text.") {
+            SettingsCard(
+                header: "Activation",
+                footer: settings.activationMode == .holdToTalk
+                    ? "Hold the key, speak, release to insert the text."
+                    : "Tap the key to start, tap again to stop and insert."
+            ) {
+                SettingsRow(title: "Dictation key") {
+                    Picker("", selection: $settings.activationKey) {
+                        ForEach(ActivationKey.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
                 }
-                Picker("Mode", selection: $settings.activationMode) {
-                    ForEach(ActivationMode.allCases) { Text($0.displayName).tag($0) }
+                SettingsDivider()
+                SettingsRow(title: "Mode") {
+                    Picker("", selection: $settings.activationMode) {
+                        ForEach(ActivationMode.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
                 }
-                Text(settings.activationMode == .holdToTalk
-                     ? "Hold the key, speak, release to insert the text."
-                     : "Tap the key to start, tap again to stop and insert.")
-                    .font(.callout).foregroundStyle(.secondary)
             }
-            Section("Insertion") {
-                Picker("Insert text by", selection: $settings.insertionMode) {
-                    ForEach(InsertionMode.allCases) { Text($0.displayName).tag($0) }
+            SettingsCard(header: "Insertion") {
+                SettingsRow(title: "Insert text by") {
+                    Picker("", selection: $settings.insertionMode) {
+                        ForEach(InsertionMode.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
                 }
             }
         }
@@ -566,34 +646,60 @@ private struct ActivationSettings: View {
 
 private struct CleanupSettings: View {
     @ObservedObject var settings: AppSettings
+
+    private func styleBinding(_ category: AppCategory) -> Binding<CleanupStyle> {
+        Binding(
+            get: { settings.cleanupStyle(for: category) },
+            set: { settings.appCleanupStyles[category.rawValue] = $0.rawValue }
+        )
+    }
+
     var body: some View {
         SubPage(title: "Cleanup & style", subtitle: "How Talkie polishes what you say.") {
-            Section("Smart cleanup") {
-                Toggle("Adapt the style to the app", isOn: $settings.appAdaptiveCleanup)
+            SettingsCard(header: "Smart cleanup") {
+                SettingsToggleRow(
+                    title: "Adapt the style to the app",
+                    subtitle: "A personality per app — friendly for Messages, professional for Mail, faithful for code.",
+                    isOn: $settings.appAdaptiveCleanup
+                )
                 if settings.appAdaptiveCleanup {
-                    Text("Talkie picks a personality per app — friendly for Messages, professional for Mail, faithful for code.")
-                        .font(.callout).foregroundStyle(.secondary)
-                    AppStylePickers(settings: settings)
-                } else {
-                    Picker("Cleanup level", selection: $settings.cleanupLevel) {
-                        ForEach(CleanupLevel.allCases) { Text($0.displayName).tag($0) }
+                    ForEach(AppCategory.allCases, id: \.self) { category in
+                        SettingsDivider()
+                        SettingsRow(title: category.label) {
+                            Picker("", selection: styleBinding(category)) {
+                                ForEach(CleanupStyle.allCases) { Text($0.displayName).tag($0) }
+                            }
+                            .labelsHidden().fixedSize()
+                        }
                     }
-                    .pickerStyle(.segmented)
-                    Text(settings.cleanupLevel.detail).font(.callout).foregroundStyle(.secondary)
-                }
-                if let warning = CleanupEngine.unavailableMessage {
-                    Label(warning, systemImage: "exclamationmark.triangle.fill")
-                        .font(.callout).foregroundStyle(.orange)
                 } else {
-                    Text("Resolves spoken self-corrections and fixes grammar. Runs entirely on your Mac; nothing leaves the device.")
-                        .font(.caption).foregroundStyle(.tertiary)
+                    SettingsDivider(leadingInset: 0)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker("", selection: $settings.cleanupLevel) {
+                            ForEach(CleanupLevel.allCases) { Text($0.displayName).tag($0) }
+                        }
+                        .labelsHidden().pickerStyle(.segmented)
+                        Text(settings.cleanupLevel.detail)
+                            .font(.callout).foregroundStyle(Theme.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.vertical, 11)
+                }
+                SettingsDivider(leadingInset: 0)
+                if let warning = CleanupEngine.unavailableMessage {
+                    SettingsNote(text: warning, tone: Theme.warning, icon: "exclamationmark.triangle.fill")
+                } else {
+                    SettingsNote(text: "Resolves spoken self-corrections and fixes grammar. Runs entirely on your Mac; nothing leaves the device.",
+                                 tone: Theme.inkTertiary)
                 }
             }
-            Section("Basic cleanup") {
-                Toggle("Capitalize the first letter", isOn: $settings.autoCapitalize)
-                Toggle("Remove filler words (um, uh, hmm…)", isOn: $settings.cleanupFillers)
-                Text("These apply when Smart cleanup isn't rewriting the text.")
-                    .font(.callout).foregroundStyle(.tertiary)
+            SettingsCard(header: "Basic cleanup",
+                         footer: "These apply when Smart cleanup isn't rewriting the text.") {
+                SettingsToggleRow(title: "Capitalize the first letter", isOn: $settings.autoCapitalize)
+                SettingsDivider()
+                SettingsToggleRow(title: "Remove filler words", subtitle: "um, uh, hmm…",
+                                  isOn: $settings.cleanupFillers)
             }
         }
     }
@@ -601,30 +707,118 @@ private struct CleanupSettings: View {
 
 private struct LanguageSettings: View {
     @ObservedObject var settings: AppSettings
-    private func toggle(_ id: String, on: Bool) {
+
+    private let columns = [GridItem(.adaptive(minimum: 176, maximum: 220), spacing: 12)]
+
+    /// Toggle a language, keeping at least one always selected.
+    private func toggle(_ id: String) {
         var langs = settings.spokenLanguages
-        if on {
-            if !langs.contains(id) { langs.append(id) }
-        } else {
+        if langs.contains(id) {
             guard langs.count > 1 else { return }
             langs.removeAll { $0 == id }
+        } else {
+            langs.append(id)
         }
         settings.spokenLanguages = langs
     }
+
     var body: some View {
-        SubPage(title: "Languages", subtitle: "Talkie auto-detects between the ones you pick.") {
-            Section("Languages you speak") {
+        SubPage(title: "Languages",
+                subtitle: "Tap the ones you speak — Talkie auto-detects between them.") {
+            LazyVGrid(columns: columns, spacing: 12) {
                 ForEach(talkieLanguageCatalog) { lang in
-                    Toggle(lang.name, isOn: Binding(
-                        get: { settings.spokenLanguages.contains(lang.id) },
-                        set: { toggle(lang.id, on: $0) }
-                    ))
+                    LanguageCard(
+                        language: lang,
+                        selected: settings.spokenLanguages.contains(lang.id),
+                        locked: settings.spokenLanguages == [lang.id]
+                    ) { toggle(lang.id) }
                 }
-                Text(settings.spokenLanguages.count > 1
-                     ? "Talkie auto-detects which of these you're speaking each time."
-                     : "Pick more than one to have Talkie auto-detect your language.")
-                    .font(.callout).foregroundStyle(.secondary)
             }
+            Text(settings.spokenLanguages.count > 1
+                 ? "Talkie auto-detects which of these you're speaking each time."
+                 : "Pick more than one to have Talkie auto-detect your language.")
+                .font(.callout)
+                .foregroundStyle(Theme.inkTertiary)
+                .padding(.horizontal, 4)
+                .padding(.top, 2)
+        }
+    }
+}
+
+/// A tappable language tile: flag, language + country, and a check that fills the
+/// corner when selected. Selected tiles wear the brand wash + ring.
+private struct LanguageCard: View {
+    let language: TalkieLanguage
+    let selected: Bool
+    /// True when this is the *only* selected language — tapping it is a no-op
+    /// (Talkie always needs at least one), so the tile reads as locked-on.
+    let locked: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 13) {
+                // The flag is the hero — large, centered, with the selection check
+                // as a badge on its corner.
+                flag
+                    .frame(width: 96, height: 96)
+                    .overlay(alignment: .bottomTrailing) {
+                        if selected { checkBadge.offset(x: 5, y: 5) }
+                    }
+                VStack(spacing: 1) {
+                    Text(language.gridTitle)
+                        .font(.talkieHeading(14.5, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                    Text(language.regionName)
+                        .font(.talkieHeading(11.5, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .fill(selected ? Theme.coralWash : Theme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .strokeBorder(selected ? Theme.coral : Color.clear, lineWidth: 2)
+            )
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.06), radius: 14, x: 0, y: 7)
+            .scaleEffect(hovering ? 1.015 : 1)
+            .animation(.easeOut(duration: 0.12), value: hovering)
+            .animation(.easeOut(duration: 0.14), value: selected)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(locked ? "Talkie keeps at least one language"
+                     : (selected ? "Tap to remove" : "Tap to add"))
+    }
+
+    private var flag: some View {
+        Group {
+            if let region = Locale(identifier: language.id).region?.identifier,
+               let img = Brand.image("Flag\(region)") {
+                Image(nsImage: img).resizable().scaledToFit()
+            } else {
+                Text(language.flag).font(.system(size: 64))
+            }
+        }
+    }
+
+    private var checkBadge: some View {
+        ZStack {
+            Circle().fill(Theme.coral)
+                .overlay(Circle().strokeBorder(selected ? Theme.coralWash : Theme.surface, lineWidth: 3))
+                .frame(width: 26, height: 26)
+            Image(systemName: "checkmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
         }
     }
 }
@@ -632,16 +826,22 @@ private struct LanguageSettings: View {
 private struct ContextSettings: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
-        SubPage(title: "Context & learning") {
-            Section("Context awareness") {
-                Toggle("Use the app I'm dictating into for context", isOn: $settings.contextAwareness)
-                Text("Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only.")
-                    .font(.callout).foregroundStyle(.secondary)
+        SubPage(title: "Context & learning",
+                subtitle: "What Talkie reads around you, and how it improves over time.") {
+            SettingsCard(
+                header: "Context awareness",
+                footer: "Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only."
+            ) {
+                SettingsToggleRow(title: "Use the app I'm dictating into for context",
+                                  isOn: $settings.contextAwareness)
             }
-            Section("Learning") {
-                Toggle("Learn from my edits (auto-improve the dictionary)", isOn: $settings.learnFromEdits)
-                Text("When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want.")
-                    .font(.callout).foregroundStyle(.secondary)
+            SettingsCard(
+                header: "Learning",
+                footer: "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want."
+            ) {
+                SettingsToggleRow(title: "Learn from my edits",
+                                  subtitle: "Auto-improve the dictionary.",
+                                  isOn: $settings.learnFromEdits)
             }
         }
     }
@@ -650,10 +850,11 @@ private struct ContextSettings: View {
 private struct BehaviorSettings: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
-        SubPage(title: "Behavior") {
-            Section {
-                Toggle("Play sounds", isOn: $settings.playSounds)
-                Toggle("Open Talkie at login", isOn: $settings.launchAtLogin)
+        SubPage(title: "Behavior", subtitle: "The small touches.") {
+            SettingsCard {
+                SettingsToggleRow(title: "Play sounds", isOn: $settings.playSounds)
+                SettingsDivider()
+                SettingsToggleRow(title: "Open Talkie at login", isOn: $settings.launchAtLogin)
             }
         }
     }
@@ -797,13 +998,6 @@ private struct ReplacementRow: View {
                 .toggleStyle(.button).help("Case sensitive")
             Toggle("W", isOn: $rule.wholeWord)
                 .toggleStyle(.button).help("Whole word only")
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.inkTertiary)
-            }
-            .buttonStyle(.plain)
-            .help("Delete rule")
         }
     }
 }
@@ -815,54 +1009,52 @@ private struct PermissionsSettings: View {
     let onRetryHotKey: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            PageHeader(title: "Permissions",
-                       subtitle: "Talkie needs three permissions to work — all local.")
-
-            PermissionRow(
-                title: "Microphone",
-                detail: "Capture your voice while you dictate.",
-                granted: permissions.microphone,
-                action: { Task { await permissions.requestMicrophone() } },
-                openSettings: permissions.openMicrophoneSettings
-            )
-
-            PermissionRow(
-                title: "Input Monitoring",
-                detail: "Detect your dictation key anywhere in the system.",
-                granted: permissions.inputMonitoring,
-                action: {
-                    permissions.requestInputMonitoring()
-                    onRetryHotKey()
-                },
-                openSettings: permissions.openInputMonitoringSettings
-            )
-
-            PermissionRow(
-                title: "Accessibility",
-                detail: "Paste the transcribed text into the app you're using.",
-                granted: permissions.accessibility,
-                action: permissions.promptAccessibility,
-                openSettings: permissions.openAccessibilitySettings
-            )
-
-            Spacer()
-
-            Text("After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkTertiary)
+        SubPage(title: "Permissions",
+                subtitle: "Talkie needs three permissions to work — all local.") {
+            SettingsCard(footer: "After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect.") {
+                PermissionRow(
+                    title: "Microphone",
+                    detail: "Capture your voice while you dictate.",
+                    granted: permissions.microphone,
+                    action: { Task { await permissions.requestMicrophone() } },
+                    openSettings: permissions.openMicrophoneSettings
+                )
+                SettingsDivider()
+                PermissionRow(
+                    title: "Input Monitoring",
+                    detail: "Detect your dictation key anywhere in the system.",
+                    granted: permissions.inputMonitoring,
+                    action: {
+                        permissions.requestInputMonitoring()
+                        onRetryHotKey()
+                    },
+                    openSettings: permissions.openInputMonitoringSettings
+                )
+                SettingsDivider()
+                PermissionRow(
+                    title: "Accessibility",
+                    detail: "Paste the transcribed text into the app you're using.",
+                    granted: permissions.accessibility,
+                    action: permissions.promptAccessibility,
+                    openSettings: permissions.openAccessibilitySettings
+                )
+            }
 
             HStack {
                 Button("Re-check") { permissions.refresh() }
                 Button("Quit & Reopen") { relaunch() }
                 Spacer()
                 if permissions.allGranted {
-                    Label("All set", systemImage: "checkmark.seal.fill")
-                        .foregroundStyle(Theme.positive)
+                    HStack(spacing: 7) {
+                        ClayIcon(name: "IconSeal", size: 22)
+                        Text("All set")
+                            .font(.talkieHeading(13, weight: .semibold))
+                            .foregroundStyle(Theme.positive)
+                    }
                 }
             }
+            .padding(.horizontal, 4)
         }
-        .padding(28)
         .onAppear { permissions.refresh() }
     }
 
@@ -884,16 +1076,22 @@ private struct PermissionRow: View {
     let openSettings: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .font(.system(size: 20))
-                .foregroundStyle(granted ? Theme.positive : Theme.warning)
+        HStack(alignment: .center, spacing: 12) {
+            if granted {
+                ClayIcon(name: "IconCheck", size: 26)
+            } else {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Theme.warning)
+                    .frame(width: 26)
+            }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.talkieHeading(14))
+                Text(title).font(.talkieHeading(14, weight: .medium))
                     .foregroundStyle(Theme.ink)
                 Text(detail).font(.callout).foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
+            Spacer(minLength: 12)
             if !granted {
                 VStack(spacing: 4) {
                     Button("Grant", action: action)
@@ -903,6 +1101,8 @@ private struct PermissionRow: View {
                 }
             }
         }
-        .talkieCard(padding: 14)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }

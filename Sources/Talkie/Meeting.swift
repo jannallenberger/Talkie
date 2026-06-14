@@ -109,27 +109,25 @@ final class MeetingStore: ObservableObject {
     // MARK: Markdown
 
     private func writeMarkdown(_ m: Meeting) {
-        let iso = ISO8601DateFormatter().string(from: m.date)
+        // Routes through the shared NoteDestination renderer (feature 10's seam) so
+        // the meeting Markdown has one source of truth. Output is byte-compatible
+        // with the prior inline composition.
         let minutes = Int((m.durationSec / 60).rounded())
-        let md = """
-        ---
-        title: \(m.title)
-        date: \(iso)
-        duration_min: \(minutes)
-        participants: [\(m.participants.joined(separator: ", "))]
-        source: \(m.source)
-        ---
-
-        ## Summary
-
-        \(m.summary.isEmpty ? "_(no summary)_" : m.summary)
-
-        ## Transcript
-
-        \(m.transcript)
-        """
+        let summary = m.summary.isEmpty ? "_(no summary)_" : m.summary
+        let note = ExportableNote(
+            kind: .meeting,
+            title: m.title,
+            date: m.date,
+            bodyMarkdown: "## Summary\n\n\(summary)\n\n## Transcript\n\n\(m.transcript)",
+            frontMatter: [
+                "duration_min": "\(minutes)",
+                "participants": "[\(m.participants.joined(separator: ", "))]",
+                "source": m.source,
+            ],
+            suggestedFileName: m.fileName
+        )
         let url = AppPaths.meetingsDirectory().appendingPathComponent(m.fileName)
-        try? md.data(using: .utf8)?.write(to: url, options: .atomic)
+        try? Data(TalkieFolderDestination.render(note).utf8).write(to: url, options: .atomic)
     }
 
     // MARK: Persistence (lightweight index; the .md files are the durable copy)
