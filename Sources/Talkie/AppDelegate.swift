@@ -87,6 +87,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { try? await engine.warmUp(localeIdentifier: lang) }
         }
 
+        // The Brief renders as a projection of the context graph.
+        contextSummary.graphProvider = { [weak self] in self?.contextGraph.snapshot() ?? .empty }
+
         // Seed the context graph + search index from existing dictations + meetings
         // so recall, search, and the brief are useful immediately.
         Task { @MainActor in
