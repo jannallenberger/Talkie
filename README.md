@@ -73,6 +73,41 @@ The **Dictionary** tab does two things:
 
 Everything is stored locally in `~/Library/Application Support/Talkie/`.
 
+## Dashboard
+
+The **Dashboard** is Talkie's home — a calm, at-a-glance view of your dictation,
+all computed on-device:
+
+- **Words-per-minute gauge** — your average speaking speed, compared honestly to
+  real-world references (an office typist holds ~40 wpm; the world record is 212
+  wpm, Barbara Blackburn). Because Talkie is offline, it never invents a
+  "Top X%" of users it can't see.
+- **Fixes by Talkie** — how many words it polished, dictionary substitutions it
+  applied, and fillers it removed.
+- **Total words**, last-7-days, dictations, and time spoken.
+- **Where your words go** — which apps you dictate into, by share of words.
+- **Contribution heatmap** — a 24-week streak calendar.
+
+## Context awareness
+
+When enabled (Settings → Context awareness), Talkie reads the names already on
+screen in the app you're dictating into — who you're messaging, the file you have
+open — and biases recognition toward them, so it spells them right the first
+time. It's local and read-only; nothing is sent anywhere.
+
+## Vibe coding
+
+Point Talkie at a project folder (the **Vibe Coding** tab) and it indexes your
+filenames. Then, when you dictate a filename, it snaps to the real file — say
+*"exercise library dot t-s-x"* and Talkie inserts `ExerciseLibrary.tsx`,
+correctly cased. Your project's filenames also bias recognition. Only filenames
+are read, never file contents.
+
+> Talkie's look follows a small brand system — the layered-clay scarlet macaw
+> meets Anthropic's warm "Claude" canvas. See [docs/BRAND.md](docs/BRAND.md), and
+> [docs/CLAUDE_DESIGN_PROMPT.md](docs/CLAUDE_DESIGN_PROMPT.md) for a ready-to-use
+> prompt to redesign the app with Claude.
+
 ## Sharing with your co-founders
 
 An **ad-hoc** build (the default `run.sh`) runs great on the Mac that built it,
@@ -119,6 +154,12 @@ Right ⌥ held ──▶ HotKeyMonitor ──▶ AudioCapture ──▶ Transcri
 | `HUD.swift` | Floating live-transcript pill. |
 | `SettingsView.swift` | General / Dictionary / Permissions UI (SwiftUI). |
 | `Permissions.swift` | TCC status + requests. |
+| `DesignSystem.swift` | Brand tokens (palette, type, cards) — see `docs/BRAND.md`. |
+| `DashboardView.swift` | Home dashboard: speed gauge, fixes, usage, heatmap. |
+| `ActivityStore.swift` | Per-day activity → streak + contribution heatmap. |
+| `AppUsageStore.swift` | Per-app dictation totals → "where your words go". |
+| `AppContext.swift` | Captures the frontmost app + mines on-screen names to bias. |
+| `VibeCoding.swift` | Project scan + spoken-filename → real-file matching. |
 | `AppDelegate.swift` | Menu bar + wires everything together. |
 
 ## Troubleshooting

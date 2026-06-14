@@ -180,7 +180,7 @@ private struct HUDView: View {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Theme.positive)
                 Text("Inserted")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -206,7 +206,7 @@ private struct HUDView: View {
 /// rolling mic-level history (newest on the right), so it "moves" with your voice.
 private struct Waveform: View {
     let levels: [CGFloat]
-    var tint: Color = .red
+    var tint: Color = Theme.coral
 
     var body: some View {
         GeometryReader { geo in
