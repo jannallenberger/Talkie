@@ -33,7 +33,9 @@ enum TextInjector {
             return .leftOnClipboard(reason: "A password field is focused — text copied; press ⌘V where you want it.")
         }
 
-        guard ensureTrusted(prompt: true) else {
+        // Check silently here (don't spam the system prompt on every dictation);
+        // the Permissions tab is where the user is asked to grant it.
+        guard ensureTrusted(prompt: false) else {
             copyToClipboard(text)
             return .leftOnClipboard(reason: "Grant Accessibility to Talkie to paste automatically — text copied for now.")
         }
@@ -42,7 +44,11 @@ enum TextInjector {
         case .paste:
             pasteViaClipboard(text)
         case .type:
-            typeUnicode(text)
+            // The per-character usleep loop must not run on the main actor.
+            let payload = text
+            DispatchQueue.global(qos: .userInitiated).async {
+                typeUnicode(payload)
+            }
         }
         return .inserted
     }
@@ -112,7 +118,8 @@ enum TextInjector {
     }
 
     /// Fallback typing path: per-character Unicode injection (no clipboard touch).
-    private static func typeUnicode(_ text: String) {
+    /// `nonisolated` so it can run on a background queue (it never touches main state).
+    nonisolated private static func typeUnicode(_ text: String) {
         let source = CGEventSource(stateID: .combinedSessionState)
         for scalarChunk in text.chunkedScalars(of: 1) {
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),

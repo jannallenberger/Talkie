@@ -213,7 +213,13 @@ actor TranscriptionEngine {
         inputContinuation = nil
 
         if let analyzer {
-            try? await analyzer.finalizeAndFinishThroughEndOfInput()
+            do {
+                try await analyzer.finalizeAndFinishThroughEndOfInput()
+            } catch {
+                // If finalize fails the results stream may never terminate;
+                // cancel the reader so the await below can't hang forever.
+                resultsTask?.cancel()
+            }
         }
 
         // Let the results loop drain any remaining finalized text.

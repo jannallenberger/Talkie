@@ -251,8 +251,13 @@ private struct PermissionsSettings: View {
 
             Spacer()
 
+            Text("After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+
             HStack {
                 Button("Re-check") { permissions.refresh() }
+                Button("Quit & Reopen") { relaunch() }
                 Spacer()
                 if permissions.allGranted {
                     Label("All set", systemImage: "checkmark.seal.fill")
@@ -262,6 +267,15 @@ private struct PermissionsSettings: View {
         }
         .padding()
         .onAppear { permissions.refresh() }
+    }
+
+    private func relaunch() {
+        let path = Bundle.main.bundlePath
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 0.4; open \"\(path)\""]
+        try? task.run()
+        NSApp.terminate(nil)
     }
 }
 

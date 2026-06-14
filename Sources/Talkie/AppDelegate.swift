@@ -16,6 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController?
 
     private var isDictating = false
+    /// Bumped on every begin; lets an in-flight async setup detect that the
+    /// user already released the key (or started a newer session) and bail.
+    private var sessionID = 0
+    /// True only once audio is actually flowing into a live analyzer session.
+    private var sessionLive = false
 
     // MARK: App lifecycle
 
@@ -162,6 +167,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         isDictating = true
+        sessionLive = false
+        sessionID += 1
+        let myID = sessionID
         updateStatusUI()
         Feedback.start()
         hud.showListening()
@@ -170,6 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task {
             let micOK = await AudioCapture.requestMicrophoneAccess()
+            // The user may have released the key (or started a new session)
+            // while we awaited the mic. Bail without starting anything.
+            guard self.isDictating, self.sessionID == myID else { return }
             guard micOK else {
                 self.isDictating = false
                 self.updateStatusUI()
@@ -180,7 +191,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 await engine.setContextualStrings(phrases)
                 let session = try await engine.beginSession()
+                // Re-check after the (async) model load / session setup.
+                guard self.isDictating, self.sessionID == myID else {
+                    await engine.cancelSession()
+                    return
+                }
                 try audio.start(targetFormat: session.format, continuation: session.continuation)
+                self.sessionLive = true
             } catch {
                 self.isDictating = false
                 self.updateStatusUI()
@@ -194,6 +211,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard isDictating else { return }
         isDictating = false
         updateStatusUI()
+
+        // If the session never actually went live (key released during async
+        // setup), the begin task will see the generation change and abort — we
+        // just reset the UI here.
+        guard sessionLive else {
+            hud.hide()
+            return
+        }
+        sessionLive = false
+
         Feedback.stop()
         audio.stop()
         hud.showInserting()
