@@ -11,6 +11,8 @@ enum SpeedBenchmark {
     static let worldRecord = 212.0
 }
 
+private enum BriefRoute: Hashable { case detail }
+
 // MARK: - Dashboard
 
 struct DashboardView: View {
@@ -22,44 +24,59 @@ struct DashboardView: View {
     @ObservedObject var contextSummary: ContextSummaryStore
     @ObservedObject var router: SettingsRouter
 
+    // Adaptive columns reflow with the window width — no fixed widths to overflow.
+    // 220 lets the three metric cards sit 3-up at the default width and fall to
+    // 2-up / 1-up as the window narrows; the wide row goes 2-up → 1-up.
+    private let metricCols = [GridItem(.adaptive(minimum: 220), spacing: Theme.Space.gridGap)]
+    private let wideCols   = [GridItem(.adaptive(minimum: 330), spacing: Theme.Space.gridGap)]
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.section) {
-                HStack(alignment: .firstTextBaseline) {
-                    PageHeader(title: "Dashboard",
-                               subtitle: greeting)
-                    Spacer()
-                    StreakPill(days: activity.currentStreak)
-                }
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.section) {
+                    header
 
-                // Today's on-device brief of what you worked on.
-                BriefCard(summary: contextSummary, history: history)
+                    BriefBanner(summary: contextSummary)
 
-                // Row 1 — speed gauge · fixes · words.
-                HStack(alignment: .top, spacing: Theme.Space.gridGap) {
-                    GaugeCard(stats: stats)
-                        .frame(width: 300)
-                    FixesCard(stats: stats)
-                    WordsCard(stats: stats, history: history)
-                }
-                .fixedSize(horizontal: false, vertical: true)
+                    LazyVGrid(columns: metricCols, alignment: .leading, spacing: Theme.Space.gridGap) {
+                        GaugeCard(stats: stats)
+                        FixesCard(stats: stats)
+                        WordsCard(stats: stats, history: history)
+                    }
 
-                // Row 2 — where your words went · contribution heatmap.
-                // The streak card sizes to its (intrinsic-width) heatmap so the
-                // grid is never clipped; the usage card flexes into the rest.
-                HStack(alignment: .top, spacing: Theme.Space.gridGap) {
-                    UsageCard(appUsage: appUsage)
-                    StreakCard(activity: activity)
-                        .fixedSize(horizontal: true, vertical: false)
+                    LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
+                        UsageCard(appUsage: appUsage)
+                        StreakCard(activity: activity)
+                    }
                 }
-                .fixedSize(horizontal: false, vertical: true)
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.canvas)
+            .navigationDestination(for: BriefRoute.self) { _ in
+                BriefDetailView(summary: contextSummary, history: history)
+            }
         }
-        MicFAB().padding(24)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.talkieDisplay(28))
+                    .foregroundStyle(Theme.ink)
+                Text(greeting)
+                    .font(.talkieHeading(13, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+            Spacer()
+            Wordmark()
         }
+    }
+
+    private var title: String {
+        let name = settings.userName.trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? "Dashboard" : "Welcome back, \(name)"
     }
 
     private var greeting: String {
@@ -69,91 +86,164 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - Today's Brief (on-device context summary)
+/// The parrot mark + serif wordmark, shown top-right of the dashboard.
+private struct Wordmark: View {
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 26, height: 26)
+            Text("Talkie")
+                .font(.talkieDisplay(20))
+                .foregroundStyle(Theme.ink)
+        }
+    }
+}
 
-private struct BriefCard: View {
+// MARK: - Today's Brief — stylized banner → detail subpage
+
+private struct BriefBanner: View {
+    @ObservedObject var summary: ContextSummaryStore
+
+    var body: some View {
+        NavigationLink(value: BriefRoute.detail) {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles").font(.system(size: 11, weight: .semibold))
+                        Text("TODAY'S BRIEF").font(.talkieEyebrow).tracking(0.8)
+                    }
+                    .foregroundStyle(.white.opacity(0.75))
+                    Text(headline)
+                        .font(.talkieDisplay(22))
+                        .foregroundStyle(.white)
+                    Text(subline)
+                        .font(.talkieHeading(13, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 12)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(.white.opacity(0.14)))
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(bannerBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 10)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var bannerBackground: some View {
+        ZStack(alignment: .trailing) {
+            LinearGradient(
+                colors: [Color(nsColor: NSColor(hex: 0x16181D)), Color(nsColor: NSColor(hex: 0x0B0C0F))],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            // Faint parrot motif on the right.
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable().scaledToFit()
+                .frame(width: 150)
+                .opacity(0.10)
+                .offset(x: 34)
+                .blur(radius: 0.5)
+        }
+    }
+
+    private var headline: String {
+        if !summary.isAvailable { return "Make sense of your day" }
+        return summary.summary.isEmpty ? "Catch up on your day" : "Your day, briefed"
+    }
+
+    private var subline: String {
+        if !summary.isAvailable { return "Turn on Apple Intelligence for an on-device brief." }
+        if summary.summary.isEmpty { return "Generate a private brief of everything you dictated." }
+        if let at = summary.generatedAt {
+            let f = RelativeDateTimeFormatter(); f.unitsStyle = .short
+            return "Updated \(f.localizedString(for: at, relativeTo: Date())) · tap to read"
+        }
+        return "Tap to read your brief"
+    }
+}
+
+/// Full-page brief (pushed from the banner).
+private struct BriefDetailView: View {
     @ObservedObject var summary: ContextSummaryStore
     @ObservedObject var history: HistoryStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Today's Brief", systemImage: "sparkles")
-                    .font(.talkieHeading(14, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                Spacer()
-                if let at = summary.generatedAt {
-                    Text(relativeTime(at))
-                        .font(.talkieEyebrow)
-                        .foregroundStyle(Theme.inkTertiary)
-                }
-                Button {
-                    Task { await summary.refresh(from: history) }
-                } label: {
-                    if summary.isGenerating {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 12, weight: .semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Today's Brief")
+                            .font(.talkieDisplay(26))
+                            .foregroundStyle(Theme.ink)
+                        Text(subtitle)
+                            .font(.talkieHeading(13, weight: .regular))
                             .foregroundStyle(Theme.inkSecondary)
                     }
+                    Spacer()
+                    Button {
+                        Task { await summary.refresh(from: history) }
+                    } label: {
+                        if summary.isGenerating {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Regenerate", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .disabled(summary.isGenerating || !summary.isAvailable)
                 }
-                .buttonStyle(.plain)
-                .disabled(summary.isGenerating || !summary.isAvailable)
-                .help("Generate a brief from your recent dictations")
-            }
 
-            content
+                content
+            }
+            .padding(28)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .talkieCard()
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.canvas)
+        .navigationTitle("")
+    }
+
+    private var subtitle: String {
+        guard let at = summary.generatedAt, !summary.summary.isEmpty else {
+            return "An on-device summary of what you worked on."
+        }
+        let f = RelativeDateTimeFormatter(); f.unitsStyle = .full
+        return "Generated \(f.localizedString(for: at, relativeTo: Date()))."
     }
 
     @ViewBuilder
     private var content: some View {
         if !summary.isAvailable {
-            Text("Turn on Apple Intelligence to get an on-device brief of what you worked on.")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.inkSecondary)
+            EmptyHint(icon: "sparkles",
+                      text: "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to get an on-device brief of your day.")
         } else if summary.summary.isEmpty {
-            Text(history.entries.isEmpty
-                 ? "Dictate through your day, then generate a brief of what you worked on."
-                 : "Tap ↻ to generate a brief from your recent dictations.")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.inkSecondary)
+            VStack(alignment: .leading, spacing: 14) {
+                EmptyHint(icon: "text.append",
+                          text: history.entries.isEmpty
+                          ? "Dictate through your day, then generate a brief of what you worked on."
+                          : "Generate a brief from your recent dictations.")
+                Button {
+                    Task { await summary.refresh(from: history) }
+                } label: { Label("Generate brief", systemImage: "sparkles") }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+                    .disabled(history.entries.isEmpty || summary.isGenerating)
+            }
+            .talkieCard()
         } else {
             MarkdownText(markdown: summary.summary, bulletColor: Theme.coral)
-                .font(.system(size: 13.5))
+                .font(.system(size: 14))
                 .foregroundStyle(Theme.ink)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .talkieCard()
         }
-    }
-
-    private func relativeTime(_ date: Date) -> String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .short
-        return f.localizedString(for: date, relativeTo: Date())
-    }
-}
-
-// MARK: - Streak pill (header)
-
-private struct StreakPill: View {
-    let days: Int
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "flame.fill")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(days > 0 ? Theme.featherGold : Theme.inkTertiary)
-            Text(days > 0 ? "\(days)-day streak" : "No streak yet")
-                .font(.talkieHeading(12.5, weight: .semibold))
-                .foregroundStyle(days > 0 ? Theme.ink : Theme.inkSecondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(Capsule().fill(Theme.surface))
-        .overlay(Capsule().strokeBorder(Theme.hairline))
     }
 }
 
@@ -168,18 +258,18 @@ private struct GaugeCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Eyebrow(text: "Words per minute")
-            ZStack {
+            ZStack(alignment: .bottom) {
                 Gauge(fraction: min(1, avg / SpeedBenchmark.worldRecord))
-                    .frame(height: 116)
+                    .frame(height: 104)
                 VStack(spacing: 0) {
                     Text(hasData ? "\(Int(avg.rounded()))" : "—")
-                        .font(.talkieMetric(46))
+                        .font(.talkieMetric(42))
                         .foregroundStyle(Theme.ink)
                     Text(hasData ? "avg wpm" : "no data yet")
                         .font(.talkieHeading(11, weight: .medium))
                         .foregroundStyle(Theme.inkSecondary)
                 }
-                .offset(y: 18)
+                .padding(.bottom, 2)
             }
             .frame(maxWidth: .infinity)
 
@@ -196,9 +286,7 @@ private struct GaugeCard: View {
     private var officeComparison: String {
         guard hasData else { return "An office typist holds ~40 wpm" }
         let mult = avg / SpeedBenchmark.officeWorker
-        if mult >= 1 {
-            return String(format: "%.1f× an office typist's pace", mult)
-        }
+        if mult >= 1 { return String(format: "%.1f× an office typist's pace", mult) }
         return "\(Int((mult * 100).rounded()))% of an office typist's pace"
     }
 
@@ -221,42 +309,47 @@ private struct ComparisonLine: View {
             Text(text)
                 .font(.talkieHeading(12, weight: .medium))
                 .foregroundStyle(Theme.inkSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
     }
 }
 
-/// A top-half speedometer arc: muted track with a coral value sweep.
+/// A top-half speedometer arc, sized to its frame (no fixed geometry → can't
+/// overflow the card). Track in the sunken tone, value swept deep-red → gold.
 private struct Gauge: View {
     let fraction: Double
+    private let lineWidth: CGFloat = 15
 
     var body: some View {
-        ZStack {
-            arc(0, 1).stroke(Theme.surfaceSunken, style: stroke)
-            arc(0, max(0.0001, fraction))
-                .stroke(
-                    AngularGradient(
-                        gradient: Gradient(colors: [Theme.heat(4), Theme.featherCoral, Theme.featherGold]),
-                        center: .center,
-                        startAngle: .degrees(180),
-                        endAngle: .degrees(360)
-                    ),
-                    style: stroke
-                )
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            let r = max(8, min((w - lineWidth) / 2, h - lineWidth / 2))
+            let center = CGPoint(x: w / 2, y: h - lineWidth / 2)
+            ZStack {
+                arc(center: center, radius: r, to: 1)
+                    .stroke(Theme.surfaceSunken, style: stroke)
+                arc(center: center, radius: r, to: max(0.001, fraction))
+                    .stroke(
+                        AngularGradient(
+                            gradient: Gradient(colors: [Theme.heat(4), Theme.featherCoral, Theme.featherGold]),
+                            center: .center,
+                            startAngle: .degrees(180), endAngle: .degrees(360)
+                        ),
+                        style: stroke
+                    )
+            }
         }
     }
 
-    private var stroke: StrokeStyle { StrokeStyle(lineWidth: 16, lineCap: .round) }
+    private var stroke: StrokeStyle { StrokeStyle(lineWidth: lineWidth, lineCap: .round) }
 
-    /// A path tracing the top semicircle from `from`…`to` (0…1 of the half).
-    private func arc(_ from: Double, _ to: Double) -> Path {
+    private func arc(center: CGPoint, radius: CGFloat, to: Double) -> Path {
         Path { p in
-            let rect = CGRect(x: 8, y: 8, width: 284, height: 284)
-            // Map 0…1 onto 180°→360° (the upper half, left to right).
-            let start = Angle.degrees(180 + 180 * from)
-            let end = Angle.degrees(180 + 180 * to)
-            p.addArc(center: CGPoint(x: rect.midX, y: rect.maxY),
-                     radius: rect.width / 2,
-                     startAngle: start, endAngle: end, clockwise: false)
+            p.addArc(center: center, radius: radius,
+                     startAngle: .degrees(180),
+                     endAngle: .degrees(180 + 180 * to),
+                     clockwise: false)
         }
     }
 }
@@ -270,7 +363,7 @@ private struct FixesCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "Fixes by Talkie")
             Text(stats.totalFixes.formatted())
-                .font(.talkieMetric(46))
+                .font(.talkieMetric(42))
                 .foregroundStyle(Theme.ink)
 
             Divider().overlay(Theme.hairline).padding(.vertical, 2)
@@ -297,7 +390,8 @@ private struct FixRow: View {
             Text(label)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
-            Spacer()
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
     }
 }
@@ -312,8 +406,10 @@ private struct WordsCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "Total words dictated")
             Text(stats.totalWords.formatted())
-                .font(.talkieMetric(46))
+                .font(.talkieMetric(42))
                 .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
 
             Divider().overlay(Theme.hairline).padding(.vertical, 2)
 
@@ -341,10 +437,11 @@ private struct MiniStat: View {
             Text(label)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
-            Spacer()
+            Spacer(minLength: 4)
             Text(value)
                 .font(.talkieHeading(13, weight: .semibold))
                 .foregroundStyle(Theme.ink)
+                .lineLimit(1)
         }
     }
 }
@@ -415,10 +512,12 @@ private struct UsageRow: View {
     }
 }
 
-// MARK: - Streak / heatmap card
+// MARK: - Streak / heatmap card (responsive — fits week count to the width)
 
 private struct StreakCard: View {
     @ObservedObject var activity: ActivityStore
+    private let cell: CGFloat = 12
+    private let gap: CGFloat = 3
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -430,7 +529,12 @@ private struct StreakCard: View {
                     .foregroundStyle(Theme.inkTertiary)
             }
 
-            Heatmap(data: activity.heatmap(weeks: 18))
+            GeometryReader { geo in
+                let labelCol: CGFloat = 28
+                let weeks = max(6, min(26, Int((geo.size.width - labelCol) / (cell + gap))))
+                Heatmap(data: activity.heatmap(weeks: weeks), cell: cell, gap: gap)
+            }
+            .frame(height: 7 * cell + 6 * gap + 16)
 
             HStack(spacing: 6) {
                 Text("Less").font(.system(size: 10)).foregroundStyle(Theme.inkTertiary)
@@ -449,15 +553,15 @@ private struct StreakCard: View {
 
 private struct Heatmap: View {
     let data: HeatmapData
-    private let cell: CGFloat = 11
-    private let gap: CGFloat = 3
+    let cell: CGFloat
+    let gap: CGFloat
     private let dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""]
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
-            // Weekday labels (Sun-first; show Mon/Wed/Fri to avoid clutter).
+            // Weekday labels (Sun-first; Mon/Wed/Fri only, to avoid clutter).
             VStack(alignment: .trailing, spacing: gap) {
-                Spacer().frame(height: 13) // align under the month row
+                Spacer().frame(height: 13)
                 ForEach(0..<7, id: \.self) { row in
                     Text(dayLabels[row])
                         .font(.system(size: 9))
@@ -467,18 +571,20 @@ private struct Heatmap: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                // Month labels.
+                // Month labels — each sits over a clear column slot and overflows
+                // freely to the right, so "Feb" never wraps to "Fe / b".
                 HStack(spacing: gap) {
                     ForEach(Array(data.monthLabels.enumerated()), id: \.offset) { _, label in
-                        Text(label)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(Theme.inkTertiary)
-                            .frame(width: cell, alignment: .leading)
-                            .fixedSize()
-                            .frame(width: cell, alignment: .leading)
+                        Color.clear
+                            .frame(width: cell, height: 10)
+                            .overlay(alignment: .leading) {
+                                Text(label)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(Theme.inkTertiary)
+                                    .fixedSize()
+                            }
                     }
                 }
-                .frame(height: 10, alignment: .leading)
 
                 // Week columns.
                 HStack(alignment: .top, spacing: gap) {
@@ -501,7 +607,7 @@ private struct Heatmap: View {
 
 // MARK: - Shared bits
 
-private struct EmptyHint: View {
+struct EmptyHint: View {
     let icon: String
     let text: String
     var body: some View {
@@ -512,32 +618,10 @@ private struct EmptyHint: View {
             Text(text)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
     }
-}
-
-// MARK: - Mic FAB
-
-/// Floating macaw-blue Liquid Glass mic button — tap to start/stop dictation.
-private struct MicFAB: View {
-    var body: some View {
-        Button {
-            NotificationCenter.default.post(name: .talkieToggleDictation, object: nil)
-        } label: {
-            Image(systemName: "mic.fill")
-                .font(.system(size: 19, weight: .semibold))
-                .frame(width: 54, height: 54)
-        }
-        .buttonStyle(.glassProminent)
-        .tint(Theme.coral)
-        .clipShape(Circle())
-        .help("Start or stop dictation")
-    }
-}
-
-extension Notification.Name {
-    static let talkieToggleDictation = Notification.Name("talkieToggleDictation")
 }
 
 func formatDuration(_ seconds: Double) -> String {

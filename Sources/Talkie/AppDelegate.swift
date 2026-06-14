@@ -38,8 +38,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentLocaleID: String = ""
     /// The app captured at the start of the current dictation (for usage stats).
     private var currentTarget: TargetApp = .unknown
-    /// Cleans finalized segments incrementally and combines them on stop.
-    private var currentAssembler: DictationAssembler?
     /// Cleanup config captured at the START of the session (so a mid-session
     /// settings toggle can't skew the end-of-session accounting).
     private var sessionCleanup: (appAdaptive: Bool, style: CleanupStyle, level: CleanupLevel)?
@@ -74,25 +72,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { try? await engine.warmUp(localeIdentifier: lang) }
         }
 
-        // Open the main window on launch — Permissions first if not set up yet,
-        // otherwise the History log.
-        openSettings(tab: permissions.allGranted ? .dashboard : .permissions)
+        // Open the main window on launch — onboarding/permissions are handled
+        // inside the window now; just land on the Dashboard.
+        openSettings(tab: .dashboard)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(appBecameActive),
             name: NSApplication.didBecomeActiveNotification, object: nil
         )
-        // The dashboard mic FAB toggles dictation through this.
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(toggleDictationFromUI),
-            name: .talkieToggleDictation, object: nil
-        )
-    }
-
-    /// Tap-to-toggle dictation from the dashboard mic button (works regardless
-    /// of the configured hold/toggle activation mode).
-    @objc private func toggleDictationFromUI() {
-        if isDictating { endDictation() } else { beginDictation() }
     }
 
     /// Clicking the Dock icon (with no window open) reopens the main window.
@@ -347,22 +334,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let phrases = Array(Set(bias)).prefix(180).map { $0 }
         let multiLang = settings.spokenLanguages.count > 1
 
-        // Batched cleanup: each finalized segment is cleaned as it arrives and the
-        // results are combined on stop. Skipped for multi-language (the language
-        // isn't known until the end), where cleanup runs once on stop instead.
-        let cleanupEngine = self.cleanup
+        // Capture the cleanup config at the start so a mid-session settings toggle
+        // can't skew the end-of-session accounting. Cleanup runs ONCE on the WHOLE
+        // transcript at stop — so spoken self-corrections that span a pause
+        // ("Thursday, no Friday") are resolved with full context — and is chunked
+        // only when the transcript is genuinely long.
         let appAdaptive = settings.appAdaptiveCleanup
         let adaptiveStyle = settings.cleanupStyle(for: captured.target.category)
         let cleanupLevel = settings.cleanupLevel
-        let cleanFn: @Sendable (String) async -> String? = { segment in
-            guard !multiLang else { return nil }
-            if appAdaptive {
-                return adaptiveStyle == .off ? nil : await cleanupEngine.clean(segment, style: adaptiveStyle)
-            }
-            return cleanupLevel == .none ? nil : await cleanupEngine.clean(segment, level: cleanupLevel)
-        }
-        let assembler = DictationAssembler(clean: cleanFn)
-        currentAssembler = assembler
         sessionCleanup = (appAdaptive: appAdaptive, style: adaptiveStyle, level: cleanupLevel)
 
         Task {
@@ -379,7 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             do {
                 await engine.setContextualStrings(phrases)
-                let session = try await engine.beginSession(segmentHandler: { segment in assembler.add(segment) })
+                let session = try await engine.beginSession()
                 // Re-check after the (async) model load / session setup.
                 guard self.isDictating, self.sessionID == myID else {
                     await engine.cancelSession()
@@ -413,7 +392,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // setup), the begin task will see the generation change and abort — we
         // just reset the UI here.
         guard sessionLive else {
-            currentAssembler = nil
             hud.hide()
             return
         }
@@ -460,25 +438,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            // Cleanup. Non-multi-language sessions were cleaned incrementally,
-            // segment by segment, as you spoke (the assembler) — so a long
-            // dictation never hits the model as one huge transcript. Multi-language
-            // is cleaned here, once, on the (possibly re-transcribed) full text.
-            let multiLang = spokenLanguages.count > 1
+            // Cleanup runs ONCE on the whole transcript so a spoken self-correction
+            // that spans a pause ("Thursday, no Friday") is resolved with full
+            // context. Only when the transcript is genuinely long do we split it
+            // into sentence batches (each within the on-device model's context) so
+            // a 5-minute dictation doesn't choke or overflow.
+            let cleanupEngine = self.cleanup
             let cleanupEnabled = appAdaptive ? (adaptiveStyle != .off) : (cleanupLevel != .none)
-            var cleaned: String
-            if !multiLang, let assembler = self.currentAssembler {
-                cleaned = await assembler.cleaned()
-                if cleaned.isEmpty { cleaned = finalRaw }
-            } else if cleanupEnabled, !finalRaw.isEmpty {
-                let polished = appAdaptive
-                    ? await self.cleanup.clean(finalRaw, style: adaptiveStyle)
-                    : await self.cleanup.clean(finalRaw, level: cleanupLevel)
-                cleaned = polished ?? finalRaw
-            } else {
-                cleaned = finalRaw
+            var cleaned = finalRaw
+            if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
+                let cleanOne: @Sendable (String) async -> String? = { text in
+                    appAdaptive
+                        ? await cleanupEngine.clean(text, style: adaptiveStyle)
+                        : await cleanupEngine.clean(text, level: cleanupLevel)
+                }
+                if finalRaw.count <= Self.wholeCleanupCharLimit {
+                    cleaned = (await cleanOne(finalRaw)) ?? finalRaw
+                } else {
+                    cleaned = await Self.cleanInBatches(finalRaw, cleanOne)
+                }
             }
-            self.currentAssembler = nil
             let aiHandledFillers = cleanupEnabled && CleanupEngine.isAvailable && cleaned != finalRaw
             let aiWordsChanged = aiHandledFillers ? Self.wordEditCount(from: finalRaw, to: cleaned) : 0
 
@@ -575,6 +554,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
+
+    /// Below this many characters the whole transcript is cleaned in ONE pass (so
+    /// self-corrections across pauses resolve); above it, we chunk by sentence.
+    private static let wholeCleanupCharLimit = 2200
+
+    /// Clean a long transcript in sentence-grouped batches (each within the
+    /// model's context window), joining the cleaned results.
+    private static func cleanInBatches(
+        _ text: String,
+        _ cleanOne: @Sendable (String) async -> String?
+    ) async -> String {
+        var out: [String] = []
+        for batch in splitIntoBatches(text, maxChars: 2000) {
+            out.append((await cleanOne(batch)) ?? batch)
+        }
+        return out.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func splitIntoBatches(_ text: String, maxChars: Int) -> [String] {
+        var sentences: [String] = []
+        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: .bySentences) { sub, _, _, _ in
+            if let sub { sentences.append(sub) }
+        }
+        if sentences.isEmpty { sentences = [text] }
+        var batches: [String] = []
+        var current = ""
+        for sentence in sentences {
+            if !current.isEmpty, current.count + sentence.count > maxChars {
+                batches.append(current)
+                current = ""
+            }
+            current += sentence
+        }
+        if !current.isEmpty { batches.append(current) }
+        return batches
+    }
 
     /// Rough count of word-level edits the AI cleanup made (insertions + removals).
     private static func wordEditCount(from a: String, to b: String) -> Int {

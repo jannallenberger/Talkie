@@ -126,6 +126,14 @@ final class AppSettings: ObservableObject {
     @Published var vibeCoding: Bool {
         didSet { defaults.set(vibeCoding, forKey: Keys.vibeCoding) }
     }
+    /// What Talkie calls you (set during onboarding; shown on the dashboard).
+    @Published var userName: String {
+        didSet { defaults.set(userName, forKey: Keys.userName) }
+    }
+    /// True once the first-run onboarding has been completed.
+    @Published var hasOnboarded: Bool {
+        didSet { defaults.set(hasOnboarded, forKey: Keys.hasOnboarded) }
+    }
     @Published var playSounds: Bool {
         didSet { defaults.set(playSounds, forKey: Keys.playSounds); notifyChanged() }
     }
@@ -154,6 +162,8 @@ final class AppSettings: ObservableObject {
             Keys.appAdaptiveCleanup: true,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
+            Keys.userName: "",
+            Keys.hasOnboarded: false,
             Keys.playSounds: true,
             Keys.launchAtLogin: false,
         ])
@@ -173,6 +183,8 @@ final class AppSettings: ObservableObject {
             ?? AppSettings.defaultAppCleanupStyles
         contextAwareness = d.bool(forKey: Keys.contextAwareness)
         vibeCoding = d.bool(forKey: Keys.vibeCoding)
+        userName = d.string(forKey: Keys.userName) ?? ""
+        hasOnboarded = d.bool(forKey: Keys.hasOnboarded)
         playSounds = d.bool(forKey: Keys.playSounds)
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
     }
@@ -212,6 +224,8 @@ final class AppSettings: ObservableObject {
         static let appCleanupStyles = "appCleanupStyles"
         static let contextAwareness = "contextAwareness"
         static let vibeCoding = "vibeCoding"
+        static let userName = "userName"
+        static let hasOnboarded = "hasOnboarded"
         static let playSounds = "playSounds"
         static let launchAtLogin = "launchAtLogin"
     }
