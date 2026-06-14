@@ -4,6 +4,7 @@ import SwiftUI
 enum SettingsTab: Hashable, CaseIterable {
     case dashboard
     case history
+    case meetings
     case dictionary
     case vibeCoding
     case general
@@ -13,6 +14,7 @@ enum SettingsTab: Hashable, CaseIterable {
         switch self {
         case .dashboard:   return "Dashboard"
         case .history:     return "History"
+        case .meetings:    return "Meetings"
         case .dictionary:  return "Dictionary"
         case .vibeCoding:  return "Vibe Coding"
         case .general:     return "Settings"
@@ -24,6 +26,7 @@ enum SettingsTab: Hashable, CaseIterable {
         switch self {
         case .dashboard:   return "square.grid.2x2.fill"
         case .history:     return "clock.fill"
+        case .meetings:    return "person.2.fill"
         case .dictionary:  return "character.book.closed.fill"
         case .vibeCoding:  return "chevron.left.forwardslash.chevron.right"
         case .general:     return "gearshape.fill"
@@ -54,6 +57,8 @@ final class MainWindowController {
         activity: ActivityStore,
         projectIndex: ProjectIndexStore,
         contextSummary: ContextSummaryStore,
+        meetingRecorder: MeetingRecorder,
+        meetingStore: MeetingStore,
         onRetryHotKey: @escaping () -> Void
     ) {
         let root = MainView(
@@ -66,6 +71,8 @@ final class MainWindowController {
             activity: activity,
             projectIndex: projectIndex,
             contextSummary: contextSummary,
+            meetingRecorder: meetingRecorder,
+            meetingStore: meetingStore,
             router: router,
             onRetryHotKey: onRetryHotKey
         )
@@ -106,6 +113,8 @@ struct MainView: View {
     @ObservedObject var activity: ActivityStore
     @ObservedObject var projectIndex: ProjectIndexStore
     @ObservedObject var contextSummary: ContextSummaryStore
+    @ObservedObject var meetingRecorder: MeetingRecorder
+    @ObservedObject var meetingStore: MeetingStore
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Void
 
@@ -130,6 +139,8 @@ struct MainView: View {
                           contextSummary: contextSummary, router: router)
         case .history:
             HistorySettings(history: history)
+        case .meetings:
+            MeetingsView(recorder: meetingRecorder, store: meetingStore)
         case .dictionary:
             DictionarySettings(dictionary: dictionary)
         case .vibeCoding:

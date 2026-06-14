@@ -12,8 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let activity = ActivityStore()
     let projectIndex = ProjectIndexStore()
     let contextSummary = ContextSummaryStore()
+    let meetingStore = MeetingStore()
 
     private var engine: TranscriptionEngine!
+    private var meetingRecorder: MeetingRecorder!
     private let audio = AudioCapture()
     private let hud = HUDController()
     private let learning = LearningEngine()
@@ -51,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Feedback.enabled = settings.playSounds
         currentLocaleID = settings.spokenLanguages.first ?? settings.localeIdentifier
         engine = TranscriptionEngine(localeIdentifier: currentLocaleID)
+        meetingRecorder = MeetingRecorder(engine: engine, store: meetingStore)
 
         setupMainMenu()
         setupStatusItem()
@@ -286,6 +289,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !isDictating else { return }
         guard TranscriptionEngine.isAvailable else {
             hud.showError("On-device speech isn't available on this Mac.")
+            return
+        }
+        // The meeting recorder shares the transcription engine — don't dictate
+        // over an active recording.
+        guard meetingRecorder?.isRecording != true else {
+            hud.showError("Stop the meeting recording first.")
             return
         }
 
@@ -536,6 +545,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 activity: activity,
                 projectIndex: projectIndex,
                 contextSummary: contextSummary,
+                meetingRecorder: meetingRecorder,
+                meetingStore: meetingStore,
                 onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }
             )
         }
