@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Open the main window on launch — Permissions first if not set up yet,
         // otherwise the History log.
-        openSettings(tab: permissions.allGranted ? .history : .permissions)
+        openSettings(tab: permissions.allGranted ? .dashboard : .permissions)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(appBecameActive),
@@ -75,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Clicking the Dock icon (with no window open) reopens the main window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { openSettings(tab: .history) }
+        if !flag { openSettings(tab: .dashboard) }
         return true
     }
 
