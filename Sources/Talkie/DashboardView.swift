@@ -126,14 +126,21 @@ private struct BriefBanner: View {
                         .foregroundStyle(.white.opacity(0.72))
                         .lineLimit(2)
                 }
-                Spacer(minLength: 12)
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(.white.opacity(0.14)))
+                Spacer(minLength: 16)
+                // Clay-feather wings as a clean inline accent (generated brand art).
+                if let wings = Brand.image("FeatherWings") {
+                    Image(nsImage: wings)
+                        .resizable().scaledToFit()
+                        .frame(height: 82)
+                        .opacity(0.95)
+                        .accessibilityHidden(true)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.4))
             }
-            .padding(22)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(bannerBackground)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
@@ -143,21 +150,10 @@ private struct BriefBanner: View {
     }
 
     private var bannerBackground: some View {
-        ZStack(alignment: .trailing) {
-            LinearGradient(
-                colors: [Color(nsColor: NSColor(hex: 0x16181D)), Color(nsColor: NSColor(hex: 0x0B0C0F))],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            // Clay-feather wings bleeding off the right edge (generated brand art).
-            if let wings = Brand.image("FeatherWings") {
-                Image(nsImage: wings)
-                    .resizable().scaledToFit()
-                    .frame(width: 152)
-                    .opacity(0.9)
-                    .offset(x: 42, y: 6)
-                    .accessibilityHidden(true)
-            }
-        }
+        LinearGradient(
+            colors: [Color(nsColor: NSColor(hex: 0x16181D)), Color(nsColor: NSColor(hex: 0x0B0C0F))],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
     }
 
     private var headline: String {

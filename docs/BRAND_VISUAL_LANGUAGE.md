@@ -26,20 +26,23 @@ The macaw's feathers are the brand's expandable visual language: **soft matte
 art: wings, sprays, drifting bokeh. It is warm, tactile, playful-but-premium —
 never flat corporate vector, never neon.
 
-## 3. The line: functional icons vs. decorative art
+## 3. The line: clay icons vs. functional symbols
 
-This is the rule that keeps the app crisp **and** branded:
+Two icon tiers, split by **size and role**:
 
-- **Functional UI icons stay SF Symbols** — sidebar glyphs, the settings
-  subpage chevrons, toggle labels, status checks. They must be razor-sharp at
-  11–16pt, recolor to feather tints, flip for RTL, and carry accessibility
-  traits. Raster/AI art can't do any of that, so we do **not** replace them with
-  generated bitmaps. The settings rows get their brand identity from
-  **feather-tinted icon tiles** (a rounded square filled with the category's
-  feather hue), not from custom arrow images.
-- **Decorative / atmospheric elements are generated clay art** — onboarding
-  backgrounds, the Today's Brief banner motif, empty-state illustrations,
-  ambient texture. These are where the macaw's clay language lives.
+- **Identity / category icons ≥ 28pt → generated clay icons.** The settings
+  index rows, large empty-state icons, hero glyphs. These are big enough to read
+  the soft-clay detail and they *are* the brand. Generated as one consistent
+  sheet (see §5) so they all share a material and light. Full-color, so they work
+  on both the cream and charcoal surfaces with no tinting.
+- **Functional micro-icons < 24pt → SF Symbols.** Chevrons, trash, the add (+),
+  copy, toggle labels (`Aa`/`W`), status checks, the live HUD/menu-bar mic,
+  sidebar nav glyphs. They must be razor-sharp at 11–16pt, flip for RTL, and
+  carry accessibility traits — raster clay would blur and can't theme. The
+  settings-row **chevrons stay SF Symbols**; only the leading category icon is
+  clay.
+- **Decorative / atmospheric art → generated clay art** — onboarding background,
+  the Today's Brief banner wings, empty-state illustrations.
 
 ## 4. Asset catalog — `Resources/Brand/` (bundled, loaded via `Brand.image(_:)`)
 
@@ -48,6 +51,11 @@ This is the rule that keeps the app crisp **and** branded:
 | `TalkieLogo.png` | the parrot mark, transparent | sidebar/dashboard wordmark, onboarding, brief banner |
 | `FeatherWings.png` | a symmetric clay-feather wing pair, transparent | brief-banner motif, empty states, onboarding accent |
 | `AmbientDark.png` | near-black warm bokeh of drifting clay feathers (center kept dark for text) | onboarding background (dark mode) |
+| `Icon{Mic,Keyboard,Wand,Globe,Brain,Sliders,Shield,Person,Book}.png` | a consistent set of soft-clay category icons (transparent, 256²) | the Settings index rows; reusable for large empty-states |
+
+The icon set was generated as **one** 3×3 sheet (so they share material/light),
+cut to transparent, then sliced by explicit coordinates (`magick -crop
+683x683+X+Y -trim` — the auto-tiler `3x3@` mis-numbers, so crop by offset).
 
 Loose PNGs are copied flat into `Talkie.app/Contents/Resources/` by
 `scripts/build_app.sh` and read with `Brand.image("Name")` (returns `NSImage?`).

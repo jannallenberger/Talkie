@@ -407,25 +407,20 @@ private struct SettingsHome: View {
                 VStack(alignment: .leading, spacing: 16) {
                     PageHeader(title: "Settings",
                                subtitle: "Tune how Talkie listens, cleans up, and behaves.")
-                    VStack(spacing: 10) {
-                        row(.profile, "person.crop.circle.fill", Theme.featherBlue, "Profile",
-                            settings.userName.isEmpty ? "Set your name" : settings.userName)
-                        row(.activation, "keyboard.fill", Theme.featherCoral, "Activation & insertion",
-                            "\(settings.activationKey.displayName) · \(settings.activationMode == .holdToTalk ? "Hold" : "Toggle")")
-                        row(.cleanup, "wand.and.stars", Theme.featherPlum, "Cleanup & style",
-                            settings.appAdaptiveCleanup ? "Adapts per app" : settings.cleanupLevel.displayName)
-                        row(.languages, "globe", Theme.featherGreen, "Languages",
-                            "\(settings.spokenLanguages.count) selected")
-                        row(.context, "sparkles", Theme.featherGold, "Context & learning",
-                            settings.contextAwareness ? "Context on" : "Context off")
-                        row(.behavior, "switch.2", Theme.featherBlue, "Behavior",
-                            "Sounds, open at login")
-                        row(.permissions, "lock.shield.fill",
-                            permissions.allGranted ? Theme.featherGreen : Theme.warning,
-                            "Permissions",
-                            permissions.allGranted ? "All granted" : "Action needed",
-                            badge: !permissions.allGranted)
+                    // One grouped card with clay-icon rows + hairline dividers.
+                    VStack(spacing: 0) {
+                        ForEach(Array(categoryRows.enumerated()), id: \.offset) { _, r in
+                            SettingsRowView(icon: r.icon, title: r.title, subtitle: r.subtitle, route: r.route)
+                            Divider().overlay(Theme.hairline).padding(.leading, 64)
+                        }
+                        SettingsRowView(icon: "IconShield", title: "Permissions",
+                                        subtitle: permissions.allGranted ? "All granted" : "Action needed",
+                                        badge: !permissions.allGranted, route: .permissions)
                     }
+                    .background(Theme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
                 }
                 .padding(28)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -437,28 +432,20 @@ private struct SettingsHome: View {
         }
     }
 
-    private func row(_ route: SettingsRoute, _ icon: String, _ tint: Color,
-                     _ title: String, _ subtitle: String, badge: Bool = false) -> some View {
-        NavigationLink(value: route) {
-            HStack(spacing: 13) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 30, height: 30)
-                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tint.opacity(0.14)))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.talkieHeading(14, weight: .semibold)).foregroundStyle(Theme.ink)
-                    Text(subtitle).font(.talkieHeading(12, weight: .regular))
-                        .foregroundStyle(Theme.inkSecondary).lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                if badge { Circle().fill(Theme.danger).frame(width: 7, height: 7) }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.inkTertiary)
-            }
-            .talkieCard(padding: 14)
-        }
-        .buttonStyle(.plain)
+    private var categoryRows: [(route: SettingsRoute, icon: String, title: String, subtitle: String)] {
+        [
+            (.profile, "IconPerson", "Profile",
+             settings.userName.isEmpty ? "Set your name" : settings.userName),
+            (.activation, "IconKeyboard", "Activation & insertion",
+             "\(settings.activationKey.displayName) · \(settings.activationMode == .holdToTalk ? "Hold" : "Toggle")"),
+            (.cleanup, "IconWand", "Cleanup & style",
+             settings.appAdaptiveCleanup ? "Adapts per app" : settings.cleanupLevel.displayName),
+            (.languages, "IconGlobe", "Languages",
+             "\(settings.spokenLanguages.count) selected"),
+            (.context, "IconBrain", "Context & learning",
+             settings.contextAwareness ? "Context on" : "Context off"),
+            (.behavior, "IconSliders", "Behavior", "Sounds, open at login"),
+        ]
     }
 
     @ViewBuilder
@@ -472,6 +459,49 @@ private struct SettingsHome: View {
         case .behavior:    BehaviorSettings(settings: settings)
         case .permissions: PermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
         }
+    }
+}
+
+/// A single settings-index row: a clay brand icon, title + state subtitle, and a
+/// chevron, with a soft hover highlight. Rows live inside one grouped card.
+private struct SettingsRowView: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    var badge: Bool = false
+    let route: SettingsRoute
+    @State private var hovering = false
+
+    var body: some View {
+        NavigationLink(value: route) {
+            HStack(spacing: 14) {
+                Group {
+                    if let img = Brand.image(icon) {
+                        Image(nsImage: img).resizable().scaledToFit()
+                    } else {
+                        Image(systemName: "square.dashed").foregroundStyle(Theme.inkTertiary)
+                    }
+                }
+                .frame(width: 34, height: 34)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.talkieHeading(14.5, weight: .semibold)).foregroundStyle(Theme.ink)
+                    Text(subtitle).font(.talkieHeading(12.5, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if badge { Circle().fill(Theme.danger).frame(width: 7, height: 7) }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .background(hovering ? Theme.inkSecondary.opacity(0.06) : Color.clear)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }
 
