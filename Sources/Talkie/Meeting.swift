@@ -9,10 +9,33 @@ struct Meeting: Codable, Identifiable, Hashable {
     var durationSec: Double
     var transcript: String
     var summary: String
+    /// Who appears in the transcript — `[Me]` for a solo recording, `[Me, Them]`
+    /// when the far end was captured too.
+    var participants: [String] = ["Me"]
+    /// How the audio was captured (e.g. "talkie (mic + system audio)").
+    var source: String = "talkie (mic-only)"
     /// The `.md` file written into ~/Talkie Meetings/.
     var fileName: String
 
     var date: Date { Date(timeIntervalSince1970: startUnix) }
+}
+
+extension Meeting {
+    /// Custom decode so notes saved before Phase 2 (no `participants` / `source`
+    /// keys) still load. Declared in an extension so the memberwise initializer is
+    /// still synthesized for callers.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try c.decode(String.self, forKey: .title)
+        startUnix = try c.decode(Double.self, forKey: .startUnix)
+        durationSec = try c.decode(Double.self, forKey: .durationSec)
+        transcript = try c.decode(String.self, forKey: .transcript)
+        summary = try c.decode(String.self, forKey: .summary)
+        participants = try c.decodeIfPresent([String].self, forKey: .participants) ?? ["Me"]
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? "talkie (mic-only)"
+        fileName = try c.decode(String.self, forKey: .fileName)
+    }
 }
 
 /// Summarizes a meeting transcript on-device (decisions + action items + overview).
@@ -93,7 +116,8 @@ final class MeetingStore: ObservableObject {
         title: \(m.title)
         date: \(iso)
         duration_min: \(minutes)
-        source: talkie (mic-only)
+        participants: [\(m.participants.joined(separator: ", "))]
+        source: \(m.source)
         ---
 
         ## Summary
