@@ -38,15 +38,19 @@ struct DashboardView: View {
 
                     BriefBanner(summary: contextSummary)
 
+                    // `.frame(maxHeight: .infinity, alignment: .top)` makes the
+                    // cards in each grid row equal-height and top-aligned —
+                    // otherwise LazyVGrid vertically centers the shorter card,
+                    // leaving an off-looking gap next to a taller neighbor.
                     LazyVGrid(columns: metricCols, alignment: .leading, spacing: Theme.Space.gridGap) {
-                        GaugeCard(stats: stats)
-                        FixesCard(stats: stats)
-                        WordsCard(stats: stats, history: history)
+                        GaugeCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
+                        FixesCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
+                        WordsCard(stats: stats, history: history).frame(maxHeight: .infinity, alignment: .top)
                     }
 
                     LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
-                        UsageCard(appUsage: appUsage)
-                        StreakCard(activity: activity)
+                        UsageCard(appUsage: appUsage).frame(maxHeight: .infinity, alignment: .top)
+                        StreakCard(activity: activity).frame(maxHeight: .infinity, alignment: .top)
                     }
                 }
                 .padding(28)
