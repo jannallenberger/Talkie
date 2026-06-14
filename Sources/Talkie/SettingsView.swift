@@ -206,6 +206,7 @@ private struct StatsSettings: View {
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 16) {
             Text("Your Dictation Stats")
                 .font(.headline)
@@ -223,7 +224,14 @@ private struct StatsSettings: View {
                 StatCard(title: "Time spoken", value: formatDuration(stats.totalDurationSec), icon: "clock.fill")
             }
 
-            Spacer()
+            Text("Fixes by Talkie")
+                .font(.headline)
+                .padding(.top, 4)
+            LazyVGrid(columns: columns, spacing: 12) {
+                StatCard(title: "Total fixes", value: stats.totalFixes.formatted(), icon: "wand.and.stars")
+                StatCard(title: "Words polished", value: stats.wordsCorrected.formatted(), icon: "sparkles")
+                StatCard(title: "Dictionary fixes", value: stats.dictionaryFixes.formatted(), icon: "character.book.closed")
+            }
 
             HStack {
                 Spacer()
@@ -231,8 +239,10 @@ private struct StatsSettings: View {
                     Label("Reset stats", systemImage: "arrow.counterclockwise")
                 }
             }
+            .padding(.top, 4)
         }
         .padding()
+        }
     }
 
     private func formatDuration(_ seconds: Double) -> String {
@@ -308,23 +318,29 @@ private struct GeneralSettings: View {
             }
 
             Section("Smart cleanup") {
-                Toggle("Clean up with on-device AI", isOn: $settings.aiCleanup)
-                if let warning = CleanupEngine.unavailableMessage {
+                Picker("Cleanup level", selection: $settings.cleanupLevel) {
+                    ForEach(CleanupLevel.allCases) { Text($0.displayName).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Text(settings.cleanupLevel.detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if settings.cleanupLevel != .none, let warning = CleanupEngine.unavailableMessage {
                     Label(warning, systemImage: "exclamationmark.triangle.fill")
                         .font(.callout)
                         .foregroundStyle(.orange)
-                } else {
-                    Text("Resolves spoken self-corrections (“Tuesday — no, Wednesday”), and fixes grammar, punctuation, and fillers. Runs entirely on your Mac; nothing leaves the device.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                } else if settings.cleanupLevel != .none {
+                    Text("Resolves spoken self-corrections and fixes grammar. Runs entirely on your Mac; nothing leaves the device.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
             }
 
             Section("Basic cleanup") {
                 Toggle("Capitalize the first letter", isOn: $settings.autoCapitalize)
                 Toggle("Remove filler words (um, uh, hmm…)", isOn: $settings.cleanupFillers)
-                if settings.aiCleanup {
-                    Text("Filler removal only applies when Smart cleanup is off or unavailable.")
+                if settings.cleanupLevel != .none {
+                    Text("Filler removal only applies when Smart cleanup is set to None.")
                         .font(.callout)
                         .foregroundStyle(.tertiary)
                 }

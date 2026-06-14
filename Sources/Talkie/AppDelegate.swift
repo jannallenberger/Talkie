@@ -360,7 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let replacements = dictionary.replacementsSnapshot()
         let autoCap = settings.autoCapitalize
         let removeFillers = settings.cleanupFillers
-        let aiCleanup = settings.aiCleanup
+        let cleanupLevel = settings.cleanupLevel
         let mode = settings.insertionMode
         let spokenLanguages = settings.spokenLanguages
 
@@ -381,11 +381,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            // On-device LLM cleanup: resolve self-corrections, fix grammar/fillers.
-            // If it runs, it already handled fillers (skip the deterministic strip).
+            // On-device LLM cleanup at the chosen intensity. If it runs, it already
+            // handled fillers (skip the deterministic strip).
             var cleaned = finalRaw
             var aiHandledFillers = false
-            if aiCleanup, !finalRaw.isEmpty, let polished = await self.cleanup.clean(finalRaw) {
+            var aiWordsChanged = 0
+            if cleanupLevel != .none, !finalRaw.isEmpty,
+               let polished = await self.cleanup.clean(finalRaw, level: cleanupLevel) {
+                aiWordsChanged = Self.wordEditCount(from: finalRaw, to: polished)
                 cleaned = polished
                 aiHandledFillers = true
             }
@@ -397,19 +400,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 autoCapitalize: autoCap,
                 to: cleaned
             )
+            let finalText = processed.text
 
-            guard !processed.isEmpty else {
+            guard !finalText.isEmpty else {
                 self.hud.hide()
                 return
             }
 
-            // Log it (copyable in the History tab) + lifetime stats, even if
-            // insertion fell back to the clipboard.
-            let words = WordCounter.count(processed)
-            self.history.add(processed, wordCount: words, durationSec: duration)
+            // Log it (copyable in the History tab) + lifetime stats + fix tally,
+            // even if insertion fell back to the clipboard.
+            let words = WordCounter.count(finalText)
+            self.history.add(finalText, wordCount: words, durationSec: duration)
             self.stats.record(words: words, durationSec: duration)
+            self.stats.recordFixes(
+                dictionary: processed.replacementHits,
+                fillers: processed.fillersRemoved,
+                aiWords: aiWordsChanged
+            )
 
-            let outcome = TextInjector.insert(processed, mode: mode)
+            let outcome = TextInjector.insert(finalText, mode: mode)
             switch outcome {
             case .inserted:
                 Feedback.done()
@@ -418,7 +427,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Snapshot the field after the paste lands, so we can learn from
                 // any edits the user makes before the next dictation.
                 if self.settings.learnFromEdits {
-                    let learnedText = processed
+                    let learnedText = finalText
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(350))
                         self.learning.recordInsertion(learnedText)
@@ -454,6 +463,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
+
+    /// Rough count of word-level edits the AI cleanup made (insertions + removals).
+    private static func wordEditCount(from a: String, to b: String) -> Int {
+        let beforeTokens = a.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        let afterTokens = b.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        return afterTokens.difference(from: beforeTokens).count
+    }
 
     // MARK: Shared accessor for C-callback bridges
 

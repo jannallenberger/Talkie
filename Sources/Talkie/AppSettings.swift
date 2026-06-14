@@ -105,9 +105,9 @@ final class AppSettings: ObservableObject {
     @Published var learnFromEdits: Bool {
         didSet { defaults.set(learnFromEdits, forKey: Keys.learnFromEdits) }
     }
-    /// On-device LLM cleanup (resolve self-corrections, fix grammar/fillers).
-    @Published var aiCleanup: Bool {
-        didSet { defaults.set(aiCleanup, forKey: Keys.aiCleanup) }
+    /// On-device LLM cleanup intensity (none / light / medium / high).
+    @Published var cleanupLevel: CleanupLevel {
+        didSet { defaults.set(cleanupLevel.rawValue, forKey: Keys.cleanupLevel) }
     }
     @Published var playSounds: Bool {
         didSet { defaults.set(playSounds, forKey: Keys.playSounds); notifyChanged() }
@@ -133,7 +133,7 @@ final class AppSettings: ObservableObject {
             Keys.autoCapitalize: true,
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
-            Keys.aiCleanup: true,
+            Keys.cleanupLevel: CleanupLevel.medium.rawValue,
             Keys.playSounds: true,
             Keys.launchAtLogin: false,
         ])
@@ -147,7 +147,7 @@ final class AppSettings: ObservableObject {
         autoCapitalize = d.bool(forKey: Keys.autoCapitalize)
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
-        aiCleanup = d.bool(forKey: Keys.aiCleanup)
+        cleanupLevel = CleanupLevel(rawValue: d.string(forKey: Keys.cleanupLevel) ?? "") ?? .medium
         playSounds = d.bool(forKey: Keys.playSounds)
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
     }
@@ -161,7 +161,7 @@ final class AppSettings: ObservableObject {
         static let autoCapitalize = "autoCapitalize"
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
-        static let aiCleanup = "aiCleanup"
+        static let cleanupLevel = "cleanupLevel"
         static let playSounds = "playSounds"
         static let launchAtLogin = "launchAtLogin"
     }

@@ -9,6 +9,14 @@ final class StatsStore: ObservableObject {
     @Published private(set) var totalDurationSec = 0.0
     @Published private(set) var bestWPM = 0.0
 
+    // Fixes Talkie has made for you (drives the "Fixes by Talkie" card).
+    /// Replacement / vocabulary substitutions applied (e.g. "correlate" → "Coralate").
+    @Published private(set) var dictionaryFixes = 0
+    /// Filler words stripped ("um", "uh", …).
+    @Published private(set) var fillersRemoved = 0
+    /// Words changed by the on-device AI cleanup (grammar, self-corrections).
+    @Published private(set) var aiWordsChanged = 0
+
     private let fileURL: URL
 
     init() {
@@ -33,17 +41,33 @@ final class StatsStore: ObservableObject {
         save()
     }
 
+    /// Tally the corrections Talkie made on one dictation.
+    func recordFixes(dictionary: Int, fillers: Int, aiWords: Int) {
+        dictionaryFixes += max(0, dictionary)
+        fillersRemoved += max(0, fillers)
+        aiWordsChanged += max(0, aiWords)
+        save()
+    }
+
     /// Lifetime average speaking speed.
     var averageWPM: Double {
         guard totalDurationSec > 0 else { return 0 }
         return Double(totalWords) / (totalDurationSec / 60)
     }
 
+    /// Words Talkie rewrote for you (fillers + AI grammar/self-correction edits).
+    var wordsCorrected: Int { fillersRemoved + aiWordsChanged }
+    /// All fixes combined — the headline number on the "Fixes by Talkie" card.
+    var totalFixes: Int { wordsCorrected + dictionaryFixes }
+
     func reset() {
         totalWords = 0
         totalDictations = 0
         totalDurationSec = 0
         bestWPM = 0
+        dictionaryFixes = 0
+        fillersRemoved = 0
+        aiWordsChanged = 0
         save()
     }
 
@@ -54,6 +78,10 @@ final class StatsStore: ObservableObject {
         var totalDictations: Int
         var totalDurationSec: Double
         var bestWPM: Double
+        // Optional for back-compat with files written before fix-tracking.
+        var dictionaryFixes: Int?
+        var fillersRemoved: Int?
+        var aiWordsChanged: Int?
     }
 
     private func load() {
@@ -63,6 +91,9 @@ final class StatsStore: ObservableObject {
         totalDictations = p.totalDictations
         totalDurationSec = p.totalDurationSec
         bestWPM = p.bestWPM
+        dictionaryFixes = p.dictionaryFixes ?? 0
+        fillersRemoved = p.fillersRemoved ?? 0
+        aiWordsChanged = p.aiWordsChanged ?? 0
     }
 
     private func save() {
@@ -70,7 +101,10 @@ final class StatsStore: ObservableObject {
             totalWords: totalWords,
             totalDictations: totalDictations,
             totalDurationSec: totalDurationSec,
-            bestWPM: bestWPM
+            bestWPM: bestWPM,
+            dictionaryFixes: dictionaryFixes,
+            fillersRemoved: fillersRemoved,
+            aiWordsChanged: aiWordsChanged
         )
         guard let data = try? JSONEncoder().encode(p) else { return }
         try? data.write(to: fileURL, options: .atomic)
