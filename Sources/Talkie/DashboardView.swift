@@ -559,11 +559,11 @@ private struct Heatmap: View {
     let data: HeatmapData
     let cell: CGFloat
     let gap: CGFloat
-    private let dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""]
+    private let dayLabels = ["Mon", "", "Wed", "", "Fri", "", ""]
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
-            // Weekday labels (Sun-first; Mon/Wed/Fri only, to avoid clutter).
+            // Weekday labels (Mon-first; Mon/Wed/Fri only, to avoid clutter).
             VStack(alignment: .trailing, spacing: gap) {
                 Spacer().frame(height: 13)
                 ForEach(0..<7, id: \.self) { row in

@@ -34,7 +34,7 @@ final class ActivityStore: ObservableObject {
     private let fileURL: URL
     private var calendar: Calendar = {
         var c = Calendar(identifier: .gregorian)
-        c.firstWeekday = 1 // Sunday, matching the reference dashboard
+        c.firstWeekday = 2 // Monday
         return c
     }()
 
@@ -107,9 +107,10 @@ final class ActivityStore: ObservableObject {
     /// Build the contribution grid for the trailing `weeks` weeks up to this week.
     func heatmap(weeks weekCount: Int = 26) -> HeatmapData {
         let today = calendar.startOfDay(for: Date())
-        // Find the Sunday that starts the current week.
-        let weekday = calendar.component(.weekday, from: today) // 1 = Sun
-        guard let thisWeekStart = calendar.date(byAdding: .day, value: -(weekday - 1), to: today),
+        // Find the Monday that starts the current week.
+        let weekday = calendar.component(.weekday, from: today) // 1 = Sun … 7 = Sat
+        let daysFromMonday = (weekday + 5) % 7
+        guard let thisWeekStart = calendar.date(byAdding: .day, value: -daysFromMonday, to: today),
               let firstColumnStart = calendar.date(byAdding: .day, value: -7 * (weekCount - 1), to: thisWeekStart)
         else { return HeatmapData(weeks: [], monthLabels: []) }
 
