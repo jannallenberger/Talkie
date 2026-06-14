@@ -69,6 +69,25 @@ let talkieLanguageCatalog: [TalkieLanguage] = [
     .init(id: "zh-CN", name: "Chinese (Simplified)"),
 ]
 
+/// Normalize a stored/seeded locale id to a clean transcriber locale. On a
+/// German-region Mac with an English UI, `Locale.current.identifier` is
+/// `en_US@rg=dezzzz` — a Unicode *region-override* id whose language folds to
+/// `en`, so it silently transcribes in English. This maps any such id back to a
+/// catalog locale the speech models actually recognize (`en_US@rg=dezzzz` → `en-US`).
+func canonicalLocaleID(_ id: String) -> String {
+    let loc = Locale(identifier: id)
+    guard let lang = loc.language.languageCode?.identifier else { return id }
+    let region = loc.region?.identifier
+    if let exact = talkieLanguageCatalog.first(where: {
+        let c = Locale(identifier: $0.id)
+        return c.language.languageCode?.identifier == lang && c.region?.identifier == region
+    }) { return exact.id }
+    if let langOnly = talkieLanguageCatalog.first(where: {
+        Locale(identifier: $0.id).language.languageCode?.identifier == lang
+    }) { return langOnly.id }
+    return region.map { "\(lang)-\($0)" } ?? id
+}
+
 /// Scalar app preferences, persisted in `UserDefaults`.
 @MainActor
 final class AppSettings: ObservableObject {
@@ -154,7 +173,7 @@ final class AppSettings: ObservableObject {
             Keys.activationKey: ActivationKey.rightOption.rawValue,
             Keys.activationMode: ActivationMode.holdToTalk.rawValue,
             Keys.insertionMode: InsertionMode.paste.rawValue,
-            Keys.localeIdentifier: Locale.current.identifier,
+            Keys.localeIdentifier: canonicalLocaleID(Locale.current.identifier),
             Keys.autoCapitalize: true,
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
@@ -170,10 +189,14 @@ final class AppSettings: ObservableObject {
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
         activationMode = ActivationMode(rawValue: d.string(forKey: Keys.activationMode) ?? "") ?? .holdToTalk
         insertionMode = InsertionMode(rawValue: d.string(forKey: Keys.insertionMode) ?? "") ?? .paste
-        let primary = d.string(forKey: Keys.localeIdentifier) ?? Locale.current.identifier
+        let primary = canonicalLocaleID(d.string(forKey: Keys.localeIdentifier) ?? Locale.current.identifier)
         localeIdentifier = primary
         let storedLanguages = d.stringArray(forKey: Keys.spokenLanguages)
-        spokenLanguages = (storedLanguages?.isEmpty == false) ? storedLanguages! : [primary]
+        // Canonicalize every stored language (migrating any junk region-override id
+        // like `en_US@rg=dezzzz` to `en-US`) and de-dupe, preserving order.
+        let rawLanguages = (storedLanguages?.isEmpty == false) ? storedLanguages! : [primary]
+        var seenLocales = Set<String>()
+        spokenLanguages = rawLanguages.map(canonicalLocaleID).filter { seenLocales.insert($0).inserted }
         autoCapitalize = d.bool(forKey: Keys.autoCapitalize)
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)

@@ -46,7 +46,7 @@ struct MeetingsView: View {
             if recorder.isRecording {
                 RecordingDot()
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Recording…")
+                    Text(recorder.capturingFarEnd ? "Recording you + the call…" : "Recording (mic only)…")
                         .font(.talkieHeading(15, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                     Text(timeString(recorder.elapsed))
@@ -70,7 +70,7 @@ struct MeetingsView: View {
                     Text("Record a meeting")
                         .font(.talkieHeading(15, weight: .semibold))
                         .foregroundStyle(Theme.ink)
-                    Text("Mic only for now (captures your side and anyone in the room).")
+                    Text("Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them.")
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.inkTertiary)
                 }

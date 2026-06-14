@@ -32,6 +32,8 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Talkie listens to your microphone while you hold the dictation key, so it can turn your speech into text.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>During meeting recording, Talkie captures your Mac's audio so it can transcribe the other participants. Audio stays on your Mac.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>Talkie uses on-device speech recognition to transcribe what you say. Audio stays on your Mac.</string>
     <key>NSInputMonitoringUsageDescription</key>
