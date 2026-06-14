@@ -167,8 +167,9 @@ private struct ExampleRow: View {
     let spoken: String
     let result: String
     var body: some View {
-        HStack(spacing: 10) {
-            ClayIcon(name: "IconWaveform", size: 18)
+        HStack(alignment: .center, spacing: 10) {
+            ClayIcon(name: "IconWaveform", size: 16)
+                .frame(width: 18, height: 18)
             Text(spoken)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)

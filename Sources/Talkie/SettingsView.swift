@@ -383,10 +383,7 @@ private struct SettingsHome: View {
                                         subtitle: permissions.allGranted ? "All granted" : "Action needed",
                                         badge: !permissions.allGranted, route: .permissions)
                     }
-                    .background(Theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-                    .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
+                    .talkieSurface()
                 }
                 .padding(28)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -505,14 +502,9 @@ private struct SettingsCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             if let header { Eyebrow(text: header).padding(.horizontal, 4) }
-            VStack(spacing: 0) { content }
+            VStack(alignment: .leading, spacing: 0) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                        .fill(Theme.surface)
-                )
-                .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-                .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
+                .talkieSurface()
             if let footer {
                 Text(footer).font(.callout).foregroundStyle(Theme.inkTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -551,19 +543,22 @@ private struct SettingsRow<Trailing: View>: View {
             Spacer(minLength: 12)
             trailing
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
     }
 }
 
-/// A switch row on a card surface — the brand-tinted toggle the subpages use.
+/// A switch row on a card surface — title/subtitle left, brand-tinted switch
+/// right. Built as an explicit HStack (not a labelled `Toggle`) so the row
+/// always spans the card width instead of hugging and centering.
 private struct SettingsToggleRow: View {
     let title: String
     var subtitle: String? = nil
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
                 if let subtitle {
@@ -572,9 +567,13 @@ private struct SettingsToggleRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            Spacer(minLength: 12)
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(Theme.coral)
         }
-        .toggleStyle(.switch)
-        .tint(Theme.coral)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
     }
@@ -693,6 +692,7 @@ private struct CleanupSettings: View {
                             .font(.callout).foregroundStyle(Theme.inkSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16).padding(.vertical, 11)
                 }
                 SettingsDivider(leadingInset: 0)
@@ -717,7 +717,7 @@ private struct CleanupSettings: View {
 private struct LanguageSettings: View {
     @ObservedObject var settings: AppSettings
 
-    private let columns = [GridItem(.adaptive(minimum: 158, maximum: 230), spacing: 12)]
+    private let columns = [GridItem(.adaptive(minimum: 176, maximum: 220), spacing: 12)]
 
     /// Toggle a language, keeping at least one always selected.
     private func toggle(_ id: String) {
@@ -767,21 +767,16 @@ private struct LanguageCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 11) {
-                HStack(alignment: .top) {
-                    Group {
-                        if let region = Locale(identifier: language.id).region?.identifier,
-                           let img = Brand.image("Flag\(region)") {
-                            Image(nsImage: img).resizable().scaledToFit().frame(width: 32, height: 32)
-                        } else {
-                            Text(language.flag).font(.system(size: 30))
-                        }
+            VStack(spacing: 13) {
+                // The flag is the hero — large, centered, with the selection check
+                // as a badge on its corner.
+                flag
+                    .frame(width: 96, height: 96)
+                    .overlay(alignment: .bottomTrailing) {
+                        if selected { checkBadge.offset(x: 5, y: 5) }
                     }
-                    Spacer(minLength: 8)
-                    checkmark
-                }
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(language.shortName)
+                VStack(spacing: 1) {
+                    Text(language.gridTitle)
                         .font(.talkieHeading(14.5, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(1)
@@ -791,8 +786,9 @@ private struct LanguageCard: View {
                         .lineLimit(1)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .padding(.horizontal, 12)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(selected ? Theme.coralWash : Theme.surface)
@@ -801,8 +797,8 @@ private struct LanguageCard: View {
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .strokeBorder(selected ? Theme.coral : Color.clear, lineWidth: 2)
             )
-            .shadow(color: .black.opacity(selected ? 0 : 0.05), radius: 2, x: 0, y: 1)
-            .shadow(color: .black.opacity(selected ? 0 : 0.06), radius: 14, x: 0, y: 7)
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.06), radius: 14, x: 0, y: 7)
             .scaleEffect(hovering ? 1.015 : 1)
             .animation(.easeOut(duration: 0.12), value: hovering)
             .animation(.easeOut(duration: 0.14), value: selected)
@@ -813,22 +809,25 @@ private struct LanguageCard: View {
                      : (selected ? "Tap to remove" : "Tap to add"))
     }
 
-    private var checkmark: some View {
-        ZStack {
-            Circle()
-                .fill(selected ? Theme.coral : Color.clear)
-                .overlay(
-                    Circle().strokeBorder(
-                        selected ? Color.clear : Theme.inkTertiary.opacity(0.4),
-                        lineWidth: 1.5
-                    )
-                )
-                .frame(width: 22, height: 22)
-            if selected {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
+    private var flag: some View {
+        Group {
+            if let region = Locale(identifier: language.id).region?.identifier,
+               let img = Brand.image("Flag\(region)") {
+                Image(nsImage: img).resizable().scaledToFit()
+            } else {
+                Text(language.flag).font(.system(size: 64))
             }
+        }
+    }
+
+    private var checkBadge: some View {
+        ZStack {
+            Circle().fill(Theme.coral)
+                .overlay(Circle().strokeBorder(selected ? Theme.coralWash : Theme.surface, lineWidth: 3))
+                .frame(width: 26, height: 26)
+            Image(systemName: "checkmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
         }
     }
 }
@@ -1024,42 +1023,36 @@ private struct PermissionsSettings: View {
     let onRetryHotKey: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            PageHeader(title: "Permissions",
-                       subtitle: "Talkie needs three permissions to work — all local.")
-
-            PermissionRow(
-                title: "Microphone",
-                detail: "Capture your voice while you dictate.",
-                granted: permissions.microphone,
-                action: { Task { await permissions.requestMicrophone() } },
-                openSettings: permissions.openMicrophoneSettings
-            )
-
-            PermissionRow(
-                title: "Input Monitoring",
-                detail: "Detect your dictation key anywhere in the system.",
-                granted: permissions.inputMonitoring,
-                action: {
-                    permissions.requestInputMonitoring()
-                    onRetryHotKey()
-                },
-                openSettings: permissions.openInputMonitoringSettings
-            )
-
-            PermissionRow(
-                title: "Accessibility",
-                detail: "Paste the transcribed text into the app you're using.",
-                granted: permissions.accessibility,
-                action: permissions.promptAccessibility,
-                openSettings: permissions.openAccessibilitySettings
-            )
-
-            Spacer()
-
-            Text("After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkTertiary)
+        SubPage(title: "Permissions",
+                subtitle: "Talkie needs three permissions to work — all local.") {
+            SettingsCard(footer: "After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect.") {
+                PermissionRow(
+                    title: "Microphone",
+                    detail: "Capture your voice while you dictate.",
+                    granted: permissions.microphone,
+                    action: { Task { await permissions.requestMicrophone() } },
+                    openSettings: permissions.openMicrophoneSettings
+                )
+                SettingsDivider()
+                PermissionRow(
+                    title: "Input Monitoring",
+                    detail: "Detect your dictation key anywhere in the system.",
+                    granted: permissions.inputMonitoring,
+                    action: {
+                        permissions.requestInputMonitoring()
+                        onRetryHotKey()
+                    },
+                    openSettings: permissions.openInputMonitoringSettings
+                )
+                SettingsDivider()
+                PermissionRow(
+                    title: "Accessibility",
+                    detail: "Paste the transcribed text into the app you're using.",
+                    granted: permissions.accessibility,
+                    action: permissions.promptAccessibility,
+                    openSettings: permissions.openAccessibilitySettings
+                )
+            }
 
             HStack {
                 Button("Re-check") { permissions.refresh() }
@@ -1074,8 +1067,8 @@ private struct PermissionsSettings: View {
                     }
                 }
             }
+            .padding(.horizontal, 4)
         }
-        .padding(28)
         .onAppear { permissions.refresh() }
     }
 
@@ -1104,13 +1097,15 @@ private struct PermissionRow: View {
                 Image(systemName: "exclamationmark.circle.fill")
                     .font(.system(size: 20))
                     .foregroundStyle(Theme.warning)
+                    .frame(width: 26)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.talkieHeading(14))
+                Text(title).font(.talkieHeading(14, weight: .medium))
                     .foregroundStyle(Theme.ink)
                 Text(detail).font(.callout).foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
+            Spacer(minLength: 12)
             if !granted {
                 VStack(spacing: 4) {
                     Button("Grant", action: action)
@@ -1120,6 +1115,8 @@ private struct PermissionRow: View {
                 }
             }
         }
-        .talkieCard(padding: 14)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
