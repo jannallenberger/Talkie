@@ -180,6 +180,30 @@ struct Eyebrow: View {
     }
 }
 
+// MARK: - Native material (vibrancy / translucency)
+
+/// A real macOS vibrancy material — the system sidebar/HUD translucency the
+/// custom views can't fake. Used as the sidebar background so the desktop
+/// frosts through, exactly like a native Mac app.
+struct VisualEffectView: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .sidebar
+    var blending: NSVisualEffectView.BlendingMode = .behindWindow
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blending
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.material = material
+        view.blendingMode = blending
+        view.state = .active
+    }
+}
+
 // MARK: - Hex → NSColor
 
 extension NSColor {

@@ -33,6 +33,20 @@ enum SettingsTab: Hashable, CaseIterable {
         case .permissions: return "lock.shield.fill"
         }
     }
+
+    /// Per-item macaw-feather tint for the sidebar (v2). Feature tabs wear a
+    /// feather hue; the chrome tabs ride the brand blue.
+    var tint: Color {
+        switch self {
+        case .dashboard:   return Theme.featherCoral
+        case .history:     return Theme.featherGold
+        case .meetings:    return Theme.featherPlum
+        case .dictionary:  return Theme.featherGreen
+        case .vibeCoding:  return Theme.featherBlue
+        case .general:     return Theme.coral
+        case .permissions: return Theme.coral
+        }
+    }
 }
 
 @MainActor
@@ -86,10 +100,10 @@ final class MainWindowController {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
-        window.backgroundColor = NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                ? NSColor(hex: 0x191815) : NSColor(hex: 0xF4F2EA)
-        }
+        // Non-opaque so the sidebar's behind-window material frosts the desktop —
+        // the native macOS sidebar translucency.
+        window.isOpaque = false
+        window.backgroundColor = .clear
         window.contentView = NSHostingView(rootView: root)
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("TalkieMainWindow")
@@ -121,13 +135,11 @@ struct MainView: View {
     var body: some View {
         HStack(spacing: 0) {
             Sidebar(router: router, settings: settings, permissions: permissions)
-            Rectangle().fill(Theme.hairline).frame(width: 1)
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .background(Theme.canvas)
         }
         .frame(minWidth: 900, minHeight: 640)
-        .background(Theme.canvas)
     }
 
     @ViewBuilder
@@ -197,7 +209,7 @@ private struct Sidebar: View {
         .padding(.top, 44) // clear the transparent titlebar / traffic lights
         .frame(width: 214)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Theme.canvasRaised)
+        .background(VisualEffectView(material: .sidebar, blending: .behindWindow))
     }
 }
 
@@ -214,20 +226,21 @@ private struct SidebarButton: View {
                 Image(systemName: tab.icon)
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: 18)
-                    .foregroundStyle(isActive ? Theme.coral : Theme.inkSecondary)
+                    .foregroundStyle(isActive ? tab.tint : Theme.inkSecondary)
                 Text(tab.title)
                     .font(.talkieHeading(13.5, weight: isActive ? .semibold : .medium))
                     .foregroundStyle(isActive ? Theme.ink : Theme.inkSecondary)
                 Spacer()
                 if badge {
-                    Circle().fill(Theme.coral).frame(width: 7, height: 7)
+                    Circle().fill(Theme.danger).frame(width: 7, height: 7)
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .fill(isActive ? Theme.coralWash : (hovering ? Theme.surfaceSunken : .clear))
+                    .fill(isActive ? tab.tint.opacity(0.15)
+                                   : (hovering ? Theme.inkSecondary.opacity(0.10) : .clear))
             )
         }
         .buttonStyle(.plain)

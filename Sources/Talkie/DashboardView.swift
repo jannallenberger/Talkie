@@ -142,7 +142,7 @@ private struct StreakPill: View {
         HStack(spacing: 6) {
             Image(systemName: "flame.fill")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(days > 0 ? Theme.coral : Theme.inkTertiary)
+                .foregroundStyle(days > 0 ? Theme.featherGold : Theme.inkTertiary)
             Text(days > 0 ? "\(days)-day streak" : "No streak yet")
                 .font(.talkieHeading(12.5, weight: .semibold))
                 .foregroundStyle(days > 0 ? Theme.ink : Theme.inkSecondary)
@@ -213,7 +213,7 @@ private struct ComparisonLine: View {
         HStack(spacing: 7) {
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.coral)
+                .foregroundStyle(Theme.featherCoral)
                 .frame(width: 14)
             Text(text)
                 .font(.talkieHeading(12, weight: .medium))
@@ -232,7 +232,7 @@ private struct Gauge: View {
             arc(0, max(0.0001, fraction))
                 .stroke(
                     AngularGradient(
-                        gradient: Gradient(colors: [Theme.coralDeep, Theme.coral, Theme.featherGold]),
+                        gradient: Gradient(colors: [Theme.heat(4), Theme.featherCoral, Theme.featherGold]),
                         center: .center,
                         startAngle: .degrees(180),
                         endAngle: .degrees(360)
@@ -272,7 +272,7 @@ private struct FixesCard: View {
 
             Divider().overlay(Theme.hairline).padding(.vertical, 2)
 
-            FixRow(label: "words polished", value: stats.wordsCorrected, color: Theme.coral)
+            FixRow(label: "words polished", value: stats.wordsCorrected, color: Theme.featherCoral)
             FixRow(label: "dictionary fixes", value: stats.dictionaryFixes, color: Theme.featherBlue)
             FixRow(label: "fillers removed", value: stats.fillersRemoved, color: Theme.featherGold)
         }
