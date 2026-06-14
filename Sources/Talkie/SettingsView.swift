@@ -318,12 +318,24 @@ private struct HistoryRow: View {
     @State private var copied = false
     @State private var hovering = false
 
+    private var appSymbol: String {
+        AppCategory(rawValue: entry.appCategory ?? "")?.symbol ?? "app.dashed"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(formatter.string(from: entry.date))
                     .font(.talkieEyebrow)
                     .foregroundStyle(Theme.inkTertiary)
+                if let appName = entry.appName, !appName.isEmpty {
+                    HStack(spacing: 3) {
+                        Image(systemName: appSymbol).font(.system(size: 9, weight: .semibold))
+                        Text(appName)
+                    }
+                    .font(.talkieEyebrow)
+                    .foregroundStyle(Theme.inkTertiary)
+                }
                 Spacer()
                 if hovering {
                     Button(action: onDelete) {

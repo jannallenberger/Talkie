@@ -7,6 +7,9 @@ struct DictationEntry: Codable, Identifiable, Hashable {
     var text: String
     var wordCount: Int = 0
     var durationSec: Double = 0
+    /// Which app you dictated into (optional for back-compat with older files).
+    var appName: String?
+    var appCategory: String?
 
     var date: Date { Date(timeIntervalSince1970: timestampUnix) }
 
@@ -31,14 +34,23 @@ final class HistoryStore: ObservableObject {
         load()
     }
 
-    func add(_ text: String, wordCount: Int, durationSec: Double, at date: Date = Date()) {
+    func add(
+        _ text: String,
+        wordCount: Int,
+        durationSec: Double,
+        appName: String? = nil,
+        appCategory: String? = nil,
+        at date: Date = Date()
+    ) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let entry = DictationEntry(
             timestampUnix: date.timeIntervalSince1970,
             text: trimmed,
             wordCount: wordCount,
-            durationSec: durationSec
+            durationSec: durationSec,
+            appName: appName,
+            appCategory: appCategory
         )
         entries.insert(entry, at: 0)
         prune()

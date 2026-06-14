@@ -477,7 +477,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Log it (copyable in the History tab) + lifetime stats + fix tally,
             // even if insertion fell back to the clipboard.
             let words = WordCounter.count(finalText)
-            self.history.add(finalText, wordCount: words, durationSec: duration)
+            self.history.add(
+                finalText, wordCount: words, durationSec: duration,
+                appName: target.name, appCategory: target.category.rawValue
+            )
             self.stats.record(words: words, durationSec: duration)
             self.stats.recordFixes(
                 dictionary: processed.replacementHits + fileFixes,
