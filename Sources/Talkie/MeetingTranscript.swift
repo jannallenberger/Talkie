@@ -23,12 +23,19 @@ final class TurnLog: @unchecked Sendable {
     private var turns: [Turn] = []
     private let startedAt: Date
 
+    /// Characters that, alone, make a segment content-free (the recognizer emits
+    /// punctuation-only finalized segments during pauses → a run of bare commas).
+    private static let punctuationAndSpace = CharacterSet(charactersIn: ",.!?;:—…\"'()[]{}- ")
+
     init(startedAt: Date) { self.startedAt = startedAt }
 
-    /// Stamp a finalized segment with the time it arrived and record it.
+    /// Stamp a finalized segment with the time it arrived and record it. Drops
+    /// punctuation-only artifacts so they don't render as "Okay, , , , ,".
     func add(_ speaker: MeetingSpeaker, _ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        let depunctuated = trimmed.components(separatedBy: Self.punctuationAndSpace).joined()
+        guard !depunctuated.isEmpty else { return }
         let elapsed = Date().timeIntervalSince(startedAt)
         lock.withLock { turns.append(Turn(elapsed: elapsed, speaker: speaker, text: trimmed)) }
     }
@@ -39,6 +46,24 @@ final class TurnLog: @unchecked Sendable {
 
     var isEmpty: Bool {
         lock.withLock { turns.isEmpty }
+    }
+
+    /// All turns for one speaker (drives per-stream language correction).
+    func turns(for speaker: MeetingSpeaker) -> [Turn] {
+        lock.withLock { turns.filter { $0.speaker == speaker } }
+    }
+
+    /// Replace all of one speaker's turns with a single block anchored at `elapsed`.
+    /// Used when that stream was re-transcribed in another language — whole-stream
+    /// re-transcription returns one untimed block, so we collapse the speaker's
+    /// fine-grained turns into it (anchored at the first turn's time so cross-stream
+    /// ordering survives).
+    func replace(_ speaker: MeetingSpeaker, withSingleTurn text: String, at elapsed: TimeInterval) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        lock.withLock {
+            turns.removeAll { $0.speaker == speaker }
+            if !trimmed.isEmpty { turns.append(Turn(elapsed: elapsed, speaker: speaker, text: trimmed)) }
+        }
     }
 }
 

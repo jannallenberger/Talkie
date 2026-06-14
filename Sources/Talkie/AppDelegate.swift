@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         meetingRecorder.primaryLocale = { [weak self] in
             self?.settings.spokenLanguages.first ?? self?.settings.localeIdentifier ?? "en-US"
         }
+        meetingRecorder.spokenLanguages = { [weak self] in self?.settings.spokenLanguages ?? [] }
         meetingRecorder.recoverPartialIfNeeded()
 
         setupMainMenu()

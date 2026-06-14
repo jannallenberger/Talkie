@@ -26,9 +26,14 @@ private final class CapturedAudio: @unchecked Sendable {
 
     func append(_ buffer: AVAudioPCMBuffer) {
         lock.lock(); defer { lock.unlock() }
-        guard totalFrames < maxFrames else { return } // stop buffering past the cap
         buffers.append(buffer)
         totalFrames += AVAudioFramePosition(buffer.frameLength)
+        // Drop-oldest rolling window: always keep the most-recent `maxFrames`
+        // (better than freezing at cap — a long capture keeps recent speech).
+        while totalFrames > maxFrames, let first = buffers.first {
+            totalFrames -= AVAudioFramePosition(first.frameLength)
+            buffers.removeFirst()
+        }
     }
 
     func drain() -> [AVAudioPCMBuffer] {
@@ -70,6 +75,7 @@ final class AudioCapture: @unchecked Sendable {
         targetFormat: AVAudioFormat,
         continuation: AsyncStream<AnalyzerInput>.Continuation,
         bufferAudio: Bool = false,
+        bufferSeconds: Double = 90,
         onLevel: (@Sendable (Float) -> Void)? = nil
     ) throws {
         guard !isRunning else { return }
@@ -86,9 +92,10 @@ final class AudioCapture: @unchecked Sendable {
         }
         converter.primeMethod = .none // avoid timestamp drift on streamed buffers
 
-        // Retain up to ~90 s of converted audio when language auto-detect is on.
+        // Retain a rolling window of converted audio when language auto-detect is on
+        // (dictation: ~90 s; meetings pass a larger window).
         let capture = bufferAudio
-            ? CapturedAudio(maxFrames: AVAudioFramePosition(targetFormat.sampleRate * 90))
+            ? CapturedAudio(maxFrames: AVAudioFramePosition(targetFormat.sampleRate * bufferSeconds))
             : nil
         self.captured = capture
 

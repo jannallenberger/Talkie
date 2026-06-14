@@ -14,6 +14,38 @@ private final class SingleShotInput: @unchecked Sendable {
     }
 }
 
+/// Thread-safe rolling buffer of converted far-end PCM, used to re-transcribe a
+/// stream in another language at stop. Unlike the mic's dictation buffer (which
+/// freezes at its cap), this DROPS the oldest frames so a long meeting always
+/// retains the most-recent window — bounded memory regardless of duration.
+/// Appended on the Core Audio realtime thread, drained on the main thread.
+private final class CapturedAudio: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffers: [AVAudioPCMBuffer] = []
+    private var totalFrames: AVAudioFramePosition = 0
+    private let maxFrames: AVAudioFramePosition
+
+    init(maxFrames: AVAudioFramePosition) { self.maxFrames = maxFrames }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        lock.lock(); defer { lock.unlock() }
+        buffers.append(buffer)
+        totalFrames += AVAudioFramePosition(buffer.frameLength)
+        while totalFrames > maxFrames, let first = buffers.first {
+            totalFrames -= AVAudioFramePosition(first.frameLength)
+            buffers.removeFirst()
+        }
+    }
+
+    func drain() -> [AVAudioPCMBuffer] {
+        lock.lock(); defer { lock.unlock() }
+        let out = buffers
+        buffers = []
+        totalFrames = 0
+        return out
+    }
+}
+
 enum SystemAudioError: LocalizedError {
     case translateSelfFailed
     case tapCreationFailed(OSStatus)
@@ -53,6 +85,7 @@ final class SystemAudioCapture: @unchecked Sendable {
     private var ioProcID: AudioDeviceIOProcID?
     private var isRunning = false // main-thread only (start/stop)
     private let ioQueue = DispatchQueue(label: "com.coralate.talkie.system-audio")
+    private var captured: CapturedAudio? // retains far-end PCM for language re-transcription
 
     /// Best-effort: process taps exist on macOS 14.4+. We deploy to 26, so this is
     /// always true, but the check documents the requirement and guards a future
@@ -70,6 +103,8 @@ final class SystemAudioCapture: @unchecked Sendable {
     func start(
         targetFormat: AVAudioFormat,
         continuation: AsyncStream<AnalyzerInput>.Continuation,
+        bufferAudio: Bool = false,
+        bufferSeconds: Double = 600,
         onLevel: (@Sendable (Float) -> Void)? = nil
     ) throws {
         guard !isRunning else { return }
@@ -132,6 +167,13 @@ final class SystemAudioCapture: @unchecked Sendable {
         }
         converter.primeMethod = .none
 
+        // Optionally retain converted far-end PCM so the stream can be
+        // re-transcribed in another language at stop (drop-oldest rolling window).
+        let capture = bufferAudio
+            ? CapturedAudio(maxFrames: AVAudioFramePosition(targetFormat.sampleRate * bufferSeconds))
+            : nil
+        captured = capture
+
         // 6. Install the I/O proc. It fires on a realtime thread with the tap's PCM.
         var newProcID: AudioDeviceIOProcID?
         let procStatus = AudioDeviceCreateIOProcIDWithBlock(
@@ -144,6 +186,7 @@ final class SystemAudioCapture: @unchecked Sendable {
             if let onLevel { onLevel(Self.level(of: wrapped)) }
             guard let converted = Self.convert(buffer: wrapped, using: converter, to: targetFormat),
                   converted.frameLength > 0 else { return }
+            capture?.append(converted)
             continuation.yield(AnalyzerInput(buffer: converted))
         }
         guard procStatus == noErr, let procID = newProcID else {
@@ -166,11 +209,20 @@ final class SystemAudioCapture: @unchecked Sendable {
         cleanUpCoreAudio()
     }
 
+    /// The converted far-end audio captured during the last recording, drained for
+    /// language re-transcription. Survives `stop()` (the Core Audio teardown does
+    /// not touch it); cleared on the next `start()`.
+    func bufferedAudio() -> [AVAudioPCMBuffer] { captured?.drain() ?? [] }
+
     /// Tear down whatever Core Audio objects exist, in dependency order. Safe to
     /// call from a partially-constructed state (every step is guarded).
     private func cleanUpCoreAudio() {
         if aggregateID != kAudioObjectUnknown, let procID = ioProcID {
             AudioDeviceStop(aggregateID, procID)
+            // AudioDeviceStop only stops *new* callbacks — an in-flight I/O block can
+            // still be appending. Drain the serial I/O queue so the last buffer lands
+            // before bufferedAudio() reads it and before we destroy the proc.
+            ioQueue.sync {}
             AudioDeviceDestroyIOProcID(aggregateID, procID)
         }
         ioProcID = nil
