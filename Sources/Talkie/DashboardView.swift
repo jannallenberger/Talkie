@@ -41,10 +41,12 @@ struct DashboardView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
                 // Row 2 — where your words went · contribution heatmap.
+                // The streak card sizes to its (intrinsic-width) heatmap so the
+                // grid is never clipped; the usage card flexes into the rest.
                 HStack(alignment: .top, spacing: Theme.Space.gridGap) {
                     UsageCard(appUsage: appUsage)
-                        .frame(width: 360)
                     StreakCard(activity: activity)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -353,7 +355,7 @@ private struct StreakCard: View {
                     .foregroundStyle(Theme.inkTertiary)
             }
 
-            Heatmap(data: activity.heatmap(weeks: 24))
+            Heatmap(data: activity.heatmap(weeks: 18))
 
             HStack(spacing: 6) {
                 Text("Less").font(.system(size: 10)).foregroundStyle(Theme.inkTertiary)
@@ -372,7 +374,7 @@ private struct StreakCard: View {
 
 private struct Heatmap: View {
     let data: HeatmapData
-    private let cell: CGFloat = 12
+    private let cell: CGFloat = 11
     private let gap: CGFloat = 3
     private let dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""]
 

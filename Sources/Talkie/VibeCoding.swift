@@ -159,7 +159,7 @@ enum SpokenFileMatcher {
             for key in spokenKeys(for: file) {
                 let tokenCount = key.split(separator: " ").count
                 guard tokenCount > 0 else { continue }
-                // Prefer the shorter canonical when keys collide (rare).
+                // First file scanned wins a colliding spoken key (collisions are rare).
                 if keyMap[key] == nil { keyMap[key] = file }
                 maxTokens = max(maxTokens, tokenCount)
             }
@@ -188,12 +188,17 @@ enum SpokenFileMatcher {
         var tokens: [(original: String, norm: String)] = []
         for raw in text.split(separator: " ", omittingEmptySubsequences: true) {
             let original = String(raw)
-            let cleaned = original.trimmingCharacters(in: CharacterSet(charactersIn: ",;:!?\"'()"))
+            let punct = CharacterSet(charactersIn: ",;:!?\"'()")
+            let cleaned = original.trimmingCharacters(in: punct)
             if cleaned.contains("."), !cleaned.hasPrefix("."), !cleaned.hasSuffix(".") {
+                // Preserve the leading punctuation the trim discarded, so a
+                // non-match round-trips the original text unchanged.
+                let lead = String(original.prefix(while: { ",;:!?\"'()".contains($0) }))
                 let parts = cleaned.split(separator: ".", omittingEmptySubsequences: true)
                 for (i, part) in parts.enumerated() {
                     if i > 0 { tokens.append(("dot", "dot")) }
-                    tokens.append((String(part), normalizeToken(String(part))))
+                    let originalPart = (i == 0 ? lead : "") + String(part)
+                    tokens.append((originalPart, normalizeToken(String(part))))
                 }
                 // Re-attach any trailing punctuation to the last sub-token.
                 if let trailing = original.last, ",;:!?\"')".contains(trailing), var last = tokens.last {
@@ -214,7 +219,12 @@ enum SpokenFileMatcher {
             var matched = false
             // Greedy: try the longest window first.
             for n in stride(from: min(maxN, tokens.count - i), through: 1, by: -1) {
-                let windowNorm = tokens[i..<(i + n)].map(\.norm).filter { !$0.isEmpty }.joined(separator: " ")
+                let window = tokens[i..<(i + n)]
+                // An interior punctuation token (empty norm) must BLOCK a match —
+                // not be silently skipped — so it isn't swallowed and words on
+                // either side of it can't masquerade as adjacent.
+                if window.contains(where: { $0.norm.isEmpty }) { continue }
+                let windowNorm = window.map(\.norm).joined(separator: " ")
                 guard !windowNorm.isEmpty, let canonical = snapshot.keyMap[windowNorm] else { continue }
                 // Carry trailing punctuation from the last original token.
                 let trailing = tokens[i + n - 1].original.filter { ",;:!?\"')".contains($0) }
