@@ -1,0 +1,175 @@
+# Talkie release pipeline.
+#
+# On a version tag (vMAJOR.MINOR.PATCH) this: builds Talkie.app, signs it with a
+# Developer ID cert, notarizes + staples it, attaches the notarized Talkie.zip to
+# a GitHub Release, then rewrites Casks/talkie.rb with the new version + sha256.
+#
+# This wraps the EXISTING scripts — it does not reimplement them:
+#   scripts/build_app.sh   assembles + signs Talkie.app (reads TALKIE_SIGN_ID,
+#                          adds Hardened Runtime + --timestamp for Developer ID).
+#   scripts/notarize.sh    re-signs, zips, `notarytool submit --wait`, staples,
+#                          re-zips a distributable Talkie.zip.
+# notarize.sh currently authenticates via a keychain profile
+# (TALKIE_NOTARY_PROFILE); CI creates that profile from secrets in the
+# "Set up signing + notary credentials" step below so the script runs unchanged.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   DEVELOPER_ID_CERT_P12      base64 of a "Developer ID Application" .p12
+#   DEVELOPER_ID_CERT_PASSWORD password for that .p12
+#   TALKIE_DEVID_ID            e.g. "Developer ID Application: Your Name (TEAMID)"
+#   APPLE_ID                   Apple ID email for notarytool
+#   APPLE_TEAM_ID              10-char Team ID
+#   APPLE_APP_PASSWORD         app-specific password for that Apple ID
+#   KEYCHAIN_PASSWORD          any throwaway string for the temp CI keychain
+#
+# NOTE (privacy / feature 15): this ships the DEFAULT zero-network flavor — no
+# Sparkle is compiled in, so the released app contains no update/network code.
+# Auto-update is a separate, opt-in "Connected" flavor (see docs/INSTALL.md).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write   # create the Release and commit the cask bump
+
+jobs:
+  release:
+    # GitHub-hosted macOS runner. Confirm it carries Xcode 26 / the macOS 26 SDK
+    # before relying on it; otherwise switch to a self-hosted Apple-Silicon runner
+    # (the build target is .macOS("26.0")). See docs INSTALL/RELEASING notes.
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out (with full history for the cask bump commit)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Derive version from the tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"          # e.g. v0.2.0
+          VERSION="${TAG#v}"                # e.g. 0.2.0
+          echo "tag=$TAG"        >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Select Xcode 26 SDK
+        run: |
+          if [ -d /Applications/Xcode_26.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.app
+          fi
+          xcodebuild -version
+          swift --version
+
+      # Stamp the marketing + build version into Info.plist from the tag, instead
+      # of the hand-edited 0.1.0 / 1 committed in the repo. build_app.sh copies
+      # this Info.plist into the bundle verbatim, so stamp it BEFORE building.
+      - name: Stamp version into Info.plist
+        run: |
+          PLIST="Resources/Info.plist"
+          /usr/libexec/PlistBuddy -c \
+            "Set :CFBundleShortVersionString ${{ steps.version.outputs.version }}" "$PLIST"
+          /usr/libexec/PlistBuddy -c \
+            "Set :CFBundleVersion ${{ github.run_number }}" "$PLIST"
+
+      - name: Set up signing + notary credentials
+        env:
+          CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/talkie-signing.keychain-db"
+
+          # Throwaway keychain that holds the Developer ID cert for this run only.
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          # Put our keychain first so build_app.sh / codesign find the identity.
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          # notarize.sh authenticates via a keychain profile. Create it from the
+          # Apple-ID secrets so the existing script runs untouched.
+          xcrun notarytool store-credentials "talkie-notary" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --keychain "$KEYCHAIN"
+
+      # Build → Developer-ID-sign → notarize → staple → re-zip, all via the
+      # existing scripts. notarize.sh internally calls build_app.sh with the
+      # Developer ID identity, so we only export the env the scripts read.
+      - name: Build, sign, notarize, staple
+        env:
+          TALKIE_DEVID_ID: ${{ secrets.TALKIE_DEVID_ID }}
+          TALKIE_NOTARY_PROFILE: talkie-notary
+        run: |
+          set -euo pipefail
+          ./scripts/notarize.sh
+
+      # notarize.sh emits Talkie.zip (parent-of-app). Rename it to the versioned
+      # asset name the cask URL expects: Talkie-<version>.zip.
+      - name: Name the release asset + compute sha256
+        id: asset
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          ASSET="Talkie-${VERSION}.zip"
+          mv Talkie.zip "$ASSET"
+          SHA="$(shasum -a 256 "$ASSET" | awk '{print $1}')"
+          echo "name=$ASSET" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create the GitHub Release + upload the asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "${{ steps.asset.outputs.name }}" \
+            --title "Talkie ${{ steps.version.outputs.version }}" \
+            --generate-notes
+
+      # Rewrite the two `# RELEASE:` lines in the in-repo cask so a tap pointed at
+      # this repo resolves the just-published asset. (If the cask later moves to a
+      # separate homebrew-talkie tap repo, swap this for a checkout of that repo
+      # using a write-scoped PAT — GITHUB_TOKEN can't push to another repo.)
+      - name: Bump the cask
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.asset.outputs.sha256 }}"
+          CASK="Casks/talkie.rb"
+          /usr/bin/sed -i '' \
+            -e "s|^  version \".*\"|  version \"${VERSION}\"|" \
+            -e "s|^  sha256 .*|  sha256 \"${SHA}\"|" \
+            "$CASK"
+
+      - name: Commit the cask bump
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Casks/talkie.rb; then
+            echo "Cask unchanged; nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B main
+          git add Casks/talkie.rb
+          git commit -m "chore(cask): Talkie ${{ steps.version.outputs.version }}"
+          git push origin HEAD:main
