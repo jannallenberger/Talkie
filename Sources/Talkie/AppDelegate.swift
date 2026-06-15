@@ -93,6 +93,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { try? await engine.warmUp(localeIdentifier: lang) }
         }
 
+        // Warm the on-device cleanup model once at launch too (best-effort, like
+        // the Speech warmUp above) so the VERY first dictation's polish pays no
+        // cold-start either. With adaptive cleanup we don't yet know the target
+        // app, so warm the generic style; beginDictation re-warms with the real
+        // app's style once it's known.
+        prewarmCleanup(style: settings.cleanupStyle(for: .other),
+                       level: settings.cleanupLevel,
+                       appAdaptive: settings.appAdaptiveCleanup)
+
         // The Brief renders as a projection of the context graph.
         contextSummary.graphProvider = { [weak self] in self?.contextGraph.snapshot() ?? .empty }
 
@@ -332,6 +341,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsObservation: Task<Void, Never>?
 
     // MARK: Dictation session
+
+    /// Kick off a best-effort background warm-up of the on-device cleanup model,
+    /// matching the Speech `warmUp` pattern. Skips entirely when the model isn't
+    /// available or cleanup is disabled for the given config, so a cold first
+    /// dictation never pays the model load inline.
+    private func prewarmCleanup(style: CleanupStyle, level: CleanupLevel, appAdaptive: Bool) {
+        guard CleanupEngine.isAvailable else { return }
+        let cleanupEnabled = appAdaptive ? (style != .off) : (level != .none)
+        guard cleanupEnabled else { return }
+        Task {
+            if appAdaptive {
+                await cleanup.prewarm(style: style)
+            } else {
+                await cleanup.prewarm(level: level)
+            }
+        }
+    }
 
     func beginDictation() {
         guard !isDictating else { return }
