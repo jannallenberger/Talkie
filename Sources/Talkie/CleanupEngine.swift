@@ -192,6 +192,14 @@ enum CleanupStyle: String, CaseIterable, Codable, Identifiable {
 /// on-device language model (Foundation Models, macOS 26) at the chosen
 /// intensity. Fully on-device: no cloud, no API key, no cost.
 actor CleanupEngine {
+    /// A prewarmed session held only to keep the on-device model's resources
+    /// resident in memory between dictations. We never *generate* through it (a
+    /// reused session would accumulate prior turns as conversation history and
+    /// contaminate independent rewrites) — each `generate` still spins a fresh,
+    /// stateless session. Holding this reference just means the first real
+    /// cleanup of a dictation doesn't pay the model's cold-start load.
+    private var warmSession: LanguageModelSession?
+
     /// Whether the on-device model is usable right now (needs Apple Intelligence on).
     static var isAvailable: Bool {
         if case .available = SystemLanguageModel.default.availability { return true }
@@ -220,6 +228,21 @@ actor CleanupEngine {
     /// Clean in a personality/style (the per-app adaptive path).
     func clean(_ raw: String, style: CleanupStyle) async -> String? {
         await generate(instructions: style.instructions, raw: raw)
+    }
+
+    /// Ask the system to load the on-device model into memory ahead of the first
+    /// real cleanup, so finalize→insert isn't gated on a cold model load. Called
+    /// at the *start* of a dictation (we already know the level/style the
+    /// session will use). Cheap and idempotent; a no-op when the level/style
+    /// skips the model or Apple Intelligence is off.
+    func prewarm(level: CleanupLevel) { prewarm(instructions: level.instructions) }
+    func prewarm(style: CleanupStyle) { prewarm(instructions: style.instructions) }
+
+    private func prewarm(instructions: String?) {
+        guard let instructions, Self.isAvailable else { return }
+        let session = LanguageModelSession(instructions: instructions)
+        session.prewarm()
+        warmSession = session
     }
 
     private func generate(instructions: String?, raw: String) async -> String? {

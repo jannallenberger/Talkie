@@ -52,6 +52,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Cleanup config captured at the START of the session (so a mid-session
     /// settings toggle can't skew the end-of-session accounting).
     private var sessionCleanup: (appAdaptive: Bool, style: CleanupStyle, level: CleanupLevel)?
+    /// Cleans transcript segments live while you speak, so most of the cleanup
+    /// is done by the time you release the key. Built per session when cleanup
+    /// is enabled; consumed (or discarded) in `endDictation`.
+    private var currentStreaming: StreamingCleanup?
     /// The project file index snapshot to apply to the current dictation (vibe coding).
     private var currentVibeSnapshot: ProjectIndexSnapshot = .empty
 
@@ -396,6 +400,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let cleanupLevel = settings.cleanupLevel
         sessionCleanup = (appAdaptive: appAdaptive, style: adaptiveStyle, level: cleanupLevel)
 
+        // Warm the on-device cleanup model the moment recording starts, in
+        // parallel with everything else, so the first cleanup at stop-time
+        // doesn't pay a cold model load. Mirrors `engine.warmUp` for Speech.
+        let cleanupEngine = self.cleanup
+        let cleanupEnabled = appAdaptive ? (adaptiveStyle != .off) : (cleanupLevel != .none)
+        if cleanupEnabled {
+            Task {
+                if appAdaptive { await cleanupEngine.prewarm(style: adaptiveStyle) }
+                else { await cleanupEngine.prewarm(level: cleanupLevel) }
+            }
+        }
+
+        // Stream cleanup of each finalized segment *while you speak*, so the
+        // stop-time pass only has to finish the last segment instead of the
+        // whole transcript. Built only when cleanup is on and the model is
+        // usable; otherwise the raw path is unchanged. `endDictation` consumes
+        // (or, on the language-switch fallback, discards) this buffer.
+        let cleanOne: @Sendable (String) async -> String? = { text in
+            appAdaptive
+                ? await cleanupEngine.clean(text, style: adaptiveStyle)
+                : await cleanupEngine.clean(text, level: cleanupLevel)
+        }
+        let streaming = (cleanupEnabled && CleanupEngine.isAvailable)
+            ? StreamingCleanup(enabled: true, cleanOne: cleanOne)
+            : nil
+        currentStreaming = streaming
+        let segmentHandler: (@Sendable (String) -> Void)?
+        if let streaming {
+            segmentHandler = { segment in streaming.ingest(segment) }
+        } else {
+            segmentHandler = nil
+        }
+
         Task {
             let micOK = await AudioCapture.requestMicrophoneAccess()
             // The user may have released the key (or started a new session)
@@ -410,9 +447,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             do {
                 await engine.setContextualStrings(phrases)
-                let session = try await engine.beginSession()
+                let session = try await engine.beginSession(segmentHandler: segmentHandler)
                 // Re-check after the (async) model load / session setup.
                 guard self.isDictating, self.sessionID == myID else {
+                    streaming?.cancel()
                     await engine.cancelSession()
                     return
                 }
@@ -433,12 +471,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // before this error surfaced — tear down silently rather than
                 // flashing an error pill for a session they already abandoned.
                 guard self.isDictating, self.sessionID == myID else {
+                    streaming?.cancel()
                     await engine.cancelSession()
                     return
                 }
                 self.isDictating = false
                 self.updateStatusUI()
                 self.hud.showError(error.localizedDescription)
+                streaming?.cancel()
                 await engine.cancelSession()
             }
         }
@@ -453,6 +493,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // setup), the begin task will see the generation change and abort — we
         // just reset the UI here.
         guard sessionLive else {
+            currentStreaming?.cancel()
+            currentStreaming = nil
             hud.hide()
             return
         }
@@ -469,6 +511,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let autoCap = settings.autoCapitalize
         let removeFillers = settings.cleanupFillers
         let mode = settings.insertionMode
+        let optimisticEnabled = settings.optimisticInsertion
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
         let vibeSnapshot = currentVibeSnapshot
@@ -482,48 +525,100 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appAdaptive = sessionCfg?.appAdaptive ?? settings.appAdaptiveCleanup
         let adaptiveStyle = sessionCfg?.style ?? settings.cleanupStyle(for: target.category)
         let cleanupLevel = sessionCfg?.level ?? settings.cleanupLevel
+        // The live per-segment cleanup that ran while you spoke (nil when cleanup
+        // is off). Consumed below, or discarded if a language switch re-wrote the
+        // whole transcript.
+        let streaming = currentStreaming
+        currentStreaming = nil
 
         Task {
             // Always release the processing latch when this task finishes — even
             // on an early or unexpected exit — so a stalled/abandoned pipeline can
             // never permanently block the next dictation.
             defer { self.isProcessing = false }
+            var trace = ProcessingTrace()
             let raw = await engine.finishSession()
+            trace.stage("finalize")
 
             // Language auto-detect: if the transcript looks like a different one
             // of your languages, re-transcribe the captured audio in that language.
             var finalRaw = raw
+            var languageSwitched = false
             if spokenLanguages.count > 1, !raw.isEmpty,
                let detected = LanguageDetector.detect(raw, among: spokenLanguages),
                detected != self.currentLocaleID {
                 let buffers = self.audio.bufferedAudio()
                 if let reText = await self.engine.transcribeBuffered(buffers, localeIdentifier: detected) {
                     finalRaw = reText
+                    languageSwitched = true
                     self.currentLocaleID = detected
                     await self.engine.setLocaleIdentifier(detected) // stick to it next time
                 }
             }
+            trace.stage("reTx")
 
-            // Cleanup runs ONCE on the whole transcript so a spoken self-correction
-            // that spans a pause ("Thursday, no Friday") is resolved with full
-            // context. Only when the transcript is genuinely long do we split it
-            // into sentence batches (each within the on-device model's context) so
-            // a 5-minute dictation doesn't choke or overflow.
+            // Cleanup. The fast path joins the segments that were already cleaned
+            // live while you spoke — so we only wait on the last in-flight one.
+            // We fall back to a fresh whole/batched pass only when streaming
+            // wasn't running, or when a language switch re-wrote the transcript
+            // (making the streamed work, which was for the original language,
+            // stale). The whole pass also resolves self-corrections that span a
+            // pause with full context; long transcripts split into sentence
+            // batches (each within the model's context window).
             let cleanupEngine = self.cleanup
             let cleanupEnabled = appAdaptive ? (adaptiveStyle != .off) : (cleanupLevel != .none)
-            var cleaned = finalRaw
-            if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
-                let cleanOne: @Sendable (String) async -> String? = { text in
-                    appAdaptive
-                        ? await cleanupEngine.clean(text, style: adaptiveStyle)
-                        : await cleanupEngine.clean(text, level: cleanupLevel)
+
+            // Optimistic insertion (experimental, off by default): drop the raw
+            // transcript in immediately so there's no visible wait, then swap in
+            // the cleaned text once the model finishes. Gated tightly — only when
+            // the model will actually run (else nothing to swap to), in paste
+            // mode, for non-command dictation of modest length, and never on the
+            // language-switch path (finalRaw only settles after re-transcribe).
+            var optimistic: (count: Int, text: String)?
+            if optimisticEnabled, mode == .paste, cleanupEnabled, !languageSwitched,
+               !finalRaw.isEmpty, CleanupEngine.isAvailable {
+                let interimProcessed = TextProcessor.apply(
+                    replacements: replacements, removeFillers: removeFillers,
+                    autoCapitalize: autoCap, to: finalRaw
+                )
+                var interim = interimProcessed.text
+                if vibeOn, !vibeSnapshot.isEmpty {
+                    interim = SpokenFileMatcher.format(interim, snapshot: vibeSnapshot).0
                 }
-                if finalRaw.count <= Self.wholeCleanupCharLimit {
-                    cleaned = (await cleanOne(finalRaw)) ?? finalRaw
-                } else {
-                    cleaned = await Self.cleanInBatches(finalRaw, cleanOne)
+                if !interim.isEmpty, interim.count <= Self.optimisticMaxChars,
+                   self.commandRouter.intent(for: interim) == nil,
+                   case .inserted = TextInjector.insert(interim, mode: mode) {
+                    optimistic = (interim.count, interim)
+                    self.hud.showInserting(replacedWords: [])
                 }
             }
+
+            var cleaned = finalRaw
+            var usedStreaming = false
+            if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
+                if let streaming, !languageSwitched {
+                    cleaned = await streaming.finishCleaned()
+                    usedStreaming = true
+                    // Never insert empty when we actually have a transcript (e.g.
+                    // a degenerate session that emitted no usable segments).
+                    if cleaned.isEmpty { cleaned = finalRaw }
+                } else {
+                    streaming?.cancel()
+                    let cleanOne: @Sendable (String) async -> String? = { text in
+                        appAdaptive
+                            ? await cleanupEngine.clean(text, style: adaptiveStyle)
+                            : await cleanupEngine.clean(text, level: cleanupLevel)
+                    }
+                    if finalRaw.count <= Self.wholeCleanupCharLimit {
+                        cleaned = (await cleanOne(finalRaw)) ?? finalRaw
+                    } else {
+                        cleaned = await Self.cleanInBatches(finalRaw, cleanOne)
+                    }
+                }
+            } else {
+                streaming?.cancel()
+            }
+            trace.stage("cleanup")
             let aiHandledFillers = cleanupEnabled && CleanupEngine.isAvailable && cleaned != finalRaw
             let aiWordsChanged = aiHandledFillers ? Self.wordEditCount(from: finalRaw, to: cleaned) : 0
 
@@ -556,7 +651,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // dictation. Conservative — CommandRouter only matches imperatives /
             // macros, and rewrites require an actual AX selection — so normal
             // speech falls straight through to the dictation path below.
-            if let intent = self.commandRouter.intent(for: finalText) {
+            if optimistic == nil, let intent = self.commandRouter.intent(for: finalText) {
                 let selection = intent.needsSelection ? AXSelection.selectedText() : nil
                 if !intent.needsSelection || (selection?.isEmpty == false) {
                     let ctx = CommandContext(
@@ -622,7 +717,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                        snippet: String(finalText.prefix(120)))
             )
 
-            let outcome = TextInjector.insert(finalText, mode: mode)
+            let outcome: TextInjector.Outcome
+            if let opt = optimistic {
+                // The interim raw text is already on screen — swap it for the
+                // cleaned final, unless cleanup changed nothing (already correct).
+                outcome = finalText == opt.text
+                    ? .inserted
+                    : TextInjector.replaceBackward(graphemeCount: opt.count, with: finalText, mode: mode)
+            } else {
+                outcome = TextInjector.insert(finalText, mode: mode)
+            }
+            trace.stage("insert")
+            trace.finish(chars: finalText.count, streamed: usedStreaming)
             switch outcome {
             case .inserted:
                 Feedback.done()
@@ -684,17 +790,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// self-corrections across pauses resolve); above it, we chunk by sentence.
     private static let wholeCleanupCharLimit = 2200
 
+    /// Optimistic insertion only fires for transcripts at or below this length —
+    /// the in-place swap selects backward one keystroke per character, so a long
+    /// transcript would mean a long, janky (and riskier) ⇧← run.
+    private static let optimisticMaxChars = 400
+
     /// Clean a long transcript in sentence-grouped batches (each within the
-    /// model's context window), joining the cleaned results.
+    /// model's context window), joining the cleaned results in spoken order.
+    /// Batches are cleaned with bounded concurrency rather than strictly one at a
+    /// time, so a long fallback pass overlaps inference instead of summing it.
     private static func cleanInBatches(
         _ text: String,
-        _ cleanOne: @Sendable (String) async -> String?
+        _ cleanOne: @escaping @Sendable (String) async -> String?
     ) async -> String {
-        var out: [String] = []
-        for batch in splitIntoBatches(text, maxChars: 2000) {
-            out.append((await cleanOne(batch)) ?? batch)
+        let batches = splitIntoBatches(text, maxChars: 2000)
+        guard batches.count > 1 else {
+            let only = batches.first ?? text
+            return ((await cleanOne(only)) ?? only).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return out.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        // The on-device model is a shared resource, so cap the in-flight count to
+        // avoid thrashing it; a small window overlaps latency without
+        // oversubscribing. Order is preserved by writing results back by index.
+        let maxConcurrent = min(3, batches.count)
+        var results = [String?](repeating: nil, count: batches.count)
+        await withTaskGroup(of: (Int, String).self) { group in
+            var next = 0
+            func submit(_ i: Int) {
+                let batch = batches[i]
+                group.addTask { (i, (await cleanOne(batch)) ?? batch) }
+            }
+            while next < maxConcurrent { submit(next); next += 1 }
+            for await (i, cleaned) in group {
+                results[i] = cleaned
+                if next < batches.count { submit(next); next += 1 }
+            }
+        }
+        return results.compactMap { $0 }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func splitIntoBatches(_ text: String, maxChars: Int) -> [String] {

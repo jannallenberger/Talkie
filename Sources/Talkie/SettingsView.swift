@@ -745,6 +745,14 @@ private struct ActivationSettings: View {
                     }
                     .labelsHidden().fixedSize()
                 }
+                if settings.insertionMode == .paste {
+                    SettingsDivider()
+                    SettingsToggleRow(
+                        title: "Insert instantly, polish in place",
+                        subtitle: "Experimental — pastes your raw words the moment you stop, then swaps in the cleaned version. May misfire if you keep typing right after.",
+                        isOn: $settings.optimisticInsertion
+                    )
+                }
             }
         }
     }
