@@ -7,14 +7,14 @@ import SwiftUI
 /// from what the binary actually claims; if a network entitlement ever appears, it
 /// shows up here in red (per docs/PRIVACY.md).
 ///
-/// Reuses the shared `SubPage` / `SettingsCard` / `SettingsRow` vocabulary.
-struct PrivacySettings: View {
+/// Card-only section (no `SubPage`); composed into the merged Privacy &
+/// Permissions page alongside the permission rows.
+struct PrivacySection: View {
     @State private var entitlements: [Entitlement] = []
     @State private var hasNetwork = false
 
     var body: some View {
-        SubPage(title: "Privacy",
-                subtitle: "Nothing leaves your Mac. Here’s how you can prove it.") {
+        VStack(alignment: .leading, spacing: 18) {
             // Headline guarantee.
             SettingsCard {
                 HStack(alignment: .top, spacing: 12) {
