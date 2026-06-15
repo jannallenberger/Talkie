@@ -183,7 +183,7 @@ extension View {
 struct Eyebrow: View {
     let text: String
     var body: some View {
-        Text(text.uppercased())
+        Text(text.loc.uppercased())
             .font(.talkieEyebrow)
             .tracking(0.8)
             .foregroundStyle(Theme.inkSecondary)

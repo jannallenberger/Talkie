@@ -65,6 +65,12 @@ if [[ -d "$ROOT/Resources/Brand" ]]; then
   cp "$ROOT/Resources/Brand/"*.png "$APP/Contents/Resources/" 2>/dev/null || true
 fi
 
+# Localizations — per-language <lang>.lproj/Localizable.strings. SwiftUI Text/
+# Button literals auto-localize via LocalizedStringKey against these at runtime.
+if [[ -d "$ROOT/Resources/Localizations" ]]; then
+  cp -R "$ROOT/Resources/Localizations/"*.lproj "$APP/Contents/Resources/" 2>/dev/null || true
+fi
+
 # App icon from the Icon Composer .icon bundle (macOS 26 Liquid Glass).
 # actool emits AppIcon.icns (Finder/Dock fallback) + Assets.car (glass icon).
 if [[ -d "$ROOT/Resources/AppIcon.icon" ]]; then

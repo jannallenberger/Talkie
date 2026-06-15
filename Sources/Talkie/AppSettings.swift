@@ -13,9 +13,9 @@ enum ActivationKey: String, CaseIterable, Codable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .rightOption: return "Right ⌥ Option"
-        case .leftOption: return "Left ⌥ Option"
-        case .rightControl: return "Right ⌃ Control"
+        case .rightOption: return "Right ⌥ Option".loc
+        case .leftOption: return "Left ⌥ Option".loc
+        case .rightControl: return "Right ⌃ Control".loc
         }
     }
 }
@@ -28,8 +28,8 @@ enum ActivationMode: String, CaseIterable, Codable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .holdToTalk: return "Hold to talk"
-        case .toggle: return "Toggle (press to start, press to stop)"
+        case .holdToTalk: return "Hold to talk".loc
+        case .toggle: return "Toggle (press to start, press to stop)".loc
         }
     }
 }
@@ -42,8 +42,8 @@ enum InsertionMode: String, CaseIterable, Codable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .paste: return "Paste (fast)"
-        case .type: return "Type character-by-character"
+        case .paste: return "Paste (fast)".loc
+        case .type: return "Type character-by-character".loc
         }
     }
 }
