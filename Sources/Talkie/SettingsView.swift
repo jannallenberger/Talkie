@@ -372,7 +372,7 @@ private struct HistoryRow: View {
 
 private enum SettingsRoute: Hashable {
     case profile, activation, cleanup, languages, context, behavior
-    case voiceCommands, appProfiles, calendar, export, privacy
+    case voiceCommands, appProfiles, calendar, export
     case permissions, developer
 }
 
@@ -397,15 +397,13 @@ private struct SettingsHome: View {
                             SettingsRowView(icon: r.icon, title: r.title, subtitle: r.subtitle, route: r.route)
                             Divider().overlay(Theme.hairline).padding(.leading, 64)
                         }
-                        SettingsRowView(icon: "IconShield", title: "Permissions",
-                                        subtitle: permissions.allGranted ? "All granted" : "Action needed",
+                        SettingsRowView(icon: "IconShield", title: "Privacy & Permissions",
+                                        subtitle: permissions.allGranted ? "All local · nothing leaves your Mac" : "Action needed",
                                         badge: !permissions.allGranted, route: .permissions)
-                        if Dev.isEnabled {
-                            Divider().overlay(Theme.hairline).padding(.leading, 64)
-                            SettingsRowView(icon: "", title: "Developer",
-                                            subtitle: "Replay onboarding · debug tools",
-                                            route: .developer, systemIcon: "hammer.fill")
-                        }
+                        Divider().overlay(Theme.hairline).padding(.leading, 64)
+                        SettingsRowView(icon: "", title: "Developer",
+                                        subtitle: "Replay onboarding · debug tools",
+                                        route: .developer, systemIcon: "hammer.fill")
                     }
                     .talkieSurface()
                 }
@@ -441,8 +439,6 @@ private struct SettingsHome: View {
             (.export, "IconExport", "Export destinations",
              ExportPreferences.shared.summary),
             (.behavior, "IconSliders", "Behavior", "Sounds, open at login"),
-            (.privacy, "IconShield", "Privacy",
-             "Nothing leaves your Mac"),
         ]
     }
 
@@ -459,27 +455,25 @@ private struct SettingsHome: View {
         case .appProfiles:   AppProfilesSettings(profiles: profiles, settings: settings)
         case .calendar:      CalendarSettings()
         case .export:        ExportDestinationsSettings()
-        case .privacy:       PrivacySettings()
-        case .permissions:   PermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
+        case .permissions:   PrivacyAndPermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
         case .developer:     DeveloperSettings(settings: settings)
         }
     }
 }
 
-/// Developer-only tools, surfaced when `Dev.isEnabled` (Debug builds, or a
-/// release build with `TalkieDevMode` set). Replays the first-run onboarding
-/// without wiping any of the user's data.
+/// Developer tools (replaying the first-run onboarding, etc.). The Settings index
+/// always shows this row now, so these are reachable in any build — no need for a
+/// Debug build or the `TalkieDevMode` default.
 private struct DeveloperSettings: View {
     @ObservedObject var settings: AppSettings
-    @AppStorage(Dev.devModeKey) private var devMode = false
     @State private var replaying = false
 
     var body: some View {
         SubPage(title: "Developer",
-                subtitle: "Tools for building Talkie. Hidden from normal users.") {
+                subtitle: "Tools for building Talkie.") {
             SettingsCard(
                 header: "Onboarding",
-                footer: "Replays the first-run flow so you can review it. Your name, settings, history, and dictionary are untouched."
+                footer: "Replays the first-run welcome flow so you can review it — or just see it again on this Mac. Your name, settings, history, and dictionary are untouched."
             ) {
                 SettingsRow(
                     title: "First-run onboarding",
@@ -495,17 +489,6 @@ private struct DeveloperSettings: View {
                     .tint(Theme.coral)
                     .disabled(replaying)
                 }
-            }
-
-            SettingsCard(
-                header: "Developer mode",
-                footer: "Keeps this Developer page available in a Release build too. Debug builds always show it."
-            ) {
-                SettingsToggleRow(
-                    title: "Keep developer mode on",
-                    subtitle: "Persists across launches.",
-                    isOn: $devMode
-                )
             }
         }
     }
@@ -1116,16 +1099,36 @@ private struct ReplacementRow: View {
     }
 }
 
-// MARK: - Permissions
+// MARK: - Privacy & Permissions
 
-private struct PermissionsSettings: View {
+/// Merged "Privacy & Permissions": the three local permissions Talkie needs,
+/// followed by the verifiable proof that nothing leaves your Mac. Replaces the
+/// two formerly separate Permissions and Privacy panes with one.
+private struct PrivacyAndPermissionsSettings: View {
     @ObservedObject var permissions: PermissionsModel
     let onRetryHotKey: () -> Void
 
     var body: some View {
-        SubPage(title: "Permissions",
-                subtitle: "Talkie needs three permissions to work — all local.") {
-            SettingsCard(footer: "After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect.") {
+        SubPage(title: "Privacy & Permissions",
+                subtitle: "The three local permissions Talkie needs — and the proof nothing leaves your Mac.") {
+            PermissionsSection(permissions: permissions, onRetryHotKey: onRetryHotKey)
+            PrivacySection()
+        }
+    }
+}
+
+/// The permissions block, card-only (no `SubPage`) so it composes into the merged
+/// Privacy & Permissions page above.
+private struct PermissionsSection: View {
+    @ObservedObject var permissions: PermissionsModel
+    let onRetryHotKey: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsCard(
+                header: "Permissions",
+                footer: "After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect."
+            ) {
                 PermissionRow(
                     title: "Microphone",
                     detail: "Capture your voice while you dictate.",
