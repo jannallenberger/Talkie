@@ -461,11 +461,14 @@ from the mic tap.
 
 ## 5. Design system & brand tokens (`DesignSystem.swift`, `docs/BRAND.md`)
 
-**IMPORTANT — the code is "v2", which has DIVERGED from `docs/BRAND.md`.** The
-doc still describes the v1 *ivory/coral* identity; the shipped tokens are a
-native macOS 26 *white/blue/true-black* system. Treat `DesignSystem.swift` as the
-source of truth for *values* and `BRAND.md` for *philosophy* (warm/honest/quick,
-voice & tone, the macaw, feathers-for-data-only).
+**The code is "v2" — a native macOS 26 *white/blue/true-black* system, and the
+design docs are now reconciled to it** (`docs/BRAND.md`,
+`docs/BRAND_VISUAL_LANGUAGE.md`, `docs/CLAUDE_DESIGN_PROMPT.md` were updated from
+the old v1 ivory/coral identity to v2 on 2026-06-15). `DesignSystem.swift` remains
+the source of truth for *values*; the docs are the source of truth for
+*philosophy* (warm/honest/quick, voice & tone, the macaw, feathers-for-data-only)
+and for the icon pipeline (Higgsfield image-gen + isolation, mandatory for any new
+clay icon — see `BRAND_VISUAL_LANGUAGE.md`).
 
 - **Surfaces:** `canvas` pure white / true black; `surface`, `surfaceSunken`,
   `canvasRaised` lift by contrast + a whisper shadow (borderless, `:28-34`).
@@ -572,8 +575,8 @@ voice & tone, the macaw, feathers-for-data-only).
 - **`bestWPM`/avg WPM gated** to ≥1.5s & ≥4 words & <400 wpm to avoid absurd bursts
   (`StatsStore.swift:35-39`).
 - **Fn/Globe activation key removed** — OS reserves it (`AppSettings.swift:8-9`).
-- **`BRAND.md` is stale relative to `DesignSystem.swift`** (v1 ivory/coral doc vs.
-  v2 white/blue code) — a doc/code drift to reconcile (see §5).
+- **`BRAND.md` is reconciled with `DesignSystem.swift`** (v2 white/blue, as of
+  2026-06-15) — the prior v1 ivory/coral drift is resolved (see §5).
 - **`docs/MEETING_MODE.md` 26.0 caveat:** process-tap capture had bugs on 26.0;
   the doc targets 26.1+ — worth validating on the actual deployment OS.
 - **No tests** in the repo (no test target in `Package.swift`).
