@@ -47,6 +47,12 @@ final class StreamingCleanup: @unchecked Sendable {
         lock.withLock { tasks.append(task) }
     }
 
+    /// How many segments finalized this session. 0 or 1 means the speaker never
+    /// paused long enough to split the utterance, so the streamed result equals a
+    /// whole-transcript pass; >1 means the caller should prefer a holistic pass so
+    /// punctuation isn't fragmented at the pause boundaries.
+    var segmentCount: Int { lock.withLock { tasks.count } }
+
     /// Await every segment's cleanup in arrival order and join. By stop-time the
     /// earlier segments are usually already done, so this mostly waits on the
     /// last one or two still in flight.

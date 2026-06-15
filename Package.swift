@@ -42,5 +42,16 @@ let package = Package(
                 .swiftLanguageMode(.v6),
             ]
         ),
+        // Pure-logic unit tests (no Core Audio, no model): the meeting-detection
+        // state machine and the live-subtopic confidence gating. Bootstraps the
+        // repo's first test target.
+        .testTarget(
+            name: "TalkieTests",
+            dependencies: ["Talkie"],
+            path: "Tests/TalkieTests",
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
     ]
 )

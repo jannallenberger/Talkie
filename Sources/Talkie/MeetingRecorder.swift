@@ -43,6 +43,12 @@ final class MeetingRecorder: ObservableObject {
     /// both streams to. Injected by AppDelegate from settings.meetingLanguageMode.
     var meetingLanguageMode: (() -> String)?
 
+    /// Optional live feed of finalized transcript segments (speaker-tagged) for the
+    /// in-flight subtopic detector. Invoked from the transcriber's `@Sendable`
+    /// segment handler, off the main actor, so it's kept `Sendable` and cheap. It is
+    /// snapshotted into a local at `start()`, so it must be wired before recording.
+    var onLiveSegment: (@Sendable (MeetingSpeaker, String) -> Void)?
+
     private let engine: TranscriptionEngine // shared mic engine ("Me")
     private let store: MeetingStore
     private let summarizer = MeetingSummarizer()
@@ -97,6 +103,9 @@ final class MeetingRecorder: ObservableObject {
 
         let start = Date()
         let log = TurnLog(startedAt: start)
+        // Snapshot the live-segment feed once so both stream handlers (which run on
+        // the transcriber's @Sendable executor) capture a Sendable value, not `self`.
+        let liveFeed = onLiveSegment
         let pURL = AppPaths.meetingsDirectory().appendingPathComponent(".recording.partial.txt")
         try? Data().write(to: pURL)
 
@@ -135,6 +144,7 @@ final class MeetingRecorder: ObservableObject {
             await engine.setContextualStrings(eventAttendees)
             let session = try await engine.beginSession(segmentHandler: { segment in
                 log.add(.me, segment)
+                liveFeed?(.me, segment)
             })
             try audio.start(targetFormat: session.format, continuation: session.continuation,
                             bufferAudio: multiLang, bufferSeconds: 600)
@@ -162,6 +172,7 @@ final class MeetingRecorder: ObservableObject {
                 await far.setContextualStrings(eventAttendees)
                 let farSession = try await far.beginSession(segmentHandler: { segment in
                     log.add(.them, segment)
+                    liveFeed?(.them, segment)
                 })
                 try systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
                                       bufferAudio: multiLang, bufferSeconds: 600)
@@ -306,13 +317,19 @@ final class MeetingRecorder: ObservableObject {
         capturingFarEnd = false
     }
 
-    /// Detect whether one stream's speech was actually in a different one of the
-    /// user's languages than it was transcribed in, and if so re-transcribe that
-    /// stream's buffered audio in the detected language. Language detection from the
-    /// (wrong-language) streamed text is reliable — Apple's recognizer renders, e.g.,
-    /// German speech as phonetic German, which NLLanguageRecognizer still scores as
-    /// German with high confidence. A successful re-transcription collapses the
-    /// stream to one block anchored at its first turn; a matched stream is untouched.
+    /// Decide, by AUDIO self-consistency, whether one stream's speech was actually
+    /// in a different one of the user's languages than it was transcribed in, and
+    /// if so re-transcribe that stream's buffered audio in the right language.
+    ///
+    /// We do NOT trust language-ID of the streamed text: speech in a non-`streamLocale`
+    /// language decoded by the `streamLocale` model comes out as phonetic gibberish,
+    /// which NLLanguageRecognizer often mis-scores as `streamLocale` (so the old
+    /// "detect a different language from the text" trigger silently never fired).
+    /// Instead, if the stream's transcript doesn't confidently read as `streamLocale`,
+    /// re-transcribe the audio in each other language and keep whichever output most
+    /// strongly self-identifies as its own language. A successful re-transcription
+    /// collapses the stream to one block anchored at its first turn; a confident
+    /// match is untouched.
     private func correctStreamLanguage(
         _ speaker: MeetingSpeaker,
         engine: TranscriptionEngine,
@@ -324,10 +341,27 @@ final class MeetingRecorder: ObservableObject {
         let streamTurns = log.turns(for: speaker)
         guard !streamTurns.isEmpty, !buffers.isEmpty else { return }
         let raw = streamTurns.map(\.text).joined(separator: " ")
-        guard let detected = LanguageDetector.detect(raw, among: langs),
-              Self.languageCode(detected) != Self.languageCode(streamLocale),
-              let reText = await engine.transcribeBuffered(buffers, localeIdentifier: detected),
-              !reText.isEmpty else { return }
+
+        // Too few words to language-ID → keep the stream as transcribed (avoids
+        // re-transcribing every very short stream for no possible gain).
+        guard LanguageDetector.canScore(raw) else { return }
+        let streamConf = LanguageDetector.selfConsistency(raw, expected: streamLocale, among: langs)
+        guard streamConf < LanguageDetector.confidentMatch else { return }
+
+        let others = langs.filter { Self.languageCode($0) != Self.languageCode(streamLocale) }
+        let candidates = await engine.transcribeCandidates(buffers, localeIdentifiers: others, installIfNeeded: true)
+        var bestText: String?
+        var bestConf = streamConf
+        for candidate in candidates {
+            let conf = LanguageDetector.selfConsistency(candidate.text, expected: candidate.localeID, among: langs)
+            if conf > bestConf {
+                bestConf = conf
+                bestText = candidate.text
+            }
+        }
+        guard let reText = bestText,
+              bestConf >= streamConf + LanguageDetector.switchMargin,
+              bestConf >= LanguageDetector.switchFloor else { return }
         log.replace(speaker, withSingleTurn: reText, at: streamTurns.first!.elapsed)
     }
 

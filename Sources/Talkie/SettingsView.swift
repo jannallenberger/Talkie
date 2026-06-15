@@ -736,6 +736,12 @@ private struct ActivationSettings: View {
                         isOn: $settings.optimisticInsertion
                     )
                 }
+                SettingsDivider()
+                SettingsToggleRow(
+                    title: "Re-paste last transcript with \(settings.activationKey.pasteShortcut.display)",
+                    subtitle: "Press \(settings.activationKey.pasteShortcut.display) to drop your most recent transcript into the focused field — handy when Talkie couldn’t find one to paste into. Picked to never clash with your dictation key.",
+                    isOn: $settings.pasteLastShortcutEnabled
+                )
             }
         }
     }

@@ -46,6 +46,9 @@ final class HUDModel: ObservableObject {
     @Published var recordStartID: Int = 0
     /// Text held for the tap-to-copy fallback when a paste couldn't land.
     @Published var copyText: String = ""
+    /// Keyboard shortcut to surface in the copy-prompt pill (e.g. "⌥⌘V" to re-paste
+    /// the last transcript), or nil to hide the hint.
+    @Published var copyShortcut: String?
     /// Invoked when the user taps the pill in the `.copyPrompt` state.
     var onCopyTap: () -> Void = {}
     /// Invoked when the user taps "Insert" on a command preview.
@@ -81,10 +84,11 @@ final class HUDController {
     private var panel: NSPanel?
     private var hideTask: Task<Void, Never>?
 
-    // Compact panel — the transparent canvas the pill floats in. Kept small so the
-    // pill hugs the notch; the extra height below leaves room for the soft shadow
-    // and the drop-in entrance.
-    private static let panelSize = NSSize(width: 440, height: 72)
+    // Compact panel — the transparent canvas the pill floats in. The pill hugs the
+    // notch (top-anchored), so the extra height below is transparent headroom: it
+    // leaves room for the soft shadow, the drop-in entrance, and the copy-prompt
+    // pill expanding downward to a second line (the ⌥⌘V re-paste hint).
+    private static let panelSize = NSSize(width: 440, height: 104)
 
     /// The pill's frame within the panel's content view, published by the SwiftUI
     /// layer. The pass-through hosting view consults it so clicks on the large
@@ -230,9 +234,10 @@ final class HUDController {
     /// A paste couldn't land — show a tappable alert; tapping copies the text to
     /// the clipboard. The text is already on the clipboard as a safety net, so an
     /// auto-hide without a tap won't lose it.
-    func showCopyPrompt(text: String, message: String) {
+    func showCopyPrompt(text: String, message: String, shortcut: String? = nil) {
         cancelHide()
         model.copyText = text
+        model.copyShortcut = shortcut
         model.onCopyTap = { [weak self] in self?.handleCopyTap() }
         let panel = ensurePanel()
         panel.ignoresMouseEvents = false   // let the user tap to copy
@@ -450,14 +455,30 @@ private struct HUDView: View {
             }
             .transition(.blurReplace)
         case .copyPrompt(let message):
-            HStack(spacing: 7) {
-                Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-                Text(message)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(1)
+            // Expands downward into a second line when the re-paste shortcut is on,
+            // spelling out how to use it rather than relying on a bare keycap.
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 7) {
+                    Image(systemName: "doc.on.clipboard")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                    Text(message)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                }
+                if let shortcut = model.copyShortcut {
+                    HStack(spacing: 6) {
+                        Text("Press")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                        KeycapHint(text: shortcut)
+                        Text("to paste into a text field")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                }
             }
             .transition(.blurReplace)
         case .copied:
@@ -544,6 +565,29 @@ private struct CommandChip: View {
             .contentShape(Capsule(style: .continuous))
             .onTapGesture(perform: action)
             .onHover { hovering = $0 }
+    }
+}
+
+/// A small keycap-styled hint shown in the copy-prompt pill — e.g. "⌥⌘V" — telling
+/// you the shortcut to re-paste the last transcript once you've focused a field.
+private struct KeycapHint: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.92))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(.white.opacity(0.16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+                    )
+            )
+            .help("Focus a text field and press \(text) to paste your last transcript")
     }
 }
 

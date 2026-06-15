@@ -2,6 +2,21 @@ import AVFoundation
 import Foundation
 import Speech
 
+/// Best-effort debug log to a file — the unified log doesn't reliably capture
+/// this app's NSLog, so language auto-detect diagnostics go here instead. Reads
+/// with `cat /tmp/talkie-lang.log`. TEMPORARY: remove once tuning is settled.
+func talkieDebugLog(_ message: String) {
+    guard let data = (message + "\n").data(using: .utf8) else { return }
+    let url = URL(fileURLWithPath: "/tmp/talkie-lang.log")
+    if let handle = try? FileHandle(forWritingTo: url) {
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: data)
+    } else {
+        try? data.write(to: url)
+    }
+}
+
 /// A single in-flight transcript update, pushed to the UI as recognition progresses.
 struct TranscriptUpdate: Sendable {
     /// Text that the recognizer has committed (will not change).
@@ -115,7 +130,12 @@ actor TranscriptionEngine {
             locale: loc,
             transcriptionOptions: [],
             reportingOptions: [.volatileResults],
-            attributeOptions: []
+            // Per-word recognition confidence is the load-bearing signal for
+            // language auto-detect: the right acoustic model fits the audio (high
+            // confidence) while the wrong model decoding foreign speech does not.
+            // audioTimeRange is requested too so a future per-segment (code-switch)
+            // router has word timings on a shared clock.
+            attributeOptions: [.transcriptionConfidence, .audioTimeRange]
         )
     }
 
@@ -124,7 +144,15 @@ actor TranscriptionEngine {
     func warmUp(localeIdentifier id: String? = nil) async throws {
         guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
         let loc: Locale
-        if let id, let resolved = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) {
+        if let id {
+            // A specific language was requested (the per-language warm-up loop).
+            // If it isn't supported on-device, skip — do NOT fall back to the
+            // primary, which would silently warm the wrong model and leave the
+            // requested language uninstalled (guaranteeing a later re-transcribe
+            // bail).
+            guard let resolved = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) else {
+                return
+            }
             loc = resolved
         } else {
             loc = try await resolvedLocale()
@@ -135,25 +163,89 @@ actor TranscriptionEngine {
         _ = try? await AssetInventory.reserve(locale: loc)
     }
 
-    /// One-shot re-transcription of already-captured audio in a different locale
-    /// (used by language auto-detect). Returns nil on any failure, so the caller
-    /// keeps the original transcript.
-    func transcribeBuffered(_ buffers: [AVAudioPCMBuffer], localeIdentifier id: String) async -> String? {
-        guard SpeechTranscriber.isAvailable, !buffers.isEmpty else { return nil }
-        guard let loc = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) else { return nil }
+    /// Re-transcribe the buffered audio in each candidate locale (the stop-time
+    /// language-correction path) and return every non-empty result with its locale
+    /// and **mean per-word recognition confidence** — the caller picks the language
+    /// whose model fit the audio best. Runs sequentially: the candidate set is
+    /// small (the user's spoken languages), and keeping the loop inside the actor
+    /// lets the same buffers be replayed per candidate without re-sending
+    /// non-`Sendable` audio across isolation domains.
+    func transcribeCandidates(
+        _ buffers: [AVAudioPCMBuffer],
+        localeIdentifiers ids: [String],
+        installIfNeeded: Bool = false
+    ) async -> [(localeID: String, text: String, confidence: Double)] {
+        var out: [(localeID: String, text: String, confidence: Double)] = []
+        for id in ids {
+            if let scored = await transcribeScored(buffers, localeIdentifier: id, installIfNeeded: installIfNeeded) {
+                out.append((localeID: id, text: scored.text, confidence: scored.confidence))
+            }
+        }
+        return out
+    }
+
+    /// One-shot re-transcription of already-captured audio in a locale, returning
+    /// just the text (used by the meeting language-correction shim). Returns nil
+    /// when the language can't be transcribed at all.
+    func transcribeBuffered(
+        _ buffers: [AVAudioPCMBuffer],
+        localeIdentifier id: String,
+        installIfNeeded: Bool = false
+    ) async -> String? {
+        await transcribeScored(buffers, localeIdentifier: id, installIfNeeded: installIfNeeded)?.text
+    }
+
+    /// Core re-transcription: replays the buffered audio through a fresh
+    /// single-locale analyzer and returns the committed text plus the mean
+    /// per-word `transcriptionConfidence`. Returns nil only when the language
+    /// can't be transcribed at all (unsupported, no model and `installIfNeeded`
+    /// false, or an empty result), so the caller keeps the original transcript.
+    func transcribeScored(
+        _ buffers: [AVAudioPCMBuffer],
+        localeIdentifier id: String,
+        installIfNeeded: Bool = false
+    ) async -> (text: String, confidence: Double)? {
+        guard SpeechTranscriber.isAvailable, !buffers.isEmpty else {
+            talkieDebugLog("reTx[\(id)]: bail — unavailable or no buffers (\(buffers.count))")
+            return nil
+        }
+        guard let loc = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) else {
+            talkieDebugLog("reTx[\(id)]: bail — locale not supported on this device")
+            return nil
+        }
 
         let transcriber = makeTranscriber(locale: loc)
-        // Never download a model inline here — that would freeze the insert for
-        // seconds. If the language isn't installed yet, bail; warmUp() installs
-        // it in the background so the NEXT switch is instant.
-        guard await AssetInventory.status(forModules: [transcriber]) == .installed else { return nil }
-        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else { return nil }
-        // Compare load-bearing format fields rather than AVAudioFormat.== (which
-        // also compares channel layout and can spuriously differ between locales).
-        guard let firstFormat = buffers.first?.format,
-              firstFormat.sampleRate == format.sampleRate,
-              firstFormat.channelCount == format.channelCount,
-              firstFormat.commonFormat == format.commonFormat else { return nil }
+        // The model must be present. By default we never download inline (it would
+        // freeze the insert for seconds) and trust warmUp() to have installed it.
+        // On the user-waiting stop path the caller passes installIfNeeded:true, so
+        // the FIRST utterance in a not-yet-warmed language is still corrected
+        // instead of silently kept as wrong-language gibberish.
+        if await AssetInventory.status(forModules: [transcriber]) != .installed {
+            guard installIfNeeded else {
+                talkieDebugLog("reTx[\(id)]: bail — model not installed (no inline install)")
+                return nil
+            }
+            do {
+                try await ensureModelInstalled(for: transcriber)
+            } catch {
+                talkieDebugLog("reTx[\(id)]: bail — model install failed: \(error.localizedDescription)")
+                return nil
+            }
+        }
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            talkieDebugLog("reTx[\(id)]: bail — no compatible audio format")
+            return nil
+        }
+        // The buffers were captured in the PRIMARY transcriber's format; a
+        // different locale can resolve to a different best format. Re-sample to
+        // THIS transcriber's format rather than bailing on a mismatch (which used
+        // to silently discard correct detections). Matching formats pass through
+        // untouched.
+        let feedBuffers = Self.conform(buffers, to: format)
+        guard !feedBuffers.isEmpty else {
+            talkieDebugLog("reTx[\(id)]: bail — resample produced no buffers")
+            return nil
+        }
 
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         let analyzer = SpeechAnalyzer(modules: [transcriber])
@@ -163,30 +255,54 @@ actor TranscriptionEngine {
             try? await analyzer.setContext(ctx)
         }
 
-        var collected = ""
-        let reader = Task {
+        // Accumulate committed text and per-word confidence together. `words`
+        // (text:confidence per run) is diagnostic — it shows whether confidence
+        // separates right-vs-wrong model per word (the prerequisite for future
+        // per-segment code-switch routing).
+        let reader = Task { () -> (text: String, confSum: Double, confCount: Int, words: [(String, Double)]) in
+            var text = ""
+            var confSum = 0.0
+            var confCount = 0
+            var words: [(String, Double)] = []
             do {
                 for try await result in transcriber.results where result.isFinal {
-                    collected = appendCommitted(collected, String(result.text.characters))
+                    text = appendCommitted(text, String(result.text.characters))
+                    for run in result.text.runs {
+                        if let c = run.transcriptionConfidence {
+                            confSum += c
+                            confCount += 1
+                            let w = String(result.text[run.range].characters).trimmingCharacters(in: .whitespaces)
+                            if !w.isEmpty { words.append((w, c)) }
+                        }
+                    }
                 }
             } catch {}
+            return (text, confSum, confCount, words)
         }
 
         do {
             try await analyzer.start(inputSequence: stream)
         } catch {
             reader.cancel()
+            talkieDebugLog("reTx[\(id)]: bail — analyzer.start threw: \(error.localizedDescription)")
             return nil
         }
-        for buffer in buffers {
+        for buffer in feedBuffers {
             continuation.yield(AnalyzerInput(buffer: buffer))
         }
         continuation.finish()
         try? await analyzer.finalizeAndFinishThroughEndOfInput()
-        await reader.value
+        let collected = await reader.value
 
-        let result = collected.trimmingCharacters(in: .whitespacesAndNewlines)
-        return result.isEmpty ? nil : result
+        let text = collected.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            talkieDebugLog("reTx[\(id)]: empty transcript")
+            return nil
+        }
+        let confidence = collected.confCount > 0 ? collected.confSum / Double(collected.confCount) : 0
+        let wordStr = collected.words.map { "\($0.0):\(String(format: "%.2f", $0.1))" }.joined(separator: " ")
+        talkieDebugLog("reTx[\(id)] mean=\(String(format: "%.2f", confidence)) text='\(text)'\n    words=[\(wordStr)]")
+        return (text: text, confidence: confidence)
     }
 
     /// Begin a dictation session. Returns the audio format the caller must feed
@@ -357,5 +473,64 @@ actor TranscriptionEngine {
         onSegment = nil
         analyzer = nil
         transcriber = nil
+    }
+
+    // MARK: Buffer re-sampling (for cross-locale re-transcription)
+
+    /// Holds one buffer for AVAudioConverter's pull-style input block.
+    private final class OneShot: @unchecked Sendable {
+        private var buffer: AVAudioPCMBuffer?
+        init(_ b: AVAudioPCMBuffer) { buffer = b }
+        func take() -> AVAudioPCMBuffer? { defer { buffer = nil }; return buffer }
+    }
+
+    /// Re-sample captured buffers to `target` when their format differs, so audio
+    /// captured for one locale's transcriber can be replayed through another's.
+    /// Buffers already in `target` pass through untouched. Returns [] only if no
+    /// converter can be built (the caller then keeps the original transcript).
+    nonisolated private static func conform(
+        _ buffers: [AVAudioPCMBuffer],
+        to target: AVAudioFormat
+    ) -> [AVAudioPCMBuffer] {
+        guard let sourceFormat = buffers.first?.format else { return [] }
+        if sourceFormat.sampleRate == target.sampleRate,
+           sourceFormat.channelCount == target.channelCount,
+           sourceFormat.commonFormat == target.commonFormat {
+            return buffers
+        }
+        guard let converter = AVAudioConverter(from: sourceFormat, to: target) else { return [] }
+        converter.primeMethod = .none // avoid timestamp drift on streamed buffers
+        var out: [AVAudioPCMBuffer] = []
+        out.reserveCapacity(buffers.count)
+        for buffer in buffers {
+            guard let converted = convertOne(buffer, using: converter, to: target),
+                  converted.frameLength > 0 else { continue }
+            out.append(converted)
+        }
+        return out
+    }
+
+    /// Convert a single PCM buffer to `target`. Mirrors `AudioCapture.convert`.
+    nonisolated private static func convertOne(
+        _ buffer: AVAudioPCMBuffer,
+        using converter: AVAudioConverter,
+        to target: AVAudioFormat
+    ) -> AVAudioPCMBuffer? {
+        let ratio = target.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
+        guard let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return nil }
+
+        let source = OneShot(buffer)
+        var error: NSError?
+        let status = converter.convert(to: output, error: &error) { _, statusPtr in
+            if let next = source.take() {
+                statusPtr.pointee = .haveData
+                return next
+            }
+            statusPtr.pointee = .noDataNow
+            return nil
+        }
+        if status == .error || error != nil { return nil }
+        return output
     }
 }

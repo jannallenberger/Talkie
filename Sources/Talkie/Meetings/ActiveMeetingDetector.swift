@@ -151,26 +151,54 @@ enum AudioProcessScanner {
 /// The first `MeetingContextProvider` implementation: it answers "is a meeting
 /// likely in progress right now, and in what app?" by reading Core Audio for a
 /// **non-Talkie** process actively capturing the mic, then raising confidence when
-/// that process's bundle id is on a known-meeting-app allowlist.
+/// that process's bundle id is on a known-meeting-app allowlist — and, layered on
+/// top, runs the live **poll loop + session/debounce state machine** that turns a
+/// sustained high-confidence signal into a single "record?" offer (never silent).
 ///
-/// It is an `actor` so its allowlist / self-PID config is safely mutable from any
-/// isolation domain (settings can re-bind it live via `updateAllowlist`). The scan
-/// itself is a pure synchronous Core Audio read with no audio I/O, so a one-shot
-/// `detectActiveMeeting()` probe is cheap; an upstream poll loop calls it on a
-/// cadence (the loop, debounce/session state and consent banner live in a separate
-/// serial wiring pass — this type is the detection seam only).
+/// It is an `actor` so its config / session state is safely mutable from any
+/// isolation domain (settings re-bind it live via `updateConfig`). The scan itself
+/// is a pure synchronous Core Audio read with no audio I/O. The decision logic
+/// (`bestCandidate`, `decide`) is factored into pure static functions so the
+/// debounce/session behavior is unit-testable without hardware.
 ///
 /// `eventContext(at:)` returns `nil` — that is feature 04 (EventKit), which will
 /// either fill this in or be composed alongside this provider.
 actor ActiveMeetingDetector: MeetingContextProvider {
+    /// Tunable behavior, re-bindable live via `updateConfig`.
+    struct Config: Sendable {
+        /// Master switch; when false the loop doesn't run and nothing is scanned.
+        var enabled: Bool
+        /// Known meeting apps (bundle id → name + tier).
+        var allowlist: [MeetingApp]
+        /// Offer even for an unknown (non-allowlisted) mic-hot app. Noisy; default off.
+        var offerForAnyMicApp: Bool
+        /// Bundle ids the user muted (via repeated dismissals); never offered.
+        var muted: Set<String> = []
+        /// How often to scan. Cheap metadata reads, so 1.5 s is comfortable.
+        var pollInterval: Duration = .seconds(1.5)
+        /// Consecutive offer-worthy polls before a meeting is "started" (~3 s).
+        var startConfirmPolls: Int = 2
+        /// Seconds the trigger must stay absent before the session resets — absorbs
+        /// a mute / hold / screen-share swap mid-call.
+        var endDebounce: TimeInterval = 20
+    }
+
     /// Talkie's own PID, excluded from the scan so our dictation never self-triggers.
     private let selfPID: pid_t
-    /// Bundle ids → friendly name + tier. Looked up to raise confidence.
+    private var config: Config
+    /// Bundle ids → friendly name + tier, derived from `config.allowlist`.
     private var allowlist: [String: MeetingApp]
+    private var state = DetectorState()
+    /// Per-app dismissal tallies driving browser-tier auto-mute. Ephemeral (resets
+    /// on relaunch — acceptable, and honest).
+    private var dismissalCounts: [String: Int] = [:]
+    private var loop: Task<Void, Never>?
+    private var onDetect: (@Sendable (MeetingSignal) -> Void)?
+    private var onMute: (@Sendable (String) -> Void)?
 
-    /// Confidence floors per situation. A high value crosses the banner threshold
-    /// upstream; a low value is still returned (04/05 may want it) but is below the
-    /// default "offer" bar.
+    /// Confidence floors per situation. A high value crosses the banner threshold;
+    /// a low value is still returned by `detectActiveMeeting` (04/05 may want it) but
+    /// is below the default "offer" bar.
     enum Confidence {
         /// Allowlisted dedicated meeting app on the mic — the strongest signal.
         static let meetingApp = 0.85
@@ -180,17 +208,14 @@ actor ActiveMeetingDetector: MeetingContextProvider {
         static let micHotOnly = 0.4
     }
 
-    /// - Parameters:
-    ///   - allowlist: known meeting apps (defaults to the built-in seed).
-    ///   - selfPID: Talkie's PID to exclude (defaults to the current process).
-    init(allowlist: [MeetingApp] = MeetingApp.builtInAllowlist, selfPID: pid_t = getpid()) {
+    init(config: Config, selfPID: pid_t = getpid()) {
         self.selfPID = selfPID
-        self.allowlist = Dictionary(allowlist.map { ($0.bundleID, $0) }, uniquingKeysWith: { first, _ in first })
+        self.config = config
+        self.allowlist = Self.indexed(config.allowlist)
     }
 
-    /// Re-bind the allowlist live (e.g. when the user edits it in Settings).
-    func updateAllowlist(_ allowlist: [MeetingApp]) {
-        self.allowlist = Dictionary(allowlist.map { ($0.bundleID, $0) }, uniquingKeysWith: { first, _ in first })
+    private static func indexed(_ list: [MeetingApp]) -> [String: MeetingApp] {
+        Dictionary(list.map { ($0.bundleID, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Process taps / per-process audio objects exist on macOS 14.4+. We deploy to
@@ -201,40 +226,191 @@ actor ActiveMeetingDetector: MeetingContextProvider {
         return false
     }
 
+    // MARK: Poll loop
+
+    /// Begin the poll loop. `onDetect` fires (once per meeting session) when a new
+    /// meeting crosses the start threshold; the caller hops it to the MainActor and
+    /// applies the dictation/recording suppression checks before showing the banner.
+    /// `onMute` fires when an app crosses the browser-tier dismissal threshold, so
+    /// the caller can persist the mute.
+    func start(onDetect: @escaping @Sendable (MeetingSignal) -> Void,
+               onMute: @escaping @Sendable (String) -> Void) {
+        self.onDetect = onDetect
+        self.onMute = onMute
+        startLoop()
+    }
+
+    private func startLoop() {
+        guard config.enabled, Self.isSupported, loop == nil else { return }
+        loop = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let interval = await self.pollOnce()
+                try? await Task.sleep(for: interval)
+            }
+        }
+    }
+
+    func stop() {
+        loop?.cancel()
+        loop = nil
+    }
+
+    /// Re-bind live when settings change (toggle, allowlist edits, mute). Starts or
+    /// stops the loop to match the new `enabled`.
+    func updateConfig(_ config: Config) {
+        let wasEnabled = self.config.enabled
+        self.config = config
+        self.allowlist = Self.indexed(config.allowlist)
+        if !config.enabled {
+            loop?.cancel()
+            loop = nil
+            state = DetectorState()
+        } else if !wasEnabled {
+            startLoop()
+        }
+    }
+
+    /// One poll tick: scan, decide, maybe fire. Returns the interval to wait next.
+    private func pollOnce() -> Duration {
+        let active = AudioProcessScanner.processesCapturingInput(excludingPID: selfPID)
+        let candidate = Self.bestCandidate(active, allowlist: allowlist,
+                                           offerForAnyMicApp: config.offerForAnyMicApp)
+        let now = Date().timeIntervalSince1970
+        let (newState, offer) = Self.decide(state: state, candidate: candidate, now: now, config: config)
+        state = newState
+        if let offer {
+            onDetect?(MeetingSignal(confidence: offer.confidence, appBundleID: offer.bundleID,
+                                    appName: offer.appName, tier: offer.tier, startedAtUnix: now))
+        }
+        return config.pollInterval
+    }
+
+    /// Record that the current session was dismissed so it never re-offers. When
+    /// `mute` is set (an explicit Dismiss tap, not a soft auto-hide), tally it and —
+    /// for browser-tier apps — mute the app after the threshold.
+    func markSessionDismissed(_ bundleID: String?, mute: Bool) {
+        state.dismissed = true
+        guard mute, let id = bundleID else { return }
+        dismissalCounts[id, default: 0] += 1
+        // Meeting apps almost always mean a recordable call, so they never auto-mute;
+        // browsers (a weaker signal) mute after 2 dismissals.
+        let threshold = (allowlist[id]?.tier == .browser) ? 2 : Int.max
+        if dismissalCounts[id, default: 0] >= threshold, !config.muted.contains(id) {
+            config.muted.insert(id)
+            onMute?(id)
+        }
+    }
+
     // MARK: MeetingContextProvider
 
-    /// One-shot probe: is a meeting likely happening right now? Reads Core Audio
-    /// once, picks the *highest-confidence* mic-hot process, and maps it to a
-    /// `MeetingSignal`. Returns nil when nothing (other than Talkie) is on the mic.
+    /// One-shot probe: is a meeting likely happening right now? Reports any mic-hot
+    /// app (so 04/05 can read a low-confidence signal); the *offer* gate lives in the
+    /// poll loop, not here.
     func detectActiveMeeting() async -> MeetingSignal? {
         guard Self.isSupported else { return nil }
-
         let active = AudioProcessScanner.processesCapturingInput(excludingPID: selfPID)
-        guard !active.isEmpty else { return nil }   // no meeting
-
-        // Prefer the strongest signal: an allowlisted meeting app > browser >
-        // unknown mic-hot. This way "Zoom + Chrome both on the mic" names Zoom.
-        let best = active
-            .map { proc -> (process: ActiveInputProcess, app: MeetingApp?, confidence: Double) in
-                let app = proc.bundleID.flatMap { allowlist[$0] }
-                let confidence: Double
-                switch app?.tier {
-                case .meetingApp: confidence = Confidence.meetingApp
-                case .browser: confidence = Confidence.browser
-                case nil: confidence = Confidence.micHotOnly
-                }
-                return (proc, app, confidence)
-            }
-            .max { $0.confidence < $1.confidence }!
-
-        return MeetingSignal(
-            confidence: best.confidence,
-            appBundleID: best.process.bundleID,
-            startedAtUnix: Date().timeIntervalSince1970
-        )
+        guard let c = Self.bestCandidate(active, allowlist: allowlist, offerForAnyMicApp: true) else { return nil }
+        return MeetingSignal(confidence: c.confidence, appBundleID: c.bundleID,
+                             appName: c.appName, tier: c.tier,
+                             startedAtUnix: Date().timeIntervalSince1970)
     }
 
     /// Calendar naming / attendees — owned by feature 04 (EventKit). Returns nil
     /// here so this provider can ship the detection seam independently.
     func eventContext(at date: Date) async -> MeetingEventContext? { nil }
+
+    // MARK: - Pure decision logic (testable without Core Audio)
+
+    /// The highest-confidence mic-hot process for a poll, already mapped to a tier.
+    struct DetectionCandidate: Equatable, Sendable {
+        var bundleID: String?
+        var appName: String?
+        var tier: MeetingApp.Tier?
+        var confidence: Double
+    }
+
+    /// Ephemeral session/debounce state, evolved by `decide`. Intentionally not
+    /// persisted (§6 of the design doc): a relaunch mid-call simply re-detects.
+    struct DetectorState: Equatable, Sendable {
+        var sessionBundleID: String?
+        var sessionStartUnix: Double?
+        var highStreak: Int = 0
+        var offered: Bool = false
+        var dismissed: Bool = false
+        var lastSeenUnix: Double?
+    }
+
+    /// Pick the highest-confidence mic-hot process and decide whether it's
+    /// offer-worthy. Allowlisted apps (meeting/browser) always qualify; an unknown
+    /// mic-hot app qualifies only when `offerForAnyMicApp` is set. Returns nil when
+    /// nothing offer-worthy is on the mic. (`max` keeps the strongest, so "Zoom +
+    /// Chrome both on the mic" names Zoom.)
+    static func bestCandidate(_ active: [ActiveInputProcess],
+                              allowlist: [String: MeetingApp],
+                              offerForAnyMicApp: Bool) -> DetectionCandidate? {
+        guard !active.isEmpty else { return nil }
+        let ranked = active.map { proc -> DetectionCandidate in
+            let app = proc.bundleID.flatMap { allowlist[$0] }
+            let confidence: Double
+            switch app?.tier {
+            case .meetingApp: confidence = Confidence.meetingApp
+            case .browser: confidence = Confidence.browser
+            case nil: confidence = Confidence.micHotOnly
+            }
+            return DetectionCandidate(bundleID: proc.bundleID, appName: app?.displayName,
+                                      tier: app?.tier, confidence: confidence)
+        }
+        guard let best = ranked.max(by: { $0.confidence < $1.confidence }) else { return nil }
+        if best.tier == nil, !offerForAnyMicApp { return nil }
+        return best
+    }
+
+    /// Evolve the session/debounce state by one poll and decide whether to fire an
+    /// offer. Pure: no Core Audio, no clock — `now` and `candidate` are supplied, so
+    /// a synthetic sequence can be replayed in tests.
+    ///
+    /// - A muted candidate is treated as "nothing offer-worthy".
+    /// - A new app (or first sighting) starts a session; the same app sustained for
+    ///   `startConfirmPolls` polls fires the offer exactly once.
+    /// - A dismissed session never re-offers; once the trigger has been gone for
+    ///   `endDebounce` seconds the session resets, so a later call re-offers.
+    static func decide(state: DetectorState,
+                       candidate: DetectionCandidate?,
+                       now: Double,
+                       config: Config) -> (state: DetectorState, offer: DetectionCandidate?) {
+        var s = state
+
+        // Treat a muted app as no candidate.
+        let effective: DetectionCandidate?
+        if let c = candidate, let id = c.bundleID, config.muted.contains(id) {
+            effective = nil
+        } else {
+            effective = candidate
+        }
+
+        guard let c = effective else {
+            // No offer-worthy app this poll. End the session once the trigger has
+            // been absent past the debounce window.
+            if let last = s.lastSeenUnix, now - last > config.endDebounce {
+                s = DetectorState()
+            }
+            return (s, nil)
+        }
+
+        if s.sessionBundleID != c.bundleID {
+            // A different app (or none before) → a fresh meeting session.
+            s = DetectorState(sessionBundleID: c.bundleID, sessionStartUnix: now,
+                              highStreak: 1, offered: false, dismissed: false, lastSeenUnix: now)
+        } else {
+            s.highStreak += 1
+            s.lastSeenUnix = now
+        }
+
+        if !s.offered, !s.dismissed, s.highStreak >= config.startConfirmPolls {
+            s.offered = true
+            return (s, c)
+        }
+        return (s, nil)
+    }
 }
