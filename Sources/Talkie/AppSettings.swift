@@ -154,6 +154,11 @@ final class AppSettings: ObservableObject {
             notifyChanged()
         }
     }
+    /// Meeting transcription language mode: "auto" (multilingual — auto-detect per
+    /// speaker stream) or a specific locale id from `spokenLanguages` (e.g. "de-DE").
+    @Published var meetingLanguageMode: String {
+        didSet { defaults.set(meetingLanguageMode, forKey: Keys.meetingLanguageMode) }
+    }
     @Published var autoCapitalize: Bool {
         didSet { defaults.set(autoCapitalize, forKey: Keys.autoCapitalize) }
     }
@@ -217,6 +222,7 @@ final class AppSettings: ObservableObject {
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
             Keys.cleanupLevel: CleanupLevel.medium.rawValue,
+            Keys.meetingLanguageMode: "auto",
             Keys.appAdaptiveCleanup: true,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
@@ -248,6 +254,7 @@ final class AppSettings: ObservableObject {
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
         cleanupLevel = CleanupLevel(rawValue: d.string(forKey: Keys.cleanupLevel) ?? "") ?? .medium
+        meetingLanguageMode = d.string(forKey: Keys.meetingLanguageMode) ?? "auto"
         appAdaptiveCleanup = d.bool(forKey: Keys.appAdaptiveCleanup)
         appCleanupStyles = (d.dictionary(forKey: Keys.appCleanupStyles) as? [String: String])
             ?? AppSettings.defaultAppCleanupStyles
@@ -290,6 +297,7 @@ final class AppSettings: ObservableObject {
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
         static let cleanupLevel = "cleanupLevel"
+        static let meetingLanguageMode = "meetingLanguageMode"
         static let appAdaptiveCleanup = "appAdaptiveCleanup"
         static let appCleanupStyles = "appCleanupStyles"
         static let contextAwareness = "contextAwareness"

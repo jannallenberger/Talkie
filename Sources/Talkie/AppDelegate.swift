@@ -72,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         meetingRecorder.spokenLanguages = { [weak self] in self?.settings.spokenLanguages ?? [] }
         meetingRecorder.contextGraph = contextGraph
+        meetingRecorder.meetingLanguageMode = { [weak self] in self?.settings.meetingLanguageMode ?? "auto" }
         meetingRecorder.recoverPartialIfNeeded()
 
         setupMainMenu()

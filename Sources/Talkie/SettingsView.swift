@@ -175,7 +175,7 @@ struct MainView: View {
         case .history:
             HistorySettings(history: history)
         case .meetings:
-            MeetingsView(recorder: meetingRecorder, store: meetingStore)
+            MeetingsView(recorder: meetingRecorder, store: meetingStore, settings: settings)
         case .search:
             SearchView(engine: searchEngine, history: history, meetingStore: meetingStore)
         case .dictionary:
@@ -431,14 +431,14 @@ private struct SettingsHome: View {
              "\(settings.spokenLanguages.count) selected"),
             (.context, "IconBrain", "Context & learning",
              settings.contextAwareness ? "Context on" : "Context off"),
-            (.voiceCommands, "IconWand", "Voice commands",
+            (.voiceCommands, "IconCommand", "Voice commands",
              macros.macros.count == 1 ? "1 macro" : "\(macros.macros.count) macros"),
-            (.appProfiles, "IconSliders", "Per-app rules",
+            (.appProfiles, "IconApps", "Per-app rules",
              profiles.customizedCount == 0 ? "Same everywhere"
                 : (profiles.customizedCount == 1 ? "1 app customized" : "\(profiles.customizedCount) apps customized")),
-            (.calendar, "IconBrain", "Calendar",
+            (.calendar, "IconCalendar", "Calendar",
              CalendarMeetingContext.isAuthorized ? "Connected" : "Off"),
-            (.export, "IconGlobe", "Export destinations",
+            (.export, "IconExport", "Export destinations",
              ExportPreferences.shared.summary),
             (.behavior, "IconSliders", "Behavior", "Sounds, open at login"),
             (.privacy, "IconShield", "Privacy",
