@@ -3,6 +3,7 @@
 .DS_Store
 *.xcodeproj
 DerivedData/
+.swiftpm/
 
 # loose icon scratch (canonical icon lives in Resources/AppIcon.icon)
 /Talkie Icon final.icon/
