@@ -27,8 +27,8 @@ final class ExportPreferences: ObservableObject {
 
         var displayName: String {
             switch self {
-            case .talkieFolder: return "Talkie Meetings folder"
-            case .folder:       return "A folder I choose"
+            case .talkieFolder: return "Talkie Meetings folder".loc
+            case .folder:       return "A folder I choose".loc
             }
         }
     }

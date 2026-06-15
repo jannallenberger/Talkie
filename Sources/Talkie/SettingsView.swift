@@ -210,7 +210,7 @@ private struct SidebarList: View {
 
     var body: some View {
         List(SettingsTab.allCases, id: \.self, selection: selection) { tab in
-            Label(tab.title, systemImage: tab.icon)
+            Label(LocalizedStringKey(tab.title), systemImage: tab.icon)
                 .listItemTint(tab.tint)
                 .badge(tab == .general && !permissions.allGranted ? 1 : 0)
         }
@@ -237,11 +237,11 @@ struct PageHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(.talkieDisplay(26))
                 .foregroundStyle(Theme.ink)
             if let subtitle {
-                Text(subtitle)
+                Text(LocalizedStringKey(subtitle))
                     .font(.talkieHeading(13, weight: .regular))
                     .foregroundStyle(Theme.inkSecondary)
             }
@@ -541,8 +541,8 @@ private struct SettingsRowView: View {
                 .frame(width: 34, height: 34)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.talkieHeading(14.5, weight: .semibold)).foregroundStyle(Theme.ink)
-                    Text(subtitle).font(.talkieHeading(12.5, weight: .regular))
+                    Text(LocalizedStringKey(title)).font(.talkieHeading(14.5, weight: .semibold)).foregroundStyle(Theme.ink)
+                    Text(LocalizedStringKey(subtitle)).font(.talkieHeading(12.5, weight: .regular))
                         .foregroundStyle(Theme.inkSecondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)

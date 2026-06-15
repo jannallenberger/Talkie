@@ -12,19 +12,19 @@ enum CleanupLevel: String, CaseIterable, Codable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .none: return "None"
-        case .light: return "Light"
-        case .medium: return "Medium"
-        case .high: return "High"
+        case .none: return "None".loc
+        case .light: return "Light".loc
+        case .medium: return "Medium".loc
+        case .high: return "High".loc
         }
     }
 
     var detail: String {
         switch self {
-        case .none: return "Insert exactly what you said, word for word."
-        case .light: return "Fix grammar, punctuation, and fillers — keep your wording."
-        case .medium: return "Clean, well-formed writing that keeps all your points."
-        case .high: return "Concise, polished rewrite — tightened for clarity and brevity."
+        case .none: return "Insert exactly what you said, word for word.".loc
+        case .light: return "Fix grammar, punctuation, and fillers — keep your wording.".loc
+        case .medium: return "Clean, well-formed writing that keeps all your points.".loc
+        case .high: return "Concise, polished rewrite — tightened for clarity and brevity.".loc
         }
     }
 
@@ -94,23 +94,23 @@ enum CleanupStyle: String, CaseIterable, Codable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .off: return "Off"
-        case .faithful: return "Faithful"
-        case .neutral: return "Neutral"
-        case .friendly: return "Friendly"
-        case .professional: return "Professional"
-        case .concise: return "Concise"
+        case .off: return "Off".loc
+        case .faithful: return "Faithful".loc
+        case .neutral: return "Neutral".loc
+        case .friendly: return "Friendly".loc
+        case .professional: return "Professional".loc
+        case .concise: return "Concise".loc
         }
     }
 
     var detail: String {
         switch self {
-        case .off: return "Insert exactly what you said."
-        case .faithful: return "Verbatim — only fix slips. Best for code & terminals."
-        case .neutral: return "Clean, well-formed writing in your own voice."
-        case .friendly: return "Warm and casual, like texting a friend."
-        case .professional: return "Polished and courteous, like a work email."
-        case .concise: return "Tight and to the point."
+        case .off: return "Insert exactly what you said.".loc
+        case .faithful: return "Verbatim — only fix slips. Best for code & terminals.".loc
+        case .neutral: return "Clean, well-formed writing in your own voice.".loc
+        case .friendly: return "Warm and casual, like texting a friend.".loc
+        case .professional: return "Polished and courteous, like a work email.".loc
+        case .concise: return "Tight and to the point.".loc
         }
     }
 
