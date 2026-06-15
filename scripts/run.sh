@@ -15,7 +15,7 @@ echo "▶ Stopping any running Talkie…"
 osascript -e 'quit app "Talkie"' 2>/dev/null || true
 pkill -x Talkie 2>/dev/null || true
 
-echo "▶ Installing to $DEST…"
+echo "▶ Installing to ${DEST}…"
 rm -rf "$DEST"
 cp -R "$ROOT/Talkie.app" "$DEST"
 
