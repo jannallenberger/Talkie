@@ -6,6 +6,8 @@ struct MeetingsView: View {
     @ObservedObject var store: MeetingStore
     @ObservedObject var settings: AppSettings
 
+    @State private var newAppBundleID = ""
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.section) {
@@ -22,6 +24,7 @@ struct MeetingsView: View {
                 languageModeRow
                 if recorder.isRecording { notesCard }
                 folderRow
+                detectionCard
 
                 if store.meetings.isEmpty {
                     emptyState
@@ -185,6 +188,108 @@ struct MeetingsView: View {
         .padding(.vertical, 40)
     }
 
+    // MARK: Auto-detect & live pill
+
+    @ViewBuilder
+    private var detectionCard: some View {
+        SettingsCard(header: "Auto-detect") {
+            SettingsToggleRow(
+                title: "Detect meetings & offer to record".loc,
+                subtitle: "When a call app starts using your mic, Talkie offers to record. It never records on its own.".loc,
+                isOn: $settings.autoDetectMeetings)
+            if settings.autoDetectMeetings {
+                SettingsDivider()
+                SettingsToggleRow(
+                    title: "Offer for any mic app".loc,
+                    subtitle: "Also offer when an app that isn’t in your list starts recording. Noisier.".loc,
+                    isOn: $settings.offerMeetingForAnyMicApp)
+            }
+        }
+
+        SettingsCard(header: "Live pill") {
+            SettingsToggleRow(
+                title: "Show the meeting pill".loc,
+                subtitle: "A small indicator under the camera while recording, with a live timer.".loc,
+                isOn: $settings.showMeetingPill)
+            if settings.showMeetingPill {
+                SettingsDivider()
+                SettingsToggleRow(
+                    title: "Show the live topic".loc,
+                    subtitle: "Surfaces what’s being discussed right now — shown only when Talkie is confident.".loc,
+                    isOn: $settings.meetingLiveTopic)
+            }
+        }
+
+        allowlistCard
+        if !settings.mutedMeetingApps.isEmpty { mutedCard }
+    }
+
+    private var allowlistCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Eyebrow(text: "Meeting apps")
+            Text("Talkie offers to record when one of these apps starts using your microphone.".loc)
+                .font(.talkieHeading(13, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+            HStack(spacing: 8) {
+                TextField("Add an app’s bundle id…".loc, text: $newAppBundleID)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(addApp)
+                Button("Add".loc, action: addApp)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+                    .disabled(newAppBundleID.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .controlSize(.large)
+            if settings.meetingAllowlist.isEmpty {
+                Text("No apps yet — add one by bundle id (e.g. us.zoom.xos).".loc)
+                    .font(.talkieHeading(13, weight: .regular))
+                    .foregroundStyle(Theme.inkTertiary)
+            } else {
+                FlowLayout(spacing: 8) {
+                    ForEach(settings.meetingAllowlist, id: \.bundleID) { app in
+                        MeetingAppChip(app: app) { removeApp(app) }
+                    }
+                }
+            }
+        }
+        .talkieCard()
+    }
+
+    private var mutedCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Eyebrow(text: "Muted")
+            Text("You dismissed these enough times that Talkie stopped offering. Tap to un-mute.".loc)
+                .font(.talkieHeading(13, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+            FlowLayout(spacing: 8) {
+                ForEach(settings.mutedMeetingApps, id: \.self) { id in
+                    MutedAppChip(name: appDisplayName(for: id)) { unmute(id) }
+                }
+            }
+        }
+        .talkieCard()
+    }
+
+    private func addApp() {
+        let id = newAppBundleID.trimmingCharacters(in: .whitespaces)
+        newAppBundleID = ""
+        guard !id.isEmpty, !settings.meetingAllowlist.contains(where: { $0.bundleID == id }) else { return }
+        // A user-added app defaults to the strong "meeting app" tier; name = bundle id.
+        settings.meetingAllowlist.append(MeetingApp(bundleID: id, displayName: id, tier: .meetingApp))
+    }
+
+    private func removeApp(_ app: MeetingApp) {
+        settings.meetingAllowlist.removeAll { $0.bundleID == app.bundleID }
+    }
+
+    private func unmute(_ id: String) {
+        settings.mutedMeetingApps.removeAll { $0 == id }
+    }
+
+    private func appDisplayName(for id: String) -> String {
+        settings.meetingAllowlist.first(where: { $0.bundleID == id })?.displayName ?? id
+    }
+
     private func reveal(_ meeting: Meeting) {
         let url = store.folderURL.appendingPathComponent(meeting.fileName)
         NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -266,5 +371,58 @@ private struct MeetingRow: View {
         }
         .talkieCard(padding: 14)
         .onHover { hovering = $0 }
+    }
+}
+
+/// A removable chip for one app in the meeting-detection allowlist. A glyph marks
+/// the tier (browser vs dedicated meeting app) so the weaker browser signal reads
+/// at a glance.
+private struct MeetingAppChip: View {
+    let app: MeetingApp
+    let onRemove: () -> Void
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: app.tier == .browser ? "globe" : "video.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.inkTertiary)
+            Text(app.displayName)
+                .font(.talkieHeading(12.5, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 7)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Theme.surfaceSunken))
+    }
+}
+
+/// A muted-app chip; tapping it un-mutes (Talkie will offer for it again).
+private struct MutedAppChip: View {
+    let name: String
+    let onUnmute: () -> Void
+    var body: some View {
+        Button(action: onUnmute) {
+            HStack(spacing: 6) {
+                Image(systemName: "bell.slash.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+                Text(name)
+                    .font(.talkieHeading(12.5, weight: .medium))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Theme.surfaceSunken))
+        }
+        .buttonStyle(.plain)
+        .help("Un-mute".loc)
     }
 }

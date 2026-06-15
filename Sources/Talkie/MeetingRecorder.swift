@@ -43,6 +43,12 @@ final class MeetingRecorder: ObservableObject {
     /// both streams to. Injected by AppDelegate from settings.meetingLanguageMode.
     var meetingLanguageMode: (() -> String)?
 
+    /// Optional live feed of finalized transcript segments (speaker-tagged) for the
+    /// in-flight subtopic detector. Invoked from the transcriber's `@Sendable`
+    /// segment handler, off the main actor, so it's kept `Sendable` and cheap. It is
+    /// snapshotted into a local at `start()`, so it must be wired before recording.
+    var onLiveSegment: (@Sendable (MeetingSpeaker, String) -> Void)?
+
     private let engine: TranscriptionEngine // shared mic engine ("Me")
     private let store: MeetingStore
     private let summarizer = MeetingSummarizer()
@@ -97,6 +103,9 @@ final class MeetingRecorder: ObservableObject {
 
         let start = Date()
         let log = TurnLog(startedAt: start)
+        // Snapshot the live-segment feed once so both stream handlers (which run on
+        // the transcriber's @Sendable executor) capture a Sendable value, not `self`.
+        let liveFeed = onLiveSegment
         let pURL = AppPaths.meetingsDirectory().appendingPathComponent(".recording.partial.txt")
         try? Data().write(to: pURL)
 
@@ -135,6 +144,7 @@ final class MeetingRecorder: ObservableObject {
             await engine.setContextualStrings(eventAttendees)
             let session = try await engine.beginSession(segmentHandler: { segment in
                 log.add(.me, segment)
+                liveFeed?(.me, segment)
             })
             try audio.start(targetFormat: session.format, continuation: session.continuation,
                             bufferAudio: multiLang, bufferSeconds: 600)
@@ -162,6 +172,7 @@ final class MeetingRecorder: ObservableObject {
                 await far.setContextualStrings(eventAttendees)
                 let farSession = try await far.beginSession(segmentHandler: { segment in
                     log.add(.them, segment)
+                    liveFeed?(.them, segment)
                 })
                 try systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
                                       bufferAudio: multiLang, bufferSeconds: 600)

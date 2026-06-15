@@ -20,6 +20,32 @@ enum ActivationKey: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// The "paste last transcript" chord, derived so it can NEVER collide with the
+/// dictation activation key — holding it must not arm dictation. Command is always
+/// part of it (Command is never an activation key); the second modifier is whichever
+/// one the activation key does *not* use. The letter key is always V.
+struct PasteShortcut: Sendable, Equatable {
+    enum Secondary: Sendable, Equatable { case control, option }
+    var secondary: Secondary
+    /// Human-readable label in canonical modifier order, e.g. "⌃⌘V" or "⌥⌘V".
+    var display: String
+}
+
+extension ActivationKey {
+    /// The re-paste shortcut that avoids this activation key's modifier, so the combo
+    /// can't double as a dictation trigger. Recomputed live when the user rebinds.
+    var pasteShortcut: PasteShortcut {
+        switch self {
+        case .rightOption, .leftOption:
+            // Activation uses Option → pair Command with Control instead.
+            return PasteShortcut(secondary: .control, display: "⌃⌘V")
+        case .rightControl:
+            // Activation uses Control → pair Command with Option instead.
+            return PasteShortcut(secondary: .option, display: "⌥⌘V")
+        }
+    }
+}
+
 enum ActivationMode: String, CaseIterable, Codable, Identifiable {
     case holdToTalk
     case toggle
@@ -159,6 +185,33 @@ final class AppSettings: ObservableObject {
     @Published var meetingLanguageMode: String {
         didSet { defaults.set(meetingLanguageMode, forKey: Keys.meetingLanguageMode) }
     }
+    /// Proactively detect meetings (another app is mic-hot) and offer to record.
+    /// The *offer* always requires an explicit tap — auto-detect on, auto-record never.
+    @Published var autoDetectMeetings: Bool {
+        didSet { defaults.set(autoDetectMeetings, forKey: Keys.autoDetectMeetings); notifyChanged() }
+    }
+    /// Offer to record even when an *unknown* (non-allowlisted) app is on the mic.
+    /// Noisier; off by default.
+    @Published var offerMeetingForAnyMicApp: Bool {
+        didSet { defaults.set(offerMeetingForAnyMicApp, forKey: Keys.offerMeetingForAnyMicApp); notifyChanged() }
+    }
+    /// Show the live meeting pill under the notch while a recording is in progress.
+    @Published var showMeetingPill: Bool {
+        didSet { defaults.set(showMeetingPill, forKey: Keys.showMeetingPill); notifyChanged() }
+    }
+    /// Show the live "subtopic" inside the meeting pill (a sub-feature of the pill).
+    @Published var meetingLiveTopic: Bool {
+        didSet { defaults.set(meetingLiveTopic, forKey: Keys.meetingLiveTopic); notifyChanged() }
+    }
+    /// The known-meeting-app allowlist that drives detection. Stored JSON-encoded
+    /// (UserDefaults has no array-of-Codable), decoded fault-tolerantly to the seed.
+    @Published var meetingAllowlist: [MeetingApp] {
+        didSet { defaults.set(AppSettings.encodeAllowlist(meetingAllowlist), forKey: Keys.meetingAllowlist); notifyChanged() }
+    }
+    /// Bundle ids the user muted (via repeated dismissals); never offered.
+    @Published var mutedMeetingApps: [String] {
+        didSet { defaults.set(mutedMeetingApps, forKey: Keys.mutedMeetingApps); notifyChanged() }
+    }
     @Published var autoCapitalize: Bool {
         didSet { defaults.set(autoCapitalize, forKey: Keys.autoCapitalize) }
     }
@@ -174,6 +227,11 @@ final class AppSettings: ObservableObject {
     /// inserted text, which is unreliable if the caret moved or you kept typing.
     @Published var optimisticInsertion: Bool {
         didSet { defaults.set(optimisticInsertion, forKey: Keys.optimisticInsertion) }
+    }
+    /// Enable the ⌥⌘V shortcut that re-pastes your most recent transcript into the
+    /// focused field (and surface it in the pill when a dictation couldn't paste).
+    @Published var pasteLastShortcutEnabled: Bool {
+        didSet { defaults.set(pasteLastShortcutEnabled, forKey: Keys.pasteLastShortcutEnabled) }
     }
     /// On-device LLM cleanup intensity (none / light / medium / high).
     @Published var cleanupLevel: CleanupLevel {
@@ -231,6 +289,11 @@ final class AppSettings: ObservableObject {
             Keys.optimisticInsertion: true,
             Keys.cleanupLevel: CleanupLevel.medium.rawValue,
             Keys.meetingLanguageMode: "auto",
+            Keys.autoDetectMeetings: true,
+            Keys.offerMeetingForAnyMicApp: false,
+            Keys.showMeetingPill: true,
+            Keys.meetingLiveTopic: true,
+            Keys.pasteLastShortcutEnabled: true,
             Keys.appAdaptiveCleanup: true,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
@@ -264,6 +327,13 @@ final class AppSettings: ObservableObject {
         optimisticInsertion = d.bool(forKey: Keys.optimisticInsertion)
         cleanupLevel = CleanupLevel(rawValue: d.string(forKey: Keys.cleanupLevel) ?? "") ?? .medium
         meetingLanguageMode = d.string(forKey: Keys.meetingLanguageMode) ?? "auto"
+        autoDetectMeetings = d.bool(forKey: Keys.autoDetectMeetings)
+        offerMeetingForAnyMicApp = d.bool(forKey: Keys.offerMeetingForAnyMicApp)
+        showMeetingPill = d.bool(forKey: Keys.showMeetingPill)
+        meetingLiveTopic = d.bool(forKey: Keys.meetingLiveTopic)
+        meetingAllowlist = AppSettings.decodeAllowlist(d.data(forKey: Keys.meetingAllowlist))
+        mutedMeetingApps = d.stringArray(forKey: Keys.mutedMeetingApps) ?? []
+        pasteLastShortcutEnabled = d.bool(forKey: Keys.pasteLastShortcutEnabled)
         appAdaptiveCleanup = d.bool(forKey: Keys.appAdaptiveCleanup)
         appCleanupStyles = (d.dictionary(forKey: Keys.appCleanupStyles) as? [String: String])
             ?? AppSettings.defaultAppCleanupStyles
@@ -287,6 +357,21 @@ final class AppSettings: ObservableObject {
         AppCategory.other.rawValue: CleanupStyle.neutral.rawValue,
     ]
 
+    /// Encode the meeting allowlist for UserDefaults (no array-of-Codable convenience).
+    static func encodeAllowlist(_ list: [MeetingApp]) -> Data {
+        (try? JSONEncoder().encode(list)) ?? Data()
+    }
+
+    /// Decode the stored allowlist, falling back to the built-in seed on any failure
+    /// or an empty set, so detection always has apps to match.
+    static func decodeAllowlist(_ data: Data?) -> [MeetingApp] {
+        guard let data,
+              let list = try? JSONDecoder().decode([MeetingApp].self, from: data),
+              !list.isEmpty
+        else { return MeetingApp.builtInAllowlist }
+        return list
+    }
+
     /// The cleanup style for an app category (user override, else default).
     func cleanupStyle(for category: AppCategory) -> CleanupStyle {
         if let raw = appCleanupStyles[category.rawValue], let style = CleanupStyle(rawValue: raw) {
@@ -308,6 +393,13 @@ final class AppSettings: ObservableObject {
         static let optimisticInsertion = "optimisticInsertion"
         static let cleanupLevel = "cleanupLevel"
         static let meetingLanguageMode = "meetingLanguageMode"
+        static let autoDetectMeetings = "autoDetectMeetings"
+        static let offerMeetingForAnyMicApp = "offerMeetingForAnyMicApp"
+        static let showMeetingPill = "showMeetingPill"
+        static let meetingLiveTopic = "meetingLiveTopic"
+        static let meetingAllowlist = "meetingAllowlist"
+        static let mutedMeetingApps = "mutedMeetingApps"
+        static let pasteLastShortcutEnabled = "pasteLastShortcutEnabled"
         static let appAdaptiveCleanup = "appAdaptiveCleanup"
         static let appCleanupStyles = "appCleanupStyles"
         static let contextAwareness = "contextAwareness"

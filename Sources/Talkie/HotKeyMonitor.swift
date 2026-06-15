@@ -17,6 +17,15 @@ final class HotKeyMonitor: @unchecked Sendable {
 
     private let onActivate: @Sendable () -> Void
     private let onDeactivate: @Sendable () -> Void
+    /// Fired on a global "paste my last transcript" chord — ⌘ + (Control or Option,
+    /// whichever the activation key does NOT use) + V, so it can't double as a
+    /// dictation trigger. Detected on the same listen-only tap, so the chord is never
+    /// swallowed (it still reaches the focused app, which is harmless — text fields
+    /// don't bind these chords).
+    private let onPasteLast: @Sendable () -> Void
+
+    /// `kVK_ANSI_V` — the key code for the paste-last chord (⌥⌘ + V).
+    private static let pasteLastKeyCode: Int64 = 9
 
     private let lock = NSLock()
     // --- all guarded by `lock` ---
@@ -34,11 +43,13 @@ final class HotKeyMonitor: @unchecked Sendable {
     init(
         config: Config,
         onActivate: @escaping @Sendable () -> Void,
-        onDeactivate: @escaping @Sendable () -> Void
+        onDeactivate: @escaping @Sendable () -> Void,
+        onPasteLast: @escaping @Sendable () -> Void = {}
     ) {
         self.config = config
         self.onActivate = onActivate
         self.onDeactivate = onDeactivate
+        self.onPasteLast = onPasteLast
     }
 
     deinit {
@@ -177,6 +188,31 @@ final class HotKeyMonitor: @unchecked Sendable {
             lock.unlock()
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             reconcileLiveState()
+            return
+        }
+
+        // A global ⌘+(Control|Option)+V chord re-pastes the last transcript. The
+        // second modifier is whichever one the activation key does NOT use, so the
+        // chord can never also arm dictation. Detected here on the shared listen-only
+        // tap; ignored on auto-repeat so a held chord fires once.
+        if type == .keyDown {
+            if event.getIntegerValueField(.keyboardEventAutorepeat) == 0,
+               event.getIntegerValueField(.keyboardEventKeycode) == Self.pasteLastKeyCode {
+                lock.lock()
+                let secondary = config.key.pasteShortcut.secondary
+                lock.unlock()
+                let f = event.flags
+                let cmd = f.contains(.maskCommand)
+                let opt = f.contains(.maskAlternate)
+                let ctrl = f.contains(.maskControl)
+                let shift = f.contains(.maskShift)
+                let match: Bool
+                switch secondary {
+                case .control: match = cmd && ctrl && !opt && !shift
+                case .option:  match = cmd && opt && !ctrl && !shift
+                }
+                if match { onPasteLast() }
+            }
             return
         }
 

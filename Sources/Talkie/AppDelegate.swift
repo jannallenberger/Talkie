@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -59,6 +60,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The project file index snapshot to apply to the current dictation (vibe coding).
     private var currentVibeSnapshot: ProjectIndexSnapshot = .empty
 
+    // MARK: Meeting auto-detect + live pill
+
+    /// Polls Core Audio for a mic-hot meeting app and offers to record (never silent).
+    private var meetingDetector: ActiveMeetingDetector!
+    /// The "record this meeting?" offer banner shown under the notch.
+    private let consentBanner = MeetingConsentBannerController()
+    /// The live meeting pill under the notch (shown for the duration of a recording).
+    private let meetingPill = MeetingPillController()
+    /// The on-device live-subtopic detector + the value the pill observes.
+    private let subtopicModel = MeetingSubtopicModel()
+    private var subtopicEngine: MeetingSubtopicEngine!
+    /// Drives the pill + subtopic engine off the recorder's `isRecording`, so both
+    /// auto- and manually-started recordings get the pill.
+    private var recordingObservation: AnyCancellable?
+
     // MARK: App lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -78,6 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         meetingRecorder.contextGraph = contextGraph
         meetingRecorder.meetingLanguageMode = { [weak self] in self?.settings.meetingLanguageMode ?? "auto" }
         meetingRecorder.recoverPartialIfNeeded()
+
+        setupMeetingDetection()
 
         setupMainMenu()
         setupStatusItem()
@@ -310,7 +328,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let monitor = HotKeyMonitor(
             config: config,
             onActivate: { continuation.yield(.begin) },
-            onDeactivate: { continuation.yield(.end) }
+            onDeactivate: { continuation.yield(.end) },
+            onPasteLast: { [weak self] in
+                Task { @MainActor in self?.pasteLastTranscript() }
+            }
         )
         _ = monitor.start()
         hotKey = monitor
@@ -335,10 +356,113 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.currentLocaleID = primary
                     await self.engine.setLocaleIdentifier(primary)
                 }
+
+                // Re-bind meeting detection (toggle / allowlist / mute) live.
+                let config = self.makeDetectorConfig()
+                if let detector = self.meetingDetector {
+                    await detector.updateConfig(config)
+                }
+                // React to the pill toggle for an in-flight recording.
+                if self.meetingRecorder.isRecording {
+                    if self.settings.showMeetingPill { self.meetingPill.show() }
+                    else { self.meetingPill.hide() }
+                }
             }
         }
     }
     private var settingsObservation: Task<Void, Never>?
+
+    // MARK: Meeting detection wiring
+
+    /// Build the subtopic engine + pill, wire the live-segment feed, observe the
+    /// recorder's recording state (so manual *and* auto recordings get the pill), and
+    /// start the detector poll loop. Detection itself is a passive Core Audio
+    /// metadata read — no TCC prompt — so it can run from launch.
+    private func setupMeetingDetection() {
+        subtopicEngine = MeetingSubtopicEngine(model: subtopicModel)
+        meetingPill.attach(recorder: meetingRecorder, subtopic: subtopicModel)
+
+        // Feed finalized transcript segments to the subtopic engine (gated by setting).
+        meetingRecorder.onLiveSegment = { [weak self] _, text in
+            Task { @MainActor in
+                guard let self, self.settings.meetingLiveTopic else { return }
+                await self.subtopicEngine.ingest(text)
+            }
+        }
+
+        // Show the pill + run the subtopic engine for ANY recording (auto or manual),
+        // and hide/reset on stop. `$isRecording` emits its current value on subscribe.
+        recordingObservation = meetingRecorder.$isRecording
+            .removeDuplicates()
+            .sink { [weak self] recording in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if recording { self.onRecordingStarted() } else { self.onRecordingStopped() }
+                }
+            }
+
+        let detector = ActiveMeetingDetector(config: makeDetectorConfig())
+        meetingDetector = detector
+        Task {
+            await detector.start(
+                onDetect: { [weak self] signal in
+                    Task { @MainActor in self?.handleMeetingDetected(signal) }
+                },
+                onMute: { [weak self] bundleID in
+                    Task { @MainActor in self?.muteMeetingApp(bundleID) }
+                }
+            )
+        }
+    }
+
+    private func makeDetectorConfig() -> ActiveMeetingDetector.Config {
+        ActiveMeetingDetector.Config(
+            enabled: settings.autoDetectMeetings,
+            allowlist: settings.meetingAllowlist,
+            offerForAnyMicApp: settings.offerMeetingForAnyMicApp,
+            muted: Set(settings.mutedMeetingApps)
+        )
+    }
+
+    /// A meeting crossed the detection threshold. Apply the suppression the detector
+    /// can't see (live dictation / an in-flight or active recording — they share the
+    /// engine), then show the consent banner. Talkie never records without this tap.
+    private func handleMeetingDetected(_ signal: MeetingSignal) {
+        guard settings.autoDetectMeetings else { return }
+        guard !isDictating, !isProcessing else { return }
+        guard meetingRecorder?.isRecording != true, meetingRecorder?.isFinishing != true else { return }
+
+        consentBanner.show(
+            appName: signal.appName,
+            isBrowser: signal.tier == .browser,
+            onRecord: { [weak self] in
+                Task { @MainActor in await self?.meetingRecorder.start() }
+            },
+            onDismiss: { [weak self] explicit in
+                Task { await self?.meetingDetector?.markSessionDismissed(signal.appBundleID, mute: explicit) }
+            }
+        )
+    }
+
+    private func onRecordingStarted() {
+        consentBanner.hide()   // banner handoff — the pill takes over
+        guard settings.showMeetingPill else { return }
+        meetingPill.show()
+        if settings.meetingLiveTopic {
+            Task { await subtopicEngine.start() }
+        }
+    }
+
+    private func onRecordingStopped() {
+        meetingPill.hide()
+        Task { await subtopicEngine.stop() }
+    }
+
+    private func muteMeetingApp(_ bundleID: String) {
+        if !settings.mutedMeetingApps.contains(bundleID) {
+            settings.mutedMeetingApps.append(bundleID)
+        }
+    }
 
     // MARK: Dictation session
 
@@ -472,6 +596,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             do {
+                // Re-pin the engine to our baseline locale. The shared engine may
+                // have been left on another language by a meeting recording (which
+                // pins it to the primary) or a prior dictation's language switch,
+                // and `currentLocaleID` is the self-consistency baseline below — so
+                // they must agree at the start of every session.
+                await engine.setLocaleIdentifier(self.currentLocaleID)
                 await engine.setContextualStrings(phrases)
                 let session = try await engine.beginSession(segmentHandler: segmentHandler)
                 // Re-check after the (async) model load / session setup.
@@ -566,19 +696,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let raw = await engine.finishSession()
             trace.stage("finalize")
 
-            // Language auto-detect: if the transcript looks like a different one
-            // of your languages, re-transcribe the captured audio in that language.
             var finalRaw = raw
             var languageSwitched = false
-            if spokenLanguages.count > 1, !raw.isEmpty,
-               let detected = LanguageDetector.detect(raw, among: spokenLanguages),
-               detected != self.currentLocaleID {
+            // Language auto-detect (multilingual only). macOS decodes the whole
+            // utterance with ONE language model, so secondary-language speech comes
+            // out as gibberish. Decide the real language by ACOUSTIC CONFIDENCE: at
+            // stop, re-transcribe the captured audio in every spoken language and
+            // keep the one whose model fit the audio best (highest mean per-word
+            // recognition confidence). This beats language-ID of the text, which
+            // leaks because wrong-model gibberish still contains real words of the
+            // wrong (current) language. Short utterances are skipped — nothing to gain.
+            if spokenLanguages.count > 1, !raw.isEmpty, LanguageDetector.canScore(raw) {
+                talkieDebugLog("--- dictation: raw(\(self.currentLocaleID))='\(raw)'")
                 let buffers = self.audio.bufferedAudio()
-                if let reText = await self.engine.transcribeBuffered(buffers, localeIdentifier: detected) {
-                    finalRaw = reText
+                let currentCode = LanguageDetector.languageCode(of: self.currentLocaleID)
+                // Re-transcribe in every spoken language (one per language code,
+                // incl. the current one so its confidence is the comparison baseline).
+                let langs = LanguageDetector.distinctByCode(spokenLanguages)
+                let scored = await self.engine.transcribeCandidates(
+                    buffers, localeIdentifiers: langs, installIfNeeded: true)
+                let currentConf = scored.first {
+                    LanguageDetector.languageCode(of: $0.localeID) == currentCode
+                }?.confidence ?? 0
+                let best = scored.max { $0.confidence < $1.confidence }
+                talkieDebugLog("decide: current=\(self.currentLocaleID)(\(String(format: "%.2f", currentConf))) scored=[\(scored.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
+                if let best,
+                   LanguageDetector.languageCode(of: best.localeID) != currentCode,
+                   best.confidence >= currentConf + LanguageDetector.switchConfidenceMargin,
+                   !best.text.isEmpty {
+                    finalRaw = best.text
                     languageSwitched = true
-                    self.currentLocaleID = detected
-                    await self.engine.setLocaleIdentifier(detected) // stick to it next time
+                    self.currentLocaleID = best.localeID
+                    await self.engine.setLocaleIdentifier(best.localeID) // stick to it next time
+                    talkieDebugLog("switched → \(best.localeID)")
                 }
             }
             trace.stage("reTx")
@@ -776,11 +926,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .leftOnClipboard(let reason):
                 Feedback.notPasted()
                 // Couldn't paste — the text is on the clipboard; offer a tap to
-                // (re)copy it straight from the pill.
-                self.hud.showCopyPrompt(text: finalText, message: reason)
+                // (re)copy it, plus the ⌥⌘V re-paste shortcut once a field is focused.
+                self.hud.showCopyPrompt(
+                    text: finalText, message: reason,
+                    shortcut: self.settings.pasteLastShortcutEnabled ? self.pasteLastShortcutDisplay : nil
+                )
             case .empty:
                 self.hud.hide()
             }
+        }
+    }
+
+    // MARK: Paste last transcript (⌥⌘V)
+
+    /// The re-paste shortcut label for the current activation key (e.g. "⌃⌘V"),
+    /// surfaced in the copy-prompt pill. Dynamic so it never names the combo that
+    /// would also arm dictation.
+    private var pasteLastShortcutDisplay: String { settings.activationKey.pasteShortcut.display }
+
+    /// Re-insert the most recent transcript into whatever's focused now — the recovery
+    /// path when a dictation couldn't find a field (focus one, press ⌥⌘V), and a
+    /// general "paste my last words again" shortcut. No-op while a dictation is in
+    /// flight (shared insertion path) or when the feature is disabled.
+    private func pasteLastTranscript() {
+        guard settings.pasteLastShortcutEnabled else { return }
+        guard !isDictating, !isProcessing else { return }
+        guard let text = history.entries.first?.text,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            hud.showError("No transcript to paste yet.")
+            return
+        }
+        switch TextInjector.insert(text, mode: settings.insertionMode) {
+        case .inserted:
+            Feedback.done()
+            hud.showInserting(replacedWords: [])
+            hud.hide(after: 0.4)
+        case .leftOnClipboard(let reason):
+            Feedback.notPasted()
+            hud.showCopyPrompt(text: text, message: reason, shortcut: pasteLastShortcutDisplay)
+        case .empty:
+            hud.hide()
         }
     }
 

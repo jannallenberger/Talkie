@@ -18,6 +18,12 @@ struct MeetingSignal: Sendable {
     /// mic-hot-by-another-process (low) → +allowlisted app (high).
     var confidence: Double
     var appBundleID: String?
+    /// Friendly name for banner copy ("Zoom"), resolved from the allowlist; nil when
+    /// the mic-hot process isn't a known app.
+    var appName: String?
+    /// The matched allowlist tier (meeting app vs browser); nil for an unknown
+    /// mic-hot process. Drives the banner's softer browser copy.
+    var tier: MeetingApp.Tier?
     var startedAtUnix: Double
 }
 
