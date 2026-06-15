@@ -86,27 +86,4 @@ enum LanguageDetector {
         let hypotheses = recognizer.languageHypotheses(withMaximum: max(constraints.count, 3))
         return hypotheses[NLLanguage(expectedCode)] ?? 0
     }
-
-    /// Legacy open-trigger detector, retained only because the meeting path still
-    /// calls it. Superseded by acoustic-confidence selection in the dictation path;
-    /// the `fix/multilingual-self-consistency` branch migrates the meeting caller
-    /// and drops this.
-    static func detect(_ text: String, among candidates: [String], minConfidence: Double = 0.62) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.split(whereSeparator: { $0.isWhitespace }).count >= 3 else { return nil }
-        guard candidates.count > 1 else { return nil }
-
-        let recognizer = NLLanguageRecognizer()
-        let constraints = candidates.compactMap { languageCode(of: $0) }.map { NLLanguage($0) }
-        if !constraints.isEmpty {
-            recognizer.languageConstraints = Array(Set(constraints))
-        }
-        recognizer.processString(trimmed)
-
-        let hypotheses = recognizer.languageHypotheses(withMaximum: 3)
-        guard let (best, confidence) = hypotheses.max(by: { $0.value < $1.value }),
-              confidence >= minConfidence else { return nil }
-
-        return candidates.first { languageCode(of: $0) == best.rawValue }
-    }
 }
