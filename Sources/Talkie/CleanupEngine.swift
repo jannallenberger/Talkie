@@ -222,6 +222,33 @@ actor CleanupEngine {
         await generate(instructions: style.instructions, raw: raw)
     }
 
+    /// A session retained only to keep the on-device model's resources resident
+    /// after `prewarm()` — so the background load isn't torn down with a
+    /// transient session, and the (process-wide) weights stay warm. `clean()`
+    /// still spins up a FRESH session per dictation; reusing this one would bleed
+    /// earlier transcripts into later ones. This exists purely to hold the model
+    /// warm, not to do real work.
+    private var warmSession: LanguageModelSession?
+
+    /// Eagerly load the model for an intensity level (the global default path) so
+    /// the first real cleanup pays no cold-start. Best-effort: a no-op when the
+    /// level skips the model (`.none`) or the model isn't available.
+    func prewarm(level: CleanupLevel) { prewarm(instructions: level.instructions) }
+
+    /// Eagerly load the model for a per-app style (the adaptive path).
+    /// Best-effort: a no-op when the style skips the model (`.off`) or isn't available.
+    func prewarm(style: CleanupStyle) { prewarm(instructions: style.instructions) }
+
+    private func prewarm(instructions: String?) {
+        guard let instructions, Self.isAvailable else { return }
+        // Create the warm session once; re-`prewarm()` on later calls reloads the
+        // weights if the system evicted them during a long idle. The cached
+        // instructions are whatever the first prewarm used — irrelevant to the
+        // dominant cost (loading the model itself), which is style-independent.
+        if warmSession == nil { warmSession = LanguageModelSession(instructions: instructions) }
+        warmSession?.prewarm()
+    }
+
     private func generate(instructions: String?, raw: String) async -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let instructions, Self.isAvailable else { return nil }
