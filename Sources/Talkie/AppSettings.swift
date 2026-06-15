@@ -228,7 +228,7 @@ final class AppSettings: ObservableObject {
             Keys.autoCapitalize: true,
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
-            Keys.optimisticInsertion: false,
+            Keys.optimisticInsertion: true,
             Keys.cleanupLevel: CleanupLevel.medium.rawValue,
             Keys.meetingLanguageMode: "auto",
             Keys.appAdaptiveCleanup: true,

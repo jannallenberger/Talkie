@@ -622,7 +622,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var cleaned = finalRaw
             var usedStreaming = false
             if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
-                if let streaming, !languageSwitched {
+                // Single-segment (no pause): the streamed result equals a whole
+                // pass, so use it — it's already done. Multi-segment (you paused):
+                // fall through to the whole-transcript pass so the model punctuates
+                // with full context and a pause doesn't force a sentence break.
+                if let streaming, !languageSwitched, streaming.segmentCount <= 1 {
                     cleaned = await streaming.finishCleaned()
                     usedStreaming = true
                     // Never insert empty when we actually have a transcript (e.g.
@@ -817,9 +821,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let wholeCleanupCharLimit = 2200
 
     /// Optimistic insertion only fires for transcripts at or below this length —
-    /// the in-place swap selects backward one keystroke per character, so a long
-    /// transcript would mean a long, janky (and riskier) ⇧← run.
-    private static let optimisticMaxChars = 400
+    /// the in-place swap selects backward one keystroke per character, so a very
+    /// long transcript would mean a long, janky (and riskier) ⇧← run. 800 covers
+    /// the typical multi-sentence dictation while keeping the swap snappy.
+    private static let optimisticMaxChars = 800
 
     /// Clean a long transcript in sentence-grouped batches (each within the
     /// model's context window), joining the cleaned results in spoken order.
