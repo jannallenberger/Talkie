@@ -87,9 +87,7 @@ struct SearchView: View {
 
     private var emptyPrompt: some View {
         VStack(spacing: 8) {
-            Image(systemName: "sparkle.magnifyingglass")
-                .font(.system(size: 28))
-                .foregroundStyle(Theme.inkTertiary)
+            ClayIcon(name: "IconSearch", size: 38)
             Text("Search your second brain")
                 .font(.talkieHeading(15, weight: .medium))
                 .foregroundStyle(Theme.inkSecondary)

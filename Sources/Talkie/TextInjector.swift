@@ -60,6 +60,51 @@ enum TextInjector {
         return .inserted
     }
 
+    /// Replace the `graphemeCount` characters immediately before the caret with
+    /// `text`, by selecting them (⇧←×count) and pasting over the selection.
+    /// Paste mode only; best-effort — falls back to leaving `text` on the
+    /// clipboard when it can't run safely (no Accessibility trust, a secure
+    /// field, nothing focused). Used by the optional "optimistic insertion"
+    /// path, which inserts the raw transcript instantly and swaps in the cleaned
+    /// version once the on-device model finishes.
+    ///
+    /// Inherent fragility: if the caret moved or the user typed since the
+    /// interim text was inserted, the backward selection covers the wrong range.
+    /// The caller gates this on focus/timing, and the feature ships off.
+    @discardableResult
+    static func replaceBackward(graphemeCount: Int, with text: String, mode: InsertionMode) -> Outcome {
+        guard mode == .paste, graphemeCount > 0, !text.isEmpty else { return .empty }
+        if IsSecureEventInputEnabled() {
+            copyToClipboard(text)
+            return .leftOnClipboard(reason: "Password field — tap to copy")
+        }
+        guard ensureTrusted(prompt: false) else {
+            copyToClipboard(text)
+            return .leftOnClipboard(reason: "Can't auto-paste — tap to copy")
+        }
+        guard hasEditableFocus() else {
+            copyToClipboard(text)
+            return .leftOnClipboard(reason: "Not pasted — tap to copy")
+        }
+        selectBackward(graphemeCount)
+        pasteViaClipboard(text) // ⌘V over a selection replaces it
+        return .inserted
+    }
+
+    /// Extend the selection left by `n` characters from the caret (⇧←×n).
+    private static func selectBackward(_ n: Int) {
+        let source = CGEventSource(stateID: .privateState)
+        let left = CGKeyCode(kVK_LeftArrow)
+        for _ in 0..<n {
+            let down = CGEvent(keyboardEventSource: source, virtualKey: left, keyDown: true)
+            down?.flags = .maskShift
+            let up = CGEvent(keyboardEventSource: source, virtualKey: left, keyDown: false)
+            up?.flags = []
+            down?.post(tap: .cgSessionEventTap)
+            up?.post(tap: .cgSessionEventTap)
+        }
+    }
+
     /// Best-effort check: is the current keyboard focus an editable text element?
     /// In paste mode we use this to avoid firing ⌘V into the void (e.g. focus on
     /// the desktop or a non-text view) — instead the text stays on the clipboard

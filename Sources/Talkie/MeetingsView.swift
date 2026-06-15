@@ -4,6 +4,7 @@ import SwiftUI
 struct MeetingsView: View {
     @ObservedObject var recorder: MeetingRecorder
     @ObservedObject var store: MeetingStore
+    @ObservedObject var settings: AppSettings
 
     var body: some View {
         ScrollView {
@@ -18,6 +19,7 @@ struct MeetingsView: View {
                 }
 
                 recordCard
+                languageModeRow
                 if recorder.isRecording { notesCard }
                 folderRow
 
@@ -37,6 +39,35 @@ struct MeetingsView: View {
             .padding(28)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // MARK: Language mode
+
+    /// Auto (multilingual) or pin transcription to one of the user's languages.
+    private var languageModeRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "globe")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.inkTertiary)
+            Text("Transcription language")
+                .font(.talkieEyebrow)
+                .foregroundStyle(Theme.inkSecondary)
+            Spacer()
+            Picker("", selection: $settings.meetingLanguageMode) {
+                Text("Auto (multilingual)").tag("auto")
+                ForEach(settings.spokenLanguages, id: \.self) { id in
+                    Text(Self.languageName(id)).tag(id)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private static func languageName(_ id: String) -> String {
+        talkieLanguageCatalog.first(where: { $0.id == id })?.name ?? id
     }
 
     // MARK: Record card

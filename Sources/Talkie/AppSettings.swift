@@ -154,6 +154,11 @@ final class AppSettings: ObservableObject {
             notifyChanged()
         }
     }
+    /// Meeting transcription language mode: "auto" (multilingual — auto-detect per
+    /// speaker stream) or a specific locale id from `spokenLanguages` (e.g. "de-DE").
+    @Published var meetingLanguageMode: String {
+        didSet { defaults.set(meetingLanguageMode, forKey: Keys.meetingLanguageMode) }
+    }
     @Published var autoCapitalize: Bool {
         didSet { defaults.set(autoCapitalize, forKey: Keys.autoCapitalize) }
     }
@@ -162,6 +167,13 @@ final class AppSettings: ObservableObject {
     }
     @Published var learnFromEdits: Bool {
         didSet { defaults.set(learnFromEdits, forKey: Keys.learnFromEdits) }
+    }
+    /// Experimental: paste the raw transcript the instant you stop, then swap in
+    /// the cleaned version once the on-device model finishes — so there's no
+    /// visible wait. Off by default: the in-place swap selects backward over the
+    /// inserted text, which is unreliable if the caret moved or you kept typing.
+    @Published var optimisticInsertion: Bool {
+        didSet { defaults.set(optimisticInsertion, forKey: Keys.optimisticInsertion) }
     }
     /// On-device LLM cleanup intensity (none / light / medium / high).
     @Published var cleanupLevel: CleanupLevel {
@@ -216,7 +228,9 @@ final class AppSettings: ObservableObject {
             Keys.autoCapitalize: true,
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
+            Keys.optimisticInsertion: false,
             Keys.cleanupLevel: CleanupLevel.medium.rawValue,
+            Keys.meetingLanguageMode: "auto",
             Keys.appAdaptiveCleanup: true,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
@@ -247,7 +261,9 @@ final class AppSettings: ObservableObject {
         autoCapitalize = d.bool(forKey: Keys.autoCapitalize)
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
+        optimisticInsertion = d.bool(forKey: Keys.optimisticInsertion)
         cleanupLevel = CleanupLevel(rawValue: d.string(forKey: Keys.cleanupLevel) ?? "") ?? .medium
+        meetingLanguageMode = d.string(forKey: Keys.meetingLanguageMode) ?? "auto"
         appAdaptiveCleanup = d.bool(forKey: Keys.appAdaptiveCleanup)
         appCleanupStyles = (d.dictionary(forKey: Keys.appCleanupStyles) as? [String: String])
             ?? AppSettings.defaultAppCleanupStyles
@@ -289,7 +305,9 @@ final class AppSettings: ObservableObject {
         static let autoCapitalize = "autoCapitalize"
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
+        static let optimisticInsertion = "optimisticInsertion"
         static let cleanupLevel = "cleanupLevel"
+        static let meetingLanguageMode = "meetingLanguageMode"
         static let appAdaptiveCleanup = "appAdaptiveCleanup"
         static let appCleanupStyles = "appCleanupStyles"
         static let contextAwareness = "contextAwareness"

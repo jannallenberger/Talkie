@@ -128,15 +128,24 @@ struct OnboardingView: View {
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            FlowLayout(spacing: 9) {
+            // One row, evenly spaced, never wraps: keycap → speak → typed.
+            HStack(spacing: 10) {
                 Keycap(text: settings.activationKey.displayName)
                 stepArrow
-                Label("Speak", systemImage: "mic.fill").foregroundStyle(Theme.coral)
+                HStack(spacing: 6) {
+                    ClayIcon(name: "IconMic", size: 18)
+                    Text("Speak").foregroundStyle(Theme.coral)
+                }
                 stepArrow
-                Label("Typed for you", systemImage: "text.cursor").foregroundStyle(Theme.positive)
+                HStack(spacing: 6) {
+                    ClayIcon(name: "IconType", size: 18)
+                    Text("Typed for you").foregroundStyle(Theme.positive)
+                }
             }
             .font(.talkieHeading(13, weight: .semibold))
-            .padding(.top, 2)
+            .fixedSize()
+            .frame(maxWidth: .infinity)
+            .padding(.top, 6)
         }
     }
 
@@ -157,16 +166,19 @@ struct OnboardingView: View {
                 .fixedSize(horizontal: false, vertical: true)
             VStack(spacing: 9) {
                 OnboardPermissionRow(
+                    icon: "IconMic",
                     title: "Microphone",
                     why: "To hear you while you dictate.",
                     granted: permissions.microphone
                 ) { Task { await permissions.requestMicrophone() } }
                 OnboardPermissionRow(
+                    icon: "IconKeyboard",
                     title: "Input Monitoring",
                     why: "To notice your one dictation key — nothing else you type.",
                     granted: permissions.inputMonitoring
                 ) { permissions.requestInputMonitoring(); onRetryHotKey() }
                 OnboardPermissionRow(
+                    icon: "IconAccessibility",
                     title: "Accessibility",
                     why: "To place the finished text into the app you're using.",
                     granted: permissions.accessibility
@@ -321,16 +333,15 @@ private struct Keycap: View {
 }
 
 private struct OnboardPermissionRow: View {
+    let icon: String
     let title: String
     let why: String
     let granted: Bool
     let action: () -> Void
 
     var body: some View {
-        HStack(spacing: 11) {
-            Image(systemName: granted ? "checkmark.circle.fill" : "circle.dashed")
-                .font(.system(size: 18))
-                .foregroundStyle(granted ? Theme.positive : Theme.inkTertiary)
+        HStack(spacing: 12) {
+            ClayIcon(name: icon, size: 24)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
@@ -342,7 +353,12 @@ private struct OnboardPermissionRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            if !granted {
+            if granted {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(Theme.positive)
+                    .accessibilityHidden(true)
+            } else {
                 Button("Grant", action: action)
                     .buttonStyle(.bordered)
                     .controlSize(.small)

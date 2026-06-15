@@ -39,6 +39,9 @@ final class MeetingRecorder: ObservableObject {
     /// When more than one is set, each stream is re-checked at stop and re-transcribed
     /// in its detected language if it was transcribed in the wrong one.
     var spokenLanguages: (() -> [String])?
+    /// Meeting language mode: "auto" (multilingual) or a specific locale id to pin
+    /// both streams to. Injected by AppDelegate from settings.meetingLanguageMode.
+    var meetingLanguageMode: (() -> String)?
 
     private let engine: TranscriptionEngine // shared mic engine ("Me")
     private let store: MeetingStore
@@ -100,10 +103,15 @@ final class MeetingRecorder: ObservableObject {
         // Snapshot the language config. When the user speaks more than one language,
         // buffer each stream so it can be re-transcribed in its detected language at
         // stop (a 10-minute rolling window keeps memory bounded for long meetings).
+        let mode = meetingLanguageMode?() ?? "auto"
+        let pinned = (mode != "auto" && !mode.isEmpty) ? mode : nil
         let langs = spokenLanguages?() ?? []
-        let multiLang = langs.count > 1
-        langsAtStart = langs
-        micLocale = primaryLocale?() ?? "en-US"
+        // Pinned single-language mode transcribes both streams in that locale and
+        // skips the multilingual auto-detect correction; "auto" keeps the existing
+        // per-stream detect+correct behavior.
+        let multiLang = (pinned == nil) && langs.count > 1
+        langsAtStart = (pinned == nil) ? langs : []
+        micLocale = pinned ?? (primaryLocale?() ?? "en-US")
         farLocale = micLocale
 
         // Calendar (opt-in): if granted, title the meeting from the overlapping
@@ -148,7 +156,7 @@ final class MeetingRecorder: ObservableObject {
         //    cleanly to mic-only — the mic is already running.
         var farActive = false
         if SystemAudioCapture.isSupported {
-            let locale = primaryLocale?() ?? "en-US"
+            let locale = farLocale
             let far = TranscriptionEngine(localeIdentifier: locale)
             do {
                 await far.setContextualStrings(eventAttendees)
