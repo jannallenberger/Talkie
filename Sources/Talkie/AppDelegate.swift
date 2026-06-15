@@ -472,6 +472,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             do {
+                // Re-pin the engine to our baseline locale. The shared engine may
+                // have been left on another language by a meeting recording (which
+                // pins it to the primary) or a prior dictation's language switch,
+                // and `currentLocaleID` is the self-consistency baseline below — so
+                // they must agree at the start of every session.
+                await engine.setLocaleIdentifier(self.currentLocaleID)
                 await engine.setContextualStrings(phrases)
                 let session = try await engine.beginSession(segmentHandler: segmentHandler)
                 // Re-check after the (async) model load / session setup.
@@ -566,19 +572,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let raw = await engine.finishSession()
             trace.stage("finalize")
 
-            // Language auto-detect: if the transcript looks like a different one
-            // of your languages, re-transcribe the captured audio in that language.
+            // Language auto-detect (multilingual only). The first pass ran in the
+            // current locale; decide by AUDIO self-consistency whether it was the
+            // right one. If the transcript confidently reads as the current
+            // language we're done (fast path — no extra transcription). Otherwise
+            // the user may have spoken a different one of their languages, which
+            // the wrong acoustic model renders as gibberish, so re-transcribe the
+            // captured audio in each other language and keep whichever output most
+            // strongly self-identifies as its own language.
             var finalRaw = raw
             var languageSwitched = false
-            if spokenLanguages.count > 1, !raw.isEmpty,
-               let detected = LanguageDetector.detect(raw, among: spokenLanguages),
-               detected != self.currentLocaleID {
+            // Language auto-detect (multilingual only). macOS decodes the whole
+            // utterance with ONE language model, so secondary-language speech comes
+            // out as gibberish. Decide the real language by ACOUSTIC CONFIDENCE: at
+            // stop, re-transcribe the captured audio in every spoken language and
+            // keep the one whose model fit the audio best (highest mean per-word
+            // recognition confidence). This beats language-ID of the text, which
+            // leaks because wrong-model gibberish still contains real words of the
+            // wrong (current) language. Short utterances are skipped — nothing to gain.
+            if spokenLanguages.count > 1, !raw.isEmpty, LanguageDetector.canScore(raw) {
                 let buffers = self.audio.bufferedAudio()
-                if let reText = await self.engine.transcribeBuffered(buffers, localeIdentifier: detected) {
-                    finalRaw = reText
+                let currentCode = LanguageDetector.languageCode(of: self.currentLocaleID)
+                // Re-transcribe in every spoken language (one per language code,
+                // incl. the current one so its confidence is the comparison baseline).
+                let langs = LanguageDetector.distinctByCode(spokenLanguages)
+                let scored = await self.engine.transcribeCandidates(
+                    buffers, localeIdentifiers: langs, installIfNeeded: true)
+                let currentConf = scored.first {
+                    LanguageDetector.languageCode(of: $0.localeID) == currentCode
+                }?.confidence ?? 0
+                let best = scored.max { $0.confidence < $1.confidence }
+                NSLog("TalkieLang decide: raw='\(raw.prefix(48))' current=\(self.currentLocaleID)(\(String(format: "%.2f", currentConf))) scored=[\(scored.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
+                if let best,
+                   LanguageDetector.languageCode(of: best.localeID) != currentCode,
+                   best.confidence >= currentConf + LanguageDetector.switchConfidenceMargin,
+                   !best.text.isEmpty {
+                    finalRaw = best.text
                     languageSwitched = true
-                    self.currentLocaleID = detected
-                    await self.engine.setLocaleIdentifier(detected) // stick to it next time
+                    self.currentLocaleID = best.localeID
+                    await self.engine.setLocaleIdentifier(best.localeID) // stick to it next time
+                    NSLog("TalkieLang switched → \(best.localeID): '\(best.text.prefix(48))'")
                 }
             }
             trace.stage("reTx")
