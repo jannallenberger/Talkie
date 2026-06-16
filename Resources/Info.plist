@@ -53,6 +53,8 @@
     <string>Talkie uses on-device speech recognition to transcribe what you say. Audio stays on your Mac.</string>
     <key>NSInputMonitoringUsageDescription</key>
     <string>Talkie watches for your dictation key so you can start talking from any app.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Talkie pauses Music or Spotify while you dictate so your speech isn't drowned out, then resumes playback when you're done.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Talkie reads the event you're in to title a meeting recording and spell attendee names right. It never creates, edits, or deletes anything, and your calendar data stays on your Mac.</string>
     <key>NSCalendarsUsageDescription</key>

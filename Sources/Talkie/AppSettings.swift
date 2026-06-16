@@ -271,6 +271,28 @@ final class AppSettings: ObservableObject {
             LaunchAtLogin.set(launchAtLogin)
         }
     }
+    /// The microphone dictation should capture from, by device UID. `nil` means
+    /// "Automatic" — resolve the best real input device at the start of each session.
+    @Published var preferredInputDeviceUID: String? {
+        didSet {
+            if let uid = preferredInputDeviceUID, !uid.isEmpty {
+                defaults.set(uid, forKey: Keys.preferredInputDeviceUID)
+            } else {
+                defaults.removeObject(forKey: Keys.preferredInputDeviceUID)
+            }
+        }
+    }
+    /// Pause currently-playing media (Apple Music / Spotify, and — with the fallback
+    /// on — anything else outputting audio) while you dictate, then resume it.
+    @Published var pauseMusicWhileDictating: Bool {
+        didSet { defaults.set(pauseMusicWhileDictating, forKey: Keys.pauseMusicWhileDictating) }
+    }
+    /// When pausing music and no scriptable player (Music/Spotify) was playing, also
+    /// nudge the system play/pause key for other apps. Best-effort and blind (can't
+    /// read state), so it's off by default; gated on real output activity.
+    @Published var pauseMusicMediaKeyFallback: Bool {
+        didSet { defaults.set(pauseMusicMediaKeyFallback, forKey: Keys.pauseMusicMediaKeyFallback) }
+    }
 
     private func notifyChanged() {
         NotificationCenter.default.post(name: .talkieSettingsChanged, object: nil)
@@ -301,6 +323,7 @@ final class AppSettings: ObservableObject {
             Keys.hasOnboarded: false,
             Keys.playSounds: true,
             Keys.launchAtLogin: false,
+            Keys.pauseMusicWhileDictating: true,
         ])
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
         activationMode = ActivationMode(rawValue: d.string(forKey: Keys.activationMode) ?? "") ?? .holdToTalk
@@ -343,6 +366,9 @@ final class AppSettings: ObservableObject {
         hasOnboarded = d.bool(forKey: Keys.hasOnboarded)
         playSounds = d.bool(forKey: Keys.playSounds)
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
+        preferredInputDeviceUID = d.string(forKey: Keys.preferredInputDeviceUID)
+        pauseMusicWhileDictating = d.bool(forKey: Keys.pauseMusicWhileDictating)
+        pauseMusicMediaKeyFallback = d.bool(forKey: Keys.pauseMusicMediaKeyFallback)
     }
 
     /// Sensible per-category defaults for the adaptive cleanup personality.
@@ -408,5 +434,8 @@ final class AppSettings: ObservableObject {
         static let hasOnboarded = "hasOnboarded"
         static let playSounds = "playSounds"
         static let launchAtLogin = "launchAtLogin"
+        static let preferredInputDeviceUID = "preferredInputDeviceUID"
+        static let pauseMusicWhileDictating = "pauseMusicWhileDictating"
+        static let pauseMusicMediaKeyFallback = "pauseMusicMediaKeyFallback"
     }
 }

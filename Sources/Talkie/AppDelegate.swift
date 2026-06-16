@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let audio = AudioCapture()
     private let hud = HUDController()
     private let learning = LearningEngine()
+    /// Pauses now-playing media for the duration of a dictation and resumes it after.
+    private let musicController = MusicController()
     private let cleanup = CleanupEngine()
     private var hotKey: HotKeyMonitor?
 
@@ -639,6 +641,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try audio.start(
                     targetFormat: session.format,
                     continuation: session.continuation,
+                    preferredDeviceUID: self.settings.preferredInputDeviceUID,
                     bufferAudio: multiLang,
                     onLevel: { level in
                         Task { @MainActor in AppDelegate.sharedHUD?.updateLevel(level) }
@@ -646,7 +649,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 self.sessionLive = true
                 self.recordingStartedAt = Date()
-                // Audio is live now — flip the pill to the red "recording" state.
+                // Capture is live — duck any playing music so it doesn't bleed into
+                // the mic, then flip the pill to the red "recording" state. Resumed
+                // on every teardown path in `endDictation`.
+                if self.settings.pauseMusicWhileDictating {
+                    self.musicController.pauseForDictation(
+                        allowMediaKeyFallback: self.settings.pauseMusicMediaKeyFallback)
+                }
                 self.hud.showListening()
             } catch {
                 // The user may have released the key (or started a newer session)
@@ -677,6 +686,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard sessionLive else {
             currentStreaming?.cancel()
             currentStreaming = nil
+            // No-op unless a race left music paused; keeps the invariant that music
+            // is never left ducked when a session ends.
+            musicController.resumeAfterDictation()
             hud.hide()
             return
         }
@@ -686,6 +698,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Feedback.stop()
         audio.stop()
+        // Recording's done (you've stopped talking) — bring the music back, even
+        // though the transcript is still being polished/inserted below.
+        musicController.resumeAfterDictation()
         isProcessing = true
         hud.showProcessing()
 

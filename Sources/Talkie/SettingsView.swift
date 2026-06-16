@@ -375,7 +375,7 @@ private struct HistoryRow: View {
 // MARK: - General
 
 private enum SettingsRoute: Hashable {
-    case profile, activation, cleanup, languages, context, behavior
+    case profile, activation, microphone, cleanup, languages, context, behavior
     case voiceCommands, appProfiles, calendar, export
     case permissions, developer
 }
@@ -401,6 +401,10 @@ private struct SettingsHome: View {
                             SettingsRowView(icon: r.icon, title: r.title, subtitle: r.subtitle, route: r.route)
                             Divider().overlay(Theme.hairline).padding(.leading, 64)
                         }
+                        SettingsRowView(icon: "", title: "Microphone & music",
+                                        subtitle: settings.pauseMusicWhileDictating ? "Auto mic · pauses music" : "Auto mic",
+                                        route: .microphone, systemIcon: "mic.fill")
+                        Divider().overlay(Theme.hairline).padding(.leading, 64)
                         SettingsRowView(icon: "IconShield", title: "Privacy & Permissions",
                                         subtitle: permissions.allGranted ? "All local · nothing leaves your Mac" : "Action needed",
                                         badge: !permissions.allGranted, route: .permissions)
@@ -451,6 +455,7 @@ private struct SettingsHome: View {
         switch route {
         case .profile:       ProfileSettings(settings: settings)
         case .activation:    ActivationSettings(settings: settings)
+        case .microphone:    MicrophoneSettings(settings: settings)
         case .cleanup:       CleanupSettings(settings: settings)
         case .languages:     LanguageSettings(settings: settings)
         case .context:       ContextSettings(settings: settings)
@@ -831,6 +836,47 @@ private struct ProfileSettings: View {
                 }
             }
         }
+    }
+}
+
+private struct MicrophoneSettings: View {
+    @ObservedObject var settings: AppSettings
+    @State private var devices: [AudioInputDevice] = []
+
+    var body: some View {
+        SubPage(title: "Microphone & music",
+                subtitle: "Which mic Talkie records from, and what happens to your music.") {
+            SettingsCard(
+                header: "Microphone",
+                footer: "Automatic picks a real microphone for you — handy when a Bluetooth speaker is your audio output but has no mic. Pick a specific device to pin it."
+            ) {
+                SettingsRow(title: "Input device") {
+                    Picker("", selection: $settings.preferredInputDeviceUID) {
+                        Text("Automatic (recommended)").tag(String?.none)
+                        ForEach(devices) { device in
+                            Text(device.name).tag(String?.some(device.uid))
+                        }
+                    }
+                    .labelsHidden().fixedSize()
+                }
+            }
+
+            SettingsCard(
+                header: "Music",
+                footer: "Pauses Apple Music or Spotify while you dictate, then resumes it when you stop. macOS will ask for permission to control them the first time."
+            ) {
+                SettingsToggleRow(title: "Pause music while dictating",
+                                  isOn: $settings.pauseMusicWhileDictating)
+                if settings.pauseMusicWhileDictating {
+                    SettingsDivider()
+                    SettingsToggleRow(
+                        title: "Also pause other apps",
+                        subtitle: "Best-effort play/pause for browsers, podcasts, etc. when Music/Spotify aren't playing. Can't read state, so it may occasionally toggle the wrong thing.",
+                        isOn: $settings.pauseMusicMediaKeyFallback)
+                }
+            }
+        }
+        .onAppear { devices = AudioDevices.inputDevices() }
     }
 }
 

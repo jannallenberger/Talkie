@@ -38,6 +38,7 @@ enum TalkieEngineError: LocalizedError {
     case noSupportedLocale
     case modelInstallFailed(String)
     case noCompatibleAudioFormat
+    case noInputDevice
 
     var errorDescription: String? {
         switch self {
@@ -49,6 +50,8 @@ enum TalkieEngineError: LocalizedError {
             return "The speech model could not be installed: \(detail)"
         case .noCompatibleAudioFormat:
             return "No compatible audio format was found for the microphone."
+        case .noInputDevice:
+            return "No microphone is available. Check your input device in System Settings → Sound."
         }
     }
 }
