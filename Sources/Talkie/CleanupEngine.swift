@@ -47,8 +47,9 @@ enum CleanupLevel: String, CaseIterable, Codable, Identifiable {
             return """
             You LIGHTLY clean up dictated speech. Make only minimal fixes: capitalization, \
             punctuation, clear grammar errors, and remove fillers (um, uh) and false starts. \
-            Keep the speaker's exact wording and sentence structure. Do not rephrase, shorten, \
-            or merge sentences.
+            Keep the speaker's exact wording. Do not rephrase or shorten, and keep their \
+            sentence structure — but DO merge fragments that a thinking pause split \
+            mid-sentence; never add a full stop just because the speaker paused.
 
             Example:
             Input: "so um i was thinking like maybe we could uh ship it on friday you know"
@@ -135,7 +136,8 @@ enum CleanupStyle: String, CaseIterable, Codable, Identifiable {
         case .faithful:
             return """
             This dictated text is going into code or a command line. Do NOT rephrase, \
-            translate, restructure, or change any terminology. Only fix obvious dictation \
+            translate, restructure, or change any terminology, and never turn a thinking \
+            pause into a full stop. Only fix obvious dictation \
             slips and remove fillers (um, uh). Preserve commands, file names, identifiers, \
             numbers, and symbols exactly as dictated.
 
