@@ -2,6 +2,10 @@ import AppKit
 import Combine
 import SwiftUI
 
+#if TALKIE_DEV_TOOLS
+import TalkieUpdater
+#endif
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
@@ -154,7 +158,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(appBecameActive),
             name: NSApplication.didBecomeActiveNotification, object: nil
         )
+
+        #if TALKIE_DEV_TOOLS
+        scheduleLaunchUpdateCheck()
+        #endif
     }
+
+    #if TALKIE_DEV_TOOLS
+    /// Dev-tools flavor: a few seconds after launch, quietly check the GitHub dev
+    /// channel and — if a newer build is published — offer to install it. Keeps a
+    /// collaborator on the latest without ever opening Settings. Off the default
+    /// public build entirely (the updater module isn't even linked there).
+    private func scheduleLaunchUpdateCheck() {
+        guard AppUpdater.shared.autoCheckOnLaunch else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            await AppUpdater.shared.check(announce: true)
+        }
+    }
+    #endif
 
     /// Clicking the Dock icon (with no window open) reopens the main window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -569,10 +591,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // whole transcript. Built only when cleanup is on and the model is
         // usable; otherwise the raw path is unchanged. `endDictation` consumes
         // (or, on the language-switch fallback, discards) this buffer.
+        // Pin streamed cleanup to the session's baseline language (the streamed
+        // path only survives when no language switch happens, so the baseline is
+        // the right language for it) so the model can't translate it.
+        let beginLangCode = LanguageDetector.languageCode(of: currentLocaleID)
         let cleanOne: @Sendable (String) async -> String? = { text in
             appAdaptive
-                ? await cleanupEngine.clean(text, style: adaptiveStyle)
-                : await cleanupEngine.clean(text, level: cleanupLevel)
+                ? await cleanupEngine.clean(text, style: adaptiveStyle, languageCode: beginLangCode)
+                : await cleanupEngine.clean(text, level: cleanupLevel, languageCode: beginLangCode)
         }
         let streaming = (cleanupEnabled && CleanupEngine.isAvailable)
             ? StreamingCleanup(enabled: true, cleanOne: cleanOne)
@@ -747,6 +773,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             trace.stage("reTx")
+            // Tell the cleanup model the (possibly switched) language so the
+            // English-primary on-device model can't translate non-English speech.
+            let cleanupLangCode = LanguageDetector.languageCode(of: self.currentLocaleID)
 
             // Cleanup. The fast path joins the segments that were already cleaned
             // live while you spoke — so we only wait on the last in-flight one.
@@ -809,8 +838,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     streaming?.cancel()
                     let cleanOne: @Sendable (String) async -> String? = { text in
                         appAdaptive
-                            ? await cleanupEngine.clean(text, style: adaptiveStyle)
-                            : await cleanupEngine.clean(text, level: cleanupLevel)
+                            ? await cleanupEngine.clean(text, style: adaptiveStyle, languageCode: cleanupLangCode)
+                            : await cleanupEngine.clean(text, level: cleanupLevel, languageCode: cleanupLangCode)
                     }
                     if deseamed.count <= Self.wholeCleanupCharLimit {
                         cleaned = (await cleanOne(deseamed)) ?? deseamed

@@ -10,11 +10,16 @@
 #   it prints a clear PASS and exits 0.
 #
 # Why Sources/TalkieBridge is EXCLUDED (this is deliberate, per _CORES_STANDARDS.md
-# §1.1): the bridge is the ONE module allowed to touch the network. It conforms to
+# §1.1): the bridge is a module allowed to touch the network. It conforms to
 # the Summarizer protocol and is injected only into the opt-in "Talkie (Connected)"
 # flavor, behind consent. The app core never imports it. Scanning the bridge would
 # be a guaranteed false positive that defeats the whole gate, so we scope the scan
 # to the two targets that MUST stay offline and leave the bridge alone.
+#
+# Sources/TalkieUpdater is EXCLUDED for the same reason: it's the in-app "update
+# from GitHub" module, compiled in ONLY for the dev-tools flavor (TALKIE_DEV_TOOLS)
+# and never linked into the public build. Like the bridge, the core never imports
+# it, so the shipped app still contains zero update/network code.
 #
 # The honest claim this protects: "Talkie's shipped core contains zero networking
 # code — open source, grep it yourself." This script IS that grep, run for you in
@@ -25,7 +30,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# The targets that must stay offline. TalkieBridge is intentionally NOT listed.
+# The targets that must stay offline. TalkieBridge and TalkieUpdater (the two
+# network-allowed, non-default-flavor modules) are intentionally NOT listed.
 SCAN_DIRS=()
 for d in "Sources/Talkie" "Sources/TalkieMCP"; do
   [ -d "$ROOT/$d" ] && SCAN_DIRS+=("$ROOT/$d")
@@ -49,7 +55,8 @@ echo "check-no-network: scanning the on-device targets for network symbols"
 for d in "${SCAN_DIRS[@]}"; do
   echo "  • ${d#$ROOT/}"
 done
-echo "  (excluding Sources/TalkieBridge — the bridge is the only module allowed to network)"
+echo "  (excluding Sources/TalkieBridge + Sources/TalkieUpdater — the network-allowed,"
+echo "   non-default-flavor modules the public build never links)"
 echo
 
 # We match against CODE, not comments. A line like

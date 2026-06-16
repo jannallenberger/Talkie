@@ -65,6 +65,24 @@ enum LanguageDetector {
         Locale(identifier: localeIdentifier).language.languageCode?.identifier
     }
 
+    /// The dominant natural language of `text` as a base code ("de", "en"), or nil
+    /// when the text is too short to call reliably. Used to (a) name the language
+    /// for the on-device cleanup model and (b) catch a rewrite that flipped
+    /// languages (the model translating non-English dictation into English).
+    static func dominantLanguageCode(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canScore(trimmed) else { return nil }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(trimmed)
+        return recognizer.dominantLanguage?.rawValue
+    }
+
+    /// The English display name of a language code ("de" → "German"), used to name
+    /// the target language to the on-device cleanup model.
+    static func displayName(forLanguageCode code: String) -> String? {
+        Locale(identifier: "en_US").localizedString(forLanguageCode: code)
+    }
+
     /// The confidence (0…1) the constrained recognizer assigns to `expected`'s
     /// language for `text`. Returns 0 when the text is too short to language-ID
     /// reliably (a word or two), when `expected` has no language code, or when it
