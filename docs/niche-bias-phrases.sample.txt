@@ -1,0 +1,28 @@
+# Sample bias-phrase file for `talkie-bench --bias`.
+# One phrase per line. Blank lines and lines starting with '#' are ignored.
+#
+# Replace these with the actual jargon spoken in your jargon-clip corpus, then run:
+#   .build/release/talkie-bench --corpus ./jargon-clips --locale en-US \
+#       --bias ./docs/niche-bias-phrases.sample.txt
+#
+# The benchmark transcribes each clip twice (bias off vs on) and reports whether
+# these phrases measurably reduce WER — gate zero for the niche-vocabulary feature.
+
+# --- example ML-infra niche jargon ---
+Kubernetes
+kubelet
+idempotent
+gRPC
+Parakeet
+quantization
+embeddings
+backpropagation
+tokenizer
+inference latency
+
+# --- example Talkie / product names ---
+Talkie
+Coralate
+Context Graph
+SpeechAnalyzer
+contextualStrings

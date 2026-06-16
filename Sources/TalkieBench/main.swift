@@ -150,6 +150,27 @@ guard !items.isEmpty else {
     exit(1)
 }
 
+// Gate-zero bias comparison: transcribe each clip twice (bias off vs on) and
+// report the WER delta, then exit. Settles whether on-device contextualStrings
+// biasing actually works before any of the niche-vocabulary feature is wired in.
+if let biasURL = args.biasFile {
+    let phrases = BiasComparison.loadPhrases(biasURL)
+    guard !phrases.isEmpty else {
+        FileHandle.standardError.write(Data("error: bias file \(biasURL.path) had no usable phrases (one per line, # for comments).\n".utf8))
+        exit(2)
+    }
+    if !args.quiet {
+        print(Banner.header(corpus: corpus, locale: args.locale, items: items.count, warmup: 0))
+        print("Bias comparison mode: \(phrases.count) phrases, each clip transcribed twice.\n")
+    }
+    let comparison = await BiasComparison.run(items: items,
+                                              localeIdentifier: args.locale,
+                                              phrases: phrases,
+                                              quiet: args.quiet)
+    print(BiasComparison.render(comparison))
+    exit(comparison.rows.isEmpty ? 1 : 0)
+}
+
 if !args.quiet {
     print(Banner.header(corpus: corpus, locale: args.locale, items: items.count,
                         warmup: args.warmup))
