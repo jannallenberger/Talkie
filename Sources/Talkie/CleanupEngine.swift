@@ -226,14 +226,16 @@ actor CleanupEngine {
         }
     }
 
-    /// Clean at an intensity level (the global default path).
-    func clean(_ raw: String, level: CleanupLevel) async -> String? {
-        await generate(instructions: level.instructions, raw: raw)
+    /// Clean at an intensity level (the global default path). `languageCode` (the
+    /// recognizer's chosen locale, e.g. "de-DE") pins the rewrite to that language
+    /// so the English-primary model can't translate it; nil auto-detects.
+    func clean(_ raw: String, level: CleanupLevel, languageCode: String? = nil) async -> String? {
+        await generate(instructions: level.instructions, raw: raw, languageCode: languageCode)
     }
 
     /// Clean in a personality/style (the per-app adaptive path).
-    func clean(_ raw: String, style: CleanupStyle) async -> String? {
-        await generate(instructions: style.instructions, raw: raw)
+    func clean(_ raw: String, style: CleanupStyle, languageCode: String? = nil) async -> String? {
+        await generate(instructions: style.instructions, raw: raw, languageCode: languageCode)
     }
 
     /// Ask the system to load the on-device model into memory ahead of the first
@@ -251,17 +253,48 @@ actor CleanupEngine {
         warmSession = session
     }
 
-    private func generate(instructions: String?, raw: String) async -> String? {
+    private func generate(instructions: String?, raw: String, languageCode: String? = nil) async -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let instructions, Self.isAvailable else { return nil }
+
+        // The on-device model is English-primary; given English instructions and an
+        // English few-shot example it will TRANSLATE non-English dictation into
+        // English — especially the moment the speech mixes in an English word. Pin
+        // the output to the text's own language (preferring the recognizer's chosen
+        // locale, else auto-detected) and, as a hard backstop below, reject any
+        // rewrite that still flips the language so the caller keeps the raw text.
+        let pinnedCode = languageCode.flatMap { LanguageDetector.languageCode(of: $0) }
+            ?? LanguageDetector.dominantLanguageCode(trimmed)
+        var system = instructions
+        var promptLead = "Rewrite this dictated text. Output only the rewrite:"
+        if let pinnedCode, let name = LanguageDetector.displayName(forLanguageCode: pinnedCode) {
+            system += "\n\nThe text below is written in \(name). Your ENTIRE response MUST be " +
+                "written in \(name) — never translate it into another language, even if it " +
+                "contains foreign words or phrases."
+            promptLead = "Rewrite this dictated \(name) text, keeping every word in \(name). " +
+                "Output only the rewrite:"
+        }
+
         do {
-            let session = LanguageModelSession(instructions: instructions)
+            let session = LanguageModelSession(instructions: system)
             // Low temperature + greedy sampling → deterministic, faithful cleanup.
             let options = GenerationOptions(sampling: .greedy, temperature: 0.1)
-            let prompt = "Rewrite this dictated text. Output only the rewrite:\n\n\(trimmed)"
+            let prompt = "\(promptLead)\n\n\(trimmed)"
             let response = try await session.respond(to: prompt, options: options)
             let cleaned = sanitize(response.content)
-            return cleaned.isEmpty ? nil : cleaned
+            guard !cleaned.isEmpty else { return nil }
+            // Language guard: if the rewrite drifted to another language despite the
+            // instruction, discard it — a correct-language raw transcript beats a
+            // fluent mistranslation. (Returning nil makes every caller fall back to raw.)
+            if let pinnedCode,
+               LanguageDetector.canScore(cleaned),
+               let outCode = LanguageDetector.dominantLanguageCode(cleaned),
+               outCode != pinnedCode {
+                talkieDebugLog("cleanup[\(pinnedCode)]: rejected → \(outCode) language flip — keeping raw")
+                return nil
+            }
+            talkieDebugLog("cleanup[\(pinnedCode ?? "?")]: in='\(trimmed)' out='\(cleaned)'")
+            return cleaned
         } catch {
             return nil
         }
