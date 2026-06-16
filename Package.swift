@@ -16,11 +16,13 @@ let package = Package(
                 // main-actor isolation check that Swift 6 injects at @objc / SwiftUI
                 // callback boundaries — `swift_task_isCurrentExecutor` →
                 // `swift_task_isMainExecutorImpl` → `swift_getObjectType` faults with
-                // EXC_BAD_ACCESS. It's reachable wherever AppKit/SwiftUI calls back
-                // into a @MainActor view, so it can't be fixed per-site. This disables
-                // only the *runtime* assertion — full static Swift 6 isolation
-                // checking still runs at compile time. (Also in PR #13 / the crash-fix
-                // branch; carried here so this branch is testable on its own.)
+                // EXC_BAD_ACCESS. We hit it from two unrelated sites (NSView.hitTest
+                // on the accessibility path, and a TimelineView content closure in the
+                // live background); it's reachable from anywhere AppKit/SwiftUI calls
+                // back into a @MainActor view, so it can't be fixed per-site. This
+                // disables only the *runtime* assertion — full static Swift 6
+                // isolation checking still runs at compile time — so the concurrency
+                // model is unchanged. See the 2026-06-16 crash reports.
                 .unsafeFlags(["-Xfrontend", "-disable-dynamic-actor-isolation"]),
             ]
         ),
