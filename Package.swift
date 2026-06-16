@@ -12,6 +12,16 @@ let package = Package(
             path: "Sources/Talkie",
             swiftSettings: [
                 .swiftLanguageMode(.v6),
+                // macOS 26's Swift concurrency runtime crashes *inside* the dynamic
+                // main-actor isolation check that Swift 6 injects at @objc / SwiftUI
+                // callback boundaries — `swift_task_isCurrentExecutor` →
+                // `swift_task_isMainExecutorImpl` → `swift_getObjectType` faults with
+                // EXC_BAD_ACCESS. It's reachable wherever AppKit/SwiftUI calls back
+                // into a @MainActor view, so it can't be fixed per-site. This disables
+                // only the *runtime* assertion — full static Swift 6 isolation
+                // checking still runs at compile time. (Also in PR #13 / the crash-fix
+                // branch; carried here so this branch is testable on its own.)
+                .unsafeFlags(["-Xfrontend", "-disable-dynamic-actor-isolation"]),
             ]
         ),
         // Feature 06: a SEPARATE, always-local stdio MCP server over the on-disk
