@@ -74,6 +74,7 @@ final class AudioCapture: @unchecked Sendable {
     func start(
         targetFormat: AVAudioFormat,
         continuation: AsyncStream<AnalyzerInput>.Continuation,
+        preferredDeviceUID: String? = nil,
         bufferAudio: Bool = false,
         bufferSeconds: Double = 90,
         onLevel: (@Sendable (Float) -> Void)? = nil
@@ -81,6 +82,23 @@ final class AudioCapture: @unchecked Sendable {
         guard !isRunning else { return }
 
         let inputNode = engine.inputNode
+
+        // Pin the engine to a *real* microphone instead of trusting the system
+        // default, which can be a 0-channel device (e.g. a Bluetooth speaker that's
+        // output-only) and would make the engine fail to start. Must happen before
+        // `prepare()` reads the device format. If the Mac has no input device at
+        // all, surface that explicitly rather than failing with a format error.
+        guard let device = AudioDevices.resolveInput(preferredUID: preferredDeviceUID) else {
+            throw TalkieEngineError.noInputDevice
+        }
+        do {
+            try inputNode.auAudioUnit.setDeviceID(device.id)
+        } catch {
+            // Couldn't bind the chosen device — fall back to the engine default and
+            // let the format guard below decide whether it's usable.
+            talkieDebugLog("AudioCapture: setDeviceID(\(device.name)) failed: \(error)")
+        }
+
         engine.prepare() // resolve the input device/format before we read it
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
