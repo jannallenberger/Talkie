@@ -66,6 +66,10 @@ actor TranscriptionEngine {
     private var resultsTask: Task<Void, Never>?
 
     private var finalizedText: String = ""
+    /// Each finalized segment, in spoken order. A new segment is committed every
+    /// time the recognizer finalizes at a pause — so this is exactly the list
+    /// `SentenceFlow` de-seams (a pause is not a sentence boundary).
+    private var finalizedSegments: [String] = []
     private var volatileText: String = ""
 
     private var onUpdate: (@Sendable (TranscriptUpdate) -> Void)?
@@ -329,6 +333,7 @@ actor TranscriptionEngine {
 
         // Reset accumulators + bind the per-session segment handler.
         finalizedText = ""
+        finalizedSegments = []
         volatileText = ""
         onSegment = segmentHandler
 
@@ -381,6 +386,7 @@ actor TranscriptionEngine {
         if isFinal {
             if !text.isEmpty {
                 finalizedText = appendCommitted(finalizedText, text)
+                finalizedSegments.append(text)
                 onSegment?(text)
             }
             volatileText = ""
@@ -421,8 +427,15 @@ actor TranscriptionEngine {
         emit(isComplete: true)
     }
 
-    /// Stop feeding audio, flush the analyzer, and return the final transcript.
+    /// Stop feeding audio, flush, and return the final transcript. Protocol
+    /// (`TranscriptionBackend`) entry point — delegates and drops the segment list.
     func finishSession() async -> String {
+        await finishSessionDetailed().text
+    }
+
+    /// Like `finishSession`, but also returns the per-segment list so the caller
+    /// can de-seam pause boundaries (see `SentenceFlow`). Concrete-only.
+    func finishSessionDetailed() async -> (text: String, segments: [String]) {
         inputContinuation?.finish()
         inputContinuation = nil
 
@@ -445,10 +458,13 @@ actor TranscriptionEngine {
         // includes it. No-op on the happy path (volatileText already empty).
         if !volatileText.isEmpty {
             onSegment?(volatileText)
+            finalizedSegments.append(volatileText)
         }
         let joiner = finalizedText.isEmpty || volatileText.isEmpty ? "" : " "
         let result = finalizedText + joiner + volatileText
         volatileText = ""
+        let segments = finalizedSegments
+        finalizedSegments = []
 
         // Emit a terminal update so the HUD can dismiss cleanly.
         emit(isComplete: true)
@@ -456,7 +472,7 @@ actor TranscriptionEngine {
         onSegment = nil
         analyzer = nil
         transcriber = nil
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (result.trimmingCharacters(in: .whitespacesAndNewlines), segments)
     }
 
     /// Hard-cancel without producing a transcript (e.g. user aborted).
@@ -469,6 +485,7 @@ actor TranscriptionEngine {
         resultsTask?.cancel()
         resultsTask = nil
         finalizedText = ""
+        finalizedSegments = []
         volatileText = ""
         onSegment = nil
         analyzer = nil
