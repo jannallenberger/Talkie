@@ -23,6 +23,15 @@ enum TextInjector {
         AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": prompt] as CFDictionary)
     }
 
+    /// Surfaces the system Accessibility prompt at most once per launch, so a
+    /// missing post-event grant self-corrects without nagging on every dictation.
+    private static var didPromptTrust = false
+    private static func promptTrustOnce() {
+        guard !didPromptTrust else { return }
+        didPromptTrust = true
+        ensureTrusted(prompt: true)
+    }
+
     static func insert(_ raw: String, mode: InsertionMode) -> Outcome {
         let text = raw
         guard !text.isEmpty else { return .empty }
@@ -33,23 +42,29 @@ enum TextInjector {
             return .leftOnClipboard(reason: "Password field — tap to copy")
         }
 
-        // Check silently here (don't spam the system prompt on every dictation);
-        // the Permissions tab is where the user is asked to grant it.
+        // Synthetic ⌘V needs Accessibility (post-event) trust. The hotkey only
+        // needs Input Monitoring, so dictation can work while paste silently
+        // can't — the usual cause of "it never auto-pastes". Don't spam the
+        // prompt on every dictation, but DO surface it once so a missing grant
+        // self-corrects; the text stays on the clipboard for a manual ⌘V.
         guard ensureTrusted(prompt: false) else {
+            promptTrustOnce()
             copyToClipboard(text)
-            return .leftOnClipboard(reason: "Can't auto-paste — tap to copy")
+            return .leftOnClipboard(reason: "Enable Accessibility to auto-paste — tap to copy")
         }
 
         switch mode {
         case .paste:
-            // If nothing editable is focused, a ⌘V would land nowhere — and the
-            // restore below would then wipe the text. Leave it on the clipboard
-            // and let the user copy it from the HUD instead of pasting into the void.
-            guard hasEditableFocus() else {
-                copyToClipboard(text)
-                return .leftOnClipboard(reason: "Not pasted — tap to copy")
-            }
-            pasteViaClipboard(text)
+            // Best-effort: AX focused-element detection false-negatives on Electron
+            // / web / Catalyst apps (VS Code, Cursor, Slack, browsers, ChatGPT) —
+            // the apps people dictate into most. Hard-gating ⌘V on it was making
+            // auto-paste fail in exactly those apps. So always paste when trusted +
+            // not secure; only the clipboard RESTORE is gated on a confident field
+            // detection. When unconfirmed we leave the transcript on the clipboard,
+            // so a missed paste is still recoverable with a manual ⌘V (no regression
+            // — that was already the everyday behaviour).
+            let confident = hasEditableFocus()
+            pasteViaClipboard(text, restorePrevious: confident)
         case .type:
             // The per-character usleep loop must not run on the main actor.
             let payload = text
@@ -87,7 +102,7 @@ enum TextInjector {
             return .leftOnClipboard(reason: "Not pasted — tap to copy")
         }
         selectBackward(graphemeCount)
-        pasteViaClipboard(text) // ⌘V over a selection replaces it
+        pasteViaClipboard(text, restorePrevious: true) // ⌘V over a selection replaces it
         return .inserted
     }
 
@@ -106,10 +121,11 @@ enum TextInjector {
     }
 
     /// Best-effort check: is the current keyboard focus an editable text element?
-    /// In paste mode we use this to avoid firing ⌘V into the void (e.g. focus on
-    /// the desktop or a non-text view) — instead the text stays on the clipboard
-    /// and the user copies it from the HUD. Accessibility is already verified by
-    /// the caller, so this AX query can succeed.
+    /// Used as a CONFIDENCE signal, not a gate: when true we paste and restore the
+    /// prior clipboard; when false we still paste (this AX query false-negatives on
+    /// Electron / web apps) but leave the transcript on the clipboard as a
+    /// recoverable fallback. Accessibility is already verified by the caller, so
+    /// this AX query can succeed.
     private static func hasEditableFocus() -> Bool {
         let system = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
@@ -124,12 +140,23 @@ enum TextInjector {
            settable.boolValue {
             return true
         }
-        // Otherwise accept known editable roles (some editors don't flag settability).
+        // Accept known editable roles (some editors don't flag settability).
         var roleRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
-              let role = roleRef as? String
-        else { return false }
-        return role == kAXTextFieldRole || role == kAXTextAreaRole || role == kAXComboBoxRole
+        if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
+           let role = roleRef as? String,
+           role == kAXTextFieldRole || role == kAXTextAreaRole || role == kAXComboBoxRole {
+            return true
+        }
+        // A selectable text range is the most reliable cross-toolkit signal of a
+        // text input — Electron / web fields (VS Code, Slack, Chrome, ChatGPT)
+        // expose it even when they don't flag AXValue settable or report a known
+        // role, which is why the two checks above miss them.
+        var rangeRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+           rangeRef != nil {
+            return true
+        }
+        return false
     }
 
     // MARK: Clipboard paste
@@ -138,14 +165,19 @@ enum TextInjector {
     /// dictation) checks this and bails so it can't clobber a newer paste.
     private static var restoreGeneration = 0
 
-    private static func pasteViaClipboard(_ text: String) {
+    /// Writes `text` to the pasteboard and posts ⌘V. When `restorePrevious` is
+    /// true (a confident editable-focus detection) the prior clipboard is restored
+    /// after the paste lands; when false the transcript is intentionally left on
+    /// the clipboard as a fallback for a manual ⌘V (the unconfirmed-focus path).
+    private static func pasteViaClipboard(_ text: String, restorePrevious: Bool) {
         let pb = NSPasteboard.general
         restoreGeneration &+= 1
         let myGen = restoreGeneration
 
-        // Best-effort snapshot. Promised / lazy pasteboard types (e.g. dragged
-        // files) can't be captured eagerly — a known limitation of save/restore.
-        let saved = snapshot(pb)
+        // Snapshot only when we intend to restore. Promised / lazy pasteboard
+        // types (e.g. dragged files) can't be captured eagerly — a known
+        // limitation of save/restore.
+        let saved = restorePrevious ? snapshot(pb) : []
 
         pb.clearContents()
         let item = NSPasteboardItem()
@@ -160,6 +192,10 @@ enum TextInjector {
         guard !IsSecureEventInputEnabled() else { return }
 
         postCommandV()
+
+        // Leave the transcript on the clipboard when we're not restoring, so an
+        // unconfirmed paste is still recoverable with a manual ⌘V.
+        guard restorePrevious else { return }
 
         // Restore after the target consumed the paste (it reads the pasteboard
         // asynchronously). Skip if a newer paste superseded us, or if anyone else
