@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+#if TALKIE_DEV_TOOLS
+import TalkieUpdater
+#endif
+
 enum SettingsTab: Hashable, CaseIterable {
     case dashboard
     case history
@@ -471,6 +475,9 @@ private struct DeveloperSettings: View {
     var body: some View {
         SubPage(title: "Developer",
                 subtitle: "Tools for building Talkie.") {
+            #if TALKIE_DEV_TOOLS
+            AppUpdateSection()
+            #endif
             SettingsCard(
                 header: "Onboarding",
                 footer: "Replays the first-run welcome flow so you can review it — or just see it again on this Mac. Your name, settings, history, and dictionary are untouched."
@@ -499,6 +506,131 @@ private struct DeveloperSettings: View {
         }
     }
 }
+
+#if TALKIE_DEV_TOOLS
+/// "App updates" — the in-app updater UI (dev-tools flavor only). Lets a
+/// collaborator pull the newest Talkie that was published to GitHub, swap this
+/// app in place, and relaunch — so they always have the latest without rebuilding
+/// from source. All networking lives in the separate `TalkieUpdater` module; this
+/// view only observes its state, so the on-device core stays free of network code.
+private struct AppUpdateSection: View {
+    @ObservedObject private var updater = AppUpdater.shared
+    @State private var tokenField = ""
+
+    var body: some View {
+        SettingsCard(
+            header: "App updates",
+            footer: "Pulls the newest Talkie published to GitHub, swaps this app in place, and relaunches — so you always have the latest without rebuilding. This updater is compiled only into dev builds; the public build ships no update or network code."
+        ) {
+            SettingsRow(title: "This build", subtitle: "Version \(updater.currentVersion)") {
+                Text("build \(updater.currentBuild)")
+                    .font(.talkieHeading(13, weight: .semibold))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+            SettingsDivider()
+            statusRow
+            if updater.auth == .none {
+                SettingsDivider()
+                tokenSetup
+            }
+            SettingsDivider()
+            SettingsToggleRow(
+                title: "Check for updates when Talkie launches",
+                subtitle: "Offers the newest build a few seconds after you open Talkie.",
+                isOn: $updater.autoCheckOnLaunch
+            )
+        }
+        .onAppear {
+            if updater.auth != .none, case .idle = updater.state {
+                Task { await updater.check() }
+            }
+        }
+    }
+
+    @ViewBuilder private var statusRow: some View {
+        switch updater.state {
+        case .idle, .upToDate, .failed:
+            SettingsRow(title: idleTitle, subtitle: idleSubtitle) {
+                Button("Check now") { Task { await updater.check() } }
+                    .buttonStyle(.bordered)
+            }
+        case .checking:
+            SettingsRow(title: "Checking for updates…") {
+                ProgressView().controlSize(.small)
+            }
+        case .available(let release):
+            SettingsRow(
+                title: "Build \(release.build) is available",
+                subtitle: release.notes.isEmpty
+                    ? "Newer than your build \(updater.currentBuild)."
+                    : release.notes
+            ) {
+                Button("Update") { Task { await updater.downloadAndInstall() } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+            }
+        case .downloading(let progress):
+            SettingsRow(title: "Downloading the update…") {
+                if let progress {
+                    ProgressView(value: progress).frame(width: 120)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+            }
+        case .installing:
+            SettingsRow(title: "Installing and relaunching…") {
+                ProgressView().controlSize(.small)
+            }
+        }
+    }
+
+    private var idleTitle: String {
+        switch updater.state {
+        case .upToDate: return "You're on the latest build"
+        case .failed:   return "Couldn't check for updates"
+        default:        return "Check for a newer Talkie"
+        }
+    }
+
+    private var idleSubtitle: String? {
+        switch updater.state {
+        case .upToDate:
+            return "Build \(updater.currentBuild) is current."
+        case .failed(let message):
+            return message
+        default:
+            switch updater.auth {
+            case .githubCLI: return "Connected via the GitHub CLI."
+            case .token:     return "Connected with your saved token."
+            case .none:      return nil
+            }
+        }
+    }
+
+    @ViewBuilder private var tokenSetup: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Talkie's repo is private, so the updater needs read access. Either run `gh auth login` in Terminal, or paste a GitHub token with read access to the repo (github.com/settings/tokens).")
+                .font(.callout)
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                SecureField("GitHub access token", text: $tokenField)
+                    .textFieldStyle(.roundedBorder)
+                Button("Save") {
+                    updater.saveToken(tokenField)
+                    tokenField = ""
+                    Task { await updater.check() }
+                }
+                .buttonStyle(.bordered)
+                .disabled(tokenField.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+}
+#endif
 
 /// A single settings-index row: a clay brand icon, title + state subtitle, and a
 /// chevron, with a soft hover highlight. Rows live inside one grouped card.

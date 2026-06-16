@@ -73,6 +73,34 @@ have an Apple Developer account and want to sign + notarize your own copy.
 
 ---
 
+## Staying current on a dev build (collaborators)
+
+While Talkie isn't notarized yet, collaborators run a **dev build** and update it
+in place — no rebuilding from source, no toolchain needed on their Mac.
+
+**The publisher** cuts a build whenever there's something to share:
+
+```bash
+./scripts/release_dev.sh
+```
+
+That builds the **dev-tools flavor** (the in-app updater is compiled in), signs it
+with a stable identity so permissions persist across updates, and uploads it to a
+GitHub Release tagged `dev-<build>`.
+
+**The collaborator** updates from inside the app: **Developer ▸ App updates ▸
+Update**. Talkie downloads the new build, swaps itself in place, and relaunches.
+With "Check for updates when Talkie launches" on (the default), it also offers the
+newest build a few seconds after each launch. Because the repo is private, the
+first time you'll either sign in with the GitHub CLI (`gh auth login`) or paste a
+read-only access token — stored in your Keychain, never in the app.
+
+This updater is **only ever in the dev flavor**. It is a separate module that the
+public build does not link at all (see the note below), so the released app stays
+exactly as offline as it claims to be.
+
+---
+
 ## A note on staying private (and on auto-update)
 
 Talkie's whole promise is that nothing leaves your Mac. An update mechanism is

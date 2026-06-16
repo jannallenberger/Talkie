@@ -2,6 +2,10 @@ import AppKit
 import Combine
 import SwiftUI
 
+#if TALKIE_DEV_TOOLS
+import TalkieUpdater
+#endif
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
@@ -152,7 +156,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(appBecameActive),
             name: NSApplication.didBecomeActiveNotification, object: nil
         )
+
+        #if TALKIE_DEV_TOOLS
+        scheduleLaunchUpdateCheck()
+        #endif
     }
+
+    #if TALKIE_DEV_TOOLS
+    /// Dev-tools flavor: a few seconds after launch, quietly check the GitHub dev
+    /// channel and — if a newer build is published — offer to install it. Keeps a
+    /// collaborator on the latest without ever opening Settings. Off the default
+    /// public build entirely (the updater module isn't even linked there).
+    private func scheduleLaunchUpdateCheck() {
+        guard AppUpdater.shared.autoCheckOnLaunch else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            await AppUpdater.shared.check(announce: true)
+        }
+    }
+    #endif
 
     /// Clicking the Dock icon (with no window open) reopens the main window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
