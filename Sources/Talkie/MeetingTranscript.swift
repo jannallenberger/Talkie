@@ -65,6 +65,21 @@ final class TurnLog: @unchecked Sendable {
             if !trimmed.isEmpty { turns.append(Turn(elapsed: elapsed, speaker: speaker, text: trimmed)) }
         }
     }
+
+    /// Replace a speaker's turns with language-routed spans from the multilingual
+    /// merge — each span becomes a timed turn (`elapsed` is the span's audio start),
+    /// so per-language segments AND cross-stream interleaving both survive.
+    func replace(_ speaker: MeetingSpeaker, withTimedTurns newTurns: [(elapsed: TimeInterval, text: String)]) {
+        lock.withLock {
+            turns.removeAll { $0.speaker == speaker }
+            for t in newTurns {
+                let trimmed = t.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    turns.append(Turn(elapsed: max(0, t.elapsed), speaker: speaker, text: trimmed))
+                }
+            }
+        }
+    }
 }
 
 /// Renders a turn log into the meeting transcript body. (The participant list is
