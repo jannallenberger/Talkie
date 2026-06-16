@@ -79,7 +79,13 @@ actor BenchTranscriber {
 
     /// Transcribe one already-converted set of buffers (matching the analyzer's
     /// format) and return the final transcript. The caller times this call.
-    func transcribe(buffers: [AVAudioPCMBuffer]) async throws -> String {
+    ///
+    /// `contextualStrings` applies the SAME on-device vocabulary biasing the live
+    /// app uses (`AnalysisContext.contextualStrings`, mirrored verbatim from
+    /// `TranscriptionEngine.beginSession`). Empty (the default) = raw recognition,
+    /// so the standard benchmark stays a clean measure of the model. The bias
+    /// comparison mode passes a phrase list here to measure the WER it buys.
+    func transcribe(buffers: [AVAudioPCMBuffer], contextualStrings: [String] = []) async throws -> String {
         guard SpeechTranscriber.isAvailable else { throw BenchTranscriberError.unavailable }
         guard !buffers.isEmpty else { return "" }
 
@@ -89,6 +95,13 @@ actor BenchTranscriber {
 
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+
+        // On-device vocabulary biasing — identical to the live engine path.
+        if !contextualStrings.isEmpty {
+            let ctx = AnalysisContext()
+            ctx.contextualStrings = [.general: contextualStrings]
+            try await analyzer.setContext(ctx)
+        }
 
         // Accumulate only finalized text — the headline transcript, no volatile
         // tail. The reader Task owns the accumulator exclusively; we read it only

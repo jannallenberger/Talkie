@@ -505,7 +505,7 @@ actor TranscriptionEngine {
     /// captured for one locale's transcriber can be replayed through another's.
     /// Buffers already in `target` pass through untouched. Returns [] only if no
     /// converter can be built (the caller then keeps the original transcript).
-    nonisolated private static func conform(
+    nonisolated static func conform(
         _ buffers: [AVAudioPCMBuffer],
         to target: AVAudioFormat
     ) -> [AVAudioPCMBuffer] {

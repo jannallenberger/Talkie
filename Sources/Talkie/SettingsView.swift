@@ -490,6 +490,12 @@ private struct DeveloperSettings: View {
                     .disabled(replaying)
                 }
             }
+
+            // Gate-zero check for the niche-vocabulary feature: does on-device
+            // contextualStrings biasing actually move recognition? Test it by talking.
+            if BiasABProbe.isAvailable {
+                BiasABTestView()
+            }
         }
     }
 }

@@ -59,6 +59,12 @@ final class MeetingRecorder: ObservableObject {
     /// torn down on stop. Nil when recording mic-only.
     private var farEngine: TranscriptionEngine?
 
+    /// Multilingual mode: one recognizer per spoken language per stream, live, with
+    /// a per-segment confidence vote at stop. Set when the user speaks >1 language
+    /// (and the lanes start); nil falls back to the single-locale `engine`/`farEngine`.
+    private var micMulti: MultiLangStreamTranscriber?
+    private var farMulti: MultiLangStreamTranscriber?
+
     private var turnLog: TurnLog?
     private var startedAt: Date?
     private var partialURL: URL?
@@ -139,56 +145,92 @@ final class MeetingRecorder: ObservableObject {
         //    auto-detected language (it calls setLocaleIdentifier to "stick"), which
         //    would mis-transcribe the mic AND break the stop()-time correction
         //    baseline (micLocale is the primary).
+        let distinctLangs = LanguageDetector.distinctByCode(langs)
         do {
-            await engine.setLocaleIdentifier(micLocale)
-            await engine.setContextualStrings(eventAttendees)
-            let session = try await engine.beginSession(segmentHandler: { segment in
-                log.add(.me, segment)
-                liveFeed?(.me, segment)
-            })
-            try audio.start(targetFormat: session.format, continuation: session.continuation,
-                            bufferAudio: multiLang, bufferSeconds: 600)
+            // Multilingual: run one recognizer per language live, vote per segment
+            // at stop. Falls back to the single engine if the lanes can't start.
+            if multiLang, distinctLangs.count > 1, MultiLangStreamTranscriber.isAvailable {
+                let mm = MultiLangStreamTranscriber()
+                if let session = try? await mm.start(
+                    localeIDs: distinctLangs, contextualStrings: eventAttendees,
+                    onLiveSegment: { segment in log.add(.me, segment); liveFeed?(.me, segment) }
+                ) {
+                    try audio.start(targetFormat: session.format, continuation: session.continuation)
+                    micMulti = mm
+                } else {
+                    await mm.cancel()
+                }
+            }
+            if micMulti == nil {
+                await engine.setLocaleIdentifier(micLocale)
+                await engine.setContextualStrings(eventAttendees)
+                let session = try await engine.beginSession(segmentHandler: { segment in
+                    log.add(.me, segment)
+                    liveFeed?(.me, segment)
+                })
+                try audio.start(targetFormat: session.format, continuation: session.continuation,
+                                bufferAudio: multiLang, bufferSeconds: 600)
+            }
         } catch {
             await engine.cancelSession()
+            if let mic = micMulti { await mic.cancel(); micMulti = nil }
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
         // Stopped while the mic session was spinning up → tear the mic back down.
         if cancelStart {
             audio.stop()
-            _ = await engine.finishSession()
+            if let mic = micMulti { await mic.cancel(); micMulti = nil }
+            else { _ = await engine.finishSession() }
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
 
-        // 2. Far-end stream → "Them" on a dedicated engine. Best-effort: any failure
-        //    (unsupported OS, permission denied, two analyzers not allowed) degrades
-        //    cleanly to mic-only — the mic is already running.
+        // 2. Far-end stream → "Them". Best-effort: any failure (unsupported OS,
+        //    permission denied, too many concurrent analyzers) degrades cleanly to
+        //    mic-only. Multilingual uses live per-language lanes like the mic; if
+        //    those can't start (e.g. analyzer cap), it falls back to a single engine.
         var farActive = false
         if SystemAudioCapture.isSupported {
-            let locale = farLocale
-            let far = TranscriptionEngine(localeIdentifier: locale)
-            do {
-                await far.setContextualStrings(eventAttendees)
-                let farSession = try await far.beginSession(segmentHandler: { segment in
-                    log.add(.them, segment)
-                    liveFeed?(.them, segment)
-                })
-                try systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
-                                      bufferAudio: multiLang, bufferSeconds: 600)
-                farEngine = far
-                farActive = true
-                farLocale = locale
-            } catch {
-                await far.cancelSession()
+            if multiLang, distinctLangs.count > 1, MultiLangStreamTranscriber.isAvailable {
+                let fm = MultiLangStreamTranscriber()
+                if let farSession = try? await fm.start(
+                    localeIDs: distinctLangs, contextualStrings: eventAttendees,
+                    onLiveSegment: { segment in log.add(.them, segment); liveFeed?(.them, segment) }
+                ), (try? systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation)) != nil {
+                    farMulti = fm
+                    farActive = true
+                } else {
+                    await fm.cancel()
+                }
+            }
+            if farMulti == nil {
+                let locale = farLocale
+                let far = TranscriptionEngine(localeIdentifier: locale)
+                do {
+                    await far.setContextualStrings(eventAttendees)
+                    let farSession = try await far.beginSession(segmentHandler: { segment in
+                        log.add(.them, segment)
+                        liveFeed?(.them, segment)
+                    })
+                    try systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
+                                          bufferAudio: multiLang, bufferSeconds: 600)
+                    farEngine = far
+                    farActive = true
+                    farLocale = locale
+                } catch {
+                    await far.cancelSession()
+                }
             }
         }
         // Stopped while the far-end was spinning up → tear everything back down.
         if cancelStart {
             systemAudio.stop()
             audio.stop()
-            _ = await engine.finishSession()
-            if let farEngine { _ = await farEngine.finishSession(); self.farEngine = nil }
+            if let mic = micMulti { await mic.cancel(); micMulti = nil }
+            else { _ = await engine.finishSession() }
+            if let farM = farMulti { await farM.cancel(); farMulti = nil }
+            else if let farEngine { _ = await farEngine.finishSession(); self.farEngine = nil }
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
@@ -227,15 +269,9 @@ final class MeetingRecorder: ObservableObject {
         timer?.invalidate()
         timer = nil
 
-        // Stop capture first so no more buffers arrive, then finalize each engine
-        // (finishSession flushes the last volatile tail into the turn log).
+        // Stop capture first so no more buffers arrive, then finalize each stream.
         systemAudio.stop()
         audio.stop()
-        _ = await engine.finishSession()
-        let far = farEngine
-        if let far {
-            _ = await far.finishSession()
-        }
 
         let start = startedAt ?? Date()
         let duration = Date().timeIntervalSince(start)
@@ -244,16 +280,37 @@ final class MeetingRecorder: ObservableObject {
         let langs = langsAtStart
         let userNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Per-stream language correction (before render, while timestamps still drive
-        // interleaving): if a stream's speech was actually in a different one of your
-        // languages than it was transcribed in, re-transcribe its buffered audio in
-        // the detected language. Run sequentially so two analyzers + the summarizer
-        // don't contend. A matched stream keeps its fine timing; a corrected stream
-        // collapses to one block (whole-stream re-transcription has no per-segment time).
+        // Finalize each stream. A multilingual (live-lanes) stream resolves its
+        // per-segment language vote here and rebuilds the speaker's turns — each
+        // language span becomes a timed turn, so mid-meeting switches AND cross-
+        // stream interleaving both survive. A single-locale stream finalizes as
+        // before and gets the legacy whole-stream correction below.
+        let micWasMulti = micMulti != nil
+        let farWasMulti = farMulti != nil
+        if let mic = micMulti {
+            let spans = await mic.finish(anchorLocale: micLocale)
+            if let log { applyMergedSpans(spans, speaker: .me, log: log) }
+            micMulti = nil
+        } else {
+            _ = await engine.finishSession()
+        }
+        let far = farEngine
+        if let farM = farMulti {
+            let spans = await farM.finish(anchorLocale: farLocale)
+            if let log, wasFarEnd { applyMergedSpans(spans, speaker: .them, log: log) }
+            farMulti = nil
+        } else if let far {
+            _ = await far.finishSession()
+        }
+
+        // Legacy whole-stream language correction — ONLY for streams that used the
+        // single-locale fallback (the live-lanes path already routed per segment).
         if langs.count > 1, let log {
-            await correctStreamLanguage(.me, engine: engine, buffers: audio.bufferedAudio(),
-                                        streamLocale: micLocale, langs: langs, log: log)
-            if let far, wasFarEnd {
+            if !micWasMulti {
+                await correctStreamLanguage(.me, engine: engine, buffers: audio.bufferedAudio(),
+                                            streamLocale: micLocale, langs: langs, log: log)
+            }
+            if !farWasMulti, let far, wasFarEnd {
                 await correctStreamLanguage(.them, engine: far, buffers: systemAudio.bufferedAudio(),
                                             streamLocale: farLocale, langs: langs, log: log)
             }
@@ -330,6 +387,13 @@ final class MeetingRecorder: ObservableObject {
     /// strongly self-identifies as its own language. A successful re-transcription
     /// collapses the stream to one block anchored at its first turn; a confident
     /// match is untouched.
+    /// Rebuild a speaker's turns from the multilingual merge — one timed turn per
+    /// language span, so per-segment language and chronological interleaving survive.
+    private func applyMergedSpans(_ spans: [StreamLanguageVoter.Span], speaker: MeetingSpeaker, log: TurnLog) {
+        guard !spans.isEmpty else { return }
+        log.replace(speaker, withTimedTurns: spans.map { (elapsed: $0.start, text: $0.text) })
+    }
+
     private func correctStreamLanguage(
         _ speaker: MeetingSpeaker,
         engine: TranscriptionEngine,

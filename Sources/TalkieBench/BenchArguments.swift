@@ -12,6 +12,10 @@ struct BenchArguments {
     var quiet: Bool = false
     var showHelp: Bool = false
     var selfTest: Bool = false
+    /// A file of newline-separated bias phrases. When set, the harness runs the
+    /// **bias comparison** (gate zero): each clip is transcribed twice — bias off
+    /// vs on — and the WER delta is reported, instead of the standard timing run.
+    var biasFile: URL?
 
     static let usage = """
     talkie-bench — on-device speech-recognition benchmark (Apple SpeechAnalyzer)
@@ -28,6 +32,11 @@ struct BenchArguments {
                         (default: 3). Use 0 to include first-load cost.
       --limit <n>       Cap the number of files processed (default: 0 = all).
       --json <path>     Also write raw per-file results as JSON for re-scoring.
+      --bias <path>     Gate-zero bias comparison: a file of newline-separated
+                        jargon phrases. Each clip is transcribed twice (bias off
+                        vs on) and the WER delta is reported. Answers the only
+                        question that gates the niche-vocabulary feature: does
+                        on-device contextualStrings biasing actually move WER?
       --quiet           Print only the final summary table.
       --selftest        Run the built-in WER-scorer correctness checks and exit
                         (no corpus, model, or Python needed).
@@ -68,6 +77,10 @@ struct BenchArguments {
             case "--json":
                 if let v = nextValue(arg) {
                     out.jsonOutput = URL(fileURLWithPath: v, relativeTo: cwd).standardizedFileURL
+                }
+            case "--bias":
+                if let v = nextValue(arg) {
+                    out.biasFile = URL(fileURLWithPath: v, relativeTo: cwd).standardizedFileURL
                 }
             case "--quiet":
                 out.quiet = true
