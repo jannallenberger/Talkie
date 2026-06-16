@@ -22,37 +22,46 @@ annotated mockup frames.
 ## Brand to honor
 
 The mascot is a **flat layered-clay scarlet macaw, mid-flight** (attached). The
-aesthetic fuses **Anthropic's "Claude" canvas** — warm ivory paper, editorial
-serif headlines, a clay-coral accent — with the macaw's four feather colors used
-purely for data. Warm, candid, effortless. Never a clinical SaaS dashboard or a
-neon-gradient "AI" app.
+aesthetic is a **clean, native macOS 26 surface** — pure white / true black,
+Liquid Glass chrome, squircle corners — with **macaw blue** leading the chrome
+and the macaw's feather colors used purely for data. Warm, candid, effortless.
+Never a clinical SaaS dashboard or a neon-gradient "AI" app. (This is the **v2**
+identity; an earlier v1 used a warm ivory "Claude paper" canvas with a coral
+accent — do not revive it.)
 
-**Color — neutrals (warm, never pure white/black):** canvas `#F4F2EA` (dark
-`#191815`), raised `#EDEADF` (`#211F1B`), card surface `#FBFAF5` (`#24221D`),
-sunken `#EAE7DC` (`#2C2A23`). **Ink:** primary `#21201B` (`#F3F0E8`), secondary
-`#6C685E` (`#AEA99D`), tertiary `#9B9588`. **Hairline** `#E3DFD3` (`#37342D`).
+**Color — neutrals (clean, system-native):** canvas `#FFFFFF` (dark `#000000`),
+raised `#EFF1F3` (`#121214`), card surface `#F5F6F8` (`#1B1B1E`), sunken
+`#E9EBEE` (`#29292D`). **Ink:** primary `#1C1D20` (`#F4F5F6`), secondary
+`#5E626A` (`#A6AAB0`), tertiary `#969AA1` (`#70747B`). **Hairline** `#E6E8EB`
+(`#2B2B2F`) — row dividers only, never an element outline.
 
-**Color — brand accent (clay-coral, the only brand color):** `#D65A3F` (dark
-`#E67D60`), deep `#BE4B33`, wash `#F6E2D8` (`#3A2A22`). One primary action per
-view.
+**Color — brand accent (macaw blue, the only chrome color):** `#1F66B3` (dark
+`#4AA0E6`), deep `#18548F` (`#79B8EE`), wash `#E1ECF6` (`#122739`). One primary
+action per view.
 
-**Color — feather palette (data only, never chrome):** coral `#DB5A40`, gold
-`#E6A02B`, blue `#3B82C4`, green `#2FA368`, plum `#8A6FB0`. Heatmap = a
-coral-warm ramp from sunken → `#BE4B2C`.
+**Color — feather palette (data only, never chrome):** red `#E0342B`, gold
+`#EFA21E`, blue `#2585CE`, green `#1FA85C`, plum `#8A6FB0`. Heatmap = a deep-red
+ramp from sunken → `#C0271C`.
 
-**Type:** serif (New York / Times-class) for page titles, the "Talkie" wordmark,
-and big hero numbers; SF Pro for everything functional; 11pt ALL-CAPS `+0.8`
-tracking eyebrows above each card.
+**Type:** display serif (**Young Serif**, bundled) for page titles, the "Talkie"
+wordmark, and big hero numbers; SF Pro for everything functional; 11pt ALL-CAPS
+`+0.8` tracking eyebrows above each card.
 
-**Shape & elevation:** card radius 18 continuous, controls 10. Flat-first — one
-whisper shadow (`black 4.5%`, blur 14, y 6) + a 1px hairline border. Full-size
-content window with a **transparent titlebar**; a 214pt **left sidebar** on the
-raised canvas with a `coralWash` pill on the active item.
+**Shape & elevation:** squircle card radius 22 continuous, controls 13, chips 9.
+Flat-first and **borderless** — surfaces lift by two whisper shadows (`black 5%`,
+blur 2, y 1; and `black 7%`, blur 20, y 10), **no outline**. Full-size content
+window with a **transparent titlebar**; a native `NavigationSplitView` **Liquid
+Glass left sidebar** with a `brandWash` blue pill on the active item.
+
+**Iconography:** functional micro-icons (< 24pt) are SF Symbols; identity /
+category icons (≥ 28pt) are soft-clay icons produced by the Higgsfield image-gen
++ isolation pipeline (see `BRAND_VISUAL_LANGUAGE.md`) — full-color clay on
+transparent, never tinted flat vectors.
 
 ## Screens to design
 
 1. **Dashboard (home).** The hero. A 3-up top row: (a) a **WPM speed gauge** —
-   top-half speedometer arc, sunken track, coral→gold sweep, big serif number in
+   top-half speedometer arc, sunken track, warm red→gold sweep, big serif number in
    the center, with **honest** comparison captions ("1.8× an office typist's
    pace", "82% of the world record, 212 wpm") — NEVER a fake "Top X%" percentile,
    because the app is offline and can't compare to other users; (b) a **"Fixes by
@@ -61,7 +70,7 @@ raised canvas with a `coralWash` pill on the active item.
    with last-7-days / dictations / time-spoken sublines. Second row: a **"Where
    your words go"** app-usage breakdown (per-app rows: app icon, name, %, a
    feather-colored progress capsule) and a **24-week contribution heatmap**
-   (GitHub-style, Sun-first columns, month labels, coral ramp, streak count +
+   (GitHub-style, Monday-first columns, month labels, deep-red ramp, streak count +
    "Less▢▢▢▢More" legend). A flame "N-day streak" pill sits in the header.
 
 2. **History.** A scrollable list of recent dictations (last 7 days). Each row:
@@ -70,13 +79,13 @@ raised canvas with a `coralWash` pill on the active item.
 
 3. **Dictionary.** Two sections: **Custom Vocabulary** (chips/list of names &
    jargon to spell right) and **Replacements** (heard → written rules, each with
-   case-sensitive / whole-word toggles; auto-learned rules wear a coral sparkle).
+   case-sensitive / whole-word toggles; auto-learned rules wear a blue-accent sparkle).
 
 4. **Vibe Coding.** An enable switch; a **project-folder picker** (empty state =
-   a dashed coral drop-zone "Choose project folder…"; filled state = folder name,
+   a dashed blue-accent drop-zone "Choose project folder…"; filled state = folder name,
    "N files indexed · scanned 2m ago", Rescan/Change/Remove); and a "How it
    sounds" list of spoken→file examples ("exercise library dot tsx" →
-   `ExerciseLibrary.tsx`, monospaced result in coral).
+   `ExerciseLibrary.tsx`, monospaced result in the blue accent).
 
 5. **Settings.** Grouped form: Activation (key + hold/toggle), Insertion, Smart
    cleanup (None/Light/Medium/High segmented), Basic cleanup, **Context
@@ -94,14 +103,14 @@ raised canvas with a `coralWash` pill on the active item.
 
 8. **First-run onboarding (new — propose it).** A warm 1–3 step welcome that
    introduces the hold-to-talk gesture and walks through granting the three
-   permissions, on the cream canvas with the macaw.
+   permissions, on the white canvas with the macaw.
 
 ## Principles & constraints
 
 - Editorial calm over dashboard density. Generous whitespace; one accent per view.
-- Feather colors appear ONLY in data viz. Chrome stays neutral + coral.
+- Feather colors appear ONLY in data viz. Chrome stays neutral + the blue accent.
 - Honest metrics only — self-relative or public benchmarks, no invented stats.
-- Both light & dark, designed in parallel (warm in both — the cream identity holds).
+- Both light & dark, designed in parallel (the macaw identity holds in both — white canvas in light, true black in dark).
 - Accessible: AA contrast, ≥11pt text, focus states, color never the sole signal.
 - Motion is calm and physical (springs ~0.28s/0.8 damping); it confirms, never performs.
 - Voice: plain, warm, second person, sentence case. "Hold your key and speak."
@@ -116,5 +125,5 @@ raised canvas with a `coralWash` pill on the active item.
 4. A one-paragraph rationale per screen.
 
 Stay faithful to the brand above; surprise me with craft, not with a different
-brand. Keep it unmistakably Talkie: warm paper, clay-coral, a parrot's worth of
+brand. Keep it unmistakably Talkie: clean native canvas, macaw blue, a parrot's worth of
 color kept on a tight leash.

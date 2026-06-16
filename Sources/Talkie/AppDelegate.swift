@@ -719,7 +719,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // never permanently block the next dictation.
             defer { self.isProcessing = false }
             var trace = ProcessingTrace()
-            let raw = await engine.finishSession()
+            let (raw, segments) = await engine.finishSessionDetailed()
             trace.stage("finalize")
 
             var finalRaw = raw
@@ -798,6 +798,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
+            // De-seam: rejoin the finalized segments into one continuous stream with
+            // the pause-induced periods removed, so a thinking pause never forces a
+            // sentence break — the cleanup model (or the deterministic floor) decides
+            // boundaries by grammar instead. On a language switch the segments belong
+            // to the old language, so fall back to the re-transcribed string.
+            let deseamed = (!languageSwitched && segments.count > 1)
+                ? SentenceFlow.stripSeams(segments)
+                : finalRaw
             var cleaned = finalRaw
             var usedStreaming = false
             if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
@@ -818,14 +826,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             ? await cleanupEngine.clean(text, style: adaptiveStyle, languageCode: cleanupLangCode)
                             : await cleanupEngine.clean(text, level: cleanupLevel, languageCode: cleanupLangCode)
                     }
-                    if finalRaw.count <= Self.wholeCleanupCharLimit {
-                        cleaned = (await cleanOne(finalRaw)) ?? finalRaw
+                    if deseamed.count <= Self.wholeCleanupCharLimit {
+                        cleaned = (await cleanOne(deseamed)) ?? deseamed
                     } else {
-                        cleaned = await Self.cleanInBatches(finalRaw, cleanOne)
+                        cleaned = await Self.cleanInBatches(deseamed, cleanOne)
                     }
                 }
             } else {
                 streaming?.cancel()
+                // No AI pass (cleanup off / model unavailable) — still neutralize the
+                // pause-seams deterministically so we stop over-punctuating.
+                if !languageSwitched, segments.count > 1 {
+                    cleaned = SentenceFlow.mergeContinuations(segments)
+                }
             }
             trace.stage("cleanup")
             let aiHandledFillers = cleanupEnabled && CleanupEngine.isAvailable && cleaned != finalRaw
