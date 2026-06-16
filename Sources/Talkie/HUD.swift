@@ -355,14 +355,6 @@ private struct HUDView: View {
             .opacity(model.phase == .hidden ? 0 : 1)
             .animation(.spring(response: 0.26, dampingFraction: 0.6), value: model.phase)
             .coordinateSpace(name: Self.hudSpace)
-            .background(
-                // Publish the panel-content height so the pass-through hosting
-                // view can flip AppKit's bottom-left hit-test point into the
-                // pill's top-left frame without touching any @MainActor state.
-                GeometryReader { geo in
-                    Color.clear.onAppear { pillFrame.viewHeight = geo.size.height }
-                }
-            )
     }
 
     @ViewBuilder
@@ -734,14 +726,8 @@ private struct Waveform: View {
 /// AppKit hit-testing both run there), so `@unchecked Sendable` is accurate.
 private final class PillFrameBox: @unchecked Sendable {
     /// `.null` until the pill has laid out — until then nothing is claimed, which
-    /// is the safe default (clicks pass straight through). In SwiftUI top-left
-    /// coordinates relative to the panel-content root (the `hudSpace` space).
+    /// is the safe default (clicks pass straight through).
     var rect: CGRect = .null
-    /// The panel-content height, published from SwiftUI layout. The pass-through
-    /// hit-test needs it to flip AppKit's bottom-left point into `rect`'s
-    /// top-left space — cached here so the (nonisolated) override never has to
-    /// read `bounds` off the main-actor-isolated view.
-    var viewHeight: CGFloat = 0
 }
 
 /// An `NSHostingView` that only claims clicks landing on the pill itself. The HUD
@@ -766,30 +752,16 @@ private final class PassthroughHostingView<Content: View>: NSHostingView<Content
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    /// Called on the main thread by AppKit (mouse routing) and by the macOS
-    /// accessibility runtime (hit-testing the element under a screen point).
-    ///
-    /// Deliberately `nonisolated`: a `@MainActor` `@objc` override makes the Swift 6
-    /// runtime inject a main-actor executor precondition (`swift_task_isCurrentExecutor`)
-    /// at the top of the ObjC thunk, and that check faults when the accessibility
-    /// MIG path (`accessibilityHitTest:` → `hitTest:`) calls in — the cause of the
-    /// 2026-06-16 SIGSEGV crash. Staying nonisolated means no check is emitted; we
-    /// read only the precomputed, Sendable geometry and never touch `bounds`,
-    /// `convert`, `super`, or `MainActor.assumeIsolated` (which would re-enter the
-    /// same faulting primitive).
-    nonisolated override func hitTest(_ point: NSPoint) -> NSView? {
-        let box = pillFrame
-        let rect = box.rect
-        guard !rect.isNull, box.viewHeight > 0 else { return nil }
-        // `point` is in this content view's superview coordinates. The panel is
-        // borderless and this hosting view fills it at origin (0, 0), so that maps
-        // 1:1 to view coordinates; flip AppKit's bottom-left y into the pill's
-        // top-left frame, with a small slop so the edge stays comfortably tappable.
-        let probe = CGPoint(x: point.x, y: box.viewHeight - point.y)
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let rect = pillFrame.rect
+        guard !rect.isNull else { return nil }
+        // `point` is in this view's superview coordinates (the content view), which
+        // is flipped vs. SwiftUI's top-left frame. Convert into top-left space, with
+        // a small slop so the pill's edge is comfortably tappable.
+        let local = convert(point, from: superview)
+        let topLeftY = bounds.height - local.y
+        let probe = CGPoint(x: local.x, y: topLeftY)
         guard rect.insetBy(dx: -4, dy: -4).contains(probe) else { return nil }
-        // Returning the hosting view itself (rather than descending via
-        // `super.hitTest`) is enough: every interactive control in the pill is a
-        // SwiftUI `.onTapGesture`, which SwiftUI routes from the hosting view.
-        return self
+        return super.hitTest(point)
     }
 }
