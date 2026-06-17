@@ -926,6 +926,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             self.hud.hide()
                         }
                         return
+                    } else {
+                        // The command matched but the on-device model produced nothing
+                        // (unavailable, or it refused). Surface it and STOP — never fall
+                        // through to the dictation path below, which would type the literal
+                        // spoken command ("translate to German") into the document.
+                        self.isProcessing = false
+                        self.hud.showError("Couldn't run that command — the on-device model may be unavailable.")
+                        return
                     }
                 }
             }
