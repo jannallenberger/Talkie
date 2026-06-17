@@ -295,6 +295,15 @@ actor CleanupEngine {
             let response = try await session.respond(to: prompt, options: options)
             let cleaned = sanitize(response.content)
             guard !cleaned.isEmpty else { return nil }
+            // Guardrail refusal: when the dictation contains profanity or other
+            // sensitive content the on-device model may decline to rewrite and
+            // return a refusal ("I cannot comply…") as its OUTPUT rather than
+            // throwing. Inserting that boilerplate in place of the user's words is
+            // the worst outcome — detect it and fall back to the raw transcript.
+            if Self.isRefusal(cleaned) {
+                talkieDebugLog("cleanup[\(pinnedCode ?? "?")]: rejected → model refusal, keeping raw")
+                return nil
+            }
             // Language guard: if the rewrite drifted to another language despite the
             // instruction, discard it — a correct-language raw transcript beats a
             // fluent mistranslation. (Returning nil makes every caller fall back to raw.)
@@ -310,6 +319,30 @@ actor CleanupEngine {
         } catch {
             return nil
         }
+    }
+
+    /// Heuristic: does this output look like the model declining the rewrite on
+    /// safety grounds rather than actually rewriting the text? The on-device model
+    /// phrases refusals in a recognisable register ("I cannot comply…", "against my
+    /// guidelines", "as an AI language model…"). We require a refusal opener AND a
+    /// justification marker so a genuine dictation that merely starts with "I can't…"
+    /// isn't discarded.
+    static func isRefusal(_ text: String) -> Bool {
+        let s = text.lowercased()
+        let openers = [
+            "i cannot comply", "i can't comply", "i cannot fulfill", "i can't fulfill",
+            "i cannot assist", "i can't assist", "i cannot help with", "i can't help with",
+            "i am unable to", "i'm unable to", "i cannot create", "i cannot generate",
+            "i cannot rewrite", "i can't rewrite", "i apologize, but i cannot",
+            "i'm sorry, but i cannot", "i am not able to",
+        ]
+        let justifications = [
+            "guidelines", "as an ai", "ai language model", "explicit language",
+            "offensive language", "explicit and offensive", "inappropriate", "ethical",
+            "harmful", "disrespectful",
+        ]
+        guard openers.contains(where: { s.hasPrefix($0) || s.contains($0) }) else { return false }
+        return justifications.contains(where: { s.contains($0) })
     }
 
     /// Strip wrapping quotes and any "Sure, here's the rewrite:" preamble the
