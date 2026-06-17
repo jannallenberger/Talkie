@@ -109,9 +109,12 @@ final class MeetingStore: ObservableObject {
     // MARK: Markdown
 
     private func writeMarkdown(_ m: Meeting) {
-        // Routes through the shared NoteDestination renderer (feature 10's seam) so
-        // the meeting Markdown has one source of truth. Output is byte-compatible
-        // with the prior inline composition.
+        // Build the neutral note (feature 10's seam — one source of truth for the
+        // Markdown), then route it through the user's chosen export destination
+        // instead of the hardcoded ~/Talkie Meetings/ folder. `resolvedDestination()`
+        // reads the @Published export prefs, so it MUST run on the main actor; the
+        // destination value it returns is `Sendable`, so the blocking disk write is
+        // handed off to a detached task and never touches @MainActor state.
         let minutes = Int((m.durationSec / 60).rounded())
         let summary = m.summary.isEmpty ? "_(no summary)_" : m.summary
         let note = ExportableNote(
@@ -126,8 +129,22 @@ final class MeetingStore: ObservableObject {
             ],
             suggestedFileName: m.fileName
         )
-        let url = AppPaths.meetingsDirectory().appendingPathComponent(m.fileName)
-        try? Data(TalkieFolderDestination.render(note).utf8).write(to: url, options: .atomic)
+        // Resolve ON the main actor (reads @Published prefs); `resolvedDestination()`
+        // already falls back to the Talkie folder for an inaccessible custom path.
+        let destination = ExportPreferences.shared.resolvedDestination()
+        // The on-disk write is fire-and-forget: the in-memory `meetings` list and the
+        // JSON index the UI reads are the authority, so the note is never lost to a
+        // slow or failed write. A SECOND, independent fallback writes to the default
+        // ~/Talkie Meetings/ folder if the chosen destination throws — honouring the
+        // "never lose a note" contract even when the resolved destination is healthy
+        // at resolve-time but fails mid-write (e.g. a vault unmounts).
+        Task.detached {
+            do {
+                _ = try await destination.write(note)
+            } catch {
+                _ = try? await TalkieFolderDestination().write(note)
+            }
+        }
     }
 
     // MARK: Persistence (lightweight index; the .md files are the durable copy)
