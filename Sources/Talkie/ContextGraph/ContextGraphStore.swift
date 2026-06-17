@@ -19,14 +19,28 @@ final class ContextGraphStore: ObservableObject {
     /// and any human inspecting the graph depend on that shape).
     private let watermarkURL: URL
     private let provenanceCap = 12
+    /// Hard ceiling on stored entities. 2 000 mirrors `HistoryStore`'s dictation cap
+    /// — far beyond any realistic personal vocabulary, while keeping `entities.json`
+    /// small enough to load and re-encode in full on every `save()`. Beyond this,
+    /// the lowest-value non-pinned entities are evicted.
+    private let entityCap = 2000
+    /// Non-pinned entities unseen for this long are pruned on `load()`. Generous
+    /// (the dictation log itself only keeps 7 days), so the graph stays a long-lived
+    /// memory without growing without bound from one-off mentions.
+    private let stalenessSeconds: Double = 180 * 24 * 60 * 60 // 180 days
 
     /// Highest `dateUnix` already ingested per source. Backfill skips anything at or
     /// below the watermark, so re-running it over the same stores is a no-op rather
     /// than re-ingesting (and inflating `mentions` on) every source each launch.
     private var backfillWatermark: [ProvenanceSource: Double] = [:]
 
-    init() {
-        let dir = AppPaths.supportDirectory().appendingPathComponent("graph", isDirectory: true)
+    convenience init() {
+        self.init(directory: AppPaths.supportDirectory().appendingPathComponent("graph", isDirectory: true))
+    }
+
+    /// Designated init taking the storage directory. The default `init()` uses the
+    /// app's support dir; tests pass a temporary directory so they stay hermetic.
+    init(directory dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("entities.json")
         watermarkURL = dir.appendingPathComponent("backfill-watermark.json")
@@ -130,7 +144,12 @@ final class ContextGraphStore: ObservableObject {
     private func load() {
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode([Entity].self, from: data) {
-            entities = Dictionary(decoded.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            // Prune stale, low-value entities on load so the graph self-heals from
+            // older files that predate the cap (and so eviction has headroom).
+            let now = Date().timeIntervalSince1970
+            let kept = ContextGraphPolicy.prune(decoded, nowUnix: now,
+                                                stalenessSeconds: stalenessSeconds, cap: entityCap)
+            entities = Dictionary(kept.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         }
         if let data = try? Data(contentsOf: watermarkURL),
            let decoded = try? JSONDecoder().decode([ProvenanceSource: Double].self, from: data) {
@@ -139,6 +158,13 @@ final class ContextGraphStore: ObservableObject {
     }
 
     private func save() {
+        // Enforce the hard cap before persisting: evict the lowest-value non-pinned
+        // entities so neither the file nor the in-memory map grows without bound.
+        if entities.count > entityCap {
+            let now = Date().timeIntervalSince1970
+            let kept = ContextGraphPolicy.enforceCap(Array(entities.values), nowUnix: now, cap: entityCap)
+            entities = Dictionary(kept.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        }
         // Persist as an array (JSON can't key an object by the composite EntityID).
         if let data = try? JSONEncoder().encode(Array(entities.values)) {
             try? data.write(to: fileURL, options: .atomic)
@@ -155,11 +181,17 @@ final class ContextGraphStore: ObservableObject {
 /// dedupe, staleness pruning, and capacity eviction).
 enum ContextGraphPolicy {
     /// The normalized identity key for an entity of a given kind. People, projects,
-    /// and terms key on their lowercased display form; commitments key on a stable
-    /// hash of the normalized clause (see the P2-07 change) so two phrasings of the
-    /// same action collapse and the key never grows with the clause text.
+    /// and terms key on their lowercased display form. Commitments key on a stable,
+    /// bounded hash of the normalized clause rather than the full clause text, so the
+    /// key never grows with the sentence and minor whitespace/case differences in the
+    /// same action collapse to one entity.
     static func key(_ kind: EntityKind, _ display: String) -> String {
-        display.lowercased()
+        switch kind {
+        case .commitment:
+            return "c:" + stableHash(normalizeClause(display))
+        case .person, .project, .term:
+            return display.lowercased()
+        }
     }
 
     /// A provenance is "new" only if its `(source, sourceID)` pair is not already
@@ -167,5 +199,65 @@ enum ContextGraphPolicy {
     /// again over an already-seen dictation) is therefore a no-op for `mentions`.
     static func isNewProvenance(_ candidate: Provenance, in existing: [Provenance]) -> Bool {
         !existing.contains { $0.source == candidate.source && $0.sourceID == candidate.sourceID }
+    }
+
+    /// How "valuable" an entity is, for eviction ranking. Higher survives. Driven by
+    /// mention count plus a recency bonus that decays linearly over `stalenessSeconds`
+    /// — a frequently- or recently-seen entity outranks a one-off old mention. Pinned
+    /// entities are handled by the callers (they are never evicted), so they are not
+    /// special-cased here.
+    static func evictionScore(_ entity: Entity, nowUnix: Double,
+                              stalenessSeconds: Double = 180 * 24 * 60 * 60) -> Double {
+        let age = max(0, nowUnix - entity.lastSeenUnix)
+        let recency = max(0, 1 - age / stalenessSeconds) // 1 (just now) → 0 (>= staleness)
+        return Double(entity.mentions) + recency
+    }
+
+    /// Drop non-pinned entities unseen for longer than `stalenessSeconds`, then apply
+    /// the hard cap. Pinned (user-curated) entities are always kept and never count
+    /// against staleness. Used on load to self-heal older, uncapped files.
+    static func prune(_ entities: [Entity], nowUnix: Double,
+                      stalenessSeconds: Double, cap: Int) -> [Entity] {
+        let fresh = entities.filter { $0.pinned || (nowUnix - $0.lastSeenUnix) <= stalenessSeconds }
+        return enforceCap(fresh, nowUnix: nowUnix, cap: cap, stalenessSeconds: stalenessSeconds)
+    }
+
+    /// Enforce the hard entity cap by evicting the lowest-value **non-pinned**
+    /// entities. Pinned entities are always retained even if that pushes the total
+    /// above `cap` (the user explicitly curated them). Among non-pinned entities the
+    /// lowest `evictionScore` is dropped first.
+    static func enforceCap(_ entities: [Entity], nowUnix: Double, cap: Int,
+                           stalenessSeconds: Double = 180 * 24 * 60 * 60) -> [Entity] {
+        guard entities.count > cap else { return entities }
+        let pinned = entities.filter { $0.pinned }
+        let evictable = entities.filter { !$0.pinned }
+        let room = max(0, cap - pinned.count)
+        let survivors = evictable
+            .sorted { evictionScore($0, nowUnix: nowUnix, stalenessSeconds: stalenessSeconds)
+                    > evictionScore($1, nowUnix: nowUnix, stalenessSeconds: stalenessSeconds) }
+            .prefix(room)
+        return pinned + Array(survivors)
+    }
+
+    // MARK: Helpers
+
+    /// Normalize a commitment clause for keying: lowercased, whitespace-collapsed.
+    private static func normalizeClause(_ s: String) -> String {
+        s.lowercased()
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// A stable, process-independent hash. `Swift.Hashable` is per-run seeded, so it
+    /// would make commitment keys differ across launches; this FNV-1a hash is stable
+    /// across runs and machines so the same clause always keys to the same entity.
+    private static func stableHash(_ s: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in s.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return String(hash, radix: 16)
     }
 }
