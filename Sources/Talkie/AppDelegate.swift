@@ -762,15 +762,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let langs = LanguageDetector.distinctByCode(spokenLanguages)
                 let scored = await self.engine.transcribeCandidates(
                     buffers, localeIdentifiers: langs, installIfNeeded: true)
-                let currentConf = scored.first {
+                let candidates = scored.map {
+                    LanguageDetector.LanguageCandidate(localeID: $0.localeID, text: $0.text, confidence: $0.confidence)
+                }
+                let currentConf = candidates.first {
                     LanguageDetector.languageCode(of: $0.localeID) == currentCode
                 }?.confidence ?? 0
-                let best = scored.max { $0.confidence < $1.confidence }
                 talkieDebugLog("decide: current=\(self.currentLocaleID)(\(String(format: "%.2f", currentConf))) scored=[\(scored.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
-                if let best,
-                   LanguageDetector.languageCode(of: best.localeID) != currentCode,
-                   best.confidence >= currentConf + LanguageDetector.switchConfidenceMargin,
-                   !best.text.isEmpty {
+                // The switch decision — including the no-baseline absolute floor when
+                // the current locale produced no scored entry — lives in a pure helper.
+                if let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode) {
                     finalRaw = best.text
                     languageSwitched = true
                     self.currentLocaleID = best.localeID
