@@ -228,14 +228,16 @@ actor CleanupEngine {
         }
     }
 
-    /// Clean at an intensity level (the global default path).
-    func clean(_ raw: String, level: CleanupLevel) async -> String? {
-        await generate(instructions: level.instructions, raw: raw)
+    /// Clean at an intensity level (the global default path). `localeID` is the
+    /// dictation language (e.g. "de-DE") — passed through to pin the model's output
+    /// language so it doesn't translate.
+    func clean(_ raw: String, level: CleanupLevel, localeID: String? = nil) async -> String? {
+        await generate(instructions: level.instructions, raw: raw, localeID: localeID)
     }
 
     /// Clean in a personality/style (the per-app adaptive path).
-    func clean(_ raw: String, style: CleanupStyle) async -> String? {
-        await generate(instructions: style.instructions, raw: raw)
+    func clean(_ raw: String, style: CleanupStyle, localeID: String? = nil) async -> String? {
+        await generate(instructions: style.instructions, raw: raw, localeID: localeID)
     }
 
     /// Ask the system to load the on-device model into memory ahead of the first
@@ -253,20 +255,45 @@ actor CleanupEngine {
         warmSession = session
     }
 
-    private func generate(instructions: String?, raw: String) async -> String? {
+    private func generate(instructions: String?, raw: String, localeID: String?) async -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let instructions, Self.isAvailable else { return nil }
         do {
             let session = LanguageModelSession(instructions: instructions)
             // Low temperature + greedy sampling → deterministic, faithful cleanup.
             let options = GenerationOptions(sampling: .greedy, temperature: 0.1)
-            let prompt = "Rewrite this dictated text. Output only the rewrite:\n\n\(trimmed)"
+            // Name the language in the *prompt*, not just the instructions. The small
+            // on-device model otherwise drifts into translating non-English dictation
+            // to English (and often appends the original) — so a German dictation came
+            // back as "Adequate sources. adäquate Quellen." We know the language from
+            // the recognizer's locale, so pin it explicitly.
+            let prompt: String
+            if let language = Self.languageName(forLocaleID: localeID) {
+                prompt = """
+                The dictated text below is written in \(language). Rewrite it in \(language) — \
+                never translate it to another language, and never add a translation. Output only \
+                the rewrite:
+
+                \(trimmed)
+                """
+            } else {
+                prompt = "Rewrite this dictated text. Output only the rewrite:\n\n\(trimmed)"
+            }
             let response = try await session.respond(to: prompt, options: options)
             let cleaned = sanitize(response.content)
             return cleaned.isEmpty ? nil : cleaned
         } catch {
             return nil
         }
+    }
+
+    /// English name of a locale's language ("de-DE" → "German"), or nil if it can't
+    /// be resolved. Used to pin the cleanup model to the dictation language.
+    static func languageName(forLocaleID localeID: String?) -> String? {
+        guard let localeID,
+              let code = Locale(identifier: localeID).language.languageCode?.identifier
+        else { return nil }
+        return Locale(identifier: "en_US").localizedString(forLanguageCode: code)
     }
 
     /// Strip wrapping quotes and any "Sure, here's the rewrite:" preamble the

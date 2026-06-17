@@ -567,10 +567,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // whole transcript. Built only when cleanup is on and the model is
         // usable; otherwise the raw path is unchanged. `endDictation` consumes
         // (or, on the language-switch fallback, discards) this buffer.
+        let cleanupLocaleID = currentLocaleID
         let cleanOne: @Sendable (String) async -> String? = { text in
             appAdaptive
-                ? await cleanupEngine.clean(text, style: adaptiveStyle)
-                : await cleanupEngine.clean(text, level: cleanupLevel)
+                ? await cleanupEngine.clean(text, style: adaptiveStyle, localeID: cleanupLocaleID)
+                : await cleanupEngine.clean(text, level: cleanupLevel, localeID: cleanupLocaleID)
         }
         let streaming = (cleanupEnabled && CleanupEngine.isAvailable)
             ? StreamingCleanup(enabled: true, cleanOne: cleanOne)
@@ -792,10 +793,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if cleaned.isEmpty { cleaned = finalRaw }
                 } else {
                     streaming?.cancel()
+                    // Use the *final* dictation locale (post language-switch) so the
+                    // cleanup model rewrites in the language actually spoken.
+                    let cleanupLocaleID = self.currentLocaleID
                     let cleanOne: @Sendable (String) async -> String? = { text in
                         appAdaptive
-                            ? await cleanupEngine.clean(text, style: adaptiveStyle)
-                            : await cleanupEngine.clean(text, level: cleanupLevel)
+                            ? await cleanupEngine.clean(text, style: adaptiveStyle, localeID: cleanupLocaleID)
+                            : await cleanupEngine.clean(text, level: cleanupLevel, localeID: cleanupLocaleID)
                     }
                     if deseamed.count <= Self.wholeCleanupCharLimit {
                         cleaned = (await cleanOne(deseamed)) ?? deseamed
