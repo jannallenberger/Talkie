@@ -75,6 +75,11 @@ final class ProjectIndexStore: ObservableObject {
     /// after a newer change (or a `clear`) sees a mismatch and discards its stale
     /// result, so an in-flight scan can never clobber a later edit.
     private var scanGeneration = 0
+    /// The in-flight off-main walk. Retained so a new rescan/clear can CANCEL the
+    /// prior one — the generation token alone only discards a stale *result*; the
+    /// walk would otherwise keep churning the disk on a huge project dir. The
+    /// detached work polls `Task.isCancelled` and breaks out promptly.
+    private var scanTask: Task<ProjectScanner.Result, Never>?
 
     init() {
         fileURL = AppPaths.supportDirectory().appendingPathComponent("project_index.json")
@@ -115,6 +120,8 @@ final class ProjectIndexStore: ObservableObject {
     func clear() {
         data = ProjectIndexData()
         scanGeneration += 1   // supersede any in-flight scan so it can't refill
+        scanTask?.cancel()    // and stop the walk now — don't let it churn the disk
+        scanTask = nil
         isScanning = false
         save()
         rebuildSnapshot()
@@ -126,8 +133,14 @@ final class ProjectIndexStore: ObservableObject {
     func rescan() async {
         scanGeneration += 1
         let generation = scanGeneration
+        // Cancel any walk still running for a previous folder set before kicking
+        // off the new one, so two rescans in quick succession don't both grind the
+        // disk. (Retaining + cancelling the Task is what makes `Task.isCancelled`
+        // fire inside the detached walk.)
+        scanTask?.cancel()
         let paths = data.folderPaths
         guard !paths.isEmpty else {
+            scanTask = nil
             data.files = []
             data.symbols = []
             data.scannedAtUnix = nil
@@ -137,12 +150,15 @@ final class ProjectIndexStore: ObservableObject {
             return
         }
         isScanning = true
-        let result = await Task.detached(priority: .utility) {
+        let task = Task.detached(priority: .utility) {
             ProjectScanner.scanAll(roots: paths.map { URL(fileURLWithPath: $0) })
-        }.value
+        }
+        scanTask = task
+        let result = await task.value
         // A newer change/scan superseded us — drop this stale result untouched and
         // let the newest scan settle `isScanning`.
         guard generation == scanGeneration else { return }
+        scanTask = nil
         data.files = result.files
         data.symbols = result.symbols
         data.scannedAtUnix = Date().timeIntervalSince1970
@@ -182,6 +198,13 @@ enum ProjectScanner {
         "md", "sql", "sh", "graphql", "proto", "dart", "ex", "exs", "scala",
     ]
     static let maxFiles = 6000
+    /// Hard ceiling on directory entries *visited* per scan. `maxFiles` caps the
+    /// kept code files, but a folder packed with assets/binaries (or a pathological
+    /// tree under an un-ignored dir) yields few matches while still walking forever.
+    /// This bounds the enumeration itself so a rescan over a giant project dir can't
+    /// run unbounded. The walk is breadth-stable across runs, so results stay
+    /// deterministic up to the cap.
+    static let maxEntries = 200_000
 
     struct Result { var files: [String]; var symbols: [String] }
 
@@ -194,6 +217,7 @@ enum ProjectScanner {
         var seen = Set<String>()
         for root in roots {
             if files.count >= maxFiles { break }
+            if Task.isCancelled { break }
             let r = scan(root: root)
             for f in r.files {
                 if files.count >= maxFiles { break }
@@ -216,8 +240,14 @@ enum ProjectScanner {
         ) else { return Result(files: [], symbols: []) }
 
         var seen = Set<String>()
+        var visited = 0
         for case let url as URL in walker {
             if files.count >= maxFiles { break }
+            // Bound the walk itself, not just the kept files, and bail out fast when
+            // a newer rescan/clear has superseded us.
+            visited += 1
+            if visited > maxEntries { break }
+            if Task.isCancelled { break }
             let name = url.lastPathComponent
             let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
             if values?.isDirectory == true {
