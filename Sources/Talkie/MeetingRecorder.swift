@@ -327,7 +327,9 @@ final class MeetingRecorder: ObservableObject {
             // work and must not vanish. Persist a notes-only meeting before clearing,
             // rather than wiping `notes` and returning empty-handed.
             if !userNotes.isEmpty {
+                let id = UUID()
                 let meeting = Meeting(
+                    id: id,
                     title: eventTitle ?? Self.makeTitle(start: start),
                     startUnix: start.timeIntervalSince1970,
                     durationSec: duration,
@@ -335,7 +337,7 @@ final class MeetingRecorder: ObservableObject {
                     summary: Self.composeSummary(userNotes: userNotes, transcriptSummary: "", fused: nil),
                     participants: ["Me"],
                     source: "talkie (notes only)",
-                    fileName: MeetingStore.fileName(for: start)
+                    fileName: MeetingStore.fileName(for: start, id: id)
                 )
                 store.add(meeting)
                 // Atomic with the persist above (no `await`) so the just-saved meeting
@@ -369,7 +371,9 @@ final class MeetingRecorder: ObservableObject {
         let transcriptSummary = await summarizer.summarize(clean) ?? ""
         let summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
 
+        let id = UUID()
         let meeting = Meeting(
+            id: id,
             title: eventTitle ?? Self.makeTitle(start: start),
             startUnix: start.timeIntervalSince1970,
             durationSec: duration,
@@ -377,7 +381,7 @@ final class MeetingRecorder: ObservableObject {
             summary: summary,
             participants: participants,
             source: wasFarEnd ? "talkie (mic + system audio)" : "talkie (mic-only)",
-            fileName: MeetingStore.fileName(for: start)
+            fileName: MeetingStore.fileName(for: start, id: id)
         )
         store.add(meeting)
         // The meeting is durably persisted only now — so the crash-partial can only
@@ -500,7 +504,9 @@ final class MeetingRecorder: ObservableObject {
         // recovered note's participants stay consistent with its transcript shape.
         let recoveredFarEnd = trimmed.contains("] Them:")
         let date = Date()
+        let id = UUID()
         store.add(Meeting(
+            id: id,
             title: "Recovered meeting · " + Self.titleFormatter.string(from: date),
             startUnix: date.timeIntervalSince1970,
             durationSec: 0,
@@ -508,7 +514,7 @@ final class MeetingRecorder: ObservableObject {
             summary: "",
             participants: recoveredFarEnd ? ["Me", "Them"] : ["Me"],
             source: "talkie (recovered)",
-            fileName: MeetingStore.fileName(for: date)
+            fileName: MeetingStore.fileName(for: date, id: id)
         ))
     }
 
