@@ -47,10 +47,12 @@ struct MCPServer {
         case "list_meetings":
             text = store.listMeetings(limit: intArg("limit", 10), query: strArg("query"))
         case "get_meeting":
-            guard let key = strArg("id") ?? strArg("title") ?? strArg("date") else {
-                return toolErr(id, "get_meeting requires id, title, or date")
-            }
-            text = store.getMeeting(idOrTitle: key)
+            let selector: TalkieStore.MeetingSelector
+            if let v = strArg("id") { selector = .id(v) }
+            else if let v = strArg("title") { selector = .title(v) }
+            else if let v = strArg("date") { selector = .date(v) }
+            else { return toolErr(id, "get_meeting requires id, title, or date") }
+            text = store.getMeeting(selector: selector)
         case "get_brief":
             text = store.getBrief()
         case "list_commitments":
@@ -88,10 +90,10 @@ struct MCPServer {
             spec("list_meetings", "List recent meetings (id, title, date, duration, participants, one-line summary).",
                  ["limit": numProp("Max meetings to return (default 10)."),
                   "query": strProp("Filter by text in title/summary/transcript.")]),
-            spec("get_meeting", "Get a meeting's full summary + transcript by id prefix, title match, or most recent.",
+            spec("get_meeting", "Get a meeting's full summary + transcript by id prefix, title match, or calendar day.",
                  ["id": strProp("Meeting id (or 8-char prefix)."),
                   "title": strProp("Title substring."),
-                  "date": strProp("Date hint.")]),
+                  "date": strProp("Calendar day (yyyy-MM-dd) — returns a meeting that started that day.")]),
             spec("get_brief", "Today's on-device brief (what you worked on, commitments, open threads).", [:]),
             spec("list_commitments", "Open commitments / action items from the context graph, newest first.",
                  ["limit": numProp("Max commitments (default 20).")]),
