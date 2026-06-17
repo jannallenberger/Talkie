@@ -174,7 +174,17 @@ actor MultiLangStreamTranscriber {
 
         var all: [StreamLanguageVoter.TimedWord] = []
         for lane in lanes {
-            try? await lane.analyzer.finalizeAndFinishThroughEndOfInput()
+            do {
+                try await lane.analyzer.finalizeAndFinishThroughEndOfInput()
+            } catch {
+                // If finalize throws, the lane's results stream may never terminate
+                // and `await lane.results.value` below would hang stop() forever.
+                // Cancel the reader: its `for try await … catch {}` returns the words
+                // accumulated so far on cancel, so the await resolves promptly.
+                // (Mirrors TranscriptionEngine.finishSessionDetailed's guard.)
+                lane.results.cancel()
+                talkieDebugLog("meeting-lane[\(lane.localeID)]: finalize threw — \(error.localizedDescription); cancelling reader")
+            }
             all.append(contentsOf: await lane.results.value)
         }
         lanes = []

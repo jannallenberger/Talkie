@@ -266,6 +266,11 @@ final class MeetingRecorder: ObservableObject {
         guard isRecording else { return }
         isRecording = false
         isFinishing = true
+        // A wedged finalize must never leave the recorder stuck "finishing" — that
+        // would permanently lock out dictation AND new meetings. Clear the flags on
+        // EVERY exit path, on the same main actor as the prior manual resets (no new
+        // isolation hop), so an unexpected throw/early-return can't wedge the UI.
+        defer { isFinishing = false; capturingFarEnd = false }
         timer?.invalidate()
         timer = nil
 
@@ -348,7 +353,8 @@ final class MeetingRecorder: ObservableObject {
                 try? FileManager.default.removeItem(at: partialURL)
                 self.partialURL = nil
             }
-            isFinishing = false; capturingFarEnd = false; notes = ""
+            // isFinishing / capturingFarEnd are cleared by the `defer` at the top.
+            notes = ""
             return
         }
 
@@ -404,11 +410,10 @@ final class MeetingRecorder: ObservableObject {
 
         // Cleared only after the meeting is durably persisted above (P2-01): the
         // user's notes are never wiped before they're saved somewhere.
+        // isFinishing / capturingFarEnd are cleared by the `defer` at the top.
         notes = ""
         eventTitle = nil
         eventAttendees = []
-        isFinishing = false
-        capturingFarEnd = false
     }
 
     /// Compose the meeting summary, guaranteeing the user's typed notes are never
