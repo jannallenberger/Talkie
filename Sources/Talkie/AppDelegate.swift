@@ -521,8 +521,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // The meeting recorder shares the transcription engine — don't dictate
-        // over an active recording.
-        guard meetingRecorder?.isRecording != true else {
+        // over an active recording, nor while one is still finalizing (the
+        // finalize pass is still using the shared engine/audio).
+        guard meetingRecorder?.isRecording != true, meetingRecorder?.isFinishing != true else {
             hud.showError("Stop the meeting recording first.")
             return
         }
