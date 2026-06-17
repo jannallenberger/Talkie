@@ -35,6 +35,16 @@ final class NicheCorrectorTests: XCTestCase {
         XCTAssertEqual(r.fixes.first?.to, "idempotent")
     }
 
+    /// A one-word niche term the recognizer split into two REAL words that happen to
+    /// spell it exactly ("Higgs field" → "Higgsfield") is joined back. Regression for
+    /// the gap where `core == target.core` short-circuited to "already correct" and
+    /// left the two words unmerged.
+    func testJoinsTwoRealWordsThatSpellATerm() {
+        let r = NicheCorrector.correct("scan the Higgs field button", terms: ["Higgsfield"])
+        XCTAssertEqual(r.text, "scan the Higgsfield button")
+        XCTAssertEqual(r.fixes.first?.to, "Higgsfield")
+    }
+
     /// A clean sentence with no jargon is left exactly as-is.
     func testLeavesCleanSentenceAlone() {
         let raw = "we shipped the new feature today"

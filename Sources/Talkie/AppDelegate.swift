@@ -705,6 +705,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showProcessing()
 
         let replacements = dictionary.replacementsSnapshot()
+        // The user's saved jargon — fed to the post-hoc niche corrector below. These
+        // were also fed to the recognizer's `contextualStrings`, which is a proven
+        // no-op on this stack; post-hoc proofreading is the path that actually fires.
+        let nicheTerms = dictionary.vocabulary
         let autoCap = settings.autoCapitalize
         let removeFillers = settings.cleanupFillers
         let mode = settings.insertionMode
@@ -859,6 +863,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let aiHandledFillers = cleanupEnabled && CleanupEngine.isAvailable && cleaned != finalRaw
             let aiWordsChanged = aiHandledFillers ? Self.wordEditCount(from: finalRaw, to: cleaned) : 0
 
+            // Post-hoc niche correction (the lever that replaced the no-op
+            // `contextualStrings` biasing): proofread the cleaned transcript and swap
+            // close-sounding misrecognitions of the user's saved vocabulary back to the
+            // canonical spelling ("Higgs field" → "Higgsfield", "correlate" → "Coralate").
+            // Recognizer-agnostic and deterministic; runs before the dictionary's exact
+            // find-and-replace so those literal spellings still win on top.
+            var nicheFixes: [String] = []
+            if !nicheTerms.isEmpty {
+                let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms)
+                cleaned = corrected.text
+                nicheFixes = corrected.fixes.map(\.to)
+            }
+
             // Apply the dictionary AFTER the LLM so your exact spellings always win.
             let processed = TextProcessor.apply(
                 replacements: replacements,
@@ -927,6 +944,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for word in biasApplied where !replacedWords.contains(word) {
                 replacedWords.append(word)
             }
+            // Niche corrections are dictionary fixes too — surface them in the HUD.
+            for word in nicheFixes where !replacedWords.contains(word) {
+                replacedWords.append(word)
+            }
 
             // Log it (copyable in the History tab) + lifetime stats + fix tally,
             // even if insertion fell back to the clipboard.
@@ -937,7 +958,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             self.stats.record(words: words, durationSec: duration)
             self.stats.recordFixes(
-                dictionary: processed.replacementHits + biasApplied.count + fileFixes,
+                dictionary: processed.replacementHits + biasApplied.count + nicheFixes.count + fileFixes,
                 fillers: processed.fillersRemoved,
                 aiWords: aiWordsChanged
             )

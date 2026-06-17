@@ -145,7 +145,13 @@ enum NicheCorrector {
         let skel = NichePhonetics.skeleton(core)
         var best: (term: String, skelDist: Int, rawDist: Int)?
         for t in targets {
-            if core == t.core { return nil }                 // already the correct term
+            if core == t.core {
+                // Letters already match this term. A single word IS the term — skip.
+                // But a two-word span means the recognizer split a one-word niche term
+                // into real words ("Higgs field" ← "Higgsfield") — join it back.
+                if isMultiWord { return t.display }
+                return nil
+            }
             let skelDist = NichePhonetics.editDistance(skel, t.skeleton)
             if skelDist > 1 { continue }
             let rawDist = NichePhonetics.editDistance(core, t.core)
