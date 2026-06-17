@@ -1,26 +1,82 @@
 import Foundation
 import AppKit
+import CryptoKit
 
 /// Swaps the running Talkie.app bundle for a freshly downloaded one and relaunches.
 ///
-/// The heavy work (unzip, validate, de-quarantine) runs off the main actor; the
-/// actual bundle swap is handed to a small detached shell script that waits for
-/// this process to exit, replaces the bundle, and re-opens it — the same
+/// The heavy work (verify, unzip, validate, de-quarantine) runs off the main
+/// actor; the actual bundle swap is handed to a small detached shell script that
+/// waits for this process to exit, replaces the bundle, and re-opens it — the same
 /// quit→replace→open dance `scripts/run.sh` does, and the relaunch pattern the
 /// Permissions pane already uses.
 enum UpdateInstaller {
     /// Validates and stages the new app, spawns the swap script, then terminates
     /// this instance. Throws on any failure BEFORE the swap is committed; on
     /// success it does not return normally (the app quits).
-    static func installAndRelaunch(zip: URL) async throws {
+    ///
+    /// `expectedSize` (the GitHub asset's byte size, always populated) and
+    /// `expectedSHA256` (the publisher-supplied zip digest, nil for older
+    /// releases) gate the install BEFORE we ever de-quarantine and run the new
+    /// code — defense-in-depth against a swapped or truncated download.
+    static func installAndRelaunch(
+        zip: URL,
+        expectedSize: Int,
+        expectedSHA256: String?
+    ) async throws {
         try await Task.detached(priority: .userInitiated) {
-            try performInstall(zip: zip)
+            try performInstall(zip: zip, expectedSize: expectedSize, expectedSHA256: expectedSHA256)
         }.value
         await MainActor.run { NSApp.terminate(nil) }
     }
 
-    private static func performInstall(zip: URL) throws {
+    /// Verifies the downloaded zip's size and (when published) SHA-256 against the
+    /// release metadata. Pure and synchronous so it is unit-testable in isolation.
+    ///
+    /// - Size is enforced ALWAYS (fail-closed): the asset size is free from the
+    ///   GitHub API, so a mismatch means the bytes on disk are not the bytes the
+    ///   release advertised — refuse.
+    /// - SHA-256 is enforced fail-closed ONLY when `expectedSHA256` is present.
+    ///   GitHub exposes no per-asset digest, so the publisher must opt in by
+    ///   publishing one; releases predating that keep installing on the size gate
+    ///   alone rather than bricking (see "Decision for Jann" in the PR).
+    static func verifyArtifact(
+        zipData: Data,
+        expectedSize: Int,
+        expectedSHA256: String?
+    ) -> Result<Void, UpdaterError> {
+        guard zipData.count == expectedSize else {
+            return .failure(.badArtifact(
+                "size mismatch (got \(zipData.count) bytes, expected \(expectedSize))"
+            ))
+        }
+        if let expected = expectedSHA256?.lowercased() {
+            let actual = SHA256.hash(data: zipData)
+                .map { String(format: "%02x", $0) }
+                .joined()
+            guard actual == expected else {
+                return .failure(.badArtifact("SHA-256 mismatch"))
+            }
+        }
+        return .success(())
+    }
+
+    private static func performInstall(
+        zip: URL,
+        expectedSize: Int,
+        expectedSHA256: String?
+    ) throws {
         let fm = FileManager.default
+
+        // Verify the downloaded bytes BEFORE unzipping, de-quarantining, or running
+        // any of the new code. This is the trust gate the in-app updater hangs on.
+        let zipData = try Data(contentsOf: zip, options: .mappedIfSafe)
+        switch verifyArtifact(zipData: zipData, expectedSize: expectedSize, expectedSHA256: expectedSHA256) {
+        case .success:
+            break
+        case .failure(let error):
+            throw error
+        }
+
         let staging = UpdaterPaths.updatesDir().appendingPathComponent("staging", isDirectory: true)
         try? fm.removeItem(at: staging)
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
@@ -44,8 +100,9 @@ enum UpdateInstaller {
             throw UpdaterError.badArtifact("not Talkie (unexpected bundle identifier)")
         }
 
-        // Strip quarantine so Gatekeeper doesn't block the swapped-in app on the
-        // recipient's Mac (it trusts the publisher; the download is the trust hop).
+        // Only NOW, after the artifact passed verification, strip quarantine so
+        // Gatekeeper doesn't block the swapped-in app on the recipient's Mac (it
+        // trusts the publisher; the verified download is the trust hop).
         _ = Shell.run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", newApp.path])
 
         try spawnSwap(newApp: newApp, dest: Bundle.main.bundleURL)

@@ -93,6 +93,19 @@ if devTools {
             ]
         )
     )
+    // Gated by the SAME devTools condition: the default package graph never sees
+    // this target, so `swift test` stays at the offline-core baseline. Run it with
+    // `TALKIE_DEV_TOOLS=1 swift test`. Covers the pure artifact-verification gate.
+    targets.append(
+        .testTarget(
+            name: "TalkieUpdaterTests",
+            dependencies: ["TalkieUpdater"],
+            path: "Tests/TalkieUpdaterTests",
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        )
+    )
 }
 
 let package = Package(

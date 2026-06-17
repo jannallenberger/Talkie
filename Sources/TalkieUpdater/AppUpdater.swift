@@ -114,7 +114,11 @@ public final class AppUpdater: ObservableObject {
                 }
             }
             state = .installing
-            try await UpdateInstaller.installAndRelaunch(zip: zip)
+            try await UpdateInstaller.installAndRelaunch(
+                zip: zip,
+                expectedSize: release.assetSize,
+                expectedSHA256: release.assetSHA256
+            )
             // On success the app terminates inside installAndRelaunch.
         } catch {
             state = .failed(message(for: error))
