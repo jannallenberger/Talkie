@@ -169,15 +169,17 @@ enum NoteTemplate {
         return "\"\(escaped)\""
     }
 
-    // MARK: Private
-
     /// A value already wrapped in `[...]` (an array literal a producer composed,
     /// e.g. `"[Me, Them]"`) is passed through untouched; everything else is
-    /// YAML-escaped as a scalar.
-    private static func renderYAMLField(_ value: String) -> String {
+    /// YAML-escaped as a scalar. Internal (not `private`) so destinations that
+    /// build front-matter line-by-line — e.g. `TalkieFolderDestination.render` —
+    /// can reuse the same escaping rule instead of raw-interpolating values.
+    static func renderYAMLField(_ value: String) -> String {
         if value.hasPrefix("[") && value.hasSuffix("]") { return value }
         return yamlValue(value)
     }
+
+    // MARK: Private
 
     private static func format(_ date: Date, _ fmt: String) -> String {
         let f = DateFormatter()
