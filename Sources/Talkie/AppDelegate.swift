@@ -90,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Feedback.enabled = settings.playSounds
         currentLocaleID = settings.spokenLanguages.first ?? settings.localeIdentifier
-        engine = TranscriptionEngine(localeIdentifier: currentLocaleID)
+        engine = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: currentLocaleID))
         meetingRecorder = MeetingRecorder(engine: engine, store: meetingStore)
         meetingRecorder.isDictating = { [weak self] in self?.isDictating == true }
         meetingRecorder.primaryLocale = { [weak self] in
