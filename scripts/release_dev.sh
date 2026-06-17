@@ -78,11 +78,26 @@ echo "▶ Zipping ${ASSET}…"
 rm -f "$ROOT/$ASSET"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$ROOT/Talkie.app" "$ROOT/$ASSET"
 
+# Compute the zip's SHA-256 and publish it in the release notes as a
+# `sha256:<hex>` line. GitHub's API exposes no per-asset digest, so this is how
+# the in-app updater learns the expected hash; it enforces it fail-closed before
+# de-quarantining the download (see Sources/TalkieUpdater/UpdateInstaller.swift).
+SHA256="$(/usr/bin/shasum -a 256 "$ROOT/$ASSET" | awk '{print $1}')"
+echo "▶ Artifact SHA-256: ${SHA256}"
+
 # --- 3. Publish (create the release, or just re-upload the asset if it exists) -
-NOTES="$(git log -1 --pretty=format:'%s')"
+# Embed the digest in the notes so the updater can verify the download. Keep it
+# on its own line, lowercase hex — the parser (GitHubReleases.sha256(fromBody:))
+# matches a line beginning `sha256:`.
+COMMIT_MSG="$(git log -1 --pretty=format:'%s')"
+NOTES="${COMMIT_MSG}
+
+sha256:${SHA256}"
 echo "▶ Publishing ${TAG} to ${OWNER_REPO}…"
 if gh release view "$TAG" --repo "$OWNER_REPO" >/dev/null 2>&1; then
   gh release upload "$TAG" "$ROOT/$ASSET" --repo "$OWNER_REPO" --clobber
+  # Refresh the notes so the digest matches the re-uploaded asset.
+  gh release edit "$TAG" --repo "$OWNER_REPO" --notes "${NOTES}"
 else
   gh release create "$TAG" "$ROOT/$ASSET" \
     --repo "$OWNER_REPO" \
@@ -92,6 +107,6 @@ else
 fi
 
 rm -f "$ROOT/$ASSET"
-echo "✓ Published ${TAG}."
+echo "✓ Published ${TAG} (digest sha256:${SHA256})."
 echo "  Collaborators on a dev build will be offered it under Developer ▸ App updates"
 echo "  (or automatically a few seconds after they next launch Talkie)."
