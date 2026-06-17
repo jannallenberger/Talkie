@@ -319,12 +319,12 @@ final class MeetingRecorder: ObservableObject {
 
         startedAt = nil
         turnLog = nil
-        if let partialURL { try? FileManager.default.removeItem(at: partialURL) }
-        partialURL = nil
 
         let transcript = MeetingTranscriptRenderer.render(log?.snapshot() ?? [])
         let clean = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else {
+            if let partialURL { try? FileManager.default.removeItem(at: partialURL) }
+            partialURL = nil
             isFinishing = false; capturingFarEnd = false; notes = ""
             return
         }
@@ -355,6 +355,12 @@ final class MeetingRecorder: ObservableObject {
             fileName: MeetingStore.fileName(for: start)
         )
         store.add(meeting)
+        // The meeting is durably persisted only now — so the crash-partial can only
+        // be dropped here, AFTER store.add (not before the summarization awaits, where
+        // a crash would lose the whole transcript). No `await` between store.add and
+        // this delete: it stays atomic on the main actor.
+        if let partialURL { try? FileManager.default.removeItem(at: partialURL) }
+        partialURL = nil
 
         // Feed the context graph: calendar attendees as people + transcript entities.
         if let graph = contextGraph {
