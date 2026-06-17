@@ -59,6 +59,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Cleanup config captured at the START of the session (so a mid-session
     /// settings toggle can't skew the end-of-session accounting).
     private var sessionCleanup: (appAdaptive: Bool, style: CleanupStyle, level: CleanupLevel)?
+    /// The per-app rules resolved for the target app at the START of the session
+    /// (global → per-category → per-app merge). Snapshotted once so a mid-session
+    /// profile edit can't skew the in-flight session; `Sendable`, so it can ride
+    /// into the `endDictation` processing Task. `nil` between sessions.
+    private var sessionProfile: ResolvedProfile?
     /// Cleans transcript segments live while you speak, so most of the cleanup
     /// is done by the time you release the key. Built per session when cleanup
     /// is enabled; consumed (or discarded) in `endDictation`.
@@ -554,9 +559,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentTarget = captured.target
         currentVibeSnapshot = settings.vibeCoding ? projectIndex.snapshot : .empty
 
-        // Bias the recognizer with the union of: custom vocabulary, on-screen
-        // names from the target app, and (in vibe mode) your project's filenames.
-        var bias = dictionary.contextualPhrasesSnapshot()
+        // Resolve the per-app rules for this app once, here on the main actor
+        // (global → per-category → per-app merge, falling back to `settings.*`
+        // for every unset field). Snapshotted so a mid-session profile edit
+        // can't skew the in-flight session; carried into `endDictation` below.
+        let profile = profiles.resolve(for: captured.target, settings: settings)
+        sessionProfile = profile
+
+        // Bias the recognizer with the union of: custom vocabulary (narrowed by
+        // this app's vocabulary filter, if any), on-screen names from the target
+        // app, and (in vibe mode) your project's filenames.
+        var bias = profiles.biasVocabulary(for: captured.target, dictionary: dictionary)
         bias.append(contentsOf: captured.phrases)
         if settings.vibeCoding { bias.append(contentsOf: currentVibeSnapshot.biasPhrases) }
         // Context graph: bias toward the people/projects/terms you actually use.
@@ -569,9 +582,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // transcript at stop — so spoken self-corrections that span a pause
         // ("Thursday, no Friday") are resolved with full context — and is chunked
         // only when the transcript is genuinely long.
-        let appAdaptive = settings.appAdaptiveCleanup
-        let adaptiveStyle = settings.cleanupStyle(for: captured.target.category)
-        let cleanupLevel = settings.cleanupLevel
+        let appAdaptive = profile.appAdaptiveCleanup
+        let adaptiveStyle = profile.cleanupStyle
+        let cleanupLevel = profile.cleanupLevel
         sessionCleanup = (appAdaptive: appAdaptive, style: adaptiveStyle, level: cleanupLevel)
 
         // Warm the on-device cleanup model the moment recording starts, in
@@ -709,9 +722,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // were also fed to the recognizer's `contextualStrings`, which is a proven
         // no-op on this stack; post-hoc proofreading is the path that actually fires.
         let nicheTerms = dictionary.vocabulary
-        let autoCap = settings.autoCapitalize
-        let removeFillers = settings.cleanupFillers
-        let mode = settings.insertionMode
+        // The per-app rules resolved at session start (falls back to a fresh
+        // resolve if a session somehow ends without a begin-side snapshot). For a
+        // user with no per-app rules, `resolve` mirrors `settings.*` for every
+        // field, so this is byte-identical to the old direct `settings.*` reads.
+        let resolved = sessionProfile ?? profiles.resolve(for: currentTarget, settings: settings)
+        sessionProfile = nil
+        let autoCap = resolved.autoCapitalize
+        let removeFillers = resolved.removeFillers
+        let mode = resolved.insertionMode
         let optimisticEnabled = settings.optimisticInsertion
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
@@ -723,9 +742,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // assembler actually cleaned.
         let sessionCfg = sessionCleanup
         sessionCleanup = nil
-        let appAdaptive = sessionCfg?.appAdaptive ?? settings.appAdaptiveCleanup
-        let adaptiveStyle = sessionCfg?.style ?? settings.cleanupStyle(for: target.category)
-        let cleanupLevel = sessionCfg?.level ?? settings.cleanupLevel
+        let appAdaptive = sessionCfg?.appAdaptive ?? resolved.appAdaptiveCleanup
+        let adaptiveStyle = sessionCfg?.style ?? resolved.cleanupStyle
+        let cleanupLevel = sessionCfg?.level ?? resolved.cleanupLevel
         // The live per-segment cleanup that ran while you spoke (nil when cleanup
         // is off). Consumed below, or discarded if a language switch re-wrote the
         // whole transcript.
