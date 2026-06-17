@@ -93,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine = TranscriptionEngine(localeIdentifier: currentLocaleID)
         meetingRecorder = MeetingRecorder(engine: engine, store: meetingStore)
         meetingRecorder.isDictating = { [weak self] in self?.isDictating == true }
+        meetingRecorder.isProcessingDictation = { [weak self] in self?.isProcessing == true }
         meetingRecorder.primaryLocale = { [weak self] in
             self?.settings.spokenLanguages.first ?? self?.settings.localeIdentifier ?? "en-US"
         }
