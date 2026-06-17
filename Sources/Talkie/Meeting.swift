@@ -75,28 +75,52 @@ actor MeetingSummarizer {
 /// Persisted list of meetings + their markdown files in ~/Talkie Meetings/.
 @MainActor
 final class MeetingStore: ObservableObject {
+    /// Hard retention cap: the index inlines full data (incl. transcripts) only for
+    /// the most-recent N meetings. Beyond N, the oldest are EVICTED from the index —
+    /// the `.md` files in the meetings folder stay as the durable copy (and a corrupt
+    /// index self-heals from them, see `load`). This bounds `meetings.json` growth and
+    /// the O(total) cost of every `save`. We do NOT lazily read an external `.md` to
+    /// re-inflate evicted entries: PR #26 lets meetings export to arbitrary Obsidian
+    /// vaults, so the `.md` is not always at a known internal path — the index must be
+    /// self-sufficient.
+    static let maxRetainedMeetings = 200
+
     @Published private(set) var meetings: [Meeting] = [] // newest first
 
     private let indexURL: URL
+    private let meetingsDirectoryURL: URL
 
-    init() {
-        indexURL = AppPaths.supportDirectory().appendingPathComponent("meetings.json")
+    init(supportDirectory: URL = AppPaths.supportDirectory(),
+         meetingsDirectory: URL = AppPaths.meetingsDirectory()) {
+        indexURL = supportDirectory.appendingPathComponent("meetings.json")
+        meetingsDirectoryURL = meetingsDirectory
         load()
     }
 
-    var folderURL: URL { AppPaths.meetingsDirectory() }
+    var folderURL: URL { meetingsDirectoryURL }
 
     func add(_ meeting: Meeting) {
         meetings.insert(meeting, at: 0)
         writeMarkdown(meeting)
+        enforceRetentionCap()
         save()
     }
 
     func delete(_ meeting: Meeting) {
         meetings.removeAll { $0.id == meeting.id }
-        let url = AppPaths.meetingsDirectory().appendingPathComponent(meeting.fileName)
+        let url = meetingsDirectoryURL.appendingPathComponent(meeting.fileName)
         try? FileManager.default.removeItem(at: url)
         save()
+    }
+
+    /// Keep full data for only the most-recent `maxRetainedMeetings`, evicting the
+    /// oldest beyond that from the in-memory/on-disk index. Sorting by date first
+    /// makes "most recent N" well-defined regardless of insertion order.
+    private func enforceRetentionCap() {
+        meetings.sort { $0.startUnix > $1.startUnix } // newest first
+        if meetings.count > Self.maxRetainedMeetings {
+            meetings.removeLast(meetings.count - Self.maxRetainedMeetings)
+        }
     }
 
     /// A filesystem-safe `.md` filename for a meeting start time.
@@ -126,7 +150,7 @@ final class MeetingStore: ObservableObject {
             ],
             suggestedFileName: m.fileName
         )
-        let url = AppPaths.meetingsDirectory().appendingPathComponent(m.fileName)
+        let url = meetingsDirectoryURL.appendingPathComponent(m.fileName)
         try? Data(TalkieFolderDestination.render(note).utf8).write(to: url, options: .atomic)
     }
 
@@ -136,6 +160,7 @@ final class MeetingStore: ObservableObject {
         guard let data = try? Data(contentsOf: indexURL),
               let decoded = try? JSONDecoder().decode([Meeting].self, from: data) else { return }
         meetings = decoded
+        enforceRetentionCap()
     }
 
     private func save() {
