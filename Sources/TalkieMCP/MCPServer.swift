@@ -38,7 +38,15 @@ struct MCPServer {
         let params = req["params"] as? [String: Any] ?? [:]
         let name = params["name"] as? String ?? ""
         let args = params["arguments"] as? [String: Any] ?? [:]
-        func intArg(_ k: String, _ def: Int) -> Int { (args[k] as? Int) ?? (args[k] as? Double).map(Int.init) ?? def }
+        func intArg(_ k: String, _ def: Int) -> Int {
+            if let i = args[k] as? Int { return i }
+            // A JSON number like 1e400 parses as a non-finite/out-of-range Double;
+            // Int(_:Double) traps on those, which would abort the whole stdio
+            // server. isFinite rejects ±Inf/NaN and Int(exactly:) returns nil
+            // (→ def) on overflow instead of trapping. No change for in-range ints.
+            if let d = args[k] as? Double, d.isFinite { return Int(exactly: d.rounded()) ?? def }
+            return def
+        }
         func strArg(_ k: String) -> String? { (args[k] as? String).flatMap { $0.isEmpty ? nil : $0 } }
         func strArr(_ k: String) -> [String]? { args[k] as? [String] }
 
