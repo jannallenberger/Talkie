@@ -84,6 +84,7 @@ final class ContextGraphStore: ObservableObject {
         let id = EntityID(kind: kind, key: display.lowercased())
         if var existing = entities[id] {
             existing.mentions += 1
+            existing.firstSeenUnix = min(existing.firstSeenUnix, provenance.dateUnix)
             existing.lastSeenUnix = max(existing.lastSeenUnix, provenance.dateUnix)
             if pin { existing.pinned = true }
             existing.provenance.append(provenance)
