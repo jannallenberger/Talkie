@@ -28,6 +28,30 @@ actor MultiLangStreamTranscriber {
 
     static var isAvailable: Bool { SpeechTranscriber.isAvailable }
 
+    /// Most distinct languages we'll ever spin a live recognizer up for, PER stream.
+    /// Each lane is a full on-device `SpeechAnalyzer` fed the same audio, so the
+    /// recognizer count is `maxLanes × {mic, far-end}` — capping per stream keeps
+    /// the worst case bounded (`maxLanes * 2`) no matter how many languages the
+    /// meeting is tagged with. Four covers any realistic multilingual meeting; the
+    /// system's own concurrent-analyzer limit would reject far more than this anyway.
+    static let maxLanes = 4
+
+    /// Pick the candidate locales to build lanes for: de-duplicate (preserving the
+    /// caller's order — the first/primary language stays the live-segment lane) and
+    /// cap to `maxLanes`. Pure so it can be tested without touching Speech.
+    static func selectLaneLocales(_ ids: [String], limit: Int = maxLanes) -> [String] {
+        guard limit > 0 else { return [] }
+        var seen = Set<String>()
+        var out: [String] = []
+        for id in ids {
+            let trimmed = id.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { continue }
+            out.append(trimmed)
+            if out.count >= limit { break }
+        }
+        return out
+    }
+
     /// Build and start a lane per distinct language. Returns the reference audio
     /// format the caller feeds and the continuation to push buffers into. Languages
     /// whose model isn't installed are skipped; throws if fewer than two lanes can
@@ -40,8 +64,15 @@ actor MultiLangStreamTranscriber {
     ) async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation) {
         guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
 
+        // Bound the lane count: N spoken languages × {mic, far-end} would otherwise
+        // spin up an unbounded number of live recognizers over the same stream.
+        let laneLocaleIDs = Self.selectLaneLocales(ids)
+        if laneLocaleIDs.count < ids.count {
+            talkieDebugLog("meeting-lanes: capping \(ids.count) candidate locale(s) to \(laneLocaleIDs.count)")
+        }
+
         var built: [Lane] = []
-        for id in ids {
+        for id in laneLocaleIDs {
             guard let loc = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) else {
                 talkieDebugLog("meeting-lane[\(id)]: skip — locale unsupported")
                 continue
