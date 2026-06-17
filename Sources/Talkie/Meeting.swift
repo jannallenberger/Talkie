@@ -158,9 +158,89 @@ final class MeetingStore: ObservableObject {
 
     private func load() {
         guard let data = try? Data(contentsOf: indexURL),
-              let decoded = try? JSONDecoder().decode([Meeting].self, from: data) else { return }
+              let decoded = try? JSONDecoder().decode([Meeting].self, from: data) else {
+            // The index is missing or corrupt, but the `.md` files in the meetings
+            // folder are the durable copy — rebuild from them rather than orphaning
+            // them behind an empty list. Best-effort and non-fatal.
+            meetings = Self.recoverFromMarkdown(in: meetingsDirectoryURL)
+            enforceRetentionCap()
+            return
+        }
         meetings = decoded
         enforceRetentionCap()
+    }
+
+    /// Best-effort self-heal: scan `directory` for `*.md` meeting notes and rebuild
+    /// index entries from what's reliably parseable (title + date from the YAML
+    /// front-matter, falling back to the filename). Transcripts/summaries are left
+    /// empty — the durable `.md` remains the full record — so a corrupt index never
+    /// orphans the folder. Never throws; returns `[]` if the folder is unreadable.
+    static func recoverFromMarkdown(in directory: URL) -> [Meeting] {
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        var recovered: [Meeting] = []
+        for url in urls where url.pathExtension.lowercased() == "md" {
+            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            let front = parseFrontMatter(text)
+            let date = front["date"].flatMap { ISO8601DateFormatter().date(from: $0) }
+                ?? dateFromFileName(url.lastPathComponent)
+                ?? Date(timeIntervalSince1970: 0)
+            let parsedTitle = front["title"].map(unquoteYAML)?
+                .trimmingCharacters(in: .whitespaces)
+            let title = (parsedTitle?.isEmpty == false)
+                ? parsedTitle!
+                : url.deletingPathExtension().lastPathComponent
+            recovered.append(Meeting(
+                title: title,
+                startUnix: date.timeIntervalSince1970,
+                durationSec: 0,
+                transcript: "",
+                summary: "",
+                fileName: url.lastPathComponent
+            ))
+        }
+        return recovered.sorted { $0.startUnix > $1.startUnix } // newest first
+    }
+
+    /// Pull the simple `key: value` pairs out of a leading `---`-fenced YAML block.
+    /// Only the keys we need (`title`, `date`) matter; deliberately minimal — not a
+    /// full YAML parser — and tolerant of a missing/garbled block.
+    private static func parseFrontMatter(_ text: String) -> [String: String] {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return [:] }
+        var pairs: [String: String] = [:]
+        for line in lines.dropFirst() {
+            if line.trimmingCharacters(in: .whitespaces) == "---" { break }
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let key = line[..<colon].trimmingCharacters(in: .whitespaces)
+            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            if !key.isEmpty { pairs[key] = value }
+        }
+        return pairs
+    }
+
+    /// Derive a date from a `yyyy-MM-dd-HHmm-…` filename (the default naming), so a
+    /// note without a usable front-matter date still recovers a sensible timestamp.
+    private static func dateFromFileName(_ name: String) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd-HHmm"
+        let prefix = name.split(separator: "-").prefix(4).joined(separator: "-")
+        return f.date(from: prefix)
+    }
+
+    /// Strip the surrounding quotes a YAML scalar may carry (the renderer quotes
+    /// titles containing reserved characters).
+    private static func unquoteYAML(_ value: String) -> String {
+        guard value.count >= 2, value.first == "\"", value.last == "\"" else { return value }
+        return String(value.dropFirst().dropLast())
+            .replacingOccurrences(of: "\\\"", with: "\"")
+            .replacingOccurrences(of: "\\\\", with: "\\")
     }
 
     private func save() {
