@@ -75,30 +75,53 @@ actor MeetingSummarizer {
 /// Persisted list of meetings + their markdown files in ~/Talkie Meetings/.
 @MainActor
 final class MeetingStore: ObservableObject {
+    /// Hard retention cap: the index inlines full data (incl. transcripts) only for
+    /// the most-recent N meetings. Beyond N, the oldest are EVICTED from the index —
+    /// the `.md` files in the meetings folder stay as the durable copy (and a corrupt
+    /// index self-heals from them, see `load`). This bounds `meetings.json` growth and
+    /// the O(total) cost of every `save`. We do NOT lazily read an external `.md` to
+    /// re-inflate evicted entries: PR #26 lets meetings export to arbitrary Obsidian
+    /// vaults, so the `.md` is not always at a known internal path — the index must be
+    /// self-sufficient.
+    static let maxRetainedMeetings = 200
+
     @Published private(set) var meetings: [Meeting] = [] // newest first
 
     private let indexURL: URL
+    private let meetingsDirectoryURL: URL
 
-    init() {
-        indexURL = AppPaths.supportDirectory().appendingPathComponent("meetings.json")
+    init(supportDirectory: URL = AppPaths.supportDirectory(),
+         meetingsDirectory: URL = AppPaths.meetingsDirectory()) {
+        indexURL = supportDirectory.appendingPathComponent("meetings.json")
+        meetingsDirectoryURL = meetingsDirectory
         load()
     }
 
-    var folderURL: URL { AppPaths.meetingsDirectory() }
+    var folderURL: URL { meetingsDirectoryURL }
 
     func add(_ meeting: Meeting) {
         meetings.insert(meeting, at: 0)
         writeMarkdown(meeting)
+        enforceRetentionCap()
         save()
     }
 
     func delete(_ meeting: Meeting) {
         meetings.removeAll { $0.id == meeting.id }
-        let url = AppPaths.meetingsDirectory().appendingPathComponent(meeting.fileName)
+        let url = meetingsDirectoryURL.appendingPathComponent(meeting.fileName)
         try? FileManager.default.removeItem(at: url)
         save()
     }
 
+    /// Keep full data for only the most-recent `maxRetainedMeetings`, evicting the
+    /// oldest beyond that from the in-memory/on-disk index. Sorting by date first
+    /// makes "most recent N" well-defined regardless of insertion order.
+    private func enforceRetentionCap() {
+        meetings.sort { $0.startUnix > $1.startUnix } // newest first
+        if meetings.count > Self.maxRetainedMeetings {
+            meetings.removeLast(meetings.count - Self.maxRetainedMeetings)
+        }
+    }
     /// A filesystem-safe, collision-proof `.md` filename for a meeting. Minute
     /// granularity alone collided (two meetings in the same minute clobbered the
     /// earlier `.md` via the `.atomic` write, while the JSON index kept both), so we
@@ -133,6 +156,8 @@ final class MeetingStore: ObservableObject {
             ],
             suggestedFileName: m.fileName
         )
+        let url = meetingsDirectoryURL.appendingPathComponent(m.fileName)
+        try? Data(TalkieFolderDestination.render(note).utf8).write(to: url, options: .atomic)
         // Resolve ON the main actor (reads @Published prefs); `resolvedDestination()`
         // already falls back to the Talkie folder for an inaccessible custom path.
         let destination = ExportPreferences.shared.resolvedDestination()
@@ -155,8 +180,89 @@ final class MeetingStore: ObservableObject {
 
     private func load() {
         guard let data = try? Data(contentsOf: indexURL),
-              let decoded = try? JSONDecoder().decode([Meeting].self, from: data) else { return }
+              let decoded = try? JSONDecoder().decode([Meeting].self, from: data) else {
+            // The index is missing or corrupt, but the `.md` files in the meetings
+            // folder are the durable copy — rebuild from them rather than orphaning
+            // them behind an empty list. Best-effort and non-fatal.
+            meetings = Self.recoverFromMarkdown(in: meetingsDirectoryURL)
+            enforceRetentionCap()
+            return
+        }
         meetings = decoded
+        enforceRetentionCap()
+    }
+
+    /// Best-effort self-heal: scan `directory` for `*.md` meeting notes and rebuild
+    /// index entries from what's reliably parseable (title + date from the YAML
+    /// front-matter, falling back to the filename). Transcripts/summaries are left
+    /// empty — the durable `.md` remains the full record — so a corrupt index never
+    /// orphans the folder. Never throws; returns `[]` if the folder is unreadable.
+    static func recoverFromMarkdown(in directory: URL) -> [Meeting] {
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        var recovered: [Meeting] = []
+        for url in urls where url.pathExtension.lowercased() == "md" {
+            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            let front = parseFrontMatter(text)
+            let date = front["date"].flatMap { ISO8601DateFormatter().date(from: $0) }
+                ?? dateFromFileName(url.lastPathComponent)
+                ?? Date(timeIntervalSince1970: 0)
+            let parsedTitle = front["title"].map(unquoteYAML)?
+                .trimmingCharacters(in: .whitespaces)
+            let title = (parsedTitle?.isEmpty == false)
+                ? parsedTitle!
+                : url.deletingPathExtension().lastPathComponent
+            recovered.append(Meeting(
+                title: title,
+                startUnix: date.timeIntervalSince1970,
+                durationSec: 0,
+                transcript: "",
+                summary: "",
+                fileName: url.lastPathComponent
+            ))
+        }
+        return recovered.sorted { $0.startUnix > $1.startUnix } // newest first
+    }
+
+    /// Pull the simple `key: value` pairs out of a leading `---`-fenced YAML block.
+    /// Only the keys we need (`title`, `date`) matter; deliberately minimal — not a
+    /// full YAML parser — and tolerant of a missing/garbled block.
+    private static func parseFrontMatter(_ text: String) -> [String: String] {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return [:] }
+        var pairs: [String: String] = [:]
+        for line in lines.dropFirst() {
+            if line.trimmingCharacters(in: .whitespaces) == "---" { break }
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let key = line[..<colon].trimmingCharacters(in: .whitespaces)
+            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            if !key.isEmpty { pairs[key] = value }
+        }
+        return pairs
+    }
+
+    /// Derive a date from a `yyyy-MM-dd-HHmm-…` filename (the default naming), so a
+    /// note without a usable front-matter date still recovers a sensible timestamp.
+    private static func dateFromFileName(_ name: String) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd-HHmm"
+        let prefix = name.split(separator: "-").prefix(4).joined(separator: "-")
+        return f.date(from: prefix)
+    }
+
+    /// Strip the surrounding quotes a YAML scalar may carry (the renderer quotes
+    /// titles containing reserved characters).
+    private static func unquoteYAML(_ value: String) -> String {
+        guard value.count >= 2, value.first == "\"", value.last == "\"" else { return value }
+        return String(value.dropFirst().dropLast())
+            .replacingOccurrences(of: "\\\"", with: "\"")
+            .replacingOccurrences(of: "\\\\", with: "\\")
     }
 
     private func save() {
