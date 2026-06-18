@@ -304,6 +304,21 @@ actor CleanupEngine {
                 talkieDebugLog("cleanup[\(pinnedCode ?? "?")]: rejected → model refusal, keeping raw")
                 return nil
             }
+            // Translation guard: cleanup must POLISH, never TRANSLATE. Compare the
+            // INPUT's language to the OUTPUT's; if they differ, the model translated
+            // the content. This catches the case the pinned-code guard below cannot:
+            // when language auto-detect mis-pinned the speech (e.g. English dictation
+            // scored as de-DE by a hair), the German instruction made cleanup
+            // translate English → German, and output==pinned so the old guard passed
+            // it through. Keep the raw transcript in its own language instead.
+            if LanguageDetector.canScore(trimmed),
+               LanguageDetector.canScore(cleaned),
+               let inCode = LanguageDetector.dominantLanguageCode(trimmed),
+               let outCode = LanguageDetector.dominantLanguageCode(cleaned),
+               inCode != outCode {
+                talkieDebugLog("cleanup[\(pinnedCode ?? "?")]: rejected → translated \(inCode)→\(outCode), keeping raw")
+                return nil
+            }
             // Language guard: if the rewrite drifted to another language despite the
             // instruction, discard it — a correct-language raw transcript beats a
             // fluent mistranslation. (Returning nil makes every caller fall back to raw.)
