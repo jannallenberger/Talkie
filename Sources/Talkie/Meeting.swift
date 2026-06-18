@@ -99,11 +99,15 @@ final class MeetingStore: ObservableObject {
         save()
     }
 
-    /// A filesystem-safe `.md` filename for a meeting start time.
-    static func fileName(for date: Date) -> String {
+    /// A filesystem-safe, collision-proof `.md` filename for a meeting. Minute
+    /// granularity alone collided (two meetings in the same minute clobbered the
+    /// earlier `.md` via the `.atomic` write, while the JSON index kept both), so we
+    /// add seconds AND a short id fragment — unique per meeting even within a second.
+    static func fileName(for date: Date, id: UUID) -> String {
         let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd-HHmm"
-        return "\(f.string(from: date))-meeting.md"
+        f.dateFormat = "yyyy-MM-dd-HHmmss"
+        let frag = id.uuidString.prefix(4).lowercased()
+        return "\(f.string(from: date))-\(frag)-meeting.md"
     }
 
     // MARK: Markdown
