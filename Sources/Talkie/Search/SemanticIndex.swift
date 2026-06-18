@@ -20,12 +20,26 @@ struct SearchHit: Sendable, Identifiable {
     var score: Double
 }
 
+/// A `Sendable` holder for the on-device `NLEmbedding`, so a `SemanticIndex` can
+/// cache the model ONCE and reuse it for both index-build and query (instead of
+/// reconstructing it per record and again per search). `vector(for:)` is a pure,
+/// read-only lookup against an immutable model, so sharing the instance across
+/// actors is safe — hence `@unchecked Sendable`. (Loading it is the expensive part.)
+struct LoadedEmbedding: @unchecked Sendable {
+    let embedding: NLEmbedding
+}
+
 /// On-device sentence embeddings via Apple NaturalLanguage — no network, no
 /// dependency. Returns `nil` when the model is unavailable, so callers degrade to
 /// keyword-only search.
 enum Embedder {
     static func sentenceEmbedding() -> NLEmbedding? {
         NLEmbedding.sentenceEmbedding(for: .english)
+    }
+
+    /// The model wrapped for caching/reuse across the index's build + queries.
+    static func loaded() -> LoadedEmbedding? {
+        sentenceEmbedding().map(LoadedEmbedding.init)
     }
 
     /// A vector for `text`, falling back to the mean of its word vectors for
@@ -49,9 +63,16 @@ enum Embedder {
 
 /// An immutable on-device semantic + keyword index over text records — built once,
 /// queried many times. Blends cosine similarity (semantic) with keyword overlap so
-/// it still returns useful hits when embeddings are unavailable. `Sendable` (it
-/// stores only precomputed vectors + token sets, never the NL model).
+/// it still returns useful hits when embeddings are unavailable. `Sendable`: it
+/// stores precomputed vectors + token sets plus the read-only NL model (wrapped in
+/// the `Sendable` `LoadedEmbedding`), so it can be built off-main and queried anywhere.
 struct SemanticIndex: Sendable {
+    /// Cap on the characters embedded/tokenized per record. The sentence model only
+    /// needs the gist, and embedding/tokenizing megabyte transcripts in full is the
+    /// bulk of the index-build cost — so bound the input. Far above any normal
+    /// dictation; only very long meeting transcripts are truncated.
+    static let maxIndexedChars = 2000
+
     private struct Entry: Sendable {
         let record: SearchRecord
         let vector: [Double]?
@@ -59,20 +80,29 @@ struct SemanticIndex: Sendable {
     }
 
     private let entries: [Entry]
+    /// The NL model, loaded ONCE at build time and reused for queries (rather than
+    /// reconstructed per record AND per search). `nil` → keyword-only search.
+    private let embedding: LoadedEmbedding?
 
     init(records: [SearchRecord]) {
-        let embedding = Embedder.sentenceEmbedding()
+        // Load the NL model ONCE for the whole build (it was previously reconstructed
+        // per record via `Embedder.vector`'s default), then keep it for query time.
+        // Constructed from value-type `SearchRecord`s + precomputed vectors/tokens,
+        // so the result stays `Sendable` and is safe to build off-main.
+        let loaded = Embedder.loaded()
+        embedding = loaded
         entries = records.map { record in
-            Entry(record: record,
-                  vector: Embedder.vector(for: record.text, embedding: embedding),
-                  tokens: SemanticIndex.tokenize(record.text))
+            let bounded = String(record.text.prefix(SemanticIndex.maxIndexedChars))
+            return Entry(record: record,
+                         vector: Embedder.vector(for: bounded, embedding: loaded?.embedding),
+                         tokens: SemanticIndex.tokenize(bounded))
         }
     }
 
     func search(_ query: String, limit: Int = 20) -> [SearchHit] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !entries.isEmpty else { return [] }
-        let queryVector = Embedder.vector(for: q, embedding: Embedder.sentenceEmbedding())
+        let queryVector = Embedder.vector(for: q, embedding: embedding?.embedding)
         let queryTokens = SemanticIndex.tokenize(q)
 
         let hits = entries.compactMap { entry -> SearchHit? in

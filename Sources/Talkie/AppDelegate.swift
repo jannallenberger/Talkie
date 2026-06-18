@@ -80,6 +80,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Drives the pill + subtopic engine off the recorder's `isRecording`, so both
     /// auto- and manually-started recordings get the pill.
     private var recordingObservation: AnyCancellable?
+    /// Keeps the search index reactive: rebuilds (debounced, off-main) whenever the
+    /// history, meetings, or context graph change — so entries added after launch are
+    /// searchable without a relaunch.
+    private var searchIndexObservation: Set<AnyCancellable> = []
 
     // MARK: App lifecycle
 
@@ -144,10 +148,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Seed the context graph + search index from existing dictations + meetings
         // so recall, search, and the brief are useful immediately.
         Task { @MainActor in
+            // Backfill BEFORE wiring the search subscription, so the first `$entities`
+            // emission already reflects it (the debounce coalesces the backfill and the
+            // initial store snapshots into a single rebuild).
             contextGraph.backfill(dictations: history.entries, meetings: meetingStore.meetings)
-            searchEngine.rebuild(dictations: history.entries,
-                                 meetings: meetingStore.meetings,
-                                 graph: contextGraph.snapshot())
+            // Reactive, debounced, off-main rebuild: `@Published` emits its current
+            // value on subscribe, so this also performs the initial seed (replacing the
+            // old one-shot `rebuild`), and re-indexes any entry added after launch.
+            Publishers.MergeMany(
+                history.$entries.map { _ in () }.eraseToAnyPublisher(),
+                meetingStore.$meetings.map { _ in () }.eraseToAnyPublisher(),
+                contextGraph.$entities.map { _ in () }.eraseToAnyPublisher()
+            )
+            .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
+            .sink { [weak self] in
+                guard let self else { return }
+                self.searchEngine.scheduleRebuild(dictations: self.history.entries,
+                                                  meetings: self.meetingStore.meetings,
+                                                  graph: self.contextGraph.snapshot())
+            }
+            .store(in: &searchIndexObservation)
         }
 
         // Open the main window on launch — onboarding/permissions are handled
