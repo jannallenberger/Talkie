@@ -7,6 +7,19 @@ import XCTest
 final class NicheCorrectorTests: XCTestCase {
     private let terms = ["Kubernetes", "idempotent", "Coralate"]
 
+    /// Real misrecognitions of "Claude.md" captured from the dictation log, run
+    /// against the user's ACTUAL vocabulary. Maps which variants the corrector
+    /// catches vs misses. (Post-hoc, on the transcript, so it works in every app.)
+    func testClaudeMdFromLog() {
+        let vocab = ["Coralate", "Claude.md", "Talkie", "Higgsfield", "Github", "Artifacts"]
+        func fixed(_ s: String) -> String { NicheCorrector.correct(s, terms: vocab).text }
+        // Adjacent "cloud MD" / "clouded MD" — phonetic bigram should catch these.
+        XCTAssertEqual(fixed("looking at the cloud MD file"), "looking at the Claude.md file")
+        XCTAssertEqual(fixed("use the clouded MD file"), "use the Claude.md file")
+        // "cloud of MD" — a filler word splits the term (the real log case).
+        XCTAssertEqual(fixed("looking at the cloud of MD file"), "looking at the Claude.md file")
+    }
+
     /// The exact failure from the live test: the recognizer's mistakes get fixed,
     /// punctuation and surrounding words are preserved.
     func testFixesTheLiveTestSentence() {

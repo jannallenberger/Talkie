@@ -104,6 +104,27 @@ enum NicheCorrector {
                 i += 2
                 continue
             }
+            // Gapped bigram: the recognizer sometimes wedges a short filler word
+            // between the split halves of a term ("cloud of MD" ← "Claude.md",
+            // "item a potent" ← "idempotent"). Skip a single ≤3-letter connector and
+            // try joining the outer two; the phonetic gate in `bestMatch` is what
+            // keeps this from fusing unrelated words.
+            if i + 2 < words.count,
+               lettersLower(words[i + 1].text).count <= 3,
+               // Neither outer word is already a complete term — only join halves
+               // that were genuinely split, never gobble a neighbour of a word
+               // that's already correct ("we use Kubernetes" must stay put).
+               !isExactTerm(words[i].text, targets),
+               !isExactTerm(words[i + 2].text, targets),
+               separatedBySpacesOnly(text, words[i].range, words[i + 1].range),
+               separatedBySpacesOnly(text, words[i + 1].range, words[i + 2].range),
+               let term = bestMatch(words[i].text + words[i + 2].text, targets: targets,
+                                    termGuard: termGuard, isMultiWord: true) {
+                let range = words[i].range.lowerBound..<words[i + 2].range.upperBound
+                spans.append((range, String(text[range]), term))
+                i += 3
+                continue
+            }
             if let term = bestMatch(words[i].text, targets: targets, termGuard: termGuard, isMultiWord: false) {
                 spans.append((words[i].range, words[i].text, term))
             }
@@ -169,6 +190,14 @@ enum NicheCorrector {
 
     private static func lettersLower(_ s: String) -> String {
         String(s.lowercased().filter { $0.isLetter })
+    }
+
+    /// Whether a word, on its own, already IS one of the niche terms (letters match
+    /// a target exactly). Gates the gapped bigram so it only fuses genuinely-split
+    /// halves, never a neighbour of an already-correct term.
+    private static func isExactTerm(_ word: String, _ targets: [Target]) -> Bool {
+        let core = lettersLower(word)
+        return !core.isEmpty && targets.contains { $0.core == core }
     }
 
     private static func wordTokens(in text: String) -> [(range: Range<String.Index>, text: String)] {
