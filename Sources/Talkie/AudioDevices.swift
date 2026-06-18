@@ -11,6 +11,18 @@ struct AudioInputDevice: Identifiable, Hashable, Sendable {
     let isBuiltIn: Bool
 }
 
+/// The outcome of evaluating a mid-session input-device change: whether the
+/// currently-tapped device is still the right one, a different device should be
+/// swapped to, or no input device remains at all.
+enum SwapDecision: Equatable, Sendable {
+    /// The device currently in use is still the best choice — no swap needed.
+    case keep
+    /// Swap to this device (the previous one vanished, or a preferred one appeared).
+    case swap(to: AudioInputDevice)
+    /// No input device is available at all — capture cannot continue.
+    case noDevice
+}
+
 /// Core Audio helpers for choosing a *real* microphone.
 ///
 /// `AVAudioEngine.inputNode` follows the system **default input**, which can point
@@ -59,6 +71,44 @@ enum AudioDevices {
         return devices.first(where: { $0.isBuiltIn }) ?? devices.first
     }
 
+    /// Pure decision for a mid-session input-device change: given the user's saved
+    /// preference, the *current* device list, the device we're tapping right now
+    /// (`currentUID`), and the system default (`defaultID`), decide whether to keep,
+    /// swap, or report no device. Mirrors `resolveInput`'s priority ladder but as a
+    /// hardware-free function so the swap policy is unit-testable:
+    ///   1. empty list → `.noDevice` (capture can't continue);
+    ///   2. the resolved target equals the current device → `.keep`;
+    ///   3. otherwise → `.swap(to:)` the resolved target.
+    /// The resolved target follows the same order as `resolveInput`: explicit
+    /// preference if present, else the (input-capable) system default, else the
+    /// built-in mic, else the first available device.
+    static func resolveSwap(
+        preferred preferredUID: String?,
+        devices: [AudioInputDevice],
+        currentUID: String?,
+        defaultID: AudioDeviceID?
+    ) -> SwapDecision {
+        guard !devices.isEmpty else { return .noDevice }
+
+        let target: AudioInputDevice
+        if let preferredUID, !preferredUID.isEmpty,
+           let match = devices.first(where: { $0.uid == preferredUID }) {
+            target = match
+        } else if let defaultID,
+                  let def = devices.first(where: { $0.id == defaultID }) {
+            target = def
+        } else if let builtIn = devices.first(where: { $0.isBuiltIn }) {
+            target = builtIn
+        } else {
+            target = devices[0]
+        }
+
+        if let currentUID, target.uid == currentUID {
+            return .keep
+        }
+        return .swap(to: target)
+    }
+
     /// True iff some *other* process is currently playing audio on an output device.
     /// Used to gate the blind media-key fallback so it can never *start* silent
     /// playback — it only nudges play/pause when something is genuinely playing.
@@ -93,7 +143,7 @@ enum AudioDevices {
     }
 
     /// `kAudioHardwarePropertyDefaultInputDevice` → the current default input.
-    private static func defaultInputDeviceID() -> AudioDeviceID? {
+    static func defaultInputDeviceID() -> AudioDeviceID? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,

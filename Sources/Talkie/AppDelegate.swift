@@ -645,6 +645,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     bufferAudio: multiLang,
                     onLevel: { level in
                         Task { @MainActor in AppDelegate.sharedHUD?.updateLevel(level) }
+                    },
+                    onCaptureFailed: { error in
+                        // The active mic vanished mid-session and none remains. Route
+                        // to the same error/HUD path as a start-time failure, ending
+                        // the dictation cleanly instead of capturing silence.
+                        Task { @MainActor [weak self] in
+                            self?.handleCaptureFailure(error, sessionID: myID)
+                        }
                     }
                 )
                 self.sessionLive = true
@@ -673,6 +681,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await engine.cancelSession()
             }
         }
+    }
+
+    /// A live dictation's mic capture failed mid-session (the active input device
+    /// changed and no usable mic remained). Tear the session down and surface the
+    /// error on the same HUD path as a start-time failure. Ignored if the session
+    /// has already moved on (`sessionID` advanced) or dictation already ended.
+    func handleCaptureFailure(_ error: Error, sessionID: Int) {
+        guard isDictating, self.sessionID == sessionID else { return }
+        isDictating = false
+        sessionLive = false
+        recordingStartedAt = nil
+        Feedback.stop()
+        audio.stop()
+        musicController.resumeAfterDictation()
+        currentStreaming?.cancel()
+        currentStreaming = nil
+        Task { await engine.cancelSession() }
+        isProcessing = false
+        updateStatusUI()
+        hud.showError(error.localizedDescription)
     }
 
     func endDictation() {

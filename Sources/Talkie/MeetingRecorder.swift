@@ -155,7 +155,10 @@ final class MeetingRecorder: ObservableObject {
                     localeIDs: distinctLangs, contextualStrings: eventAttendees,
                     onLiveSegment: { segment in log.add(.me, segment); liveFeed?(.me, segment) }
                 ) {
-                    try audio.start(targetFormat: session.format, continuation: session.continuation)
+                    try audio.start(targetFormat: session.format, continuation: session.continuation,
+                                    onCaptureFailed: { [weak self] error in
+                                        Task { @MainActor in self?.handleMicCaptureFailure(error) }
+                                    })
                     micMulti = mm
                 } else {
                     await mm.cancel()
@@ -169,7 +172,10 @@ final class MeetingRecorder: ObservableObject {
                     liveFeed?(.me, segment)
                 })
                 try audio.start(targetFormat: session.format, continuation: session.continuation,
-                                bufferAudio: multiLang, bufferSeconds: 600)
+                                bufferAudio: multiLang, bufferSeconds: 600,
+                                onCaptureFailed: { [weak self] error in
+                                    Task { @MainActor in self?.handleMicCaptureFailure(error) }
+                                })
             }
         } catch {
             await engine.cancelSession()
@@ -246,6 +252,17 @@ final class MeetingRecorder: ObservableObject {
             Task { @MainActor in self?.tick() }
         }
         return true
+    }
+
+    /// The near-end mic capture failed mid-recording (the active input device changed
+    /// and no usable mic remained — `AudioCapture` already tried to recover). Stop and
+    /// finalize the recording so what was captured up to the failure is preserved,
+    /// rather than letting the meeting run on silently capturing nothing. No-op if a
+    /// recording isn't live (e.g. a stray late callback after stop()).
+    func handleMicCaptureFailure(_ error: Error) {
+        talkieDebugLog("MeetingRecorder: mic capture failed mid-recording: \(error.localizedDescription)")
+        guard isRecording, !isFinishing else { return }
+        Task { await stop() }
     }
 
     private func tick() {
