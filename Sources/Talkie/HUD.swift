@@ -31,6 +31,7 @@ enum HUDPhase: Equatable {
     case copied
     case commandPreview(String) // the proposed replacement text, awaiting confirm
     case commandReverted        // brief "Reverted" confirmation (mirrors .copied)
+    case learned(String)        // "Added 'X' to dictionary" ping, with an Undo chip
     case error(String)
 }
 
@@ -55,6 +56,14 @@ final class HUDModel: ObservableObject {
     var onCommandConfirm: () -> Void = {}
     /// Invoked when the user taps "Undo" on a command preview.
     var onCommandUndo: () -> Void = {}
+    /// Invoked when the user taps "Undo" on a learned-correction ping.
+    var onLearnedUndo: () -> Void = {}
+    /// How long the learned-correction ping stays up; the countdown ring depletes
+    /// over exactly this window before the pill collapses.
+    static let learnedDuration: TimeInterval = 5
+    /// Bumped on each learned ping so the countdown ring restarts its animation
+    /// from full even if two pings land back to back.
+    @Published var learnedTick: Int = 0
 
     /// The active cleanup label to surface in the capture pill (feature 14).
     /// Bumped by the controller so the pill re-reads after a cycle. The hub injects
@@ -282,6 +291,25 @@ final class HUDController {
         panel.orderFrontRegardless()
     }
 
+    /// Talkie auto-added a learned correction — ping the user with the term and an
+    /// Undo chip (WhisperFlow-style). Mouse events are enabled so Undo is tappable;
+    /// auto-dismisses after a few seconds since doing nothing means "keep it".
+    func showLearned(_ message: String, onUndo: @escaping () -> Void) {
+        cancelHide()
+        let panel = ensurePanel()
+        model.onLearnedUndo = { [weak self] in
+            self?.panel?.ignoresMouseEvents = true
+            onUndo()
+        }
+        Feedback.learned()                 // chime so the ping is noticed
+        model.learnedTick &+= 1            // restart the countdown ring
+        panel.ignoresMouseEvents = false   // let the user tap Undo
+        model.phase = .learned(message)
+        reposition()
+        panel.orderFrontRegardless()
+        hide(after: HUDModel.learnedDuration)
+    }
+
     /// Brief "Reverted" confirmation after an Undo — mirrors `.copied`.
     func showReverted() {
         cancelHide()
@@ -372,6 +400,15 @@ private struct HUDView: View {
                             .strokeBorder(.white.opacity(0.10), lineWidth: 0.5)
                     )
             )
+            // Learned-correction ping: a coral ring that traces the pill and
+            // visibly drains over the dismiss window — a wordless countdown. Keyed
+            // by `learnedTick` so it restarts from full on each new ping.
+            .overlay {
+                if case .learned = model.phase {
+                    CountdownRing(duration: HUDModel.learnedDuration)
+                        .id(model.learnedTick)
+                }
+            }
             .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
             .fixedSize()
             .contentShape(Capsule(style: .continuous))
@@ -519,6 +556,21 @@ private struct HUDView: View {
                     .foregroundStyle(.white.opacity(0.85))
             }
             .transition(.blurReplace)
+        case .learned(let message):
+            // Talkie auto-added a dictionary correction — a brief, tappable ping.
+            // One chip: Undo (remove the rule). Auto-dismisses; ignoring it keeps it.
+            HStack(spacing: 8) {
+                Image(systemName: "character.book.closed.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.coral)
+                Text(message)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .frame(maxWidth: 300, alignment: .leading)
+                CommandChip(title: "Undo", prominent: false) { model.onLearnedUndo() }
+            }
+            .transition(.blurReplace)
         case .error(let message):
             HStack(spacing: 7) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -534,6 +586,30 @@ private struct HUDView: View {
         case .hidden:
             EmptyView()
         }
+    }
+}
+
+/// A coral capsule outline that traces the learned-correction pill and visibly
+/// drains away over `duration` — a wordless timer for how long the ping stays
+/// before it auto-collapses. A faint static track sits underneath so the
+/// depleting arc reads as a countdown, and a soft coral glow makes it a "ring of
+/// light" rather than a hard stroke. Created fresh per ping (keyed by
+/// `learnedTick`), so `onAppear` restarts the drain from full every time.
+private struct CountdownRing: View {
+    let duration: TimeInterval
+    @State private var depleted = false
+
+    var body: some View {
+        ZStack {
+            Capsule(style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 2)
+            Capsule(style: .continuous)
+                .trim(from: 0, to: depleted ? 0 : 1)
+                .stroke(Theme.coral, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .shadow(color: Theme.coral.opacity(0.6), radius: 4)
+        }
+        .animation(.linear(duration: duration), value: depleted)
+        .onAppear { depleted = true }
     }
 }
 

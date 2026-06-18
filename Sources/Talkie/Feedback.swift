@@ -12,6 +12,8 @@ enum Feedback {
     /// Distinct alert for when dictation couldn't be pasted (no editable field
     /// focused) — the text was left on the clipboard instead.
     static func notPasted() { play("Submarine") }
+    /// Gentle chime when Talkie auto-adds a learned correction to the dictionary.
+    static func learned() { play("Glass") }
 
     private static func play(_ name: String) {
         guard enabled else { return }
