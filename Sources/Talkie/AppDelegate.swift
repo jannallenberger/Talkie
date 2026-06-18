@@ -949,6 +949,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 nicheFixes = corrected.fixes.map(\.to)
             }
 
+            // Spoken numbers → digits (deterministic, runs in every cleanup mode):
+            // version/decimal patterns always ("Seedance two point zero" → "Seedance
+            // 2.0", "two point zero point one" → "2.0.1"); standalone cardinals only
+            // when > 9 ("twenty four" → "24", "five" stays "five").
+            cleaned = NumberNormalizer.normalize(cleaned)
+
             // Apply the dictionary AFTER the LLM so your exact spellings always win.
             let processed = TextProcessor.apply(
                 replacements: replacements,
