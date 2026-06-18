@@ -122,14 +122,31 @@ final class DictionaryStore: ObservableObject {
     }
 
     /// Auto-add a correction Talkie learned from watching the user edit text.
-    func addLearnedReplacement(from: String, to: String) {
+    /// Returns `true` when a NEW rule was added (so the caller can ping the user),
+    /// `false` when it was empty, a no-op, or already present.
+    @discardableResult
+    func addLearnedReplacement(from: String, to: String) -> Bool {
         let f = from.trimmingCharacters(in: .whitespaces)
         let t = to.trimmingCharacters(in: .whitespaces)
-        guard !f.isEmpty, !t.isEmpty, f.lowercased() != t.lowercased() else { return }
+        guard !f.isEmpty, !t.isEmpty, f.lowercased() != t.lowercased() else { return false }
         // Skip if we already have this exact correction.
-        if replacements.contains(where: { $0.from.lowercased() == f.lowercased() && $0.to == t }) { return }
+        if replacements.contains(where: { $0.from.lowercased() == f.lowercased() && $0.to == t }) { return false }
         replacements.append(Replacement(from: f, to: t, caseSensitive: false, wholeWord: true, learned: true))
         save()
+        return true
+    }
+
+    /// Undo a just-learned correction: remove the matching learned rule. Only
+    /// touches rules Talkie added automatically (`isLearned`), never the user's
+    /// own curated entries.
+    func removeLearnedReplacement(from: String, to: String) {
+        let f = from.trimmingCharacters(in: .whitespaces).lowercased()
+        let t = to.trimmingCharacters(in: .whitespaces).lowercased()
+        let before = replacements.count
+        replacements.removeAll {
+            $0.isLearned && $0.from.lowercased() == f && $0.to.lowercased() == t
+        }
+        if replacements.count != before { save() }
     }
 
     func removeVocabulary(at offsets: IndexSet) {

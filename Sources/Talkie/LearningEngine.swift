@@ -1,64 +1,93 @@
 import AppKit
 import ApplicationServices
 
-/// Recursive self-improvement: after Talkie inserts text, it snapshots the
-/// focused text field. Before the next dictation it re-reads that field; if the
-/// user fixed a word Talkie produced, that correction becomes a dictionary rule.
+/// Recursive self-improvement, WhisperFlow-style: after Talkie inserts text it
+/// *actively watches* the focused field for a short window. The moment you fix a
+/// word Talkie misrecognized, that correction is added to the dictionary
+/// immediately and you get a pill ping with an Undo — no waiting, no silent
+/// thresholds.
 ///
 /// Best-effort by nature — it relies on the Accessibility text value of the
 /// focused element, which native fields (Notes, TextEdit, most AppKit apps)
-/// expose but some web/Electron apps don't. When it can't read, it simply
-/// learns nothing.
+/// expose but some web/Electron apps don't. When it can't read, it learns
+/// nothing (and never pings).
 @MainActor
 final class LearningEngine {
-    private struct Pending {
-        let element: AXUIElement
-        let inserted: String
-        let valueAfter: String
-    }
+    /// Let the paste/keystroke insertion settle into the field before we snapshot
+    /// the baseline value we'll diff edits against.
+    private static let settleDelay: Duration = .milliseconds(400)
+    /// How often we re-read the field while watching for an edit.
+    private static let pollInterval: Duration = .milliseconds(600)
+    /// Total watch window after an insertion (pollInterval × this).
+    private static let maxPolls = 20
+    /// A changed value must hold steady for this many consecutive polls before we
+    /// treat the edit as finished — so we diff the user's final spelling, not a
+    /// half-typed intermediate ("Higgsfiel" mid-keystroke).
+    private static let stablePolls = 2
 
-    private var pending: Pending?
+    private var watchTask: Task<Void, Never>?
 
-    /// In-memory tally of how often each candidate correction has been seen.
-    /// A candidate is only promoted to a persisted dictionary rule once it
-    /// reaches the threshold (P2-12) — until then it stays here and is never
-    /// written to the curated dictionary.
-    private var ledger = CorrectionLedger()
+    /// Start watching the focused field after we inserted `inserted`. On the first
+    /// stable, plausible correction the user makes to our text, `onLearned` fires
+    /// once (on the main actor) with the from→to pair. Cancels any prior watch.
+    func beginWatching(inserted: String,
+                       onLearned: @escaping @MainActor (_ from: String, _ to: String) -> Void) {
+        stopWatching()
+        let captured = inserted
+        watchTask = Task { @MainActor in
+            try? await Task.sleep(for: Self.settleDelay)
+            if Task.isCancelled { return }
+            // Baseline: the field must contain what we just inserted, or we're not
+            // looking at the right place (or the app reformatted it) — bail.
+            guard let (element, baseline) = self.focusedElementValue(),
+                  baseline.contains(captured) else { return }
 
-    /// Snapshot the focused field shortly after we inserted `inserted`.
-    func recordInsertion(_ inserted: String) {
-        guard let (element, value) = focusedElementValue(), value.contains(inserted) else {
-            pending = nil
-            return
+            var candidateValue: String?
+            var stableCount = 0
+            for _ in 0..<Self.maxPolls {
+                try? await Task.sleep(for: Self.pollInterval)
+                if Task.isCancelled { return }
+                // The same field must still be focused; if focus moved, stop —
+                // we can't attribute edits in a different element to our insertion.
+                guard let (current, value) = self.focusedElementValue(),
+                      CFEqual(current, element) else { return }
+
+                if value == baseline {
+                    candidateValue = nil
+                    stableCount = 0
+                    continue
+                }
+                if value == candidateValue {
+                    stableCount += 1
+                    if stableCount >= Self.stablePolls {
+                        if let c = CorrectionExtractor.extract(
+                            before: baseline, after: value, inserted: captured).first {
+                            onLearned(c.from, c.to)
+                            return
+                        }
+                        // Settled, but not a clean respelling of our words — reset
+                        // and keep watching in case the user edits further.
+                        candidateValue = nil
+                        stableCount = 0
+                    }
+                } else {
+                    candidateValue = value
+                    stableCount = 0
+                }
+            }
         }
-        pending = Pending(element: element, inserted: inserted, valueAfter: value)
     }
 
-    /// If the user edited our last insertion in the same field, return the
-    /// learned (from → to) corrections that have now been observed often enough
-    /// to persist. Clears the pending snapshot.
-    ///
-    /// A single spoken edit no longer becomes a global rule (P2-12): each
-    /// extracted candidate is recorded in the ledger and only emitted — i.e.
-    /// promoted to a persisted dictionary replacement — once the SAME correction
-    /// has been seen `CorrectionLedger.threshold` (3) times. Below that it stays
-    /// pending in memory. This is automatic; there is no new confirmation UI.
-    func collectCorrections() -> [(from: String, to: String)] {
-        guard let p = pending else { return [] }
-        pending = nil
-
-        guard let (element, current) = focusedElementValue() else { return [] }
-        guard CFEqual(element, p.element) else { return [] } // must be the same field
-        guard current != p.valueAfter else { return [] }     // nothing changed
-
-        let candidates = CorrectionExtractor.extract(before: p.valueAfter, after: current, inserted: p.inserted)
-        // Record each observation; only candidates that crossed the threshold on
-        // this observation are returned for persistence.
-        return candidates.filter { ledger.observe(from: $0.from, to: $0.to) }
+    /// Stop watching (a new dictation started, or a new insertion is taking over).
+    func stopWatching() {
+        watchTask?.cancel()
+        watchTask = nil
     }
 
     // MARK: Accessibility read
 
+    /// The system-wide focused element and its current text value, or nil when
+    /// it's unreadable (no AX value, secure field, sandboxed web view, …).
     private func focusedElementValue() -> (AXUIElement, String)? {
         let system = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
@@ -74,39 +103,11 @@ final class LearningEngine {
     }
 }
 
-/// In-memory observation counter for candidate corrections. Pure value type and
-/// fully testable: it knows nothing about Accessibility or persistence. A
-/// candidate is identified case-insensitively by its `from→to` pair, and is only
-/// considered learnable once the same pair has been observed `threshold` times.
-struct CorrectionLedger {
-    /// How many times the SAME correction must be observed before it persists.
-    static let threshold = 3
-
-    private var counts: [String: Int] = [:]
-
-    private static func key(from: String, to: String) -> String {
-        from.lowercased() + "→" + to.lowercased()
-    }
-
-    /// Record one observation of `from→to`. Returns `true` exactly on the
-    /// observation that brings the candidate UP TO the threshold — that's the
-    /// moment it should be persisted. Subsequent observations of an
-    /// already-promoted candidate return `false` (it's already a rule, no need to
-    /// re-add it). Returns `false` while still below the threshold.
-    mutating func observe(from: String, to: String) -> Bool {
-        let k = Self.key(from: from, to: to)
-        let next = (counts[k] ?? 0) + 1
-        counts[k] = next
-        return next == Self.threshold
-    }
-
-    /// Current observation count for a candidate (testing/inspection).
-    func count(from: String, to: String) -> Int {
-        counts[Self.key(from: from, to: to)] ?? 0
-    }
-}
-
-/// Pure word-level diff that extracts conservative single-word corrections.
+/// Pure word-level diff that extracts a single conservative correction the user
+/// made to text Talkie inserted. Handles a one-word respelling
+/// ("correlate"→"Coralate") AND a contiguous merge/split ("Higgs field"→
+/// "Higgsfield", "kubernetes"→"k8s" is rejected as implausible). Fully testable;
+/// knows nothing about Accessibility.
 enum CorrectionExtractor {
     static func extract(
         before: String,
@@ -115,60 +116,65 @@ enum CorrectionExtractor {
     ) -> [(from: String, to: String)] {
         let beforeTokens = tokenize(before)
         let afterTokens = tokenize(after)
+        guard beforeTokens != afterTokens else { return [] }
         let insertedWords = Set(tokenize(inserted).map(normalized))
 
-        // Only learn from an UNAMBIGUOUS single-word swap: exactly one word
-        // removed and one inserted. CollectionDifference's remove/insert offsets
-        // live in different coordinate spaces (before vs after), so pairing them
-        // for multi-word edits mis-aligns and would poison the dictionary. The
-        // single-swap case is the only one we can pair with certainty.
-        let diff = afterTokens.difference(from: beforeTokens)
-        guard diff.removals.count == 1, diff.insertions.count == 1 else { return [] }
+        // Isolate the single contiguous region that changed by peeling off the
+        // common prefix and suffix. Whatever's left in the middle on each side is
+        // the edit: `fromMid` (what Talkie wrote) → `toMid` (what the user typed).
+        let prefix = commonPrefixCount(beforeTokens, afterTokens)
+        let suffix = commonSuffixCount(
+            beforeTokens.dropFirst(prefix), afterTokens.dropFirst(prefix))
+        let fromMid = Array(beforeTokens[prefix..<(beforeTokens.count - suffix)])
+        let toMid = Array(afterTokens[prefix..<(afterTokens.count - suffix)])
 
-        var oldWord: String?
-        var newWord: String?
-        for change in diff {
-            switch change {
-            case .remove(_, let element, _): oldWord = element
-            case .insert(_, let element, _): newWord = element
-            }
-        }
-        guard let old = oldWord, let new = newWord else { return [] }
+        // A correction is a SUBSTITUTION: both sides non-empty (a pure insertion or
+        // deletion isn't a respelling). Exactly the respelling shapes — 1→1, N→1
+        // (merge "Higgs field"→"Higgsfield"), 1→N (split) — so ONE side must be a
+        // single word; this rejects scattered multi-word regions that would fuse
+        // into a bogus phrase rule. A small cap bounds the merge/split width.
+        guard !fromMid.isEmpty, !toMid.isEmpty,
+              min(fromMid.count, toMid.count) == 1,
+              max(fromMid.count, toMid.count) <= 4 else { return [] }
 
-        let on = normalized(old), nn = normalized(new)
-        guard on != nn, on.count >= 2, nn.count >= 2,
-              isWordLike(old), isWordLike(new),
-              insertedWords.contains(on),
-              // Plausibility floor (P2-12): a "correction" should be a respelling
-              // of the same word, not a swap to a totally different word. Without
-              // this, replacing "cat" with "dog" once would teach a global rule.
-              isPlausibleCorrection(from: on, to: nn) else { return [] }
+        let fromPhrase = fromMid.joined(separator: " ")
+        let toPhrase = toMid.joined(separator: " ")
+        let fromStripped = stripped(fromPhrase), toStripped = stripped(toPhrase)
+        guard !fromStripped.isEmpty, !toStripped.isEmpty else { return [] }
 
-        let fromWord = stripped(old), toWord = stripped(new)
-        guard !fromWord.isEmpty, !toWord.isEmpty else { return [] }
-        return [(fromWord, toWord)]
+        // The corrected words must be ones Talkie actually inserted (not edits to
+        // the user's own surrounding prose), each side must be word-like, and the
+        // change must be a plausible respelling rather than a swap to a different
+        // word ("cat"→"dog").
+        guard fromMid.allSatisfy({ insertedWords.contains(normalized($0)) }),
+              fromMid.allSatisfy(isWordLike), toMid.allSatisfy(isWordLike),
+              isPlausibleCorrection(from: normalized(fromPhrase), to: normalized(toPhrase))
+        else { return [] }
+
+        return [(fromStripped, toStripped)]
     }
 
     /// Whether `to` is plausibly a respelling of `from` rather than a different
-    /// word entirely. Accept when the two share a meaningful prefix OR are within
-    /// a small edit distance relative to their length — both signatures of a
-    /// spelling fix (e.g. "correlate"→"coralate", "cubernets"→"kubernetes") while
-    /// rejecting unrelated swaps ("cat"→"dog"). Pure; inputs are expected
-    /// normalized (stripped + lowercased).
+    /// word. A pure spacing change (same letters, e.g. "higgs field"→"higgsfield")
+    /// always qualifies; otherwise accept a shared meaningful prefix OR a small
+    /// edit distance relative to length. Inputs are expected normalized.
     static func isPlausibleCorrection(from: String, to: String) -> Bool {
-        guard !from.isEmpty, !to.isEmpty else { return false }
-        if from == to { return false }
+        guard !from.isEmpty, !to.isEmpty, from != to else { return false }
+
+        // Spacing/merge fix: identical once spaces are removed.
+        let fromNoSpace = from.replacingOccurrences(of: " ", with: "")
+        let toNoSpace = to.replacingOccurrences(of: " ", with: "")
+        if fromNoSpace == toNoSpace { return true }
 
         // Shared-prefix signal: a genuine respelling usually keeps the opening.
-        let sharedPrefix = commonPrefixLength(from, to)
-        let shorter = min(from.count, to.count)
+        let sharedPrefix = commonPrefixLength(fromNoSpace, toNoSpace)
+        let shorter = min(fromNoSpace.count, toNoSpace.count)
         if sharedPrefix >= 2, sharedPrefix * 2 >= shorter { return true }
 
         // Edit-distance signal: allow ~⅓ of the longer word to change, with a
-        // small floor so short words (where prefix may be too strict) still pass
-        // a one/two-character fix.
-        let distance = levenshtein(from, to)
-        let longer = max(from.count, to.count)
+        // small floor so short words still pass a one/two-character fix.
+        let distance = levenshtein(fromNoSpace, toNoSpace)
+        let longer = max(fromNoSpace.count, toNoSpace.count)
         let budget = max(2, longer / 3)
         return distance <= budget
     }
@@ -201,6 +207,21 @@ enum CorrectionExtractor {
             swap(&prev, &curr)
         }
         return prev[t.count]
+    }
+
+    // MARK: Token helpers
+
+    private static func commonPrefixCount(_ a: [String], _ b: [String]) -> Int {
+        var n = 0
+        while n < a.count, n < b.count, a[n] == b[n] { n += 1 }
+        return n
+    }
+
+    private static func commonSuffixCount(_ a: ArraySlice<String>, _ b: ArraySlice<String>) -> Int {
+        let ar = Array(a), br = Array(b)
+        var n = 0
+        while n < ar.count, n < br.count, ar[ar.count - 1 - n] == br[br.count - 1 - n] { n += 1 }
+        return n
     }
 
     private static func tokenize(_ text: String) -> [String] {

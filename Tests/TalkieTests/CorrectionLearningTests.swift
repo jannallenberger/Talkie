@@ -1,52 +1,19 @@
 import XCTest
 @testable import Talkie
 
-/// P2-12 (data-integrity): a single spoken edit must NOT become a permanent
-/// global whole-word replacement. Two guards work together, both tested here as
-/// pure logic:
-///   1. `CorrectionLedger` — require N≥3 observations of the SAME correction
-///      before it's promoted to a persisted rule.
-///   2. `CorrectionExtractor.isPlausibleCorrection` — a respelling-only floor
-///      (shared prefix / small edit distance) so an unrelated word swap is never
-///      learned regardless of how often it's seen.
+/// Live correction learning is pure-logic-tested through `CorrectionExtractor`:
+/// given the field BEFORE an edit, the field AFTER, and the text Talkie inserted,
+/// it extracts at most one trustworthy from→to rule. Two guards keep it safe:
+///   1. The edit must be a localized SUBSTITUTION of words Talkie itself inserted
+///      (1→1, or a merge/split where one side is a single word) — never an
+///      insertion, a deletion, a scattered multi-region edit, or a change to the
+///      user's own surrounding prose.
+///   2. `isPlausibleCorrection` — a respelling-only floor (spacing fix / shared
+///      prefix / small edit distance) so an unrelated word swap is never learned.
 final class CorrectionLearningTests: XCTestCase {
-
-    // MARK: Threshold (N≥3)
-
-    /// 1–2 observations are NOT persisted; the 3rd identical observation is.
-    func testThirdIdenticalObservationPersists() {
-        var ledger = CorrectionLedger()
-        XCTAssertEqual(CorrectionLedger.threshold, 3)
-
-        XCTAssertFalse(ledger.observe(from: "correlate", to: "Coralate"), "1st → pending")
-        XCTAssertFalse(ledger.observe(from: "correlate", to: "Coralate"), "2nd → pending")
-        XCTAssertTrue(ledger.observe(from: "correlate", to: "Coralate"), "3rd → persist")
-    }
-
-    /// Promotion fires EXACTLY once (on the crossing observation), not again.
-    func testPromotionFiresOnlyOnce() {
-        var ledger = CorrectionLedger()
-        _ = ledger.observe(from: "api", to: "API")
-        _ = ledger.observe(from: "api", to: "API")
-        XCTAssertTrue(ledger.observe(from: "api", to: "API"))  // crosses
-        XCTAssertFalse(ledger.observe(from: "api", to: "API"), "already a rule → no re-add")
-    }
-
-    /// Candidates are keyed case-insensitively on the (from→to) pair, and
-    /// distinct pairs accumulate independently.
-    func testKeyingAndIndependentCounts() {
-        var ledger = CorrectionLedger()
-        _ = ledger.observe(from: "Correlate", to: "Coralate")  // case-insensitive
-        XCTAssertEqual(ledger.count(from: "correlate", to: "coralate"), 1)
-
-        _ = ledger.observe(from: "teh", to: "the")
-        XCTAssertEqual(ledger.count(from: "correlate", to: "coralate"), 1, "other pair didn't bump this one")
-        XCTAssertEqual(ledger.count(from: "teh", to: "the"), 1)
-    }
 
     // MARK: Plausibility floor
 
-    /// Genuine respellings pass the plausibility floor.
     func testPlausibleRespellingsPass() {
         XCTAssertTrue(CorrectionExtractor.isPlausibleCorrection(from: "correlate", to: "coralate"))
         XCTAssertTrue(CorrectionExtractor.isPlausibleCorrection(from: "cubernets", to: "kubernetes"))
@@ -54,29 +21,16 @@ final class CorrectionLearningTests: XCTestCase {
         XCTAssertTrue(CorrectionExtractor.isPlausibleCorrection(from: "definately", to: "definitely"))
     }
 
-    /// Unrelated words (far edit distance, no shared prefix) are rejected.
+    /// A pure spacing change (same letters) is the most plausible correction.
+    func testSpacingMergeIsPlausible() {
+        XCTAssertTrue(CorrectionExtractor.isPlausibleCorrection(from: "higgs field", to: "higgsfield"))
+    }
+
     func testImplausibleSwapsRejected() {
         XCTAssertFalse(CorrectionExtractor.isPlausibleCorrection(from: "cat", to: "dog"))
         XCTAssertFalse(CorrectionExtractor.isPlausibleCorrection(from: "hello", to: "goodbye"))
         XCTAssertFalse(CorrectionExtractor.isPlausibleCorrection(from: "banana", to: "telephone"))
         XCTAssertFalse(CorrectionExtractor.isPlausibleCorrection(from: "apple", to: "apple"), "identical isn't a correction")
-    }
-
-    /// A far-distance pair is NEVER persisted even if observed past the
-    /// threshold — the extractor would never emit it, so the ledger never sees
-    /// it. We assert the floor directly to lock that contract in.
-    func testImplausiblePairNeverPersistsRegardlessOfCount() {
-        let from = "cat", to = "dog"
-        XCTAssertFalse(CorrectionExtractor.isPlausibleCorrection(from: from, to: to))
-        // Even if something tried to feed it repeatedly, the floor is the gate.
-        var ledger = CorrectionLedger()
-        for _ in 0..<5 {
-            // Guard mirrors extract(): only plausible pairs reach the ledger.
-            if CorrectionExtractor.isPlausibleCorrection(from: from, to: to) {
-                _ = ledger.observe(from: from, to: to)
-            }
-        }
-        XCTAssertEqual(ledger.count(from: from, to: to), 0, "implausible pair must never be counted")
     }
 
     // MARK: Helper primitives
@@ -92,9 +46,9 @@ final class CorrectionLearningTests: XCTestCase {
         XCTAssertEqual(CorrectionExtractor.commonPrefixLength("cat", "dog"), 0)
     }
 
-    // MARK: Extractor end-to-end (floor wired in)
+    // MARK: Single-word respelling
 
-    /// A plausible single-word swap is extracted...
+    /// A plausible single-word swap is extracted immediately (no threshold).
     func testExtractEmitsPlausibleSwap() {
         let result = CorrectionExtractor.extract(
             before: "the correlate engine",
@@ -106,7 +60,7 @@ final class CorrectionLearningTests: XCTestCase {
         XCTAssertEqual(result.first?.to.lowercased(), "coralate")
     }
 
-    /// ...but an implausible single-word swap is dropped by the floor.
+    /// An implausible single-word swap is dropped by the floor.
     func testExtractDropsImplausibleSwap() {
         let result = CorrectionExtractor.extract(
             before: "the cat ran",
@@ -114,5 +68,84 @@ final class CorrectionLearningTests: XCTestCase {
             inserted: "the cat ran"
         )
         XCTAssertTrue(result.isEmpty, "an unrelated word swap must not be learned")
+    }
+
+    // MARK: Merge / split (the two-word case that used to be dropped)
+
+    /// Two spoken words merged into one ("Higgs field" → "Higgsfield").
+    func testExtractMergeTwoWordsIntoOne() {
+        let result = CorrectionExtractor.extract(
+            before: "the Higgs field theory",
+            after: "the Higgsfield theory",
+            inserted: "the Higgs field theory"
+        )
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.from, "Higgs field")
+        XCTAssertEqual(result.first?.to, "Higgsfield")
+    }
+
+    /// One word split into two ("Higgsfield" → "Higgs field").
+    func testExtractSplitOneWordIntoTwo() {
+        let result = CorrectionExtractor.extract(
+            before: "use Higgsfield here",
+            after: "use Higgs field here",
+            inserted: "use Higgsfield here"
+        )
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.from, "Higgsfield")
+        XCTAssertEqual(result.first?.to, "Higgs field")
+    }
+
+    // MARK: Safety — only learn substitutions of Talkie's own words
+
+    /// Adding a word (insertion) is not a correction.
+    func testExtractIgnoresPureInsertion() {
+        let result = CorrectionExtractor.extract(
+            before: "the field",
+            after: "the open field",
+            inserted: "the field"
+        )
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    /// Deleting a word is not a correction.
+    func testExtractIgnoresPureDeletion() {
+        let result = CorrectionExtractor.extract(
+            before: "the open field",
+            after: "the field",
+            inserted: "the open field"
+        )
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    /// An edit to a word Talkie did NOT insert (the user's surrounding prose) is
+    /// never learned — only corrections to our own output count.
+    func testExtractIgnoresEditOutsideInsertion() {
+        let result = CorrectionExtractor.extract(
+            before: "hello world correlate",
+            after: "hello word correlate",
+            inserted: "correlate" // only this was ours; "world"→"word" is the user's text
+        )
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    /// Two scattered edits must not be fused into one bogus phrase rule.
+    func testExtractIgnoresMultiRegionEdit() {
+        let result = CorrectionExtractor.extract(
+            before: "alpha bravo charlie delta",
+            after: "Alpha bravo charlie Delta",
+            inserted: "alpha bravo charlie delta"
+        )
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    /// No edit at all → nothing learned.
+    func testExtractNoChange() {
+        let result = CorrectionExtractor.extract(
+            before: "steady as she goes",
+            after: "steady as she goes",
+            inserted: "steady as she goes"
+        )
+        XCTAssertTrue(result.isEmpty)
     }
 }

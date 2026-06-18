@@ -554,16 +554,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Recursive self-improvement: learn from any edits the user made to the
-        // previous dictation before starting this one. `collectCorrections()`
-        // only returns a correction once it's been observed enough times to be
-        // trustworthy (P2-12: N≥3, plus a plausibility floor), so a single edit
-        // never becomes a global rule — this loop just persists the survivors.
-        if settings.learnFromEdits {
-            for correction in learning.collectCorrections() {
-                dictionary.addLearnedReplacement(from: correction.from, to: correction.to)
-            }
-        }
+        // Stop watching the previous insertion for edits — this dictation is
+        // taking over. (Learning now happens live, the instant you fix a word; see
+        // `beginWatching` at insertion time, below.)
+        learning.stopWatching()
 
         isDictating = true
         sessionLive = false
@@ -1073,13 +1067,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Feedback.done()
                 self.hud.showInserting(replacedWords: replacedWords)
                 self.hud.hide(after: replacedWords.isEmpty ? 0.4 : 1.4)
-                // Snapshot the field after the paste lands, so we can learn from
-                // any edits the user makes before the next dictation.
+                // Watch the field for the next few seconds: the instant the user
+                // fixes a word Talkie misrecognized, add it to the dictionary and
+                // ping them with an Undo (WhisperFlow-style live learning).
                 if self.settings.learnFromEdits {
-                    let learnedText = finalText
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(350))
-                        self.learning.recordInsertion(learnedText)
+                    self.learning.beginWatching(inserted: finalText) { [weak self] from, to in
+                        guard let self else { return }
+                        guard self.dictionary.addLearnedReplacement(from: from, to: to) else { return }
+                        self.hud.showLearned("Added “\(to)” to dictionary") { [weak self] in
+                            self?.dictionary.removeLearnedReplacement(from: from, to: to)
+                            self?.hud.showReverted()
+                        }
                     }
                 }
             case .leftOnClipboard(let reason):
