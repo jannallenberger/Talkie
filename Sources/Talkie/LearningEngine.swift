@@ -13,13 +13,12 @@ import ApplicationServices
 /// nothing (and never pings).
 @MainActor
 final class LearningEngine {
-    /// Let the paste/keystroke insertion settle into the field before we snapshot
-    /// the baseline value we'll diff edits against.
-    private static let settleDelay: Duration = .milliseconds(400)
     /// How often we re-read the field while watching for an edit.
     private static let pollInterval: Duration = .milliseconds(600)
-    /// Total watch window after an insertion (pollInterval × this).
-    private static let maxPolls = 20
+    /// Total watch window after an insertion (pollInterval × this). Generous — a
+    /// misrecognition is often fixed seconds (to a minute) later, once the user has
+    /// read it back, not within a few seconds of insertion.
+    private static let maxPolls = 100        // ≈ 60s
     /// A changed value must hold steady for this many consecutive polls before we
     /// treat the edit as finished — so we diff the user's final spelling, not a
     /// half-typed intermediate ("Higgsfiel" mid-keystroke).
@@ -35,38 +34,83 @@ final class LearningEngine {
         stopWatching()
         let captured = inserted
         watchTask = Task { @MainActor in
-            try? await Task.sleep(for: Self.settleDelay)
-            if Task.isCancelled { return }
-            // Baseline: the field must contain what we just inserted, or we're not
-            // looking at the right place (or the app reformatted it) — bail.
-            guard let (element, baseline) = self.focusedElementValue(),
-                  baseline.contains(captured) else { return }
+            talkieDebugLog("learn: watching after insert (\(captured.count) chars), app=\(Self.frontAppName())")
+
+            // Acquire a baseline that reflects our insertion, retrying while the
+            // paste lands. We don't HARD-require an exact substring (apps reformat:
+            // smart quotes, trimming) — but we log whether it matched, so the log
+            // shows clearly when a field simply isn't AX-readable in this app.
+            var element: AXUIElement?
+            var baseline: String?
+            for attempt in 0..<6 {                          // ~6 × 300ms ≈ 1.8s
+                try? await Task.sleep(for: .milliseconds(300))
+                if Task.isCancelled { return }
+                guard let (el, val) = self.focusedElementValue() else {
+                    if attempt == 5 {
+                        talkieDebugLog("learn: ✗ focused field exposes NO AX value (app=\(Self.frontAppName()), role=\(Self.focusedRole())) — can't watch here")
+                    }
+                    continue
+                }
+                if Self.looseContains(val, captured) {
+                    talkieDebugLog("learn: ✓ baseline acquired (app=\(Self.frontAppName()), role=\(Self.focusedRole()), \(val.count) chars)")
+                    element = el; baseline = val
+                    break
+                }
+                if attempt == 5 {
+                    talkieDebugLog("learn: ⚠︎ inserted text not found in AX value (app=\(Self.frontAppName()), role=\(Self.focusedRole())) — watching from current value anyway")
+                    element = el; baseline = val
+                }
+            }
+            guard let element, let baseline else {
+                talkieDebugLog("learn: gave up — no readable field after deep read")
+                Self.logFocusedTree()   // dump what IS there, so we know if it's recoverable
+                return
+            }
 
             var candidateValue: String?
             var stableCount = 0
+            var lastEdited: String?     // last non-baseline value — for the send-clears-field case
             for _ in 0..<Self.maxPolls {
                 try? await Task.sleep(for: Self.pollInterval)
                 if Task.isCancelled { return }
-                // The same field must still be focused; if focus moved, stop —
-                // we can't attribute edits in a different element to our insertion.
+                // Compare only when the SAME field is still focused & readable; a
+                // transient focus blip (clicking around to edit) just skips a poll
+                // rather than aborting the whole watch.
                 guard let (current, value) = self.focusedElementValue(),
-                      CFEqual(current, element) else { return }
+                      CFEqual(current, element) else { continue }
+
+                // The field emptied/collapsed — in a chat you EDIT then SEND, and the
+                // send clears the input before the edit can settle. Learn from the last
+                // edit we saw just before it vanished, then stop.
+                if value.isEmpty || (baseline.count >= 12 && value.count < baseline.count / 3) {
+                    if let edited = lastEdited,
+                       let c = CorrectionExtractor.extract(before: baseline, after: edited, inserted: captured).first {
+                        talkieDebugLog("learn: ✓ LEARNED on send '\(c.from)' → '\(c.to)'")
+                        onLearned(c.from, c.to)
+                    } else {
+                        talkieDebugLog("learn: field cleared (sent) — no clean correction to learn")
+                    }
+                    return
+                }
 
                 if value == baseline {
                     candidateValue = nil
                     stableCount = 0
                     continue
                 }
+                lastEdited = value
                 if value == candidateValue {
                     stableCount += 1
                     if stableCount >= Self.stablePolls {
                         if let c = CorrectionExtractor.extract(
                             before: baseline, after: value, inserted: captured).first {
+                            talkieDebugLog("learn: ✓ LEARNED '\(c.from)' → '\(c.to)'")
                             onLearned(c.from, c.to)
                             return
                         }
                         // Settled, but not a clean respelling of our words — reset
                         // and keep watching in case the user edits further.
+                        talkieDebugLog("learn: edit settled but not a learnable single correction — still watching")
                         candidateValue = nil
                         stableCount = 0
                     }
@@ -75,6 +119,7 @@ final class LearningEngine {
                     stableCount = 0
                 }
             }
+            talkieDebugLog("learn: watch window expired, nothing learned")
         }
     }
 
@@ -86,20 +131,134 @@ final class LearningEngine {
 
     // MARK: Accessibility read
 
-    /// The system-wide focused element and its current text value, or nil when
-    /// it's unreadable (no AX value, secure field, sandboxed web view, …).
+    /// The focused text element and its current value. Reads the focused element's
+    /// own value first; if that's empty — common in Electron/Chromium apps like
+    /// Claude, where the top focused element is a generic group — it walks the app's
+    /// tree for the editable text element (AXTextArea / AXTextField / AXWebArea with
+    /// a value), the way a screen reader would. nil only when no text is reachable.
     private func focusedElementValue() -> (AXUIElement, String)? {
-        let system = AXUIElementCreateSystemWide()
-        var focusedRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-              let focused = focusedRef,
-              CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
-        let element = focused as! AXUIElement
+        if let el = Self.focusedElement() {
+            if let v = Self.stringValue(of: el) { return (el, v) }
+            if let hit = Self.findTextDescendant(el, depth: 0) { return hit }
+        }
+        // Fall back through the focused application's own focused element + window.
+        if let app = Self.focusedAppElement() {
+            for attr in [kAXFocusedUIElementAttribute, kAXFocusedWindowAttribute] {
+                if let child = Self.copyElement(app, attr as CFString) {
+                    if let v = Self.stringValue(of: child) { return (child, v) }
+                    if let hit = Self.findTextDescendant(child, depth: 0) { return hit }
+                }
+            }
+        }
+        return nil
+    }
 
-        var valueRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success,
-              let str = valueRef as? String else { return nil }
-        return (element, str)
+    private static func focusedElement() -> AXUIElement? {
+        let system = AXUIElementCreateSystemWide()
+        return copyElement(system, kAXFocusedUIElementAttribute as CFString)
+    }
+
+    private static func focusedAppElement() -> AXUIElement? {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
+        return AXUIElementCreateApplication(pid)
+    }
+
+    /// Bounded DFS for an editable text element under `el` — a text-role node that
+    /// exposes a non-empty string value.
+    private static func findTextDescendant(_ el: AXUIElement, depth: Int) -> (AXUIElement, String)? {
+        if depth > 8 { return nil }
+        let textRoles: Set<String> = ["AXTextArea", "AXTextField", "AXComboBox", "AXWebArea", "AXTextView"]
+        if textRoles.contains(roleOf(el)), let v = stringValue(of: el) { return (el, v) }
+        for child in children(el).prefix(40) {
+            if let hit = findTextDescendant(child, depth: depth + 1) { return hit }
+        }
+        return nil
+    }
+
+    // MARK: AX primitives
+
+    private static func copyElement(_ el: AXUIElement, _ attr: CFString) -> AXUIElement? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, attr, &ref) == .success, let r = ref,
+              CFGetTypeID(r) == AXUIElementGetTypeID() else { return nil }
+        return (r as! AXUIElement)
+    }
+
+    private static func stringValue(of el: AXUIElement) -> String? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXValueAttribute as CFString, &ref) == .success,
+              let s = ref as? String, !s.isEmpty else { return nil }
+        return s
+    }
+
+    private static func roleOf(_ el: AXUIElement) -> String {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &ref) == .success,
+              let r = ref as? String else { return "" }
+        return r
+    }
+
+    private static func children(_ el: AXUIElement) -> [AXUIElement] {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &ref) == .success,
+              let arr = ref as? [AXUIElement] else { return [] }
+        return arr
+    }
+
+    /// One-shot diagnostic: dump the focused subtree's roles + value presence to the
+    /// debug log, so we can SEE whether an AX-blind-looking app actually exposes its
+    /// text somewhere (and where), rather than guessing.
+    private static func logFocusedTree() {
+        guard let root = focusedElement() ?? focusedAppElement() else {
+            talkieDebugLog("axprobe: no focused element"); return
+        }
+        var lines: [String] = []
+        func walk(_ e: AXUIElement, _ depth: Int) {
+            if depth > 6 || lines.count > 80 { return }
+            let role = roleOf(e)
+            let v = stringValue(of: e)
+            let desc = v.map { "= \"\($0.replacingOccurrences(of: "\n", with: "⏎").prefix(28))\" (\($0.count)ch)" } ?? ""
+            lines.append(String(repeating: "· ", count: depth) + (role.isEmpty ? "?" : role) + " " + desc)
+            for c in children(e).prefix(15) { walk(c, depth + 1) }
+        }
+        walk(root, 0)
+        talkieDebugLog("axprobe tree (app=\(frontAppName())):\n" + lines.joined(separator: "\n"))
+    }
+
+    // MARK: Diagnostics + matching
+
+    /// The frontmost app's name — for the debug log, to see which apps expose a
+    /// readable field and which don't.
+    private static func frontAppName() -> String {
+        NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
+    }
+
+    /// The AX role of the focused element (e.g. AXTextArea, AXTextField), or
+    /// "none"/"?" when nothing readable is focused — a strong signal in the log of
+    /// whether the app exposes an editable text element at all.
+    private static func focusedRole() -> String {
+        guard let el = focusedElement() else { return "none" }
+        var roleRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &roleRef) == .success,
+              let role = roleRef as? String else { return "?" }
+        return role
+    }
+
+    /// Substring match that tolerates the reformatting apps apply on insert —
+    /// smart quotes, en/em dashes, non-breaking spaces — so the baseline still
+    /// recognises our inserted text.
+    private static func looseContains(_ haystack: String, _ needle: String) -> Bool {
+        normalizeForMatch(haystack).contains(normalizeForMatch(needle))
+    }
+
+    private static func normalizeForMatch(_ s: String) -> String {
+        var out = s
+        for (from, to) in [("\u{2018}", "'"), ("\u{2019}", "'"), ("\u{201C}", "\""),
+                           ("\u{201D}", "\""), ("\u{2013}", "-"), ("\u{2014}", "-"),
+                           ("\u{00A0}", " ")] {
+            out = out.replacingOccurrences(of: from, with: to)
+        }
+        return out
     }
 }
 
