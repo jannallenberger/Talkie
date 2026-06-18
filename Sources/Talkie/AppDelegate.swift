@@ -102,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: currentLocaleID))
         meetingRecorder = MeetingRecorder(engine: engine, store: meetingStore)
         meetingRecorder.isDictating = { [weak self] in self?.isDictating == true }
+        meetingRecorder.isProcessingDictation = { [weak self] in self?.isProcessing == true }
         meetingRecorder.primaryLocale = { [weak self] in
             self?.settings.spokenLanguages.first ?? self?.settings.localeIdentifier ?? "en-US"
         }
@@ -546,8 +547,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // The meeting recorder shares the transcription engine — don't dictate
-        // over an active recording.
-        guard meetingRecorder?.isRecording != true else {
+        // over an active recording, nor while one is still finalizing (the
+        // finalize pass is still using the shared engine/audio).
+        guard meetingRecorder?.isRecording != true, meetingRecorder?.isFinishing != true else {
             hud.showError("Stop the meeting recording first.")
             return
         }
@@ -830,15 +832,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let langs = LanguageDetector.distinctByCode(spokenLanguages)
                 let scored = await self.engine.transcribeCandidates(
                     buffers, localeIdentifiers: langs, installIfNeeded: true)
-                let currentConf = scored.first {
+                let candidates = scored.map {
+                    LanguageDetector.LanguageCandidate(localeID: $0.localeID, text: $0.text, confidence: $0.confidence)
+                }
+                let currentConf = candidates.first {
                     LanguageDetector.languageCode(of: $0.localeID) == currentCode
                 }?.confidence ?? 0
-                let best = scored.max { $0.confidence < $1.confidence }
                 talkieDebugLog("decide: current=\(self.currentLocaleID)(\(String(format: "%.2f", currentConf))) scored=[\(scored.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
-                if let best,
-                   LanguageDetector.languageCode(of: best.localeID) != currentCode,
-                   best.confidence >= currentConf + LanguageDetector.switchConfidenceMargin,
-                   !best.text.isEmpty {
+                // The switch decision — including the no-baseline absolute floor when
+                // the current locale produced no scored entry — lives in a pure helper.
+                if let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode) {
                     finalRaw = best.text
                     languageSwitched = true
                     self.currentLocaleID = best.localeID

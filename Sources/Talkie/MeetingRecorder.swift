@@ -32,6 +32,10 @@ final class MeetingRecorder: ObservableObject {
     /// Probe for whether a dictation session is live (the mic engine is shared, so
     /// the two can't run at once). Injected by AppDelegate.
     var isDictating: (() -> Bool)?
+    /// Probe for whether a dictation is still being polished/inserted (the post-stop
+    /// pipeline still holds the shared engine/audio). Injected by AppDelegate so a
+    /// meeting can't start over an in-flight dictation. Mirrors `isDictating`.
+    var isProcessingDictation: (() -> Bool)?
     /// The primary locale id for the far-end transcriber. Injected by AppDelegate
     /// so it tracks the user's language setting.
     var primaryLocale: (() -> String)?
@@ -98,8 +102,9 @@ final class MeetingRecorder: ObservableObject {
     @discardableResult
     func start() async -> Bool {
         guard !isRecording, !isFinishing, !isStarting, TranscriptionEngine.isAvailable else { return false }
-        // Reverse exclusivity: never start over a live dictation (shared mic engine).
-        guard isDictating?() != true else { return false }
+        // Reverse exclusivity: never start over a live dictation, nor over one whose
+        // post-stop polish/insert is still in flight — both hold the shared mic engine.
+        guard isDictating?() != true, isProcessingDictation?() != true else { return false }
         isStarting = true
         cancelStart = false
         defer { isStarting = false }
