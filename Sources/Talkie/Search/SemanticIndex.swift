@@ -109,7 +109,7 @@ struct SemanticIndex: Sendable {
             let semantic = (queryVector != nil && entry.vector != nil)
                 ? SemanticIndex.cosine(queryVector!, entry.vector!) : 0
             let keyword = SemanticIndex.keywordScore(queryTokens, entry.tokens)
-            let score = 0.7 * semantic + 0.3 * keyword
+            let score = SemanticIndex.blendedScore(semantic: semantic, keyword: keyword)
             guard score > 0 else { return nil }
             return SearchHit(id: entry.record.id,
                              snippet: SemanticIndex.snippet(entry.record.text),
@@ -139,6 +139,14 @@ struct SemanticIndex: Sendable {
     static func keywordScore(_ query: Set<String>, _ doc: Set<String>) -> Double {
         guard !query.isEmpty else { return 0 }
         return Double(query.intersection(doc).count) / Double(query.count)
+    }
+
+    /// Blend semantic similarity with keyword overlap. Cosine is clamped at 0 so a
+    /// negative (anti-correlated) embedding can never drag a genuine exact-keyword
+    /// hit below the inclusion threshold — a document that literally contains the
+    /// query term must never be dropped because its vectors point the other way.
+    static func blendedScore(semantic: Double, keyword: Double) -> Double {
+        0.7 * max(0, semantic) + 0.3 * keyword
     }
 
     static func snippet(_ text: String, max: Int = 160) -> String {
