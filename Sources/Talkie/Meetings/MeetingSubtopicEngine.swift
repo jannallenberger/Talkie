@@ -58,7 +58,7 @@ actor MeetingSubtopicEngine {
     private var gate = GateState()
     private var loop: Task<Void, Never>?
 
-    init(summarizer: any Summarizer = OnDeviceLLM(temperature: 0.2),
+    init(summarizer: any Summarizer = PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.2)),
          model: MeetingSubtopicModel) {
         self.summarizer = summarizer
         self.model = model

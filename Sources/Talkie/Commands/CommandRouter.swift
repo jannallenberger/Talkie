@@ -13,7 +13,7 @@ final class CommandRouter {
     private let macros: MacroStore
     private let summarizer: any Summarizer
 
-    init(macros: MacroStore, summarizer: any Summarizer = OnDeviceLLM()) {
+    init(macros: MacroStore, summarizer: any Summarizer = PrivacyWall.assertLocal(OnDeviceLLM())) {
         self.macros = macros
         self.summarizer = summarizer
     }
