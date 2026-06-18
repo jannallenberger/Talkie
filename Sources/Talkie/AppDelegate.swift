@@ -553,7 +553,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Recursive self-improvement: learn from any edits the user made to the
-        // previous dictation before starting this one.
+        // previous dictation before starting this one. `collectCorrections()`
+        // only returns a correction once it's been observed enough times to be
+        // trustworthy (P2-12: N≥3, plus a plausibility floor), so a single edit
+        // never becomes a global rule — this loop just persists the survivors.
         if settings.learnFromEdits {
             for correction in learning.collectCorrections() {
                 dictionary.addLearnedReplacement(from: correction.from, to: correction.to)
