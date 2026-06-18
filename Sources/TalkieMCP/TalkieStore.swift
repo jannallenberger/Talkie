@@ -84,13 +84,61 @@ struct TalkieStore {
         }.joined(separator: "\n")
     }
 
-    func getMeeting(idOrTitle: String) -> String {
-        let key = idOrTitle.lowercased()
+    /// Which field `get_meeting` was asked to select on. Carried through from the
+    /// MCP layer so a `date` hint isn't silently treated like an id/title substring.
+    enum MeetingSelector {
+        case id(String)
+        case title(String)
+        case date(String)
+    }
+
+    /// Does `startUnix` fall within the calendar day named by `hint`? Pure (no I/O),
+    /// so it can be exercised in isolation. `hint` is matched against a leading
+    /// `yyyy-MM-dd` (the rest, e.g. a time, is ignored); returns nil when the hint
+    /// has no parseable date, so callers can decide how to handle a bad hint.
+    static func dayBucketMatch(startUnix: Double, hint: String, calendar: Calendar = .current) -> Bool? {
+        guard let day = parseDay(hint, calendar: calendar) else { return nil }
+        let start = Date(timeIntervalSince1970: startUnix)
+        return calendar.isDate(start, inSameDayAs: day)
+    }
+
+    /// Parse a leading `yyyy-MM-dd` out of a free-form date hint (tolerating a
+    /// trailing time or other text). Returns nil when no such date is present.
+    static func parseDay(_ hint: String, calendar: Calendar = .current) -> Date? {
+        let trimmed = hint.trimmingCharacters(in: .whitespaces)
+        let datePart = trimmed.split(whereSeparator: { $0 == " " || $0 == "T" }).first.map(String.init) ?? trimmed
+        let parts = datePart.split(separator: "-")
+        guard parts.count == 3,
+              let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]),
+              (1...12).contains(mo), (1...31).contains(d)
+        else { return nil }
+        var comps = DateComponents()
+        comps.year = y; comps.month = mo; comps.day = d
+        return calendar.date(from: comps)
+    }
+
+    func getMeeting(selector: MeetingSelector) -> String {
         let ms = meetings()
-        let match = ms.first { $0.id.uuidString.lowercased().hasPrefix(key) }
-            ?? ms.first { $0.title.lowercased().contains(key) }
-            ?? ms.sorted { $0.startUnix > $1.startUnix }.first
-        guard let m = match else { return "No meeting found for \"\(idOrTitle)\"." }
+        let label: String
+        let match: Meeting?
+        switch selector {
+        case .id(let v):
+            label = v
+            let key = v.lowercased()
+            match = ms.first { $0.id.uuidString.lowercased().hasPrefix(key) }
+                ?? ms.first { $0.title.lowercased().contains(key) }
+        case .title(let v):
+            label = v
+            let key = v.lowercased()
+            match = ms.first { $0.title.lowercased().contains(key) }
+        case .date(let v):
+            label = v
+            // Day-bucket match on startUnix; no fallback to most-recent when a date
+            // hint was supplied (the caller asked for a specific day).
+            match = ms.sorted { $0.startUnix > $1.startUnix }
+                .first { Self.dayBucketMatch(startUnix: $0.startUnix, hint: v) == true }
+        }
+        guard let m = match else { return "No meeting found for \"\(label)\"." }
         let mins = Int((m.durationSec / 60).rounded())
         let who = (m.participants ?? []).joined(separator: ", ")
         return """

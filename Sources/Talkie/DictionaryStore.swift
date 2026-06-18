@@ -40,13 +40,44 @@ final class DictionaryStore: ObservableObject {
     }
 
     func load() {
+        // ABSENT (no file on disk) is the only state that should seed defaults.
+        // An UNDECODABLE file (present but unreadable/corrupt JSON) must NEVER
+        // re-seed or save — that would clobber a user's curated vocab on a
+        // transient read error or a one-off corruption. So we split the two
+        // cases instead of collapsing both into one `try?` guard.
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            // Truly first run (or the file was deleted): seed the illustrative
+            // defaults and persist them so the UI isn't blank.
+            seedDefaultsIfEmpty()
+            return
+        }
+
         guard let data = try? Data(contentsOf: fileURL),
               let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
-            seedDefaultsIfEmpty()
+            // The file exists but we can't decode it. Preserve the bad bytes by
+            // renaming them aside (so the user — or we — can recover them later)
+            // and continue with in-memory defaults. Crucially we do NOT call
+            // `save()` here: writing now would overwrite the on-disk vocab that a
+            // later launch (or a fixed decoder) might still recover.
+            quarantineCorruptFile()
+            replacements = Self.defaultReplacements
+            vocabulary = []
             return
         }
         replacements = payload.replacements
         vocabulary = payload.vocabulary
+    }
+
+    /// Move an undecodable store file to `dictionary.json.corrupt` so it's
+    /// preserved (and out of the way) rather than silently overwritten. Best
+    /// effort: a failure here just leaves the original in place — we still avoid
+    /// clobbering it because `load()` never writes on the failure path.
+    private func quarantineCorruptFile() {
+        let corruptURL = fileURL.appendingPathExtension("corrupt")
+        // Clear any stale quarantine from a previous failed launch so the move
+        // can't fail just because a `.corrupt` file already exists.
+        try? FileManager.default.removeItem(at: corruptURL)
+        try? FileManager.default.moveItem(at: fileURL, to: corruptURL)
     }
 
     func save() {
@@ -57,11 +88,15 @@ final class DictionaryStore: ObservableObject {
         try? data.write(to: fileURL, options: .atomic)
     }
 
+    /// A couple of illustrative entries so the UI isn't blank on first run.
+    /// Shared so the undecodable-file path falls back to the same in-memory
+    /// defaults it would have seeded — without re-saving over the bad file.
+    static let defaultReplacements: [Replacement] = [
+        Replacement(from: "talkie", to: "Talkie"),
+    ]
+
     private func seedDefaultsIfEmpty() {
-        // A couple of illustrative entries so the UI isn't blank on first run.
-        replacements = [
-            Replacement(from: "talkie", to: "Talkie"),
-        ]
+        replacements = Self.defaultReplacements
         vocabulary = []
         save()
     }

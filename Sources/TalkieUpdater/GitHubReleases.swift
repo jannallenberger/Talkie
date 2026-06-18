@@ -11,6 +11,12 @@ public struct UpdateRelease: Sendable, Equatable {
     public let assetName: String   // e.g. "Talkie-dev-123.zip"
     public let assetAPIURL: String // GitHub asset API URL (authed download)
     public let assetSize: Int
+    /// The publisher-supplied SHA-256 of the zip, hex-encoded, or nil for older
+    /// releases that predate digest publishing. GitHub's API exposes no per-asset
+    /// SHA-256, so `release_dev.sh` writes it as a `sha256:<hex>` line in the
+    /// release body; the installer enforces it fail-closed when present (see
+    /// `UpdateInstaller.verifyArtifact`).
+    public let assetSHA256: String?
 }
 
 /// How the updater is authenticated against the private repo.
@@ -194,18 +200,44 @@ struct ReleaseFetcher: Sendable {
             guard let build = devBuild(from: r.tag_name) else { continue }
             guard let asset = r.assets.first(where: { $0.name.hasSuffix(".zip") }) else { continue }
             if best == nil || build > best!.build {
+                let body = (r.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 best = UpdateRelease(
                     build: build,
                     tag: r.tag_name,
                     title: r.name ?? r.tag_name,
-                    notes: (r.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                    notes: body,
                     assetName: asset.name,
                     assetAPIURL: asset.url,
-                    assetSize: asset.size
+                    assetSize: asset.size,
+                    assetSHA256: sha256(fromBody: body)
                 )
             }
         }
         return best
+    }
+
+    /// Parses the publisher-supplied zip digest out of the release body. GitHub's
+    /// API exposes no per-asset SHA-256, so `release_dev.sh` writes a line like
+    /// `sha256:0a1b2c…` (64 lowercase hex chars) into the notes. Returns the
+    /// normalized hex digest, or nil if the body carries no valid digest line
+    /// (older releases predating digest publishing).
+    static func sha256(fromBody body: String) -> String? {
+        for rawLine in body.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard let range = line.range(of: "sha256:", options: .caseInsensitive),
+                  range.lowerBound == line.startIndex else { continue }
+            let hex = line[range.upperBound...]
+                .trimmingCharacters(in: .whitespaces)
+                .lowercased()
+            if isHex64(hex) { return hex }
+        }
+        return nil
+    }
+
+    /// True for exactly 64 lowercase hex characters (a SHA-256 digest).
+    private static func isHex64(_ s: String) -> Bool {
+        guard s.count == 64 else { return false }
+        return s.allSatisfy { $0.isHexDigit && !$0.isUppercase }
     }
 
     /// `dev-123` → 123. Returns nil for any other tag (e.g. public `v1.2.0`),

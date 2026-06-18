@@ -21,13 +21,18 @@ struct TalkieFolderDestination: NoteDestination {
     /// Byte-compatible with the prior inline `MeetingStore.writeMarkdown`.
     static func render(_ note: ExportableNote) -> String {
         let iso = ISO8601DateFormatter().string(from: note.date)
-        var lines = ["---", "title: \(note.title)", "date: \(iso)"]
+        // Title and every value go through NoteTemplate's YAML escaper: a raw
+        // calendar/meeting title with a metachar (`:`, `#`, leading space, quote)
+        // — or, worse, a newline — would otherwise corrupt the block or inject
+        // arbitrary front-matter keys. `renderYAMLField` passes producer-composed
+        // `[...]` arrays through untouched and scalar-escapes everything else.
+        var lines = ["---", "title: \(NoteTemplate.yamlValue(note.title))", "date: \(iso)"]
         let ordered = ["duration_min", "participants", "source"]
         for key in ordered {
-            if let value = note.frontMatter[key] { lines.append("\(key): \(value)") }
+            if let value = note.frontMatter[key] { lines.append("\(key): \(NoteTemplate.renderYAMLField(value))") }
         }
         for (key, value) in note.frontMatter.sorted(by: { $0.key < $1.key }) where !ordered.contains(key) {
-            lines.append("\(key): \(value)")
+            lines.append("\(key): \(NoteTemplate.renderYAMLField(value))")
         }
         lines.append("---")
         return lines.joined(separator: "\n") + "\n\n" + note.bodyMarkdown

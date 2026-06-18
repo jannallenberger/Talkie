@@ -59,6 +59,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Cleanup config captured at the START of the session (so a mid-session
     /// settings toggle can't skew the end-of-session accounting).
     private var sessionCleanup: (appAdaptive: Bool, style: CleanupStyle, level: CleanupLevel)?
+    /// The per-app rules resolved for the target app at the START of the session
+    /// (global → per-category → per-app merge). Snapshotted once so a mid-session
+    /// profile edit can't skew the in-flight session; `Sendable`, so it can ride
+    /// into the `endDictation` processing Task. `nil` between sessions.
+    private var sessionProfile: ResolvedProfile?
     /// Cleans transcript segments live while you speak, so most of the cleanup
     /// is done by the time you release the key. Built per session when cleanup
     /// is enabled; consumed (or discarded) in `endDictation`.
@@ -80,6 +85,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Drives the pill + subtopic engine off the recorder's `isRecording`, so both
     /// auto- and manually-started recordings get the pill.
     private var recordingObservation: AnyCancellable?
+    /// Keeps the search index reactive: rebuilds (debounced, off-main) whenever the
+    /// history, meetings, or context graph change — so entries added after launch are
+    /// searchable without a relaunch.
+    private var searchIndexObservation: Set<AnyCancellable> = []
 
     // MARK: App lifecycle
 
@@ -90,9 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Feedback.enabled = settings.playSounds
         currentLocaleID = settings.spokenLanguages.first ?? settings.localeIdentifier
-        engine = TranscriptionEngine(localeIdentifier: currentLocaleID)
+        engine = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: currentLocaleID))
         meetingRecorder = MeetingRecorder(engine: engine, store: meetingStore)
         meetingRecorder.isDictating = { [weak self] in self?.isDictating == true }
+        meetingRecorder.isProcessingDictation = { [weak self] in self?.isProcessing == true }
         meetingRecorder.primaryLocale = { [weak self] in
             self?.settings.spokenLanguages.first ?? self?.settings.localeIdentifier ?? "en-US"
         }
@@ -144,10 +154,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Seed the context graph + search index from existing dictations + meetings
         // so recall, search, and the brief are useful immediately.
         Task { @MainActor in
+            // Backfill BEFORE wiring the search subscription, so the first `$entities`
+            // emission already reflects it (the debounce coalesces the backfill and the
+            // initial store snapshots into a single rebuild).
             contextGraph.backfill(dictations: history.entries, meetings: meetingStore.meetings)
-            searchEngine.rebuild(dictations: history.entries,
-                                 meetings: meetingStore.meetings,
-                                 graph: contextGraph.snapshot())
+            // Reactive, debounced, off-main rebuild: `@Published` emits its current
+            // value on subscribe, so this also performs the initial seed (replacing the
+            // old one-shot `rebuild`), and re-indexes any entry added after launch.
+            Publishers.MergeMany(
+                history.$entries.map { _ in () }.eraseToAnyPublisher(),
+                meetingStore.$meetings.map { _ in () }.eraseToAnyPublisher(),
+                contextGraph.$entities.map { _ in () }.eraseToAnyPublisher()
+            )
+            .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
+            .sink { [weak self] in
+                guard let self else { return }
+                self.searchEngine.scheduleRebuild(dictations: self.history.entries,
+                                                  meetings: self.meetingStore.meetings,
+                                                  graph: self.contextGraph.snapshot())
+            }
+            .store(in: &searchIndexObservation)
         }
 
         // Open the main window on launch — onboarding/permissions are handled
@@ -521,14 +547,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // The meeting recorder shares the transcription engine — don't dictate
-        // over an active recording.
-        guard meetingRecorder?.isRecording != true else {
+        // over an active recording, nor while one is still finalizing (the
+        // finalize pass is still using the shared engine/audio).
+        guard meetingRecorder?.isRecording != true, meetingRecorder?.isFinishing != true else {
             hud.showError("Stop the meeting recording first.")
             return
         }
 
         // Recursive self-improvement: learn from any edits the user made to the
-        // previous dictation before starting this one.
+        // previous dictation before starting this one. `collectCorrections()`
+        // only returns a correction once it's been observed enough times to be
+        // trustworthy (P2-12: N≥3, plus a plausibility floor), so a single edit
+        // never becomes a global rule — this loop just persists the survivors.
         if settings.learnFromEdits {
             for correction in learning.collectCorrections() {
                 dictionary.addLearnedReplacement(from: correction.from, to: correction.to)
@@ -554,9 +584,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentTarget = captured.target
         currentVibeSnapshot = settings.vibeCoding ? projectIndex.snapshot : .empty
 
-        // Bias the recognizer with the union of: custom vocabulary, on-screen
-        // names from the target app, and (in vibe mode) your project's filenames.
-        var bias = dictionary.contextualPhrasesSnapshot()
+        // Resolve the per-app rules for this app once, here on the main actor
+        // (global → per-category → per-app merge, falling back to `settings.*`
+        // for every unset field). Snapshotted so a mid-session profile edit
+        // can't skew the in-flight session; carried into `endDictation` below.
+        let profile = profiles.resolve(for: captured.target, settings: settings)
+        sessionProfile = profile
+
+        // Bias the recognizer with the union of: custom vocabulary (narrowed by
+        // this app's vocabulary filter, if any), on-screen names from the target
+        // app, and (in vibe mode) your project's filenames.
+        var bias = profiles.biasVocabulary(for: captured.target, dictionary: dictionary)
         bias.append(contentsOf: captured.phrases)
         if settings.vibeCoding { bias.append(contentsOf: currentVibeSnapshot.biasPhrases) }
         // Context graph: bias toward the people/projects/terms you actually use.
@@ -569,9 +607,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // transcript at stop — so spoken self-corrections that span a pause
         // ("Thursday, no Friday") are resolved with full context — and is chunked
         // only when the transcript is genuinely long.
-        let appAdaptive = settings.appAdaptiveCleanup
-        let adaptiveStyle = settings.cleanupStyle(for: captured.target.category)
-        let cleanupLevel = settings.cleanupLevel
+        let appAdaptive = profile.appAdaptiveCleanup
+        let adaptiveStyle = profile.cleanupStyle
+        let cleanupLevel = profile.cleanupLevel
         sessionCleanup = (appAdaptive: appAdaptive, style: adaptiveStyle, level: cleanupLevel)
 
         // Warm the on-device cleanup model the moment recording starts, in
@@ -645,6 +683,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     bufferAudio: multiLang,
                     onLevel: { level in
                         Task { @MainActor in AppDelegate.sharedHUD?.updateLevel(level) }
+                    },
+                    onCaptureFailed: { error in
+                        // The active mic vanished mid-session and none remains. Route
+                        // to the same error/HUD path as a start-time failure, ending
+                        // the dictation cleanly instead of capturing silence.
+                        Task { @MainActor [weak self] in
+                            self?.handleCaptureFailure(error, sessionID: myID)
+                        }
                     }
                 )
                 self.sessionLive = true
@@ -673,6 +719,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await engine.cancelSession()
             }
         }
+    }
+
+    /// A live dictation's mic capture failed mid-session (the active input device
+    /// changed and no usable mic remained). Tear the session down and surface the
+    /// error on the same HUD path as a start-time failure. Ignored if the session
+    /// has already moved on (`sessionID` advanced) or dictation already ended.
+    func handleCaptureFailure(_ error: Error, sessionID: Int) {
+        guard isDictating, self.sessionID == sessionID else { return }
+        isDictating = false
+        sessionLive = false
+        recordingStartedAt = nil
+        Feedback.stop()
+        audio.stop()
+        musicController.resumeAfterDictation()
+        currentStreaming?.cancel()
+        currentStreaming = nil
+        Task { await engine.cancelSession() }
+        isProcessing = false
+        updateStatusUI()
+        hud.showError(error.localizedDescription)
     }
 
     func endDictation() {
@@ -709,9 +775,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // were also fed to the recognizer's `contextualStrings`, which is a proven
         // no-op on this stack; post-hoc proofreading is the path that actually fires.
         let nicheTerms = dictionary.vocabulary
-        let autoCap = settings.autoCapitalize
-        let removeFillers = settings.cleanupFillers
-        let mode = settings.insertionMode
+        // The per-app rules resolved at session start (falls back to a fresh
+        // resolve if a session somehow ends without a begin-side snapshot). For a
+        // user with no per-app rules, `resolve` mirrors `settings.*` for every
+        // field, so this is byte-identical to the old direct `settings.*` reads.
+        let resolved = sessionProfile ?? profiles.resolve(for: currentTarget, settings: settings)
+        sessionProfile = nil
+        let autoCap = resolved.autoCapitalize
+        let removeFillers = resolved.removeFillers
+        let mode = resolved.insertionMode
         let optimisticEnabled = settings.optimisticInsertion
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
@@ -723,9 +795,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // assembler actually cleaned.
         let sessionCfg = sessionCleanup
         sessionCleanup = nil
-        let appAdaptive = sessionCfg?.appAdaptive ?? settings.appAdaptiveCleanup
-        let adaptiveStyle = sessionCfg?.style ?? settings.cleanupStyle(for: target.category)
-        let cleanupLevel = sessionCfg?.level ?? settings.cleanupLevel
+        let appAdaptive = sessionCfg?.appAdaptive ?? resolved.appAdaptiveCleanup
+        let adaptiveStyle = sessionCfg?.style ?? resolved.cleanupStyle
+        let cleanupLevel = sessionCfg?.level ?? resolved.cleanupLevel
         // The live per-segment cleanup that ran while you spoke (nil when cleanup
         // is off). Consumed below, or discarded if a language switch re-wrote the
         // whole transcript.
@@ -760,15 +832,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let langs = LanguageDetector.distinctByCode(spokenLanguages)
                 let scored = await self.engine.transcribeCandidates(
                     buffers, localeIdentifiers: langs, installIfNeeded: true)
-                let currentConf = scored.first {
+                let candidates = scored.map {
+                    LanguageDetector.LanguageCandidate(localeID: $0.localeID, text: $0.text, confidence: $0.confidence)
+                }
+                let currentConf = candidates.first {
                     LanguageDetector.languageCode(of: $0.localeID) == currentCode
                 }?.confidence ?? 0
-                let best = scored.max { $0.confidence < $1.confidence }
                 talkieDebugLog("decide: current=\(self.currentLocaleID)(\(String(format: "%.2f", currentConf))) scored=[\(scored.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
-                if let best,
-                   LanguageDetector.languageCode(of: best.localeID) != currentCode,
-                   best.confidence >= currentConf + LanguageDetector.switchConfidenceMargin,
-                   !best.text.isEmpty {
+                // The switch decision — including the no-baseline absolute floor when
+                // the current locale produced no scored entry — lives in a pure helper.
+                if let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode) {
                     finalRaw = best.text
                     languageSwitched = true
                     self.currentLocaleID = best.localeID
@@ -925,6 +998,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             _ = TextInjector.insert(result.replacement, mode: mode)
                             self.hud.hide()
                         }
+                        return
+                    } else {
+                        // The command matched but the on-device model produced nothing
+                        // (unavailable, or it refused). Surface it and STOP — never fall
+                        // through to the dictation path below, which would type the literal
+                        // spoken command ("translate to German") into the document.
+                        self.isProcessing = false
+                        self.hud.showError("Couldn't run that command — the on-device model may be unavailable.")
                         return
                     }
                 }

@@ -24,7 +24,7 @@ APP="$ROOT/Talkie.app"
 SIGN_ID="${TALKIE_SIGN_ID:-}"
 if [[ -z "$SIGN_ID" ]]; then
   SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null \
-              | grep -m1 'Apple Development' | sed -E 's/.*"(.*)".*/\1/')"
+              | grep -m1 'Apple Development' | sed -E 's/.*"(.*)".*/\1/' || true)"
   if [[ -z "$SIGN_ID" ]]; then
     SIGN_ID="-"
     echo "⚠  No Apple Development identity found — falling back to ad-hoc."

@@ -88,7 +88,10 @@ final class ExportPreferences: ObservableObject {
                 vaultURL: URL(fileURLWithPath: folderPath),
                 subfolder: "",
                 fileNameTemplate: includeWikilinks ? "{date}-{title}" : "{datetime}-{kind}",
-                extraTags: includeTags ? ["talkie"] : []
+                extraTags: includeTags ? ["talkie"] : [],
+                includeFrontMatter: includeFrontMatter,
+                includeWikilinks: includeWikilinks,
+                includeTags: includeTags
             )
         }
     }

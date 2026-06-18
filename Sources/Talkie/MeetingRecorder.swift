@@ -32,6 +32,10 @@ final class MeetingRecorder: ObservableObject {
     /// Probe for whether a dictation session is live (the mic engine is shared, so
     /// the two can't run at once). Injected by AppDelegate.
     var isDictating: (() -> Bool)?
+    /// Probe for whether a dictation is still being polished/inserted (the post-stop
+    /// pipeline still holds the shared engine/audio). Injected by AppDelegate so a
+    /// meeting can't start over an in-flight dictation. Mirrors `isDictating`.
+    var isProcessingDictation: (() -> Bool)?
     /// The primary locale id for the far-end transcriber. Injected by AppDelegate
     /// so it tracks the user's language setting.
     var primaryLocale: (() -> String)?
@@ -98,8 +102,9 @@ final class MeetingRecorder: ObservableObject {
     @discardableResult
     func start() async -> Bool {
         guard !isRecording, !isFinishing, !isStarting, TranscriptionEngine.isAvailable else { return false }
-        // Reverse exclusivity: never start over a live dictation (shared mic engine).
-        guard isDictating?() != true else { return false }
+        // Reverse exclusivity: never start over a live dictation, nor over one whose
+        // post-stop polish/insert is still in flight — both hold the shared mic engine.
+        guard isDictating?() != true, isProcessingDictation?() != true else { return false }
         isStarting = true
         cancelStart = false
         defer { isStarting = false }
@@ -155,7 +160,10 @@ final class MeetingRecorder: ObservableObject {
                     localeIDs: distinctLangs, contextualStrings: eventAttendees,
                     onLiveSegment: { segment in log.add(.me, segment); liveFeed?(.me, segment) }
                 ) {
-                    try audio.start(targetFormat: session.format, continuation: session.continuation)
+                    try audio.start(targetFormat: session.format, continuation: session.continuation,
+                                    onCaptureFailed: { [weak self] error in
+                                        Task { @MainActor in self?.handleMicCaptureFailure(error) }
+                                    })
                     micMulti = mm
                 } else {
                     await mm.cancel()
@@ -169,7 +177,10 @@ final class MeetingRecorder: ObservableObject {
                     liveFeed?(.me, segment)
                 })
                 try audio.start(targetFormat: session.format, continuation: session.continuation,
-                                bufferAudio: multiLang, bufferSeconds: 600)
+                                bufferAudio: multiLang, bufferSeconds: 600,
+                                onCaptureFailed: { [weak self] error in
+                                    Task { @MainActor in self?.handleMicCaptureFailure(error) }
+                                })
             }
         } catch {
             await engine.cancelSession()
@@ -248,6 +259,17 @@ final class MeetingRecorder: ObservableObject {
         return true
     }
 
+    /// The near-end mic capture failed mid-recording (the active input device changed
+    /// and no usable mic remained — `AudioCapture` already tried to recover). Stop and
+    /// finalize the recording so what was captured up to the failure is preserved,
+    /// rather than letting the meeting run on silently capturing nothing. No-op if a
+    /// recording isn't live (e.g. a stray late callback after stop()).
+    func handleMicCaptureFailure(_ error: Error) {
+        talkieDebugLog("MeetingRecorder: mic capture failed mid-recording: \(error.localizedDescription)")
+        guard isRecording, !isFinishing else { return }
+        Task { await stop() }
+    }
+
     private func tick() {
         guard let startedAt else { return }
         elapsed = Date().timeIntervalSince(startedAt)
@@ -266,6 +288,11 @@ final class MeetingRecorder: ObservableObject {
         guard isRecording else { return }
         isRecording = false
         isFinishing = true
+        // A wedged finalize must never leave the recorder stuck "finishing" — that
+        // would permanently lock out dictation AND new meetings. Clear the flags on
+        // EVERY exit path, on the same main actor as the prior manual resets (no new
+        // isolation hop), so an unexpected throw/early-return can't wedge the UI.
+        defer { isFinishing = false; capturingFarEnd = false }
         timer?.invalidate()
         timer = nil
 
@@ -319,13 +346,37 @@ final class MeetingRecorder: ObservableObject {
 
         startedAt = nil
         turnLog = nil
-        if let partialURL { try? FileManager.default.removeItem(at: partialURL) }
-        partialURL = nil
 
         let transcript = MeetingTranscriptRenderer.render(log?.snapshot() ?? [])
         let clean = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else {
-            isFinishing = false; capturingFarEnd = false; notes = ""
+            // Nothing was transcribed — but if the user jotted notes, those are real
+            // work and must not vanish. Persist a notes-only meeting before clearing,
+            // rather than wiping `notes` and returning empty-handed.
+            if !userNotes.isEmpty {
+                let id = UUID()
+                let meeting = Meeting(
+                    id: id,
+                    title: eventTitle ?? Self.makeTitle(start: start),
+                    startUnix: start.timeIntervalSince1970,
+                    durationSec: duration,
+                    transcript: "",
+                    summary: Self.composeSummary(userNotes: userNotes, transcriptSummary: "", fused: nil),
+                    participants: ["Me"],
+                    source: "talkie (notes only)",
+                    fileName: MeetingStore.fileName(for: start, id: id)
+                )
+                store.add(meeting)
+                // Atomic with the persist above (no `await`) so the just-saved meeting
+                // can't be lost to a crash before the partial is dropped.
+                if let partialURL { try? FileManager.default.removeItem(at: partialURL) }
+                partialURL = nil
+            } else if let partialURL {
+                try? FileManager.default.removeItem(at: partialURL)
+                self.partialURL = nil
+            }
+            // isFinishing / capturingFarEnd are cleared by the `defer` at the top.
+            notes = ""
             return
         }
 
@@ -336,15 +387,21 @@ final class MeetingRecorder: ObservableObject {
 
         // Granola magic: if you jotted notes during the call, fuse them with the
         // transcript (expanded, never invented); otherwise the plain on-device summary.
-        let summary: String
-        if !userNotes.isEmpty,
-           let fused = await MeetingNotesFusion().fuse(notes: userNotes, transcript: clean, using: OnDeviceLLM()) {
-            summary = fused.bodyMarkdown
+        // If fusion is unavailable (the on-device model isn't ready / returns nil),
+        // `composeSummary` still preserves the raw notes so the user's typed work is
+        // never silently discarded.
+        let fused: String?
+        if !userNotes.isEmpty {
+            fused = await MeetingNotesFusion().fuse(notes: userNotes, transcript: clean, using: OnDeviceLLM())?.bodyMarkdown
         } else {
-            summary = await summarizer.summarize(clean) ?? ""
+            fused = nil
         }
+        let transcriptSummary = await summarizer.summarize(clean) ?? ""
+        let summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
 
+        let id = UUID()
         let meeting = Meeting(
+            id: id,
             title: eventTitle ?? Self.makeTitle(start: start),
             startUnix: start.timeIntervalSince1970,
             durationSec: duration,
@@ -352,9 +409,15 @@ final class MeetingRecorder: ObservableObject {
             summary: summary,
             participants: participants,
             source: wasFarEnd ? "talkie (mic + system audio)" : "talkie (mic-only)",
-            fileName: MeetingStore.fileName(for: start)
+            fileName: MeetingStore.fileName(for: start, id: id)
         )
         store.add(meeting)
+        // The meeting is durably persisted only now — so the crash-partial can only
+        // be dropped here, AFTER store.add (not before the summarization awaits, where
+        // a crash would lose the whole transcript). No `await` between store.add and
+        // this delete: it stays atomic on the main actor.
+        if let partialURL { try? FileManager.default.removeItem(at: partialURL) }
+        partialURL = nil
 
         // Feed the context graph: calendar attendees as people + transcript entities.
         if let graph = contextGraph {
@@ -367,11 +430,34 @@ final class MeetingRecorder: ObservableObject {
             graph.ingest(candidates, provenance: provenance)
         }
 
+        // Cleared only after the meeting is durably persisted above (P2-01): the
+        // user's notes are never wiped before they're saved somewhere.
+        // isFinishing / capturingFarEnd are cleared by the `defer` at the top.
         notes = ""
         eventTitle = nil
         eventAttendees = []
-        isFinishing = false
-        capturingFarEnd = false
+    }
+
+    /// Compose the meeting summary, guaranteeing the user's typed notes are never
+    /// silently lost. Pure (no actor state) so it's unit-testable:
+    /// - `fused` present → the fusion already incorporated the notes; use it as-is.
+    /// - `fused == nil` but notes non-empty → on-device fusion was unavailable/failed,
+    ///   so preserve the raw notes verbatim under a "## Your notes" section with an
+    ///   explicit notice, followed by the plain transcript summary (if any).
+    /// - no notes → the plain transcript summary.
+    nonisolated static func composeSummary(userNotes: String, transcriptSummary: String, fused: String?) -> String {
+        let notes = userNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = transcriptSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let fused, !fused.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return fused
+        }
+        guard !notes.isEmpty else { return summary }
+        var parts = [
+            "_Notes fusion unavailable — your raw notes are preserved below._",
+            "## Your notes\n\n\(notes)",
+        ]
+        if !summary.isEmpty { parts.append(summary) }
+        return parts.joined(separator: "\n\n")
     }
 
     /// Decide, by AUDIO self-consistency, whether one stream's speech was actually
@@ -445,7 +531,9 @@ final class MeetingRecorder: ObservableObject {
         // recovered note's participants stay consistent with its transcript shape.
         let recoveredFarEnd = trimmed.contains("] Them:")
         let date = Date()
+        let id = UUID()
         store.add(Meeting(
+            id: id,
             title: "Recovered meeting · " + Self.titleFormatter.string(from: date),
             startUnix: date.timeIntervalSince1970,
             durationSec: 0,
@@ -453,7 +541,7 @@ final class MeetingRecorder: ObservableObject {
             summary: "",
             participants: recoveredFarEnd ? ["Me", "Them"] : ["Me"],
             source: "talkie (recovered)",
-            fileName: MeetingStore.fileName(for: date)
+            fileName: MeetingStore.fileName(for: date, id: id)
         ))
     }
 

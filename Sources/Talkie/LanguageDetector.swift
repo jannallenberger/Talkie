@@ -32,6 +32,15 @@ enum LanguageDetector {
     /// (low), so a modest margin avoids flips on near-ties.
     static let switchConfidenceMargin = 0.08
 
+    /// Absolute acoustic-confidence floor a candidate must clear before it can win
+    /// the language switch when there's *no* score for the current language to
+    /// compare against (the current-locale re-transcribe came back empty, so its
+    /// baseline confidence is 0). Without this, the margin-only test degrades to
+    /// `best.confidence >= switchConfidenceMargin` — a near-zero bar that lets a
+    /// garbage `best` flip the language. Requiring genuine acoustic confidence here
+    /// keeps the switch honest when there's no incumbent to beat.
+    static let switchAbsoluteFloor = 0.50
+
     /// The given locale ids with at most one per language code, order preserved
     /// (en-US, en-GB, de-DE → en-US, de-DE). The recognizer can't tell same-code
     /// locales apart, so transcribing both is pure waste.
@@ -103,5 +112,48 @@ enum LanguageDetector {
 
         let hypotheses = recognizer.languageHypotheses(withMaximum: max(constraints.count, 3))
         return hypotheses[NLLanguage(expectedCode)] ?? 0
+    }
+
+    /// One re-transcription candidate from the stop-time acoustic language-detect:
+    /// a locale id, its committed text, and the model's mean per-word confidence.
+    struct LanguageCandidate {
+        let localeID: String
+        let text: String
+        let confidence: Double
+    }
+
+    /// Decide, by acoustic confidence, which language a finished dictation was
+    /// *actually* spoken in — or `nil` to keep the current language. This is the
+    /// pure core of the stop-time switch so it can be reasoned about and tested
+    /// without the recognizer.
+    ///
+    /// - `scored`: every spoken language re-transcribed against the same audio,
+    ///   including (normally) the current one as the comparison baseline.
+    /// - `currentCode`: the language code the live session ran in.
+    ///
+    /// A switch fires only when the winning candidate is a *different* language,
+    /// has non-empty text, and clears the bar:
+    /// - When the current language is present in `scored`, beat it by
+    ///   `switchConfidenceMargin`.
+    /// - When it is **not** present (its re-transcribe came back empty, so the
+    ///   baseline is 0), don't switch off the margin alone — that's a near-zero bar
+    ///   that a garbage `best` clears trivially. Require `best` to clear
+    ///   `switchAbsoluteFloor` instead, so an empty current-locale result keeps the
+    ///   current language rather than flipping to noise.
+    static func switchTarget(
+        among scored: [LanguageCandidate],
+        currentCode: String?
+    ) -> LanguageCandidate? {
+        guard let best = scored.max(by: { $0.confidence < $1.confidence }) else { return nil }
+        guard languageCode(of: best.localeID) != currentCode, !best.text.isEmpty else { return nil }
+
+        let currentEntry = scored.first { languageCode(of: $0.localeID) == currentCode }
+        if let currentEntry {
+            // Incumbent present: beat it by the relative margin.
+            return best.confidence >= currentEntry.confidence + switchConfidenceMargin ? best : nil
+        }
+        // No incumbent to compare against — demand absolute confidence instead of
+        // letting the margin-vs-zero test wave anything through.
+        return best.confidence >= switchAbsoluteFloor ? best : nil
     }
 }

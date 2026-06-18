@@ -38,7 +38,15 @@ struct MCPServer {
         let params = req["params"] as? [String: Any] ?? [:]
         let name = params["name"] as? String ?? ""
         let args = params["arguments"] as? [String: Any] ?? [:]
-        func intArg(_ k: String, _ def: Int) -> Int { (args[k] as? Int) ?? (args[k] as? Double).map(Int.init) ?? def }
+        func intArg(_ k: String, _ def: Int) -> Int {
+            if let i = args[k] as? Int { return i }
+            // A JSON number like 1e400 parses as a non-finite/out-of-range Double;
+            // Int(_:Double) traps on those, which would abort the whole stdio
+            // server. isFinite rejects ±Inf/NaN and Int(exactly:) returns nil
+            // (→ def) on overflow instead of trapping. No change for in-range ints.
+            if let d = args[k] as? Double, d.isFinite { return Int(exactly: d.rounded()) ?? def }
+            return def
+        }
         func strArg(_ k: String) -> String? { (args[k] as? String).flatMap { $0.isEmpty ? nil : $0 } }
         func strArr(_ k: String) -> [String]? { args[k] as? [String] }
 
@@ -47,10 +55,12 @@ struct MCPServer {
         case "list_meetings":
             text = store.listMeetings(limit: intArg("limit", 10), query: strArg("query"))
         case "get_meeting":
-            guard let key = strArg("id") ?? strArg("title") ?? strArg("date") else {
-                return toolErr(id, "get_meeting requires id, title, or date")
-            }
-            text = store.getMeeting(idOrTitle: key)
+            let selector: TalkieStore.MeetingSelector
+            if let v = strArg("id") { selector = .id(v) }
+            else if let v = strArg("title") { selector = .title(v) }
+            else if let v = strArg("date") { selector = .date(v) }
+            else { return toolErr(id, "get_meeting requires id, title, or date") }
+            text = store.getMeeting(selector: selector)
         case "get_brief":
             text = store.getBrief()
         case "list_commitments":
@@ -88,10 +98,10 @@ struct MCPServer {
             spec("list_meetings", "List recent meetings (id, title, date, duration, participants, one-line summary).",
                  ["limit": numProp("Max meetings to return (default 10)."),
                   "query": strProp("Filter by text in title/summary/transcript.")]),
-            spec("get_meeting", "Get a meeting's full summary + transcript by id prefix, title match, or most recent.",
+            spec("get_meeting", "Get a meeting's full summary + transcript by id prefix, title match, or calendar day.",
                  ["id": strProp("Meeting id (or 8-char prefix)."),
                   "title": strProp("Title substring."),
-                  "date": strProp("Date hint.")]),
+                  "date": strProp("Calendar day (yyyy-MM-dd) — returns a meeting that started that day.")]),
             spec("get_brief", "Today's on-device brief (what you worked on, commitments, open threads).", [:]),
             spec("list_commitments", "Open commitments / action items from the context graph, newest first.",
                  ["limit": numProp("Max commitments (default 20).")]),
