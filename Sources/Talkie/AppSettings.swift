@@ -293,6 +293,11 @@ final class AppSettings: ObservableObject {
     @Published var pauseMusicMediaKeyFallback: Bool {
         didSet { defaults.set(pauseMusicMediaKeyFallback, forKey: Keys.pauseMusicMediaKeyFallback) }
     }
+    /// Show the always-on floating macaw ("Bird Buddy") above every app while Talkie
+    /// runs. Posts a change so the app can show/hide it live when toggled.
+    @Published var showBirdBuddy: Bool {
+        didSet { defaults.set(showBirdBuddy, forKey: Keys.showBirdBuddy); notifyChanged() }
+    }
 
     private func notifyChanged() {
         NotificationCenter.default.post(name: .talkieSettingsChanged, object: nil)
@@ -324,6 +329,7 @@ final class AppSettings: ObservableObject {
             Keys.playSounds: true,
             Keys.launchAtLogin: false,
             Keys.pauseMusicWhileDictating: true,
+            Keys.showBirdBuddy: true,
         ])
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
         activationMode = ActivationMode(rawValue: d.string(forKey: Keys.activationMode) ?? "") ?? .holdToTalk
@@ -369,6 +375,7 @@ final class AppSettings: ObservableObject {
         preferredInputDeviceUID = d.string(forKey: Keys.preferredInputDeviceUID)
         pauseMusicWhileDictating = d.bool(forKey: Keys.pauseMusicWhileDictating)
         pauseMusicMediaKeyFallback = d.bool(forKey: Keys.pauseMusicMediaKeyFallback)
+        showBirdBuddy = d.bool(forKey: Keys.showBirdBuddy)
     }
 
     /// Sensible per-category defaults for the adaptive cleanup personality.
@@ -437,5 +444,6 @@ final class AppSettings: ObservableObject {
         static let preferredInputDeviceUID = "preferredInputDeviceUID"
         static let pauseMusicWhileDictating = "pauseMusicWhileDictating"
         static let pauseMusicMediaKeyFallback = "pauseMusicMediaKeyFallback"
+        static let showBirdBuddy = "showBirdBuddy"
     }
 }

@@ -1142,6 +1142,10 @@ private struct BehaviorSettings: View {
                 SettingsToggleRow(title: "Play sounds", isOn: $settings.playSounds)
                 SettingsDivider()
                 SettingsToggleRow(title: "Open Talkie at login", isOn: $settings.launchAtLogin)
+                SettingsDivider()
+                SettingsToggleRow(title: "Show floating bird",
+                                  subtitle: "A draggable macaw that pulses while you dictate",
+                                  isOn: $settings.showBirdBuddy)
             }
         }
     }

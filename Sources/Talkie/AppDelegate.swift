@@ -30,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var meetingRecorder: MeetingRecorder!
     private let audio = AudioCapture()
     private let hud = HUDController()
+    /// The always-on floating macaw (separate from the transient capture pill).
+    private let birdBuddy = BirdBuddyController()
     private let learning = LearningEngine()
     /// Pauses now-playing media for the duration of a dictation and resumes it after.
     private let musicController = MusicController()
@@ -120,6 +122,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         permissions.refresh()
         observeSettings()
+
+        // The always-on floating bird, if the user keeps it on.
+        if settings.showBirdBuddy { birdBuddy.show() }
 
         // Warm each spoken language's model in the background so the first
         // dictation — and any language switch — is instant (no inline download).
@@ -396,6 +401,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.hotKey?.update(config: .init(key: self.settings.activationKey, mode: self.settings.activationMode))
                 self.updateStatusUI()
 
+                // Show/hide the floating bird live when its toggle flips.
+                if self.settings.showBirdBuddy { self.birdBuddy.show() }
+                else { self.birdBuddy.hide() }
+
                 // Pre-warm every spoken language so a switch never downloads inline.
                 for lang in self.settings.spokenLanguages {
                     Task { try? await self.engine.warmUp(localeIdentifier: lang) }
@@ -568,6 +577,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Acknowledge the press immediately — but the dot stays GRAY (arming) until
         // audio is genuinely flowing; only then does it turn red (recording).
         hud.showArming()
+        birdBuddy.setActive(true)
 
         // Context awareness: capture who you're dictating into (always, for the
         // usage dashboard) and — when enabled — mine names worth spelling right.
@@ -651,6 +661,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard micOK else {
                 self.isDictating = false
                 self.updateStatusUI()
+                self.birdBuddy.setActive(false)
                 self.hud.showError("Microphone access is needed to dictate.")
                 self.permissions.refresh()
                 return
@@ -675,8 +686,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     continuation: session.continuation,
                     preferredDeviceUID: self.settings.preferredInputDeviceUID,
                     bufferAudio: multiLang,
-                    onLevel: { level in
-                        Task { @MainActor in AppDelegate.sharedHUD?.updateLevel(level) }
+                    onLevel: { [weak self] level in
+                        Task { @MainActor in
+                            AppDelegate.sharedHUD?.updateLevel(level)
+                            self?.birdBuddy.updateLevel(level)
+                        }
                     },
                     onCaptureFailed: { error in
                         // The active mic vanished mid-session and none remains. Route
@@ -708,6 +722,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self.isDictating = false
                 self.updateStatusUI()
+                self.birdBuddy.setActive(false)
                 self.hud.showError(error.localizedDescription)
                 streaming?.cancel()
                 await engine.cancelSession()
@@ -732,6 +747,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await engine.cancelSession() }
         isProcessing = false
         updateStatusUI()
+        birdBuddy.setActive(false)
         hud.showError(error.localizedDescription)
     }
 
@@ -739,6 +755,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard isDictating else { return }
         isDictating = false
         updateStatusUI()
+        // Key released — mic stops, so the bird drops back to its calm idle look.
+        birdBuddy.setActive(false)
 
         // If the session never actually went live (key released during async
         // setup), the begin task will see the generation change and abort — we
