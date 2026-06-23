@@ -1289,6 +1289,13 @@ private struct ReplacementRow: View {
                 .toggleStyle(.button).help("Case sensitive")
             Toggle("W", isOn: $rule.wholeWord)
                 .toggleStyle(.button).help("Whole word only")
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Delete this rule")
         }
     }
 }
