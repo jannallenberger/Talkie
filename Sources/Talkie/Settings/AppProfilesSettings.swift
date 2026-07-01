@@ -23,8 +23,7 @@ struct AppProfilesSettings: View {
     }
 
     var body: some View {
-        SubPage(title: "Per-app rules",
-                subtitle: "Give an app its own cleanup, insertion, and vocabulary.") {
+        VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Customized apps",
                 footer: "Anything not listed here follows your global Settings. Add an app to give it a different personality — faithful in your terminal, friendly in Messages."
@@ -126,8 +125,13 @@ private struct ProfileRow: View {
     @State private var hovering = false
 
     private var icon: NSImage? {
+        // Prefer the running instance's icon (reflects any live Dock-icon
+        // override); fall back to a LaunchServices lookup so a per-app rule
+        // for an app that isn't currently open still shows its real icon
+        // instead of the generic placeholder.
         NSWorkspace.shared.runningApplications
             .first { $0.bundleIdentifier == profile.bundleID }?.icon
+            ?? AppIconLookup.icon(forBundleID: profile.bundleID)
     }
 
     var body: some View {
@@ -303,6 +307,7 @@ private struct AppProfileEditor: View {
     private var appIcon: NSImage? {
         NSWorkspace.shared.runningApplications
             .first { $0.bundleIdentifier == profile.bundleID }?.icon
+            ?? AppIconLookup.icon(forBundleID: profile.bundleID)
     }
 
     private var vocabularyFilterSummary: String {
