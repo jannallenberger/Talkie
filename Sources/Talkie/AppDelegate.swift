@@ -24,12 +24,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let macros = MacroStore()
     let profiles = AppProfileStore()
     let searchEngine = SearchEngine()
-    private lazy var commandRouter = CommandRouter(macros: macros)
+    /// Not `private` — the Commands tab's sandbox exercises this exact live
+    /// instance (and `hud` below) rather than a parallel throwaway router, so
+    /// "try a command" tests the real thing.
+    lazy var commandRouter = CommandRouter(macros: macros)
+    let hud = HUDController()
 
     private var engine: TranscriptionEngine!
     private var meetingRecorder: MeetingRecorder!
     private let audio = AudioCapture()
-    private let hud = HUDController()
     /// The always-on floating macaw (separate from the transient capture pill).
     private let birdBuddy = BirdBuddyController()
     private let learning = LearningEngine()
@@ -895,7 +898,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     interim = SpokenFileMatcher.format(interim, snapshot: vibeSnapshot).0
                 }
                 if !interim.isEmpty, interim.count <= Self.optimisticMaxChars,
-                   self.commandRouter.intent(for: interim) == nil,
+                   self.commandRouter.intent(for: interim,
+                                              meetings: MeetingSnapshot(meetings: self.meetingStore.meetings),
+                                              crossSurfaceEnabled: self.settings.crossSurfaceCommandsEnabled) == nil,
                    case .inserted = TextInjector.insert(interim, mode: mode) {
                     optimistic = (interim.count, interim)
                     self.hud.showInserting(replacedWords: [])
@@ -991,13 +996,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // Voice command mode (the on-device copilot): a leading-imperative over
-            // a selection ("make this a list", "translate to German") or a
-            // whole-utterance macro runs the command INSTEAD of inserting as
-            // dictation. Conservative — CommandRouter only matches imperatives /
-            // macros, and rewrites require an actual AX selection — so normal
+            // a selection ("make this a list", "translate to German"), a
+            // whole-utterance macro, or — behind `crossSurfaceCommandsEnabled`,
+            // off by default — a cross-surface request over your meetings, runs
+            // the command INSTEAD of inserting as dictation. Conservative: normal
             // speech falls straight through to the dictation path below.
-            if optimistic == nil, let intent = self.commandRouter.intent(for: finalText) {
-                let selection = intent.needsSelection ? AXSelection.selectedText() : nil
+            if optimistic == nil, let intent = self.commandRouter.intent(
+                for: finalText,
+                meetings: MeetingSnapshot(meetings: self.meetingStore.meetings),
+                crossSurfaceEnabled: self.settings.crossSurfaceCommandsEnabled
+            ) {
+                var selection = intent.needsSelection ? AXSelection.selectedText() : nil
+                // No live AX selection — the common case, since the natural voice
+                // workflow is "dictate, pause, say a follow-up command" and nothing
+                // is ever manually selected in that flow. Fall back to the most
+                // recent dictation if it's still eligible (same app, recent) rather
+                // than silently typing the command out literally.
+                var usedImplicitFallback = false
+                if intent.needsSelection, selection?.isEmpty != false, self.settings.implicitCommandTarget,
+                   let fallback = ImplicitSelectionGate.eligible(
+                       lastEntry: self.history.entries.first, now: Date(), currentTarget: target
+                   ) {
+                    selection = fallback.text
+                    usedImplicitFallback = true
+                }
                 if !intent.needsSelection || (selection?.isEmpty == false) {
                     let ctx = CommandContext(
                         spokenCommand: finalText, selection: selection, target: target,
@@ -1007,9 +1029,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.isProcessing = false
                         if result.preview {
                             // Nothing is inserted until the user confirms in the pill.
+                            let fallbackSource = selection
                             self.hud.showCommandPreview(
                                 result.replacement,
-                                onConfirm: { _ = TextInjector.insert(result.replacement, mode: mode) },
+                                replacing: usedImplicitFallback ? fallbackSource : nil,
+                                onConfirm: {
+                                    if usedImplicitFallback, let fallbackSource {
+                                        // Actually replace the original dictated text —
+                                        // reuses the exact same backward-select-and-paste
+                                        // primitive optimistic-insertion already ships with.
+                                        // Inserting fresh at the cursor instead would leave
+                                        // the original prose in place AND append a redundant
+                                        // rewrite elsewhere — not the feature working, a
+                                        // different, confusing one.
+                                        _ = TextInjector.replaceBackward(
+                                            graphemeCount: fallbackSource.count,
+                                            with: result.replacement, mode: mode
+                                        )
+                                    } else {
+                                        _ = TextInjector.insert(result.replacement, mode: mode)
+                                    }
+                                },
                                 onUndo: { [weak self] in self?.hud.hide() }
                             )
                         } else {
@@ -1049,11 +1089,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // Log it (copyable in the History tab) + lifetime stats + fix tally,
-            // even if insertion fell back to the clipboard.
+            // even if insertion fell back to the clipboard. Share ONE id with the
+            // context-graph provenance below so the two stores agree on "which
+            // dictation was this" — the graph's dedup-by-(source, sourceID) can
+            // only work if live ingestion gives it a real, stable id instead of a
+            // universal `nil` that made every live-dictation mention on a given
+            // entity look like a re-run of the exact same source forever after
+            // the first, and (separately, from the same root cause) let stale
+            // pre-fix data accumulate literal duplicate provenance entries.
+            let dictationID = UUID()
             let words = WordCounter.count(finalText)
             self.history.add(
                 finalText, wordCount: words, durationSec: duration,
-                appName: target.name, appCategory: target.category.rawValue
+                appName: target.name, appCategory: target.category.rawValue,
+                bundleID: target.bundleID,
+                id: dictationID
             )
             self.stats.record(words: words, durationSec: duration)
             self.stats.recordFixes(
@@ -1069,7 +1119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Feed the on-device context graph from what was just dictated.
             self.contextGraph.ingest(
                 ContextGraphExtractor.candidates(from: finalText),
-                provenance: Provenance(source: .dictation, sourceID: nil,
+                provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
                                        dateUnix: Date().timeIntervalSince1970,
                                        snippet: String(finalText.prefix(120)))
             )
@@ -1174,6 +1224,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 macros: macros,
                 profiles: profiles,
                 searchEngine: searchEngine,
+                commandRouter: commandRouter,
+                hud: hud,
                 onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }
             )
         }

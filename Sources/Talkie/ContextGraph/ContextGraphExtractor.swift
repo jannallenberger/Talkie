@@ -14,24 +14,23 @@ enum ContextGraphExtractor {
 
     /// Extract candidate entities from a free-text body (a dictation, or a meeting
     /// transcript / turn).
+    ///
+    /// Everything from `PhraseMiner` lands as `.term` — Stage-1 has no reliable
+    /// signal to tell a project apart from any other identifier-shaped phrase (an
+    /// earlier version guessed "dotted/underscored/internal-capital → project",
+    /// which mislabeled plain acronyms like "TSX" or "GDPR" as projects purely
+    /// because they're all-caps). `.project` is reserved for higher-confidence
+    /// sources: the folder name Vibe Coding is actually pointed at, or Stage-2 LLM
+    /// extraction (`GraphLLMExtractor`) once it's wired into the live ingest path.
     static func candidates(from text: String) -> [Candidate] {
         var out: [Candidate] = []
         for phrase in PhraseMiner.mine(from: [text], limit: 20) {
-            out.append(Candidate(kind: classify(phrase), displayName: phrase))
+            out.append(Candidate(kind: .term, displayName: phrase))
         }
         for clause in commitments(in: text) {
             out.append(Candidate(kind: .commitment, displayName: clause))
         }
         return out
-    }
-
-    /// Heuristic kind for a mined phrase: a dotted / snake / CamelCase identifier
-    /// reads as a project; a plain Capitalized word stays a term until later
-    /// evidence (e.g. a meeting participant match) promotes it to a person.
-    private static func classify(_ phrase: String) -> EntityKind {
-        let looksLikeIdentifier =
-            phrase.contains(".") || phrase.contains("_") || phrase.dropFirst().contains(where: \.isUppercase)
-        return looksLikeIdentifier ? .project : .term
     }
 
     /// Pull short commitment clauses out of text using simple cue phrases. Kept

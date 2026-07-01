@@ -132,8 +132,7 @@ struct ExportDestinationsSettings: View {
     @ObservedObject private var prefs = ExportPreferences.shared
 
     var body: some View {
-        SubPage(title: "Export destinations",
-                subtitle: "Where your meetings and dictations are saved on disk.") {
+        VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Destination",
                 footer: prefs.destination == .talkieFolder

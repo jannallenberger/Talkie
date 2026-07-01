@@ -141,11 +141,27 @@ enum PhraseMiner {
         return false
     }
 
-    /// Common capitalized sentence-starters we don't want to bias toward.
+    /// Common capitalized sentence-starters we don't want to bias toward. Beyond
+    /// generic UI chrome, this also has to cover ordinary imperative verbs — a
+    /// dictation-heavy user issuing instructions ("Please continue", "Make sure",
+    /// "Create a…") capitalizes these only because they're sentence-initial, not
+    /// because they're proper nouns, and without this list they get mined and
+    /// mistaken for jargon worth remembering (and worth biasing recognition
+    /// toward, which is the same bug one level up).
     private static let stopwords: Set<String> = [
         "the", "this", "that", "these", "those", "there", "then", "what", "when",
         "where", "which", "while", "with", "your", "you", "and", "but", "for",
         "from", "have", "here", "into", "more", "most", "name", "untitled",
         "new", "open", "save", "edit", "file", "menu", "window", "settings",
+        "please", "make", "made", "create", "created", "continue", "let's",
+        "let", "can", "could", "should", "would", "need", "needs", "want",
+        "wants", "try", "check", "add", "added", "remove", "removed", "fix",
+        "fixed", "update", "updated", "run", "build", "test", "tested",
+        "write", "written", "read", "look", "looking", "go", "going", "start",
+        "started", "stop", "stopped", "keep", "keeping", "use", "using", "do",
+        "does", "did", "get", "got", "set", "show", "showing", "tell", "telling",
+        "give", "giving", "help", "helping", "sure", "also", "actually", "just",
+        "now", "okay", "yes", "no", "instead", "again", "still", "maybe",
+        "before", "after", "first", "next", "finally",
     ]
 }

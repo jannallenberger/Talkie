@@ -228,6 +228,24 @@ final class AppSettings: ObservableObject {
     @Published var optimisticInsertion: Bool {
         didSet { defaults.set(optimisticInsertion, forKey: Keys.optimisticInsertion) }
     }
+    /// Experimental, off by default: lets a spoken cross-surface request ("email
+    /// Sarah the action items from my last meeting") run as a command instead of
+    /// being dictated literally. Touches the live command-routing path on every
+    /// dictation, so it stays a manual opt-in until it's dogfooded.
+    @Published var crossSurfaceCommandsEnabled: Bool {
+        didSet { defaults.set(crossSurfaceCommandsEnabled, forKey: Keys.crossSurfaceCommandsEnabled) }
+    }
+    /// On by default: when a command like "make this a list" has nothing
+    /// selected, fall back to treating your last dictation (same app, within
+    /// `ImplicitSelectionGate.maxAge`) as the target instead of silently
+    /// typing the command out literally. Unlike `crossSurfaceCommandsEnabled`,
+    /// this changes nothing about which utterances get matched as commands —
+    /// only what happens once a command is already matched and has nowhere to
+    /// act — and every use is gated behind an explicit HUD preview before
+    /// anything is written, so it's safe to default on.
+    @Published var implicitCommandTarget: Bool {
+        didSet { defaults.set(implicitCommandTarget, forKey: Keys.implicitCommandTarget) }
+    }
     /// Enable the ⌥⌘V shortcut that re-pastes your most recent transcript into the
     /// focused field (and surface it in the pill when a dictation couldn't paste).
     @Published var pasteLastShortcutEnabled: Bool {
@@ -314,6 +332,8 @@ final class AppSettings: ObservableObject {
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
             Keys.optimisticInsertion: true,
+            Keys.crossSurfaceCommandsEnabled: false,
+            Keys.implicitCommandTarget: true,
             Keys.cleanupLevel: CleanupLevel.medium.rawValue,
             Keys.meetingLanguageMode: "auto",
             Keys.autoDetectMeetings: true,
@@ -354,6 +374,8 @@ final class AppSettings: ObservableObject {
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
         optimisticInsertion = d.bool(forKey: Keys.optimisticInsertion)
+        crossSurfaceCommandsEnabled = d.bool(forKey: Keys.crossSurfaceCommandsEnabled)
+        implicitCommandTarget = d.bool(forKey: Keys.implicitCommandTarget)
         cleanupLevel = CleanupLevel(rawValue: d.string(forKey: Keys.cleanupLevel) ?? "") ?? .medium
         meetingLanguageMode = d.string(forKey: Keys.meetingLanguageMode) ?? "auto"
         autoDetectMeetings = d.bool(forKey: Keys.autoDetectMeetings)
@@ -424,6 +446,8 @@ final class AppSettings: ObservableObject {
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
         static let optimisticInsertion = "optimisticInsertion"
+        static let crossSurfaceCommandsEnabled = "crossSurfaceCommandsEnabled"
+        static let implicitCommandTarget = "implicitCommandTarget"
         static let cleanupLevel = "cleanupLevel"
         static let meetingLanguageMode = "meetingLanguageMode"
         static let autoDetectMeetings = "autoDetectMeetings"
