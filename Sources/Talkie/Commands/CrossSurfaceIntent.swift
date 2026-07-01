@@ -262,24 +262,19 @@ enum CrossSurfaceParser {
                                        channel: channel, recipientHint: recipient)
         }
 
-        // Otherwise it must reference a meeting AND a content kind to qualify.
-        guard lower.contains("meeting"), let kind = contentKind(in: lower) else {
-            // A meeting-less "action items" with an explicit meeting ref via title still counts.
-            if let kind = contentKind(in: lower), let ref = meetingRef(in: lower, original: spoken),
-               isMeetingRefExplicit(ref) {
-                return CrossSurfaceRequest(subject: .meetingContent(kind, ref),
-                                           channel: channel, recipientHint: recipient)
-            }
-            return nil
-        }
+        // It must reference a meeting AND a content kind to qualify. There is
+        // deliberately no meeting-less fallback here: a prior version accepted an
+        // "explicit" meeting ref (via `.onDate`/`.withPerson`, derived from bare
+        // words like "today" or "with <name>") without requiring the word
+        // "meeting" anywhere — that intercepted ordinary sentences like "I'll
+        // email Sarah the notes from today's lunch". Requiring the literal word
+        // is the conservative, tested-safe behavior; a meeting-less "action items
+        // from the Q3 review" is out of scope for v1 rather than risk a false
+        // positive on unrelated dictation.
+        guard lower.contains("meeting"), let kind = contentKind(in: lower) else { return nil }
         let ref = meetingRef(in: lower, original: spoken) ?? .last
         return CrossSurfaceRequest(subject: .meetingContent(kind, ref),
                                    channel: channel, recipientHint: recipient)
-    }
-
-    private static func isMeetingRefExplicit(_ ref: MeetingRef) -> Bool {
-        if case .last = ref { return false }
-        return true
     }
 
     private static func channel(forFirst verb: String) -> DraftChannel {
@@ -330,11 +325,21 @@ enum CrossSurfaceParser {
         return nil
     }
 
+    /// Query lead-ins that mark a request as ASKING about commitments, rather
+    /// than a bare mention of the word "commit"/"commitment" appearing anywhere
+    /// in an ordinary sentence being dictated (e.g. "I'll commit to finishing
+    /// this by Friday" as literal content). Restricting to a small set of
+    /// interrogative openers mirrors how `isImperative` constrains its own check
+    /// to the first word rather than a full-utterance substring search.
+    private static let commitmentQueryLeadIns: [String] = [
+        "what did i commit", "what have i committed", "what are my commitments",
+        "what commitments", "did i promise", "what did i promise",
+    ]
+
     private static func commitmentScope(in lower: String) -> CommitmentScope? {
-        // "what did I commit to…", "what have I committed to…", "my commitments…".
-        let mentionsCommit = lower.contains("commit to") || lower.contains("committed to")
-            || lower.contains("commitment") || lower.contains("did i promise")
-        guard mentionsCommit else { return nil }
+        guard commitmentQueryLeadIns.contains(where: { lower.hasPrefix($0) || lower.contains(" \($0)") }) else {
+            return nil
+        }
         if lower.contains("this week") || lower.contains("the week") { return .thisWeek }
         if lower.contains("today") { return .today }
         return .all

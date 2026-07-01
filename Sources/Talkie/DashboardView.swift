@@ -489,10 +489,20 @@ private struct UsageRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
-                Image(systemName: slice.category.symbol)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(color)
-                    .frame(width: 16)
+                Group {
+                    // `slice.id` is the app's bundle id when one was captured
+                    // (the common case); older records fall back to the app
+                    // name, which won't resolve — the category symbol below
+                    // covers that gracefully.
+                    if let icon = AppIconLookup.icon(forBundleID: slice.id) {
+                        Image(nsImage: icon).resizable().scaledToFit()
+                    } else {
+                        Image(systemName: slice.category.symbol)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(color)
+                    }
+                }
+                .frame(width: 16, height: 16)
                 Text(slice.name)
                     .font(.talkieHeading(13, weight: .medium))
                     .foregroundStyle(Theme.ink)

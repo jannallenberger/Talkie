@@ -7,20 +7,20 @@ import TalkieUpdater
 
 enum SettingsTab: Hashable, CaseIterable {
     case dashboard
-    case history
+    case memory
     case meetings
-    case search
     case dictionary
+    case commands
     case vibeCoding
     case general
 
     var title: String {
         switch self {
         case .dashboard:   return "Dashboard"
-        case .history:     return "History"
+        case .memory:      return "Memory"
         case .meetings:    return "Meetings"
-        case .search:      return "Search"
         case .dictionary:  return "Dictionary"
+        case .commands:    return "Commands"
         case .vibeCoding:  return "Vibe Coding"
         case .general:     return "Settings"
         }
@@ -29,10 +29,10 @@ enum SettingsTab: Hashable, CaseIterable {
     var icon: String {
         switch self {
         case .dashboard:   return "square.grid.2x2.fill"
-        case .history:     return "clock.fill"
+        case .memory:      return "brain"
         case .meetings:    return "person.2.fill"
-        case .search:      return "magnifyingglass"
         case .dictionary:  return "character.book.closed.fill"
+        case .commands:    return "bolt.fill"
         case .vibeCoding:  return "chevron.left.forwardslash.chevron.right"
         case .general:     return "gearshape.fill"
         }
@@ -43,10 +43,10 @@ enum SettingsTab: Hashable, CaseIterable {
     var tint: Color {
         switch self {
         case .dashboard:   return Theme.featherCoral
-        case .history:     return Theme.featherGold
+        case .memory:      return Theme.featherGold
         case .meetings:    return Theme.featherPlum
-        case .search:      return Theme.featherBlue
         case .dictionary:  return Theme.featherGreen
+        case .commands:    return Theme.featherPlum
         case .vibeCoding:  return Theme.featherBlue
         case .general:     return Theme.coral
         }
@@ -81,6 +81,8 @@ final class MainWindowController {
         macros: MacroStore,
         profiles: AppProfileStore,
         searchEngine: SearchEngine,
+        commandRouter: CommandRouter,
+        hud: HUDController,
         onRetryHotKey: @escaping () -> Void
     ) {
         let root = MainView(
@@ -99,6 +101,8 @@ final class MainWindowController {
             macros: macros,
             profiles: profiles,
             searchEngine: searchEngine,
+            commandRouter: commandRouter,
+            hud: hud,
             router: router,
             onRetryHotKey: onRetryHotKey
         )
@@ -146,6 +150,8 @@ struct MainView: View {
     @ObservedObject var macros: MacroStore
     @ObservedObject var profiles: AppProfileStore
     @ObservedObject var searchEngine: SearchEngine
+    let commandRouter: CommandRouter
+    let hud: HUDController
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Void
 
@@ -176,20 +182,23 @@ struct MainView: View {
             DashboardView(settings: settings, stats: stats, history: history,
                           activity: activity, appUsage: appUsage,
                           contextSummary: contextSummary, router: router)
-        case .history:
-            HistorySettings(history: history)
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore, settings: settings)
-        case .search:
-            SearchView(engine: searchEngine, history: history, meetingStore: meetingStore)
         case .dictionary:
             DictionarySettings(dictionary: dictionary)
+        case .memory:
+            MemoryView(contextGraph: contextGraph, history: history,
+                       searchEngine: searchEngine, meetingStore: meetingStore)
+        case .commands:
+            CommandsView(settings: settings, macros: macros,
+                         commandRouter: commandRouter, hud: hud,
+                         meetingStore: meetingStore)
         case .vibeCoding:
             VibeCodingView(projectIndex: projectIndex, settings: settings)
         case .general:
             SettingsHome(settings: settings, permissions: permissions,
-                         macros: macros, profiles: profiles,
-                         onRetryHotKey: onRetryHotKey)
+                         profiles: profiles, contextGraph: contextGraph,
+                         router: router, onRetryHotKey: onRetryHotKey)
         }
     }
 }
@@ -254,218 +263,62 @@ struct PageHeader: View {
     }
 }
 
-// MARK: - History
-
-private struct HistorySettings: View {
-    @ObservedObject var history: HistoryStore
-
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f
-    }()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top) {
-                PageHeader(title: "History", subtitle: "Everything you've dictated in the last 7 days.")
-                Spacer()
-                Button {
-                    copyToClipboard(history.allAsText())
-                } label: {
-                    Label("Copy All", systemImage: "doc.on.doc")
-                }
-                .disabled(history.entries.isEmpty)
-                Button(role: .destructive) {
-                    history.clearAll()
-                } label: {
-                    Label("Clear", systemImage: "trash")
-                }
-                .disabled(history.entries.isEmpty)
-            }
-
-            if history.entries.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "text.bubble")
-                        .font(.system(size: 28))
-                        .foregroundStyle(Theme.inkTertiary)
-                    Text("No dictations yet")
-                        .font(.talkieHeading(15))
-                        .foregroundStyle(Theme.inkSecondary)
-                    Text("Hold your dictation key and speak — what you say will show up here.")
-                        .font(.callout)
-                        .foregroundStyle(Theme.inkTertiary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(history.entries) { entry in
-                            HistoryRow(entry: entry, formatter: Self.dateFormatter) {
-                                copyToClipboard(entry.text)
-                            } onDelete: {
-                                history.delete(entry)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .padding(28)
-    }
-
-    private func copyToClipboard(_ text: String) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
-    }
-}
-
-private struct HistoryRow: View {
-    let entry: DictationEntry
-    let formatter: DateFormatter
-    let onCopy: () -> Void
-    let onDelete: () -> Void
-    @State private var copied = false
-
-    private var appSymbol: String {
-        AppCategory(rawValue: entry.appCategory ?? "")?.symbol ?? "app.dashed"
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(formatter.string(from: entry.date))
-                    .font(.talkieEyebrow)
-                    .foregroundStyle(Theme.inkTertiary)
-                if let appName = entry.appName, !appName.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: appSymbol).font(.system(size: 9, weight: .semibold))
-                        Text(appName)
-                    }
-                    .font(.talkieEyebrow)
-                    .foregroundStyle(Theme.inkTertiary)
-                }
-                Spacer()
-                Button {
-                    onCopy()
-                    copied = true
-                    Task { try? await Task.sleep(for: .seconds(1.4)); copied = false }
-                } label: {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(copied ? Theme.positive : Theme.inkSecondary)
-                }
-                .buttonStyle(.plain)
-                .help("Copy this dictation")
-            }
-            Text(entry.text)
-                .font(.system(size: 13.5))
-                .foregroundStyle(Theme.ink)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .talkieCard(padding: 14)
-    }
-}
-
 // MARK: - General
 
-private enum SettingsRoute: Hashable {
-    case profile, activation, microphone, cleanup, languages, context, behavior
-    case voiceCommands, appProfiles, calendar, export
-    case permissions, developer
-}
-
-/// Settings landing — a tidy index of category rows, each pushing a focused
-/// subpage so no single screen floods the user with options.
+/// Settings landing — flat, named sections on one scrolling page. Never more
+/// than this one level: no section pushes to a further child screen (Apple HIG's
+/// "flat toolbar panes, no sidebar-within-settings" convention for a macOS
+/// Settings surface).
 private struct SettingsHome: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
-    @ObservedObject var macros: MacroStore
     @ObservedObject var profiles: AppProfileStore
+    @ObservedObject var contextGraph: ContextGraphStore
+    @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Void
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    PageHeader(title: "Settings",
-                               subtitle: "Tune how Talkie listens, cleans up, and behaves.")
-                    // One grouped card with clay-icon rows + hairline dividers.
-                    VStack(spacing: 0) {
-                        ForEach(Array(categoryRows.enumerated()), id: \.offset) { _, r in
-                            SettingsRowView(icon: r.icon, title: r.title, subtitle: r.subtitle, route: r.route)
-                            Divider().overlay(Theme.hairline).padding(.leading, 64)
-                        }
-                        SettingsRowView(icon: "", title: "Microphone & music",
-                                        subtitle: settings.pauseMusicWhileDictating ? "Auto mic · pauses music" : "Auto mic",
-                                        route: .microphone, systemIcon: "mic.fill")
-                        Divider().overlay(Theme.hairline).padding(.leading, 64)
-                        SettingsRowView(icon: "IconShield", title: "Privacy & Permissions",
-                                        subtitle: permissions.allGranted ? "All local · nothing leaves your Mac" : "Action needed",
-                                        badge: !permissions.allGranted, route: .permissions)
-                        Divider().overlay(Theme.hairline).padding(.leading, 64)
-                        SettingsRowView(icon: "", title: "Developer",
-                                        subtitle: "Replay onboarding · debug tools",
-                                        route: .developer, systemIcon: "hammer.fill")
-                    }
-                    .talkieSurface()
-                }
-                .padding(28)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .background(Theme.canvas)
-            .navigationDestination(for: SettingsRoute.self) { route in
-                subpage(route)
-            }
-        }
-    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                PageHeader(title: "Settings",
+                           subtitle: "Tune how Talkie listens, cleans up, and behaves.")
 
-    private var categoryRows: [(route: SettingsRoute, icon: String, title: String, subtitle: String)] {
-        [
-            (.profile, "IconPerson", "Profile",
-             settings.userName.isEmpty ? "Set your name" : settings.userName),
-            (.activation, "IconKeyboard", "Activation & insertion",
-             "\(settings.activationKey.displayName) · \(settings.activationMode == .holdToTalk ? "Hold" : "Toggle")"),
-            (.cleanup, "IconWand", "Cleanup & style",
-             settings.appAdaptiveCleanup ? "Adapts per app" : settings.cleanupLevel.displayName),
-            (.languages, "IconGlobe", "Languages",
-             "\(settings.spokenLanguages.count) selected"),
-            (.context, "IconBrain", "Context & learning",
-             settings.contextAwareness ? "Context on" : "Context off"),
-            (.voiceCommands, "IconCommand", "Voice commands",
-             macros.macros.count == 1 ? "1 macro" : "\(macros.macros.count) macros"),
-            (.appProfiles, "IconApps", "Per-app rules",
-             profiles.customizedCount == 0 ? "Same everywhere"
-                : (profiles.customizedCount == 1 ? "1 app customized" : "\(profiles.customizedCount) apps customized")),
-            (.calendar, "IconCalendar", "Calendar",
-             CalendarMeetingContext.isAuthorized ? "Connected" : "Off"),
-            (.export, "IconExport", "Export destinations",
-             ExportPreferences.shared.summary),
-            (.behavior, "IconSliders", "Behavior", "Sounds, open at login"),
-        ]
+                section("Profile") {
+                    ProfileSettings(settings: settings)
+                }
+                section("Dictation") {
+                    ActivationSettings(settings: settings)
+                    MicrophoneSettings(settings: settings)
+                    CleanupSettings(settings: settings)
+                    LanguageSettings(settings: settings)
+                }
+                section("Per-app & context") {
+                    ContextSettings(settings: settings, contextGraph: contextGraph, router: router)
+                    AppProfilesSettings(profiles: profiles, settings: settings)
+                    CalendarSettings()
+                }
+                section("Behavior") {
+                    BehaviorSettings(settings: settings)
+                    ExportDestinationsSettings()
+                }
+                section("Privacy & Permissions") {
+                    PrivacyAndPermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
+                }
+                section("Developer") {
+                    DeveloperSettings(settings: settings)
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Theme.canvas)
     }
 
     @ViewBuilder
-    private func subpage(_ route: SettingsRoute) -> some View {
-        switch route {
-        case .profile:       ProfileSettings(settings: settings)
-        case .activation:    ActivationSettings(settings: settings)
-        case .microphone:    MicrophoneSettings(settings: settings)
-        case .cleanup:       CleanupSettings(settings: settings)
-        case .languages:     LanguageSettings(settings: settings)
-        case .context:       ContextSettings(settings: settings)
-        case .behavior:      BehaviorSettings(settings: settings)
-        case .voiceCommands: VoiceCommandsSettings(macros: macros)
-        case .appProfiles:   AppProfilesSettings(profiles: profiles, settings: settings)
-        case .calendar:      CalendarSettings()
-        case .export:        ExportDestinationsSettings()
-        case .permissions:   PrivacyAndPermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
-        case .developer:     DeveloperSettings(settings: settings)
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Eyebrow(text: title.uppercased())
+            content()
         }
     }
 }
@@ -478,8 +331,7 @@ private struct DeveloperSettings: View {
     @State private var replaying = false
 
     var body: some View {
-        SubPage(title: "Developer",
-                subtitle: "Tools for building Talkie.") {
+        VStack(alignment: .leading, spacing: 18) {
             #if TALKIE_DEV_TOOLS
             AppUpdateSection()
             #endif
@@ -503,12 +355,71 @@ private struct DeveloperSettings: View {
                 }
             }
 
+            MCPConnectorCard()
+
             // Gate-zero check for the niche-vocabulary feature: does on-device
             // contextualStrings biasing actually move recognition? Test it by talking.
             if BiasABProbe.isAvailable {
                 BiasABTestView()
             }
         }
+    }
+}
+
+/// "Local MCP server" — surfaces the `talkie-mcp` binary (zero-network stdio
+/// JSON-RPC server over the on-disk stores) so it's discoverable, instead of a
+/// user having to find the binary and hand-configure an MCP client themselves.
+/// Config/discovery only — no server management UI, matching its nature as a
+/// CLI-facing tool the app doesn't run or supervise.
+private struct MCPConnectorCard: View {
+    @State private var copied = false
+
+    /// `talkie-mcp` is a separate SwiftPM product, never bundled into the app —
+    /// only present on disk if it's been built. Search plausible build-output
+    /// locations rather than assume one; show an honest "not built yet" state
+    /// instead of copying a path that doesn't exist.
+    private var binaryPath: String? {
+        let candidates = [
+            "\(NSHomeDirectory())/Talkie/.build/release/talkie-mcp",
+            "\(NSHomeDirectory())/Talkie/.build/debug/talkie-mcp",
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    var body: some View {
+        SettingsCard(
+            header: "Local MCP server",
+            footer: "talkie-mcp is a separate, zero-network stdio server exposing your meetings, brief, commitments, and search to Claude Desktop or any MCP client — read-mostly, entirely on-device."
+        ) {
+            if let binaryPath {
+                SettingsRow(title: "talkie-mcp", subtitle: binaryPath) {
+                    Button(copied ? "Copied" : "Copy config") { copyConfig(binaryPath) }
+                        .buttonStyle(.bordered)
+                }
+            } else {
+                SettingsNote(
+                    text: "Not built yet. Run `swift build --product talkie-mcp` from the Talkie checkout, then reopen this pane.",
+                    tone: Theme.inkTertiary
+                )
+            }
+        }
+    }
+
+    private func copyConfig(_ path: String) {
+        let json = """
+        {
+          "tools": {
+            "talkie": {
+              "command": "\(path)"
+            }
+          }
+        }
+        """
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(json, forType: .string)
+        copied = true
+        Task { try? await Task.sleep(for: .seconds(1.6)); copied = false }
     }
 }
 
@@ -636,56 +547,6 @@ private struct AppUpdateSection: View {
     }
 }
 #endif
-
-/// A single settings-index row: a clay brand icon, title + state subtitle, and a
-/// chevron, with a soft hover highlight. Rows live inside one grouped card.
-private struct SettingsRowView: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    var badge: Bool = false
-    let route: SettingsRoute
-    /// When set, renders an SF Symbol instead of a Brand clay icon (e.g. the
-    /// Developer row, which has no clay asset).
-    var systemIcon: String? = nil
-    @State private var hovering = false
-
-    var body: some View {
-        NavigationLink(value: route) {
-            HStack(spacing: 14) {
-                Group {
-                    if let systemIcon {
-                        Image(systemName: systemIcon)
-                            .font(.system(size: 19, weight: .semibold))
-                            .foregroundStyle(Theme.inkSecondary)
-                    } else if let img = Brand.image(icon) {
-                        Image(nsImage: img).resizable().scaledToFit()
-                    } else {
-                        Image(systemName: "square.dashed").foregroundStyle(Theme.inkTertiary)
-                    }
-                }
-                .frame(width: 34, height: 34)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(LocalizedStringKey(title)).font(.talkieHeading(14.5, weight: .semibold)).foregroundStyle(Theme.ink)
-                    Text(LocalizedStringKey(subtitle)).font(.talkieHeading(12.5, weight: .regular))
-                        .foregroundStyle(Theme.inkSecondary).lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                if badge { Circle().fill(Theme.danger).frame(width: 7, height: 7) }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.inkTertiary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-            .background(hovering ? Theme.inkSecondary.opacity(0.06) : Color.clear)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-    }
-}
 
 /// Shared scaffold for every settings subpage: a serif page header above a
 /// vertical stack of brand-surface cards on the pure canvas. Replaces the old
@@ -827,7 +688,7 @@ struct SettingsNote: View {
 private struct ProfileSettings: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
-        SubPage(title: "Profile", subtitle: "What Talkie calls you.") {
+        VStack(alignment: .leading, spacing: 18) {
             SettingsCard(footer: "Shown on your dashboard as “Welcome back”. Stays on your Mac.") {
                 SettingsRow(title: "Name") {
                     TextField("Your name", text: $settings.userName)
@@ -844,8 +705,7 @@ private struct MicrophoneSettings: View {
     @State private var devices: [AudioInputDevice] = []
 
     var body: some View {
-        SubPage(title: "Microphone & music",
-                subtitle: "Which mic Talkie records from, and what happens to your music.") {
+        VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Microphone",
                 footer: "Automatic picks a real microphone for you — handy when a Bluetooth speaker is your audio output but has no mic. Pick a specific device to pin it."
@@ -883,8 +743,7 @@ private struct MicrophoneSettings: View {
 private struct ActivationSettings: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
-        SubPage(title: "Activation & insertion",
-                subtitle: "The key that starts Talkie, and how it places your text.") {
+        VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Activation",
                 footer: settings.activationMode == .holdToTalk
@@ -922,6 +781,12 @@ private struct ActivationSettings: View {
                 }
                 SettingsDivider()
                 SettingsToggleRow(
+                    title: "Let commands target your last dictation",
+                    subtitle: "If nothing's selected, a command like “make this a list” can rewrite the text you just dictated instead of doing nothing — only in the same app, within 45 seconds, and you'll always see a preview before it lands.",
+                    isOn: $settings.implicitCommandTarget
+                )
+                SettingsDivider()
+                SettingsToggleRow(
                     title: "Re-paste last transcript with \(settings.activationKey.pasteShortcut.display)",
                     subtitle: "Press \(settings.activationKey.pasteShortcut.display) to drop your most recent transcript into the focused field — handy when Talkie couldn’t find one to paste into. Picked to never clash with your dictation key.",
                     isOn: $settings.pasteLastShortcutEnabled
@@ -942,7 +807,7 @@ private struct CleanupSettings: View {
     }
 
     var body: some View {
-        SubPage(title: "Cleanup & style", subtitle: "How Talkie polishes what you say.") {
+        VStack(alignment: .leading, spacing: 18) {
             SettingsCard(header: "Smart cleanup") {
                 SettingsToggleRow(
                     title: "Adapt the style to the app",
@@ -1010,8 +875,7 @@ private struct LanguageSettings: View {
     }
 
     var body: some View {
-        SubPage(title: "Languages",
-                subtitle: "Tap the ones you speak — Talkie auto-detects between them.") {
+        VStack(alignment: .leading, spacing: 18) {
             LazyVGrid(columns: columns, spacing: 12) {
                 ForEach(talkieLanguageCatalog) { lang in
                     LanguageCard(
@@ -1112,9 +976,14 @@ private struct LanguageCard: View {
 
 private struct ContextSettings: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var contextGraph: ContextGraphStore
+    @ObservedObject var router: SettingsRouter
+
+    private var peopleCount: Int { contextGraph.snapshot().entities(of: .person).count }
+    private var projectCount: Int { contextGraph.snapshot().entities(of: .project).count }
+
     var body: some View {
-        SubPage(title: "Context & learning",
-                subtitle: "What Talkie reads around you, and how it improves over time.") {
+        VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Context awareness",
                 footer: "Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only."
@@ -1130,6 +999,15 @@ private struct ContextSettings: View {
                                   subtitle: "Auto-improve the dictionary.",
                                   isOn: $settings.learnFromEdits)
             }
+            SettingsCard(header: "Memory") {
+                SettingsRow(
+                    title: "\(peopleCount) people, \(projectCount) projects tracked",
+                    subtitle: "Everything Talkie has picked up from your dictations and meetings."
+                ) {
+                    Button("Open Memory") { router.selectedTab = .memory }
+                        .buttonStyle(.bordered)
+                }
+            }
         }
     }
 }
@@ -1137,7 +1015,7 @@ private struct ContextSettings: View {
 private struct BehaviorSettings: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
-        SubPage(title: "Behavior", subtitle: "The small touches.") {
+        VStack(alignment: .leading, spacing: 18) {
             SettingsCard {
                 SettingsToggleRow(title: "Play sounds", isOn: $settings.playSounds)
                 SettingsDivider()
@@ -1186,6 +1064,9 @@ private struct DictionarySettings: View {
                                 VocabChip(term: term) { removeVocab(term) }
                             }
                         }
+                        Text("These words are also used to auto-correct misrecognitions in what you dictate.")
+                            .font(.callout)
+                            .foregroundStyle(Theme.inkTertiary)
                     }
                 }
                 .talkieCard()
@@ -1310,8 +1191,7 @@ private struct PrivacyAndPermissionsSettings: View {
     let onRetryHotKey: () -> Void
 
     var body: some View {
-        SubPage(title: "Privacy & Permissions",
-                subtitle: "The three local permissions Talkie needs — and the proof nothing leaves your Mac.") {
+        VStack(alignment: .leading, spacing: 18) {
             PermissionsSection(permissions: permissions, onRetryHotKey: onRetryHotKey)
             PrivacySection()
         }

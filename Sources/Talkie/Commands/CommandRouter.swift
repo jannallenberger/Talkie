@@ -27,23 +27,36 @@ final class CommandRouter {
     ]
 
     /// Pick the intent for a spoken phrase, or nil if it isn't a command. A
-    /// whole-utterance macro match wins over an imperative rewrite.
-    func intent(for spoken: String) -> (any CommandIntent)? {
+    /// whole-utterance macro match wins over a cross-surface request, which wins
+    /// over an imperative rewrite. `meetings` is a fresh per-call snapshot (like
+    /// `ContextGraphSnapshot`) — never cached on the router — because meetings
+    /// mutate continuously and a stale snapshot would resolve "my last meeting"
+    /// against whatever was last when the router happened to be constructed.
+    /// `crossSurfaceEnabled` gates the one branch that's still dark-launched: it
+    /// touches the live dictation-finalize path for every user, so it stays off
+    /// by default until it's dogfooded (see `AppSettings.crossSurfaceCommandsEnabled`).
+    func intent(for spoken: String, meetings: MeetingSnapshot = .empty, crossSurfaceEnabled: Bool = false) -> (any CommandIntent)? {
         if let expansion = macros.match(spoken) { return MacroIntent(expansion: expansion) }
+        if crossSurfaceEnabled, CrossSurfaceParser.parse(spoken) != nil {
+            return CrossSurfaceIntent(meetings: meetings)
+        }
         if isImperative(spoken) { return RewriteIntent() }
         return nil
     }
 
-    /// Route + run in one call. `selection` / `target` / `graph` are supplied by the
-    /// live layer (AX selection read + `ContextCapture` + `graph.snapshot()`) once
-    /// wired; until then this is fully unit-testable in isolation.
+    /// Route + run in one call. `selection` / `target` / `graph` / `meetings` are
+    /// supplied by the live layer (AX selection read + `ContextCapture` +
+    /// `graph.snapshot()` + `MeetingSnapshot(meetings:)`); this is fully
+    /// unit-testable in isolation.
     func run(
         spoken: String,
         selection: String?,
         target: TargetApp,
-        graph: ContextGraphSnapshot
+        graph: ContextGraphSnapshot,
+        meetings: MeetingSnapshot = .empty,
+        crossSurfaceEnabled: Bool = false
     ) async -> CommandResult? {
-        guard let intent = intent(for: spoken) else { return nil }
+        guard let intent = intent(for: spoken, meetings: meetings, crossSurfaceEnabled: crossSurfaceEnabled) else { return nil }
         let ctx = CommandContext(
             spokenCommand: spoken,
             selection: selection,

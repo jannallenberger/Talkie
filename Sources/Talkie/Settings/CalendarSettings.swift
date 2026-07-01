@@ -18,8 +18,7 @@ struct CalendarSettings: View {
     private var isAuthorized: Bool { status == .fullAccess }
 
     var body: some View {
-        SubPage(title: "Calendar",
-                subtitle: "Name your meetings and spell attendees right, from your calendar.") {
+        VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Calendar context",
                 footer: "Read-only. Talkie reads the event you’re in to title the note and bias attendee names — it never creates, edits, or deletes anything on your calendar. Everything stays on your Mac."

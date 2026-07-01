@@ -29,7 +29,12 @@ enum HUDPhase: Equatable {
     case inserting([String])   // replaced words to show as chips; empty if none
     case copyPrompt(String)
     case copied
-    case commandPreview(String) // the proposed replacement text, awaiting confirm
+    // The proposed replacement text, awaiting confirm; `replacing` is non-nil
+    // only when the selection came from the implicit "what I just dictated"
+    // fallback rather than a real AX selection, so the pill can show what's
+    // about to be replaced — the user never selected anything themselves, so
+    // they have no other visual anchor for it.
+    case commandPreview(text: String, replacing: String?)
     case commandReverted        // brief "Reverted" confirmation (mirrors .copied)
     case learned(String)        // "Added 'X' to dictionary" ping, with an Undo chip
     case error(String)
@@ -275,7 +280,12 @@ final class HUDController {
     /// preview is a decision, so the pill stays until you act (or the hub dismisses
     /// it). `onConfirm`/`onUndo` are the hub's closures (inject the replacement via
     /// `TextInjector`, or restore the prior selection from the undo token).
+    /// `replacing`, when non-nil, is the implicit-fallback source text (see
+    /// `ImplicitSelectionGate`) so the pill can show what's about to be
+    /// replaced — required, not decorative: it's the only thing that makes an
+    /// implicit-fallback Insert an informed choice instead of a blind one.
     func showCommandPreview(_ text: String,
+                            replacing original: String? = nil,
                             onConfirm: @escaping () -> Void,
                             onUndo: @escaping () -> Void) {
         cancelHide()
@@ -286,7 +296,7 @@ final class HUDController {
         }
         model.onCommandUndo = onUndo
         panel.ignoresMouseEvents = false   // let the user tap Insert / Undo
-        model.phase = .commandPreview(text)
+        model.phase = .commandPreview(text: text, replacing: original)
         reposition()
         panel.orderFrontRegardless()
     }
@@ -528,22 +538,33 @@ private struct HUDView: View {
                     .foregroundStyle(.white.opacity(0.85))
             }
             .transition(.blurReplace)
-        case .commandPreview(let text):
+        case .commandPreview(let text, let replacing):
             // A voice command's proposed replacement — nothing's been inserted yet.
             // The pill widens to show it, with two chips: Insert (apply it) and Undo
             // (drop it, keep what was there). Reuses the `.inserting` chip styling.
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.coral)
-                Text(text)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(2)
-                    .frame(maxWidth: 320, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                CommandChip(title: "Insert", prominent: true) { model.onCommandConfirm() }
-                CommandChip(title: "Undo", prominent: false) { model.onCommandUndo() }
+            VStack(alignment: .leading, spacing: 4) {
+                if let replacing {
+                    // Implicit-fallback path only: the user never selected anything
+                    // themselves, so this is their only visual anchor for what
+                    // "Insert" is about to replace. Required, not decorative.
+                    Text("Replacing your last dictation: \u{201c}\(replacing.prefix(60))\u{201d}")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.coral)
+                    Text(text)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(2)
+                        .frame(maxWidth: 320, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    CommandChip(title: "Insert", prominent: true) { model.onCommandConfirm() }
+                    CommandChip(title: "Undo", prominent: false) { model.onCommandUndo() }
+                }
             }
             .transition(.blurReplace)
         case .commandReverted:

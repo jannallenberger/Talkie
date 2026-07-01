@@ -10,6 +10,13 @@ struct DictationEntry: Codable, Identifiable, Hashable {
     /// Which app you dictated into (optional for back-compat with older files).
     var appName: String?
     var appCategory: String?
+    /// The app's stable bundle identifier — unlike `appName` (a display name,
+    /// not guaranteed unique/stable across relaunches or localizations), this
+    /// is what `ImplicitSelectionGate` compares against the current dictation's
+    /// target app. Optional for back-compat with entries written before this
+    /// field existed; those entries simply never qualify for the implicit
+    /// fallback (fails closed on missing data, not a bug).
+    var bundleID: String?
 
     var date: Date { Date(timeIntervalSince1970: timestampUnix) }
 
@@ -65,28 +72,40 @@ final class HistoryStore: ObservableObject {
         load()
     }
 
+    /// `id` defaults to a fresh UUID (existing call sites are unaffected) but can be
+    /// supplied by the caller so it can reuse the SAME id as a `Provenance.sourceID`
+    /// when it also feeds the context graph from the same dictation — the two stores
+    /// then agree on "which dictation was this," which is what lets the graph's
+    /// dedup-by-(source, sourceID) logic actually work for live dictation instead of
+    /// silently collapsing every session into one.
+    @discardableResult
     func add(
         _ text: String,
         wordCount: Int,
         durationSec: Double,
         appName: String? = nil,
         appCategory: String? = nil,
-        at date: Date = Date()
-    ) {
+        bundleID: String? = nil,
+        at date: Date = Date(),
+        id: UUID = UUID()
+    ) -> DictationEntry? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return nil }
         let entry = DictationEntry(
+            id: id,
             timestampUnix: date.timeIntervalSince1970,
             text: trimmed,
             wordCount: wordCount,
             durationSec: durationSec,
             appName: appName,
-            appCategory: appCategory
+            appCategory: appCategory,
+            bundleID: bundleID
         )
         entries.insert(entry, at: 0)
         prune()
         if entries.count > cap { entries.removeLast(entries.count - cap) }
         save()
+        return entry
     }
 
     func delete(_ entry: DictationEntry) {
