@@ -162,3 +162,31 @@
 "Time spoken" = "Spreektijd";
 "avg wpm" = "gem. wpm";
 "no data yet" = "nog geen gegevens";
+
+
+// MARK: - HUD accessibility (B6)
+"Insert" = "Invoegen";
+"Undo" = "Ongedaan maken";
+"%@ Press %@ to paste your last transcript." = "%@ Druk op %@ om je laatste transcriptie te plakken.";
+"Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had." = "De spraakopdracht wil “%@” vervangen door “%@”. Activeer Invoegen om toe te passen, of Ongedaan maken om te behouden wat je had.";
+"Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss." = "Suggestie van spraakopdracht: “%@”. Activeer Invoegen om toe te passen, of Ongedaan maken om te negeren.";
+"%@ Activate Undo to remove it." = "%@ Activeer Ongedaan maken om het te verwijderen.";
+"Talkie error: %@" = "Talkie-fout: %@";
+"Listening. Talkie is recording your voice." = "Aan het luisteren. Talkie neemt je stem op.";
+"Getting ready to listen." = "Klaarmaken om te luisteren.";
+"Polishing your dictation." = "Je dictaat wordt bijgeschaafd.";
+"Inserted your dictation." = "Je dictaat is ingevoegd.";
+"Inserted your dictation. Corrected: %@" = "Je dictaat is ingevoegd. Gecorrigeerd: %@";
+"Activate to copy your transcript to the clipboard." = "Activeer om je transcriptie naar het klembord te kopiëren.";
+"Copied to the clipboard." = "Naar het klembord gekopieerd.";
+"Voice command suggestion: %@" = "Suggestie van spraakopdracht: %@";
+"Replace “%@” with: %@" = "Vervang “%@” door: %@";
+"Applies the suggested text." = "Past de voorgestelde tekst toe.";
+"Dismisses the suggestion and keeps your text." = "Negeert de suggestie en behoudt je tekst.";
+"Reverted." = "Teruggedraaid.";
+"Removes this learned correction." = "Verwijdert deze geleerde correctie.";
+"Error: %@" = "Fout: %@";
+"Cleanup style: %@." = "Opschoonstijl: %@.";
+"Double-tap to cycle to the next cleanup style." = "Dubbeltik om naar de volgende opschoonstijl te gaan.";
+"Talkie is listening." = "Talkie luistert.";
+"Talkie dictation indicator. Hold your dictation key and speak." = "Talkie-dicteerindicator. Houd je dicteertoets ingedrukt en spreek.";

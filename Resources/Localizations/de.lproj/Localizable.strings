@@ -162,3 +162,31 @@
 "Time spoken" = "Sprechzeit";
 "avg wpm" = "Ø WpM";
 "no data yet" = "Noch keine Daten";
+
+
+// MARK: - HUD accessibility (B6)
+"Insert" = "Einfügen";
+"Undo" = "Rückgängig";
+"%@ Press %@ to paste your last transcript." = "%@ Drücke %@, um deine letzte Transkription einzufügen.";
+"Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had." = "Der Sprachbefehl möchte “%@” durch “%@” ersetzen. Aktiviere „Einfügen“ zum Übernehmen oder „Rückgängig“, um alles zu behalten.";
+"Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss." = "Sprachbefehl-Vorschlag: “%@”. Aktiviere „Einfügen“ zum Übernehmen oder „Rückgängig“ zum Verwerfen.";
+"%@ Activate Undo to remove it." = "%@ Aktiviere „Rückgängig“, um es zu entfernen.";
+"Talkie error: %@" = "Talkie-Fehler: %@";
+"Listening. Talkie is recording your voice." = "Höre zu. Talkie nimmt deine Stimme auf.";
+"Getting ready to listen." = "Bereite das Zuhören vor.";
+"Polishing your dictation." = "Deine Diktat wird verfeinert.";
+"Inserted your dictation." = "Dein Diktat wurde eingefügt.";
+"Inserted your dictation. Corrected: %@" = "Dein Diktat wurde eingefügt. Korrigiert: %@";
+"Activate to copy your transcript to the clipboard." = "Aktivieren, um deine Transkription in die Zwischenablage zu kopieren.";
+"Copied to the clipboard." = "In die Zwischenablage kopiert.";
+"Voice command suggestion: %@" = "Sprachbefehl-Vorschlag: %@";
+"Replace “%@” with: %@" = "Ersetze “%@” durch: %@";
+"Applies the suggested text." = "Übernimmt den vorgeschlagenen Text.";
+"Dismisses the suggestion and keeps your text." = "Verwirft den Vorschlag und behält deinen Text.";
+"Reverted." = "Rückgängig gemacht.";
+"Removes this learned correction." = "Entfernt diese gelernte Korrektur.";
+"Error: %@" = "Fehler: %@";
+"Cleanup style: %@." = "Bereinigungsstil: %@.";
+"Double-tap to cycle to the next cleanup style." = "Doppeltippe, um zum nächsten Bereinigungsstil zu wechseln.";
+"Talkie is listening." = "Talkie hört zu.";
+"Talkie dictation indicator. Hold your dictation key and speak." = "Talkie-Diktatanzeige. Halte deine Diktattaste gedrückt und sprich.";

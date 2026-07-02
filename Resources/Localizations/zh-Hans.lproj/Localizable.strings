@@ -162,3 +162,31 @@
 "Time spoken" = "说话时长";
 "avg wpm" = "平均 wpm";
 "no data yet" = "暂无数据";
+
+
+// MARK: - HUD accessibility (B6)
+"Insert" = "插入";
+"Undo" = "撤销";
+"%@ Press %@ to paste your last transcript." = "%@ 按 %@ 粘贴你上次的转写内容。";
+"Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had." = "语音命令想将 “%@” 替换为 “%@”。激活“插入”以应用，或“撤销”以保留原有内容。";
+"Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss." = "语音命令建议：“%@”。激活“插入”以应用，或“撤销”以忽略。";
+"%@ Activate Undo to remove it." = "%@ 激活“撤销”即可移除。";
+"Talkie error: %@" = "Talkie 错误：%@";
+"Listening. Talkie is recording your voice." = "正在聆听。Talkie 正在录制你的声音。";
+"Getting ready to listen." = "正在准备聆听。";
+"Polishing your dictation." = "正在润色你的口述内容。";
+"Inserted your dictation." = "已插入你的口述内容。";
+"Inserted your dictation. Corrected: %@" = "已插入你的口述内容。已更正：%@";
+"Activate to copy your transcript to the clipboard." = "激活即可将转写内容复制到剪贴板。";
+"Copied to the clipboard." = "已复制到剪贴板。";
+"Voice command suggestion: %@" = "语音命令建议：%@";
+"Replace “%@” with: %@" = "将 “%@” 替换为：%@";
+"Applies the suggested text." = "应用建议的文本。";
+"Dismisses the suggestion and keeps your text." = "忽略建议并保留你的文本。";
+"Reverted." = "已还原。";
+"Removes this learned correction." = "移除此项已学习的更正。";
+"Error: %@" = "错误：%@";
+"Cleanup style: %@." = "整理风格：%@。";
+"Double-tap to cycle to the next cleanup style." = "双击可切换到下一个整理风格。";
+"Talkie is listening." = "Talkie 正在聆听。";
+"Talkie dictation indicator. Hold your dictation key and speak." = "Talkie 口述指示器。按住口述键并说话。";

@@ -162,3 +162,31 @@
 "Time spoken" = "발화 시간";
 "avg wpm" = "평균 wpm";
 "no data yet" = "아직 데이터 없음";
+
+
+// MARK: - HUD accessibility (B6)
+"Insert" = "삽입";
+"Undo" = "실행 취소";
+"%@ Press %@ to paste your last transcript." = "%@ %@ 키를 누르면 마지막 받아쓴 내용을 붙여넣습니다.";
+"Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had." = "음성 명령이 “%@”을(를) “%@”(으)로 바꾸려고 합니다. 적용하려면 삽입을, 원래대로 두려면 실행 취소를 활성화하세요.";
+"Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss." = "음성 명령 제안: “%@”. 적용하려면 삽입을, 무시하려면 실행 취소를 활성화하세요.";
+"%@ Activate Undo to remove it." = "%@ 제거하려면 실행 취소를 활성화하세요.";
+"Talkie error: %@" = "Talkie 오류: %@";
+"Listening. Talkie is recording your voice." = "듣는 중입니다. Talkie가 음성을 녹음하고 있습니다.";
+"Getting ready to listen." = "들을 준비를 하고 있습니다.";
+"Polishing your dictation." = "받아쓴 내용을 다듬고 있습니다.";
+"Inserted your dictation." = "받아쓴 내용을 삽입했습니다.";
+"Inserted your dictation. Corrected: %@" = "받아쓴 내용을 삽입했습니다. 수정됨: %@";
+"Activate to copy your transcript to the clipboard." = "활성화하면 받아쓴 내용을 클립보드에 복사합니다.";
+"Copied to the clipboard." = "클립보드에 복사했습니다.";
+"Voice command suggestion: %@" = "음성 명령 제안: %@";
+"Replace “%@” with: %@" = "“%@”을(를) 다음으로 바꾸기: %@";
+"Applies the suggested text." = "제안된 텍스트를 적용합니다.";
+"Dismisses the suggestion and keeps your text." = "제안을 무시하고 기존 텍스트를 유지합니다.";
+"Reverted." = "되돌렸습니다.";
+"Removes this learned correction." = "학습된 이 수정을 제거합니다.";
+"Error: %@" = "오류: %@";
+"Cleanup style: %@." = "정리 스타일: %@.";
+"Double-tap to cycle to the next cleanup style." = "두 번 탭하면 다음 정리 스타일로 전환됩니다.";
+"Talkie is listening." = "Talkie가 듣고 있습니다.";
+"Talkie dictation indicator. Hold your dictation key and speak." = "Talkie 받아쓰기 표시기. 받아쓰기 키를 누른 채 말하세요.";

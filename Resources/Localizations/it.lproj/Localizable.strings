@@ -162,3 +162,31 @@
 "Time spoken" = "Tempo parlato";
 "avg wpm" = "ppm media";
 "no data yet" = "ancora nessun dato";
+
+
+// MARK: - HUD accessibility (B6)
+"Insert" = "Inserisci";
+"Undo" = "Annulla";
+"%@ Press %@ to paste your last transcript." = "%@ Premi %@ per incollare la tua ultima trascrizione.";
+"Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had." = "Il comando vocale vuole sostituire “%@” con “%@”. Attiva Inserisci per applicare o Annulla per mantenere ciò che avevi.";
+"Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss." = "Suggerimento del comando vocale: “%@”. Attiva Inserisci per applicarlo o Annulla per ignorarlo.";
+"%@ Activate Undo to remove it." = "%@ Attiva Annulla per rimuoverlo.";
+"Talkie error: %@" = "Errore di Talkie: %@";
+"Listening. Talkie is recording your voice." = "In ascolto. Talkie sta registrando la tua voce.";
+"Getting ready to listen." = "Pronto per l’ascolto.";
+"Polishing your dictation." = "Rifinitura della tua dettatura.";
+"Inserted your dictation." = "La tua dettatura è stata inserita.";
+"Inserted your dictation. Corrected: %@" = "La tua dettatura è stata inserita. Corretto: %@";
+"Activate to copy your transcript to the clipboard." = "Attiva per copiare la trascrizione negli appunti.";
+"Copied to the clipboard." = "Copiato negli appunti.";
+"Voice command suggestion: %@" = "Suggerimento del comando vocale: %@";
+"Replace “%@” with: %@" = "Sostituisci “%@” con: %@";
+"Applies the suggested text." = "Applica il testo suggerito.";
+"Dismisses the suggestion and keeps your text." = "Ignora il suggerimento e mantiene il tuo testo.";
+"Reverted." = "Ripristinato.";
+"Removes this learned correction." = "Rimuove questa correzione appresa.";
+"Error: %@" = "Errore: %@";
+"Cleanup style: %@." = "Stile di pulizia: %@.";
+"Double-tap to cycle to the next cleanup style." = "Tocca due volte per passare allo stile di pulizia successivo.";
+"Talkie is listening." = "Talkie è in ascolto.";
+"Talkie dictation indicator. Hold your dictation key and speak." = "Indicatore di dettatura di Talkie. Tieni premuto il tasto di dettatura e parla.";

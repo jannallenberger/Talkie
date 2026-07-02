@@ -177,5 +177,12 @@ private struct BirdBuddyView: View {
                 flapSign *= -1
             }
             .help("Talkie — hold your dictation key and speak")
+            // The macaw's color/grayscale state is the whole signal, invisible to a
+            // VoiceOver user — so name it, and state whether it's currently
+            // listening, rather than exposing a bare, unlabeled image.
+            .accessibilityElement()
+            .accessibilityLabel(model.active
+                ? "Talkie is listening.".loc
+                : "Talkie dictation indicator. Hold your dictation key and speak.".loc)
     }
 }

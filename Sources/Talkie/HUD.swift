@@ -70,6 +70,16 @@ final class HUDModel: ObservableObject {
     /// from full even if two pings land back to back.
     @Published var learnedTick: Int = 0
 
+    /// System accessibility display preferences, mirrored so the SwiftUI pill can
+    /// react to them. `highContrast` drives a fuller-opacity, brighter, ringed pill
+    /// with slightly larger type; `reduceTransparency` drops the translucent chip
+    /// fills for solid ones. Both start from the live `NSWorkspace` values and are
+    /// kept current by observing `accessibilityDisplayOptionsDidChangeNotification`
+    /// (see `startObservingAccessibilityDisplay()`), so toggling
+    /// System Settings ▸ Accessibility ▸ Display updates the pill live.
+    @Published var highContrast: Bool = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    @Published var reduceTransparency: Bool = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+
     /// The active cleanup label to surface in the capture pill (feature 14).
     /// Bumped by the controller so the pill re-reads after a cycle. The hub injects
     /// `cleanupLabel`/`cycleCleanup` so reads/writes go through the live
@@ -86,6 +96,41 @@ final class HUDModel: ObservableObject {
 
     /// True while audio is genuinely being captured.
     var isCapturing: Bool { phase == .listening || phase == .transcribing }
+
+    // The observer token is written once (in `init`, on the main actor) and read
+    // once (in the nonisolated `deinit`). It's never mutated concurrently, so
+    // `nonisolated(unsafe)` is accurate here — it's the documented way to let a
+    // MainActor class tear down a NotificationCenter block-observer whose token type
+    // (`NSObjectProtocol`) isn't Sendable, without a retain cycle.
+    private nonisolated(unsafe) var accessibilityObserver: NSObjectProtocol?
+
+    init() {
+        startObservingAccessibilityDisplay()
+    }
+
+    deinit {
+        if let accessibilityObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(accessibilityObserver)
+        }
+    }
+
+    /// Watch the system's accessibility display preferences and mirror the two we
+    /// render against so the pill updates the instant the user flips a toggle in
+    /// System Settings — no relaunch, no re-arm. The notification arrives on the
+    /// main queue; `NSWorkspace` is `@MainActor`-safe to read here.
+    private func startObservingAccessibilityDisplay() {
+        accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.highContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+                self.reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+            }
+        }
+    }
 }
 
 /// A floating, non-activating pill pinned just under the camera notch (top-center)
@@ -175,6 +220,24 @@ final class HUDController {
         model.levels = Array(repeating: 0, count: HUDModel.barCount)
     }
 
+    /// Speak a HUD state change through VoiceOver. The pill lives in a
+    /// `.nonactivatingPanel` that VoiceOver's cursor may never land on (activating
+    /// it would steal focus from the app you're dictating into — the whole point of
+    /// the pill), so for the states that carry a decision or an outcome we post an
+    /// announcement instead of relying on the user navigating to the element. High
+    /// priority so it isn't dropped mid-speech; announcements are the accessibility
+    /// floor for the pill even where direct navigation isn't reachable.
+    private func announce(_ message: String) {
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: message,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue,
+            ]
+        )
+    }
+
     /// Key pressed — acknowledge immediately while the mic/engine warm up. Audio
     /// is not flowing yet, so the dot is gray (not recording).
     func showArming() {
@@ -258,6 +321,15 @@ final class HUDController {
         model.phase = .copyPrompt(message)
         reposition()
         panel.orderFrontRegardless()
+        // Announce it: this state needs an action (there's no editable field to
+        // paste into), and a VoiceOver user must hear that even if the pill's panel
+        // never takes focus. `message` is already a localized, human-facing string
+        // supplied by the hub; append the shortcut hint via a localized format.
+        if let shortcut {
+            announce(String(format: "%@ Press %@ to paste your last transcript.".loc, message, shortcut))
+        } else {
+            announce(message)
+        }
         hide(after: 6)
     }
 
@@ -299,6 +371,14 @@ final class HUDController {
         model.phase = .commandPreview(text: text, replacing: original)
         reposition()
         panel.orderFrontRegardless()
+        // A preview is a decision with no auto-hide — the VoiceOver user has to hear
+        // both the proposal and that Insert/Undo are waiting, since the panel may
+        // never take focus. Name the implicit-fallback source too when there is one.
+        if let original {
+            announce(String(format: "Voice command wants to replace \u{201c}%@\u{201d} with \u{201c}%@\u{201d}. Activate Insert to apply, or Undo to keep what you had.".loc, String(original.prefix(60)), text))
+        } else {
+            announce(String(format: "Voice command suggestion: \u{201c}%@\u{201d}. Activate Insert to apply, or Undo to dismiss.".loc, text))
+        }
     }
 
     /// Talkie auto-added a learned correction — ping the user with the term and an
@@ -317,6 +397,9 @@ final class HUDController {
         model.phase = .learned(message)
         reposition()
         panel.orderFrontRegardless()
+        // The ping auto-dismisses, so announce the learned term (and that Undo is
+        // there) for a VoiceOver user who can't see the transient pill.
+        announce(String(format: "%@ Activate Undo to remove it.".loc, message))
         hide(after: HUDModel.learnedDuration)
     }
 
@@ -356,6 +439,9 @@ final class HUDController {
         model.phase = .error(message)
         reposition()
         panel.orderFrontRegardless()
+        // Errors auto-hide quickly and there's nothing to tap, so a VoiceOver user
+        // would otherwise miss them entirely — announce so the failure is heard.
+        announce(String(format: "Talkie error: %@".loc, message))
         hide(after: 2.6)
     }
 
@@ -380,6 +466,29 @@ private struct HUDView: View {
 
     private static let hudSpace = "talkieHUD"
 
+    // MARK: Accessibility-aware styling helpers
+    //
+    // The pill's text and glyphs are white-on-black at a range of opacities tuned
+    // for a calm look. Under the system's Increase Contrast setting we lift every
+    // opacity toward solid white so nothing sits at a low-contrast wash; the
+    // capture-phase colors (waveform, cleanup label) brighten the same way. These
+    // funnel every `.white.opacity(...)` through one place so the contrast bump is
+    // consistent and reversible.
+
+    /// White text/glyph color, lifted toward solid in high-contrast mode.
+    private func ink(_ opacity: Double) -> Color {
+        .white.opacity(model.highContrast ? max(opacity, 0.95) : opacity)
+    }
+
+    /// Fill for the translucent in-pill chips (cleanup switcher, Insert/Undo). In
+    /// Reduce Transparency mode the frosted `.white.opacity` look reads as muddy, so
+    /// we swap to a solid, high-contrast fill; high-contrast alone just strengthens
+    /// it. Returns a `Color` so call sites stay a one-liner.
+    private func chipFill(_ opacity: Double) -> Color {
+        if model.reduceTransparency { return .white.opacity(0.22) }
+        return .white.opacity(model.highContrast ? min(opacity + 0.06, 1) : opacity)
+    }
+
     var body: some View {
         // Top-anchored within the (larger, transparent) panel so the pill hugs
         // the notch; the headroom holds the shadow and the drop-in slide.
@@ -398,16 +507,21 @@ private struct HUDView: View {
     @ViewBuilder
     private var pill: some View {
         // Solid pure-black capsule — floats above whatever app you're in. A faint
-        // hairline keeps the edge legible even against a dark backdrop.
+        // hairline keeps the edge legible even against a dark backdrop. In the
+        // system's Increase Contrast mode the edge becomes a full white ring so the
+        // pill has a hard, high-contrast boundary against any backdrop.
         inner
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.horizontal, model.highContrast ? 13 : 12)
+            .padding(.vertical, model.highContrast ? 8 : 7)
             .background(
                 Capsule(style: .continuous)
                     .fill(.black)
                     .overlay(
                         Capsule(style: .continuous)
-                            .strokeBorder(.white.opacity(0.10), lineWidth: 0.5)
+                            .strokeBorder(
+                                .white.opacity(model.highContrast ? 0.9 : 0.10),
+                                lineWidth: model.highContrast ? 1.5 : 0.5
+                            )
                     )
             )
             // Learned-correction ping: a coral ring that traces the pill and
@@ -448,7 +562,10 @@ private struct HUDView: View {
             // goes live. The shape also changes (hollow ring → filled) so the
             // recording state never relies on color alone.
             let recording = model.phase != .arming
-            let tint = recording ? Theme.featherRed : Color.white.opacity(0.55)
+            // The idle/arming gray lifts to near-white in high-contrast so the
+            // "not yet recording" ring stays legible; the live red is already a
+            // saturated feather color, left as-is.
+            let tint = recording ? Theme.featherRed : ink(model.highContrast ? 0.9 : 0.55)
             HStack(spacing: 8) {
                 StatusDot(color: tint, filled: recording)
                     .animation(.easeInOut(duration: 0.25), value: recording)
@@ -456,51 +573,70 @@ private struct HUDView: View {
                 // voice. A one-shot wave of opacity sweeps across it the instant
                 // recording starts, then it settles to steady red.
                 Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
+                    .accessibilityHidden(true)
                 // Feature 14: the active cleanup style/level, tappable to cycle —
                 // change how Talkie polishes this dictation without leaving the
                 // record. Hidden entirely when no switcher is wired (today's pill).
-                CleanupSwitcher(model: model)
+                CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
             }
             .transition(.blurReplace)
+            // The dot + waveform are one status glyph to VoiceOver: state it plainly
+            // rather than exposing a decorative waveform. The cleanup switcher stays
+            // a separate, labeled control (its own element inside this group).
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(recording ? "Listening. Talkie is recording your voice.".loc
+                                           : "Getting ready to listen.".loc)
         case .processing:
             HStack(spacing: 7) {
                 ProgressView()
                     .controlSize(.small)
                     .tint(.white)
+                    .accessibilityHidden(true)
                 Text("Polishing…")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.8))
             }
             .modifier(BusyShake(trigger: model.busyNudge))
             .transition(.blurReplace)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Polishing your dictation.".loc)
         case .inserting(let words):
             HStack(spacing: 6) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.positive)
                 Text("Inserted")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.8))
                 if !words.isEmpty {
                     Text("·")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.22))
+                        .foregroundStyle(ink(0.22))
                     ForEach(Array(words.prefix(3).enumerated()), id: \.offset) { _, word in
                         Text(word)
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.72))
+                            .foregroundStyle(ink(0.72))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
-                            .background(Capsule().fill(.white.opacity(0.13)))
+                            .background(Capsule().fill(chipFill(0.13)))
                     }
                     if words.count > 3 {
                         Text("+\(words.count - 3)")
                             .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(ink(0.4))
                     }
                 }
             }
             .transition(.blurReplace)
+            // Read as one confirmation; name the corrected words so a VoiceOver user
+            // hears what Talkie fixed, not just "inserted".
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                words.isEmpty
+                    ? "Inserted your dictation.".loc
+                    : String(format: "Inserted your dictation. Corrected: %@".loc,
+                             words.prefix(3).joined(separator: ", "))
+            )
         case .copyPrompt(let message):
             // Expands downward into a second line when the re-paste shortcut is on,
             // spelling out how to use it rather than relying on a bare keycap.
@@ -508,36 +644,49 @@ private struct HUDView: View {
                 HStack(spacing: 7) {
                     Image(systemName: "doc.on.clipboard")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(ink(0.9))
                     Text(message)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                        .foregroundStyle(ink(0.9))
                         .lineLimit(1)
                 }
                 if let shortcut = model.copyShortcut {
                     HStack(spacing: 6) {
                         Text("Press")
                             .font(.system(size: 11.5, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.7))
-                        KeycapHint(text: shortcut)
+                            .foregroundStyle(ink(0.7))
+                        KeycapHint(text: shortcut, fill: chipFill(0.16), ink: ink(0.92))
                         Text("to paste into a text field")
                             .font(.system(size: 11.5, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.7))
+                            .foregroundStyle(ink(0.7))
                             .lineLimit(1)
                     }
                 }
             }
             .transition(.blurReplace)
+            // The whole pill is the tap target in this phase (the outer tap gesture
+            // fires only here). Expose it as a button with a clear action so a
+            // VoiceOver user can activate it to copy the transcript again. The tap
+            // gesture lives on the ancestor `pill`, which VO activation may not
+            // bubble to, so wire the copy action directly here too — activation then
+            // copies regardless of gesture propagation.
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(message)
+            .accessibilityHint("Activate to copy your transcript to the clipboard.".loc)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { model.onCopyTap() }
         case .copied:
             HStack(spacing: 6) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.positive)
                 Text("Copied")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.85))
             }
             .transition(.blurReplace)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Copied to the clipboard.".loc)
         case .commandPreview(let text, let replacing):
             // A voice command's proposed replacement — nothing's been inserted yet.
             // The pill widens to show it, with two chips: Insert (apply it) and Undo
@@ -549,34 +698,50 @@ private struct HUDView: View {
                     // "Insert" is about to replace. Required, not decorative.
                     Text("Replacing your last dictation: \u{201c}\(replacing.prefix(60))\u{201d}")
                         .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(ink(0.55))
                         .lineLimit(1)
                 }
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.coral)
+                        .accessibilityHidden(true)
                     Text(text)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                        .foregroundStyle(ink(0.92))
                         .lineLimit(2)
                         .frame(maxWidth: 320, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
-                    CommandChip(title: "Insert", prominent: true) { model.onCommandConfirm() }
-                    CommandChip(title: "Undo", prominent: false) { model.onCommandUndo() }
+                        // Name the proposal so it isn't read as a bare, unlabeled
+                        // string; the chips that follow are the actions.
+                        .accessibilityLabel(
+                            replacing == nil
+                                ? String(format: "Voice command suggestion: %@".loc, text)
+                                : String(format: "Replace \u{201c}%@\u{201d} with: %@".loc,
+                                         String(replacing!.prefix(60)), text)
+                        )
+                    CommandChip(title: "Insert", prominent: true,
+                                fill: chipFill(0.18), ink: ink(0.72),
+                                hint: "Applies the suggested text.".loc) { model.onCommandConfirm() }
+                    CommandChip(title: "Undo", prominent: false,
+                                fill: chipFill(0.13), ink: ink(0.72),
+                                hint: "Dismisses the suggestion and keeps your text.".loc) { model.onCommandUndo() }
                 }
             }
             .transition(.blurReplace)
+            .accessibilityElement(children: .contain)
         case .commandReverted:
             HStack(spacing: 6) {
                 Image(systemName: "arrow.uturn.backward")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(ink(0.85))
                 Text("Reverted")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.85))
             }
             .transition(.blurReplace)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Reverted.".loc)
         case .learned(let message):
             // Talkie auto-added a dictionary correction — a brief, tappable ping.
             // One chip: Undo (remove the rule). Auto-dismisses; ignoring it keeps it.
@@ -584,26 +749,34 @@ private struct HUDView: View {
                 Image(systemName: "character.book.closed.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.coral)
+                    .accessibilityHidden(true)
                 Text(message)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.92))
                     .lineLimit(1)
                     .frame(maxWidth: 300, alignment: .leading)
-                CommandChip(title: "Undo", prominent: false) { model.onLearnedUndo() }
+                    .accessibilityLabel(message)
+                CommandChip(title: "Undo", prominent: false,
+                            fill: chipFill(0.13), ink: ink(0.72),
+                            hint: "Removes this learned correction.".loc) { model.onLearnedUndo() }
             }
             .transition(.blurReplace)
+            .accessibilityElement(children: .contain)
         case .error(let message):
             HStack(spacing: 7) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: model.highContrast ? 14 : 13, weight: .semibold))
                     .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
                 Text(message)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .regular))
+                    .foregroundStyle(ink(0.92))
                     .lineLimit(2)
                     .frame(maxWidth: 300, alignment: .leading)
             }
             .transition(.blurReplace)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(String(format: "Error: %@".loc, message))
         case .hidden:
             EmptyView()
         }
@@ -637,22 +810,27 @@ private struct CountdownRing: View {
 /// A tappable capsule chip used in the command-preview pill (Insert / Undo).
 /// Reuses the `.inserting` chip treatment — a `.white.opacity(0.13)` capsule — so
 /// it sits in the same visual family as the replaced-word chips. The primary
-/// action carries a coral tint to read as the affirmative choice.
+/// action carries a coral tint to read as the affirmative choice. `fill`/`ink` come
+/// from the parent's accessibility-aware helpers so the chip honors Increase
+/// Contrast / Reduce Transparency; `hint` is the VoiceOver hint for the action.
 private struct CommandChip: View {
-    let title: String
+    let title: LocalizedStringKey
     let prominent: Bool
+    let fill: Color
+    let ink: Color
+    let hint: String
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Text(title)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(prominent ? Theme.coral : .white.opacity(0.72))
+            .foregroundStyle(prominent ? Theme.coral : ink)
             .padding(.horizontal, 9)
             .padding(.vertical, 3)
             .background(
                 Capsule(style: .continuous)
-                    .fill(.white.opacity(prominent ? 0.18 : 0.13))
+                    .fill(fill)
             )
             .overlay(
                 Capsule(style: .continuous)
@@ -662,29 +840,43 @@ private struct CommandChip: View {
             .contentShape(Capsule(style: .continuous))
             .onTapGesture(perform: action)
             .onHover { hovering = $0 }
+            // A real, activatable control for VoiceOver: the title is the label, the
+            // caller-supplied `hint` explains the outcome, and the button trait tells
+            // the user it can be activated.
+            .accessibilityLabel(Text(title))
+            .accessibilityHint(hint)
+            .accessibilityAddTraits(.isButton)
     }
 }
 
 /// A small keycap-styled hint shown in the copy-prompt pill — e.g. "⌥⌘V" — telling
 /// you the shortcut to re-paste the last transcript once you've focused a field.
+/// `fill`/`ink` come from the parent's accessibility-aware helpers so the keycap
+/// honors Increase Contrast / Reduce Transparency.
 private struct KeycapHint: View {
     let text: String
+    var fill: Color = .white.opacity(0.16)
+    var ink: Color = .white.opacity(0.92)
 
     var body: some View {
         Text(text)
             .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white.opacity(0.92))
+            .foregroundStyle(ink)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(.white.opacity(0.16))
+                    .fill(fill)
                     .overlay(
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
                     )
             )
             .help("Focus a text field and press \(text) to paste your last transcript")
+            // The surrounding copy-prompt element already reads the shortcut in its
+            // combined label, so keep this decorative keycap out of the VoiceOver
+            // tree to avoid a duplicate, contextless "⌥⌘V".
+            .accessibilityHidden(true)
     }
 }
 
@@ -694,6 +886,9 @@ private struct KeycapHint: View {
 /// nothing at all when the hub hasn't wired a label, so the bare pill is unchanged.
 private struct CleanupSwitcher: View {
     @ObservedObject var model: HUDModel
+    /// Accessibility-aware fill + text color resolved by the parent HUDView.
+    var chipFill: Color = .white.opacity(0.13)
+    var ink: Color = .white.opacity(0.82)
     @State private var hovering = false
 
     var body: some View {
@@ -703,23 +898,30 @@ private struct CleanupSwitcher: View {
             HStack(spacing: 4) {
                 Image(systemName: "wand.and.stars")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(ink.opacity(0.7))
+                    .accessibilityHidden(true)
                 Text(label)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(ink)
                     .lineLimit(1)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(
                 Capsule(style: .continuous)
-                    .fill(.white.opacity(hovering ? 0.18 : 0.13))
+                    .fill(hovering ? chipFill.opacity(0.9) : chipFill)
             )
             .contentShape(Capsule(style: .continuous))
             .onTapGesture { model.cycleCleanup() }
             .onHover { hovering = $0 }
             .help("Cleanup style — tap to change how Talkie polishes this dictation")
             .transition(.blurReplace)
+            // A labeled, activatable control for VoiceOver: state the current style
+            // and that double-tapping cycles it (matches the spec's example wording).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(format: "Cleanup style: %@.".loc, label))
+            .accessibilityHint("Double-tap to cycle to the next cleanup style.".loc)
+            .accessibilityAddTraits(.isButton)
         }
     }
 }

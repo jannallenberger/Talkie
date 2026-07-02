@@ -162,3 +162,31 @@
 "Time spoken" = "Tiempo hablado";
 "avg wpm" = "ppm media";
 "no data yet" = "aún no hay datos";
+
+
+// MARK: - HUD accessibility (B6)
+"Insert" = "Insertar";
+"Undo" = "Deshacer";
+"%@ Press %@ to paste your last transcript." = "%@ Pulsa %@ para pegar tu última transcripción.";
+"Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had." = "El comando de voz quiere reemplazar “%@” por “%@”. Activa Insertar para aplicarlo o Deshacer para conservar lo que tenías.";
+"Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss." = "Sugerencia del comando de voz: “%@”. Activa Insertar para aplicarla o Deshacer para descartarla.";
+"%@ Activate Undo to remove it." = "%@ Activa Deshacer para quitarlo.";
+"Talkie error: %@" = "Error de Talkie: %@";
+"Listening. Talkie is recording your voice." = "Escuchando. Talkie está grabando tu voz.";
+"Getting ready to listen." = "Preparándose para escuchar.";
+"Polishing your dictation." = "Puliendo tu dictado.";
+"Inserted your dictation." = "Se insertó tu dictado.";
+"Inserted your dictation. Corrected: %@" = "Se insertó tu dictado. Corregido: %@";
+"Activate to copy your transcript to the clipboard." = "Actívalo para copiar tu transcripción al portapapeles.";
+"Copied to the clipboard." = "Copiado al portapapeles.";
+"Voice command suggestion: %@" = "Sugerencia del comando de voz: %@";
+"Replace “%@” with: %@" = "Reemplazar “%@” por: %@";
+"Applies the suggested text." = "Aplica el texto sugerido.";
+"Dismisses the suggestion and keeps your text." = "Descarta la sugerencia y conserva tu texto.";
+"Reverted." = "Revertido.";
+"Removes this learned correction." = "Quita esta corrección aprendida.";
+"Error: %@" = "Error: %@";
+"Cleanup style: %@." = "Estilo de limpieza: %@.";
+"Double-tap to cycle to the next cleanup style." = "Toca dos veces para pasar al siguiente estilo de limpieza.";
+"Talkie is listening." = "Talkie está escuchando.";
+"Talkie dictation indicator. Hold your dictation key and speak." = "Indicador de dictado de Talkie. Mantén pulsada tu tecla de dictado y habla.";
