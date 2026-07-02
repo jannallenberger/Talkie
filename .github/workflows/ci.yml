@@ -1,0 +1,143 @@
+# Talkie CI — PR/push gate (work package J1).
+#
+# Every push to `main` and every pull request runs three checks that together
+# keep the promise "main stays shippable":
+#
+#   1. the zero-network grep gate (scripts/check-no-network.sh) — the product
+#      thesis, enforced by a robot instead of by convention;
+#   2. actionlint over the workflows themselves — so a broken workflow can't
+#      silently ship;
+#   3. a real macOS build + BOTH test suites (offline-core and the dev-tools
+#      updater flavor) on an Xcode-26 runner.
+#
+# This is the CI-on-PR/push pipeline ONLY. The tag-driven release pipeline
+# (build → notarize → GitHub Release → cask bump) is a separate file owned by a
+# different work package (ci/release.yml); this file does not touch releases.
+#
+# Design notes worth keeping:
+#   • The `gates` job runs on ubuntu-latest because it needs nothing but bash +
+#     grep + awk, so it is cheap and always available (and it does NOT burn the
+#     billable macOS runner minutes this private repo is charged for). See the
+#     portability note on the check-no-network step below.
+#   • The `build-and-test` job pins `macos-26` (GA since 2026-02, Apple Silicon,
+#     Xcode 26 the default). The package floor is `.macOS("26.0")`, so a runner
+#     without Xcode 26 physically cannot build Talkie — the first build step
+#     therefore HARD-FAILS on Xcode major < 26 rather than limping on silently.
+#   • v1 keeps it to one file with no caching cleverness: SwiftPM has zero
+#     external dependencies to cache, so a cache would only add moving parts.
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# Read-only: this pipeline builds and tests, it never writes to the repo.
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR cancels the older in-flight run — saves the
+# billable macOS minutes and gives faster feedback on the latest commit.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Cheap, always-available gates: the zero-network wall + workflow linting.
+  # --------------------------------------------------------------------------
+  gates:
+    name: Gates (zero-network + actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # scripts/check-no-network.sh is plain bash + POSIX awk/grep with no
+      # BSD-only idioms (verified by inspection: it uses only match/substr/sub/
+      # RSTART/RLENGTH and grep -riE / -rl --include, all POSIX). GNU awk/grep on
+      # ubuntu are supersets of that, so the comment-stripping and symbol scan
+      # behave identically to macOS. If a future edit to the script ever relies
+      # on a BSD-specific behaviour, move this step to the `build-and-test`
+      # (macOS) job instead — do NOT weaken the script to make ubuntu happy.
+      - name: Zero-network gate
+        run: ./scripts/check-no-network.sh
+
+      # Lint the workflow files themselves. We download a pinned actionlint
+      # release binary rather than depending on a third-party marketplace action,
+      # keeping CI's own dependency surface as small as the app's.
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+          # sha256 of actionlint_1.7.7_linux_amd64.tar.gz from the official
+          # GitHub release (rhysd/actionlint). Pinning the hash means a tampered
+          # or swapped asset fails the build instead of running unverified code.
+          ACTIONLINT_SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+        run: |
+          set -euo pipefail
+          TARBALL="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          URL="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${TARBALL}"
+          curl -fsSL "$URL" -o "$TARBALL"
+          echo "${ACTIONLINT_SHA256}  ${TARBALL}" | sha256sum -c -
+          tar -xzf "$TARBALL" actionlint
+          chmod +x actionlint
+
+      - name: Lint workflows
+        run: ./actionlint -color
+
+  # --------------------------------------------------------------------------
+  # The real thing: build Talkie and run both test suites on an Xcode-26 mac.
+  # --------------------------------------------------------------------------
+  build-and-test:
+    name: Build & test (macOS, Xcode 26)
+    # macos-26 is GA (2026-02), runs on Apple Silicon, and ships Xcode 26 as the
+    # default toolchain — the minimum the package's .macOS("26.0") floor needs.
+    # If GitHub ever retires this label before a replacement lands, the fallback
+    # is a self-hosted Apple-Silicon runner with Xcode 26 installed (swap the
+    # `runs-on` value); the Xcode-version guard below keeps either honest.
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # HARD-FAIL if the runner isn't on Xcode 26+. We do NOT copy the silent
+      # `if [ -d /Applications/Xcode_26.app ]` pattern from the release workflow:
+      # a build that "succeeds" against the wrong SDK is worse than a clear stop,
+      # because .macOS("26.0") APIs would fail in confusing ways downstream.
+      - name: Require Xcode 26
+        run: |
+          set -euo pipefail
+          # Prefer an explicit Xcode 26 if the image exposes a versioned app, so
+          # we never accidentally build against an older default toolchain.
+          if [ -d /Applications/Xcode_26.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.app
+          fi
+          xcodebuild -version
+          swift --version
+          MAJOR="$(xcodebuild -version | awk 'NR==1 { split($2, v, "."); print v[1] }')"
+          if [ "$MAJOR" -lt 26 ]; then
+            echo "::error::This runner has Xcode $MAJOR; Talkie needs Xcode 26+ (package floor is .macOS(\"26.0\"))."
+            exit 1
+          fi
+
+      - name: Build (release)
+        run: swift build -c release
+
+      # The offline-core baseline: the default package graph (TalkieTests).
+      - name: Test (offline core)
+        run: swift test
+
+      # The dev-tools flavor: TALKIE_DEV_TOOLS compiles in the TalkieUpdater
+      # module and adds TalkieUpdaterTests (UpdateInstaller.verifyArtifact + the
+      # sha256 parser). Package.swift gates both the target and its tests behind
+      # this env var, so this run is what actually exercises them.
+      - name: Test (dev-tools flavor)
+        env:
+          TALKIE_DEV_TOOLS: "1"
+        run: swift test
