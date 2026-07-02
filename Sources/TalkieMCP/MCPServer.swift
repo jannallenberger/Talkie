@@ -108,8 +108,8 @@ struct MCPServer {
             spec("lookup_entity", "Look up people / projects / terms by name or alias, with provenance.",
                  ["query": strProp("Name or alias to look up."),
                   "kinds": arrProp("Filter to kinds: person|project|term|commitment.")]),
-            spec("search", "Keyword search across meetings, dictations, and entities; returns jump-to-source refs.",
-                 ["query": strProp("Search text."),
+            spec("search", "Semantic + keyword search across meetings, dictations, and entities — finds by meaning, not just substring (e.g. \"shipping the updater\" matches \"release the auto-update build\"). Returns jump-to-source refs with a relevance score and snippet.",
+                 ["query": strProp("Search text — a phrase or paraphrase works; exact terms still rank at top."),
                   "limit": numProp("Max hits (default 15)."),
                   "sources": arrProp("Restrict to: meetings|dictations|entities.")]),
         ]

@@ -8,6 +8,12 @@ import Foundation
 struct TalkieStore {
     let supportDir: URL
     let meetingsDir: URL
+    /// Lazily-built, process-lifetime cache of the semantic search index. A
+    /// reference type so the memoized index survives across `search` calls even
+    /// though `TalkieStore` is a value type held in the top-level `server`. The
+    /// stdio loop in `main.swift` is single-threaded (one `readLine` at a time),
+    /// so an unsynchronized cache is safe — no actor/lock needed.
+    private let searchCache = SemanticSearchCache()
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -185,27 +191,96 @@ struct TalkieStore {
         }.joined(separator: "\n")
     }
 
+    /// Semantic + keyword search across meetings, dictations, and entities.
+    ///
+    /// Re-exposes the app's Memory-tab recall (plan 19, §1: search "re-exposed
+    /// verbatim through the MCP search tool") instead of the old substring grep, so
+    /// a paraphrase like "shipping the updater" finds a meeting that says "release
+    /// the auto-update build". Records are built exactly like the app's
+    /// `SearchEngine.makeIndex` (meeting = summary+transcript, dictation = text,
+    /// entity = displayName) and ranked by the blended cosine+keyword score from
+    /// `SemanticCore` (MIRROR of the app's `SemanticIndex`). The `sources` filter
+    /// and `limit` are preserved; the output line format is unchanged, with a
+    /// score-carrying snippet appended.
+    ///
+    /// The index is built once per process and memoized (`searchCache`): the first
+    /// call pays the embedding cost, later calls are a lookup. When the sentence
+    /// model is unavailable, the blend degrades to keyword overlap — the same
+    /// behavior as the old substring grep.
     func search(query: String, limit: Int, sources: [String]?) -> String {
-        let q = query.lowercased()
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return "Empty query." }
         let want: (String) -> Bool = { sources?.contains($0) ?? true }
-        var hits: [(score: Int, line: String)] = []
-        if want("meetings") {
-            for m in meetings() where m.transcript.lowercased().contains(q) || m.summary.lowercased().contains(q) {
-                hits.append((2, "meeting [\(m.id.uuidString.prefix(8))] \(m.title) — \(stamp(m.startUnix))"))
+
+        // Build the per-source records once, memoized. `sources` filters which
+        // records exist in the index — mirroring the old per-source gating — so the
+        // cache key includes the requested source set.
+        let index = searchCache.index(for: sources, build: {
+            var records: [SemanticRecord] = []
+            if want("meetings") {
+                for m in meetings() {
+                    // Same text the app indexes: summary + transcript (summary alone
+                    // if the transcript is empty is covered by the app; here both are
+                    // joined so paraphrase recall spans the whole meeting).
+                    let text = m.summary.isEmpty ? m.transcript
+                        : (m.transcript.isEmpty ? m.summary : m.summary + "\n\n" + m.transcript)
+                    records.append(SemanticRecord(
+                        line: "meeting [\(m.id.uuidString.prefix(8))] \(m.title) — \(stamp(m.startUnix))",
+                        text: text, sourceRank: 2))
+                }
             }
-        }
-        if want("dictations") {
-            for d in history() where d.text.lowercased().contains(q) {
-                hits.append((1, "dictation [\(d.id.uuidString.prefix(8))] \(stamp(d.timestampUnix)): \(d.text.prefix(100))"))
+            if want("dictations") {
+                for d in history() {
+                    records.append(SemanticRecord(
+                        line: "dictation [\(d.id.uuidString.prefix(8))] \(stamp(d.timestampUnix)): \(d.text.prefix(100))",
+                        text: d.text, sourceRank: 1))
+                }
             }
-        }
-        if want("entities") {
-            for e in entities() where e.displayName.lowercased().contains(q) {
-                hits.append((3, "entity (\(e.id.kind)) \(e.displayName)"))
+            if want("entities") {
+                for e in entities() {
+                    records.append(SemanticRecord(
+                        line: "entity (\(e.id.kind)) \(e.displayName)",
+                        text: e.displayName, sourceRank: 3))
+                }
             }
-        }
+            return SemanticIndex(records: records)
+        })
+
+        let hits = index.search(q, limit: max(1, limit))
         guard !hits.isEmpty else { return "No matches for \"\(query)\"." }
-        return hits.sorted { $0.score > $1.score }.prefix(max(1, limit)).map { "• \($0.line)" }.joined(separator: "\n")
+        return hits.map { hit in
+            // Preserve today's line format; append a score-carrying snippet. The
+            // snippet is dropped when it merely repeats a short line (dictations
+            // already inline their first 100 chars; entities are just a name).
+            let trimmedLine = hit.line
+            let snip = hit.snippet
+            let showSnippet = !snip.isEmpty && !trimmedLine.contains(snip.prefix(40))
+            let scoreTag = String(format: "  [%.2f]", hit.score)
+            return showSnippet
+                ? "• \(trimmedLine)\(scoreTag)\n  ↳ \(snip)"
+                : "• \(trimmedLine)\(scoreTag)"
+        }.joined(separator: "\n")
+    }
+}
+
+/// Process-lifetime memoization for the semantic search index. Reference type so a
+/// value-type `TalkieStore` can hold a persistent cache; unsynchronized because the
+/// MCP stdio loop is single-threaded (`main.swift` handles one message at a time).
+/// Keyed by the requested `sources` set, because that set determines which records
+/// the index contains (the old code gated per source, and so must this).
+final class SemanticSearchCache {
+    private var cached: [String: SemanticIndex] = [:]
+
+    /// Return the memoized index for this `sources` filter, building it once on the
+    /// first request for that filter. `sources == nil` (all sources) and an explicit
+    /// list are distinct keys, matching the pre-change per-source gating.
+    func index(for sources: [String]?, build: () -> SemanticIndex) -> SemanticIndex {
+        // Order-independent key so ["meetings","dictations"] and the reverse share
+        // one index; nil (== all) is its own key.
+        let key = sources.map { $0.sorted().joined(separator: "|") } ?? "*all*"
+        if let hit = cached[key] { return hit }
+        let built = build()
+        cached[key] = built
+        return built
     }
 }
