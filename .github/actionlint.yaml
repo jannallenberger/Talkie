@@ -1,0 +1,14 @@
+# actionlint configuration.
+#
+# actionlint validates `runs-on` against a baked-in list of GitHub-hosted runner
+# labels. That list lags new images: `macos-26` went generally available in
+# February 2026 (Apple Silicon, Xcode 26 default) but isn't in actionlint
+# 1.7.7's built-in set, so it would be flagged as an unknown label and fail the
+# lint step. Declaring it here is actionlint's documented mechanism for teaching
+# it labels it doesn't yet know about — it does NOT disable any other check.
+#
+# Remove this entry once actionlint ships a release that knows `macos-26`
+# natively (and bump ACTIONLINT_VERSION in ci.yml at the same time).
+self-hosted-runner:
+  labels:
+    - macos-26
