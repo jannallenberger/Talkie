@@ -164,3 +164,31 @@
 "no data yet" = "no data yet";
 "Learned vocabulary" = "Learned vocabulary";
 "Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong.";
+
+
+// MARK: - HUD accessibility (B6)
+"Insert" = "Insert";
+"Undo" = "Undo";
+"%@ Press %@ to paste your last transcript." = "%@ Press %@ to paste your last transcript.";
+"Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had." = "Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had.";
+"Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss." = "Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss.";
+"%@ Activate Undo to remove it." = "%@ Activate Undo to remove it.";
+"Talkie error: %@" = "Talkie error: %@";
+"Listening. Talkie is recording your voice." = "Listening. Talkie is recording your voice.";
+"Getting ready to listen." = "Getting ready to listen.";
+"Polishing your dictation." = "Polishing your dictation.";
+"Inserted your dictation." = "Inserted your dictation.";
+"Inserted your dictation. Corrected: %@" = "Inserted your dictation. Corrected: %@";
+"Activate to copy your transcript to the clipboard." = "Activate to copy your transcript to the clipboard.";
+"Copied to the clipboard." = "Copied to the clipboard.";
+"Voice command suggestion: %@" = "Voice command suggestion: %@";
+"Replace “%@” with: %@" = "Replace “%@” with: %@";
+"Applies the suggested text." = "Applies the suggested text.";
+"Dismisses the suggestion and keeps your text." = "Dismisses the suggestion and keeps your text.";
+"Reverted." = "Reverted.";
+"Removes this learned correction." = "Removes this learned correction.";
+"Error: %@" = "Error: %@";
+"Cleanup style: %@." = "Cleanup style: %@.";
+"Double-tap to cycle to the next cleanup style." = "Double-tap to cycle to the next cleanup style.";
+"Talkie is listening." = "Talkie is listening.";
+"Talkie dictation indicator. Hold your dictation key and speak." = "Talkie dictation indicator. Hold your dictation key and speak.";

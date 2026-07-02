@@ -164,3 +164,31 @@
 "no data yet" = "ainda sem dados";
 "Learned vocabulary" = "Vocabulário aprendido";
 "Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "Palavras que o Talkie aprendeu com o que você dita e corrige. Agora elas corrigem erros parecidos sozinhas, sem precisar de regra. Remova uma para avisar ao Talkie que ele errou.";
+
+
+// MARK: - HUD accessibility (B6)
+"Insert" = "Inserir";
+"Undo" = "Desfazer";
+"%@ Press %@ to paste your last transcript." = "%@ Pressione %@ para colar sua última transcrição.";
+"Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had." = "O comando de voz quer substituir “%@” por “%@”. Ative Inserir para aplicar ou Desfazer para manter o que você tinha.";
+"Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss." = "Sugestão do comando de voz: “%@”. Ative Inserir para aplicar ou Desfazer para descartar.";
+"%@ Activate Undo to remove it." = "%@ Ative Desfazer para removê-lo.";
+"Talkie error: %@" = "Erro do Talkie: %@";
+"Listening. Talkie is recording your voice." = "Ouvindo. O Talkie está gravando sua voz.";
+"Getting ready to listen." = "Preparando para ouvir.";
+"Polishing your dictation." = "Aprimorando seu ditado.";
+"Inserted your dictation." = "Seu ditado foi inserido.";
+"Inserted your dictation. Corrected: %@" = "Seu ditado foi inserido. Corrigido: %@";
+"Activate to copy your transcript to the clipboard." = "Ative para copiar sua transcrição para a área de transferência.";
+"Copied to the clipboard." = "Copiado para a área de transferência.";
+"Voice command suggestion: %@" = "Sugestão do comando de voz: %@";
+"Replace “%@” with: %@" = "Substituir “%@” por: %@";
+"Applies the suggested text." = "Aplica o texto sugerido.";
+"Dismisses the suggestion and keeps your text." = "Descarta a sugestão e mantém seu texto.";
+"Reverted." = "Revertido.";
+"Removes this learned correction." = "Remove esta correção aprendida.";
+"Error: %@" = "Erro: %@";
+"Cleanup style: %@." = "Estilo de limpeza: %@.";
+"Double-tap to cycle to the next cleanup style." = "Toque duas vezes para passar ao próximo estilo de limpeza.";
+"Talkie is listening." = "O Talkie está ouvindo.";
+"Talkie dictation indicator. Hold your dictation key and speak." = "Indicador de ditado do Talkie. Mantenha pressionada sua tecla de ditado e fale.";

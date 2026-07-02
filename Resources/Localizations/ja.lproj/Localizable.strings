@@ -164,3 +164,31 @@
 "no data yet" = "まだデータがありません";
 "Learned vocabulary" = "学習した語彙";
 "Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "あなたが話して修正した内容から Talkie が覚えた単語です。ルールがなくても、近い聞き間違いを自動で直します。間違っていた単語は削除して Talkie に知らせてください。";
+
+
+// MARK: - HUD accessibility (B6)
+"Insert" = "挿入";
+"Undo" = "取り消す";
+"%@ Press %@ to paste your last transcript." = "%@ %@ を押すと、最後の文字起こしを貼り付けられます。";
+"Voice command wants to replace “%@” with “%@”. Activate Insert to apply, or Undo to keep what you had." = "音声コマンドが “%@” を “%@” に置き換えようとしています。適用するには「挿入」、元のままにするには「取り消す」を実行してください。";
+"Voice command suggestion: “%@”. Activate Insert to apply, or Undo to dismiss." = "音声コマンドの提案: “%@”。適用するには「挿入」、無視するには「取り消す」を実行してください。";
+"%@ Activate Undo to remove it." = "%@ 削除するには「取り消す」を実行してください。";
+"Talkie error: %@" = "Talkie エラー: %@";
+"Listening. Talkie is recording your voice." = "聞き取り中。Talkie があなたの声を録音しています。";
+"Getting ready to listen." = "聞き取りの準備をしています。";
+"Polishing your dictation." = "口述内容を整えています。";
+"Inserted your dictation." = "口述内容を挿入しました。";
+"Inserted your dictation. Corrected: %@" = "口述内容を挿入しました。修正: %@";
+"Activate to copy your transcript to the clipboard." = "実行すると、文字起こしをクリップボードにコピーします。";
+"Copied to the clipboard." = "クリップボードにコピーしました。";
+"Voice command suggestion: %@" = "音声コマンドの提案: %@";
+"Replace “%@” with: %@" = "“%@” を次に置き換え: %@";
+"Applies the suggested text." = "提案されたテキストを適用します。";
+"Dismisses the suggestion and keeps your text." = "提案を無視して、元のテキストを保持します。";
+"Reverted." = "元に戻しました。";
+"Removes this learned correction." = "この学習した修正を削除します。";
+"Error: %@" = "エラー: %@";
+"Cleanup style: %@." = "整形スタイル: %@。";
+"Double-tap to cycle to the next cleanup style." = "ダブルタップで次の整形スタイルに切り替えます。";
+"Talkie is listening." = "Talkie が聞き取っています。";
+"Talkie dictation indicator. Hold your dictation key and speak." = "Talkie の口述インジケーター。口述キーを押しながら話してください。";
