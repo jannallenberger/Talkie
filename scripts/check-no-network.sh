@@ -32,8 +32,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # The targets that must stay offline. TalkieBridge and TalkieUpdater (the two
 # network-allowed, non-default-flavor modules) are intentionally NOT listed.
+# TalkieFileKit (shared file-transcription kit) and TalkieCLI (the `talkie` CLI)
+# are on-device, network-free, and ship inside the app bundle, so they are held to
+# the same zero-network bar and scanned here too.
 SCAN_DIRS=()
-for d in "Sources/Talkie" "Sources/TalkieMCP"; do
+for d in "Sources/Talkie" "Sources/TalkieMCP" "Sources/TalkieFileKit" "Sources/TalkieCLI"; do
   [ -d "$ROOT/$d" ] && SCAN_DIRS+=("$ROOT/$d")
 done
 
@@ -109,7 +112,7 @@ if [ -n "$MATCHES" ]; then
   exit 1
 fi
 
-echo "PASS — no network symbols in Sources/Talkie or Sources/TalkieMCP."
+echo "PASS — no network symbols in the on-device targets (Sources/Talkie, Sources/TalkieMCP, Sources/TalkieFileKit, Sources/TalkieCLI)."
 echo "The on-device core stays offline. Verify the rest with:"
 echo "  codesign -d --entitlements - Talkie.app   # → no com.apple.security.network.client"
 echo "  nettop -p \$(pgrep Talkie)                  # → zero bytes while you use it"

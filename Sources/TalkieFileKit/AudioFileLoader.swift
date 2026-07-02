@@ -6,16 +6,23 @@
 // different rate/layout, so we always run an explicit `AVAudioConverter` pass
 // rather than risk a silent no-op. This mirrors the conversion AudioCapture does
 // for the live mic in the app, but reads from a file instead of a tap.
+//
+// This file was moved verbatim out of `Sources/TalkieBench` into the shared
+// `TalkieFileKit` library (work package G4) so both `talkie-bench` and the new
+// `talkie` file-transcription CLI reuse ONE decode/resample implementation. The
+// only change from the bench-local original is `public` on the surface the two
+// callers use; the decode/resample logic is byte-for-byte unchanged, which is
+// what keeps the bench's WER numbers identical before and after the move.
 
 @preconcurrency import AVFoundation
 import Foundation
 
-enum AudioFileLoaderError: LocalizedError {
+public enum AudioFileLoaderError: LocalizedError {
     case cannotOpen(URL)
     case cannotCreateConverter
     case conversionFailed(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .cannotOpen(let url): return "Could not open audio file: \(url.lastPathComponent)"
         case .cannotCreateConverter: return "Could not create an audio converter to the analyzer format."
@@ -24,11 +31,11 @@ enum AudioFileLoaderError: LocalizedError {
     }
 }
 
-enum AudioFileLoader {
+public enum AudioFileLoader {
     /// Decode `url`, resample to `target`, and return chunked PCM buffers plus the
     /// audio's duration in seconds (computed from the source file, before resample,
     /// so RTFx reflects real audio length regardless of the analyzer's rate).
-    static func buffers(
+    public static func buffers(
         from url: URL,
         target: AVAudioFormat,
         chunkFrames: AVAudioFrameCount = 16_000

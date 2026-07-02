@@ -5,6 +5,7 @@
 
 @preconcurrency import AVFoundation
 import Foundation
+import TalkieFileKit
 
 /// One file's measured result.
 struct FileResult: Sendable, Codable {
@@ -40,12 +41,12 @@ enum BenchRunner {
     ) async -> BenchOutcome {
         let startedAt = Date()
 
-        guard BenchTranscriber.isAvailable else {
+        guard FileTranscriber.isAvailable else {
             FileHandle.standardError.write(Data("error: on-device SpeechTranscriber is not available on this Mac.\n".utf8))
             return BenchOutcome(measured: [], warmupCount: 0, skippedDecode: 0, startedAt: startedAt)
         }
 
-        let engine = BenchTranscriber(localeIdentifier: localeIdentifier)
+        let engine = FileTranscriber(localeIdentifier: localeIdentifier)
 
         // Warm-up: resolve locale + install/reserve the model + cache the format.
         // This is the one-time first-load cost, kept OUT of the measured timings.

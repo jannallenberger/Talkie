@@ -19,6 +19,7 @@
 
 @preconcurrency import AVFoundation
 import Foundation
+import TalkieFileKit
 
 /// One clip transcribed both ways.
 struct BiasFileResult: Sendable {
@@ -74,12 +75,12 @@ enum BiasComparison {
         phrases: [String],
         quiet: Bool
     ) async -> BiasComparisonOutcome {
-        guard BenchTranscriber.isAvailable else {
+        guard FileTranscriber.isAvailable else {
             FileHandle.standardError.write(Data("error: on-device SpeechTranscriber is not available on this Mac.\n".utf8))
             return BiasComparisonOutcome(rows: [], phraseCount: phrases.count, skipped: items.count)
         }
 
-        let engine = BenchTranscriber(localeIdentifier: localeIdentifier)
+        let engine = FileTranscriber(localeIdentifier: localeIdentifier)
         do {
             if !quiet { Banner.progressLine("Warming up the on-device model (one-time)…") }
             try await engine.prepare()

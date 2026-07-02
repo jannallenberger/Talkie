@@ -108,6 +108,30 @@ are read, never file contents.
 > [docs/CLAUDE_DESIGN_PROMPT.md](docs/CLAUDE_DESIGN_PROMPT.md) for a ready-to-use
 > prompt to redesign the app with Claude.
 
+## Transcribe files from the terminal
+
+Talkie ships a small `talkie` command inside the app bundle for transcribing
+audio files — MacWhisper-Pro-style local batch transcription, on-device and free.
+Put it on your `PATH` once:
+
+```bash
+ln -s /Applications/Talkie.app/Contents/Helpers/talkie /usr/local/bin/talkie
+```
+
+Then:
+
+```bash
+talkie transcribe interview.m4a                 # plain transcript to stdout
+talkie transcribe interview.m4a --srt > subs.srt  # subtitles (also --vtt, --md, --json)
+talkie transcribe interview.m4a --locale de-DE  # a different language
+talkie last                                     # print your most recent dictation
+talkie last -n 5                                # the last five, newest first
+```
+
+Progress and errors go to stderr, so `talkie transcribe x.m4a > out.txt` gives you
+a clean file. The first run for a new language downloads that on-device model once;
+after that everything is local — no audio and no text ever leaves your Mac.
+
 ## Sharing with your co-founders
 
 An **ad-hoc** build (the default `run.sh`) runs great on the Mac that built it,
