@@ -16,6 +16,13 @@ struct BenchArguments {
     /// **bias comparison** (gate zero): each clip is transcribed twice — bias off
     /// vs on — and the WER delta is reported, instead of the standard timing run.
     var biasFile: URL?
+    /// A directory of `<stem>.hyp.txt` sidecars. When set, the harness scores
+    /// those externally-produced transcripts against the corpus references
+    /// (no model run, no timing) instead of transcribing the audio itself.
+    var hypothesesDir: URL?
+    /// A phrase file (same one-per-line format as `--bias`). When set, the harness
+    /// appends a per-term recall table after any run (live OR hypotheses).
+    var termsFile: URL?
 
     static let usage = """
     talkie-bench — on-device speech-recognition benchmark (Apple SpeechAnalyzer)
@@ -37,6 +44,16 @@ struct BenchArguments {
                         vs on) and the WER delta is reported. Answers the only
                         question that gates the niche-vocabulary feature: does
                         on-device contextualStrings biasing actually move WER?
+      --hypotheses <dir> Score EXTERNAL transcripts instead of transcribing here.
+                        For each corpus item <stem>, reads <dir>/<stem>.hyp.txt
+                        and scores it against the reference with the same WER
+                        metric (no model run, no timing). Use it to score a
+                        Whisper/cloud run, or a re-scored post-corrector output,
+                        against the same corpus. Exits nonzero if none match.
+      --terms <path>    A phrase file (one term per line, # comments — same format
+                        as --bias). Appends a per-term recall table (reference
+                        occurrences vs normalized hypothesis hits, recall %) after
+                        any run — live transcription OR --hypotheses.
       --quiet           Print only the final summary table.
       --selftest        Run the built-in WER-scorer correctness checks and exit
                         (no corpus, model, or Python needed).
@@ -81,6 +98,14 @@ struct BenchArguments {
             case "--bias":
                 if let v = nextValue(arg) {
                     out.biasFile = URL(fileURLWithPath: v, relativeTo: cwd).standardizedFileURL
+                }
+            case "--hypotheses":
+                if let v = nextValue(arg) {
+                    out.hypothesesDir = URL(fileURLWithPath: v, relativeTo: cwd).standardizedFileURL
+                }
+            case "--terms":
+                if let v = nextValue(arg) {
+                    out.termsFile = URL(fileURLWithPath: v, relativeTo: cwd).standardizedFileURL
                 }
             case "--quiet":
                 out.quiet = true

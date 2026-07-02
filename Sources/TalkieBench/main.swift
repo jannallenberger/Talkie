@@ -171,6 +171,41 @@ if let biasURL = args.biasFile {
     exit(comparison.rows.isEmpty ? 1 : 0)
 }
 
+// --terms: a phrase file whose per-term recall is appended after any run. Loaded
+// once here (reuses the --bias loader's format: one phrase per line, # comments).
+// An empty/malformed file is a hard error — a --terms flag that scores nothing is
+// almost certainly a mistake the user wants to know about.
+let terms: [String]
+if let termsURL = args.termsFile {
+    terms = BiasComparison.loadPhrases(termsURL)
+    guard !terms.isEmpty else {
+        FileHandle.standardError.write(Data("error: terms file \(termsURL.path) had no usable phrases (one per line, # for comments).\n".utf8))
+        exit(2)
+    }
+} else {
+    terms = []
+}
+
+// Hypotheses mode: score externally-produced `<stem>.hyp.txt` transcripts against
+// the corpus references — no model run, no timing. Optionally append --terms recall
+// over those same hypotheses, then exit.
+if let hypDir = args.hypothesesDir {
+    if !args.quiet {
+        print(Banner.header(corpus: corpus, locale: args.locale, items: items.count, warmup: 0))
+        print("Hypotheses mode: scoring <stem>.hyp.txt sidecars in \(hypDir.path)\n")
+    }
+    let hyp = HypothesisScoring.run(items: items, hypothesesDirectory: hypDir)
+    print(HypothesisScoring.render(hyp, corpus: corpus, locale: args.locale))
+
+    if !terms.isEmpty {
+        let pairs = hyp.scored.map { TermRecallPair(reference: $0.reference, hypothesis: $0.hypothesis) }
+        print(TermRecall.render(TermRecall.score(terms: terms, pairs: pairs)))
+    }
+
+    // Nonzero if zero corpus items had a matching hypothesis (nothing scored).
+    exit(hyp.scored.isEmpty ? 1 : 0)
+}
+
 if !args.quiet {
     print(Banner.header(corpus: corpus, locale: args.locale, items: items.count,
                         warmup: args.warmup))
@@ -184,6 +219,13 @@ let outcome = await BenchRunner.run(items: items,
 
 // Print the results table + the honesty footer.
 print(ResultsTable.render(outcome, corpus: corpus, locale: args.locale))
+
+// Per-term recall over the live transcripts, if --terms was supplied. Scored on
+// the same measured rows the WER above used, so the two numbers can't disagree.
+if !terms.isEmpty {
+    let pairs = outcome.measured.map { TermRecallPair(reference: $0.reference, hypothesis: $0.hypothesis) }
+    print(TermRecall.render(TermRecall.score(terms: terms, pairs: pairs)))
+}
 
 // Optionally emit raw per-file JSON for independent re-scoring.
 if let jsonPath = args.jsonOutput {
