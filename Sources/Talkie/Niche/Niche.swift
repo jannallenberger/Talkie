@@ -2,13 +2,16 @@ import Foundation
 
 /// The confidence-based **niche vocabulary** model. Talkie learns the rare,
 /// domain-specific words you actually use (jargon, product names, code
-/// identifiers) and biases on-device speech recognition toward them, ranked by a
-/// confidence it builds from your own usage — so niche terms get transcribed
-/// correctly instead of being rounded off to common words.
+/// identifiers), ranked by a confidence it builds from your own usage — so niche
+/// terms get transcribed correctly instead of being rounded off to common words.
 ///
-/// 100% local. The store persists to `~/Library/Application Support/Talkie/niche/`
-/// and the only place these terms ever go is into the recognizer's on-device
-/// `contextualStrings` bias slot (see `NicheVocabSnapshot.biasPhrases`).
+/// 100% local. The store persists to `~/Library/Application Support/Talkie/niche/`.
+/// Graduated terms feed the **post-hoc `NicheCorrector`**, which proofreads the
+/// finalized transcript and swaps close-sounding misrecognitions back to the
+/// canonical spelling (see `NicheVocabSnapshot.correctorTerms`). This is the path
+/// that actually fires: the gate-zero benchmark proved on-device
+/// `contextualStrings` biasing is a no-op on this stack, so nothing here touches
+/// the recognizer's bias slot — the correction happens after it types.
 ///
 /// Phase 0 treats the whole user as one implicit niche (`NicheID.default`);
 /// per-niche detection arrives in a later phase but the model already carries
@@ -51,7 +54,8 @@ struct NicheTerm: Codable, Sendable, Hashable, Identifiable {
     /// Times the user explicitly typed this spelling over Talkie's output — the
     /// strongest signal (graduates the term immediately).
     var userConfirmed: Int = 0
-    /// Times we surfaced/biased it and the user corrected *away* from it.
+    /// Times the corrector swapped this spelling in (or we surfaced it) and the
+    /// user then corrected *away* from it — evidence it was the wrong fix.
     var rejections: Int = 0
     /// Log-odds "rareness" z-score at first admission (filled by a later phase; 0 now).
     var rarenessZ: Double = 0
@@ -76,6 +80,14 @@ enum NicheTuning {
     static let halfLifeDays = 45.0
     /// Confidence at/above which a candidate becomes eligible to bias ("boosted").
     static let graduationThreshold = 0.50
+    /// Minimum harvested occurrences before pure-frequency evidence can graduate a
+    /// term. Without this floor, `log2(1 + 2) ≈ 1.58` already clears
+    /// `confidenceMidpoint` (1.5) while recency is fresh, so a term merely *heard*
+    /// twice would boost — far too eager for a corpus of ambient prose, and the
+    /// exact looseness the false-positive corpus test (`NicheLoopTests`) guards
+    /// against. An explicit user confirmation still graduates immediately (it's a
+    /// far stronger signal); this floor only gates the occurrence-only path.
+    static let minOccurrencesForBoost = 3
     /// Weight of one explicit user confirmation in the raw score.
     static let userConfirmedWeight = 3.0
     /// Penalty per rejection in the raw score.
@@ -100,12 +112,26 @@ enum NicheConfidence {
         return clamp01(logistic * recency)
     }
 
-    /// A term is **boosted** (eligible to enter the bias set) once its confidence
-    /// clears the graduation threshold, OR immediately on a single explicit user
-    /// confirmation. Below that it is a tracked-but-not-injected **candidate**, so
-    /// unproven guesses never corrupt a transcript.
+    /// A term is **boosted** (eligible to enter the corrector's term set) once its
+    /// confidence clears the graduation threshold AND it has enough evidence, OR
+    /// immediately on a single explicit user confirmation. Below that it is a
+    /// tracked-but-not-injected **candidate**, so unproven guesses never corrupt a
+    /// transcript.
+    ///
+    /// The `minOccurrencesForBoost` floor applies only to the occurrence-only path:
+    /// a term the user explicitly typed graduates on the first confirmation, but a
+    /// term merely harvested from prose must be heard several times before it can
+    /// enter the live corrector. This is the graduation-math tightening the
+    /// false-positive corpus test settles (see `NicheLoopTests`).
+    ///
+    /// A confirmed term graduates immediately, but a *later* rejection must be able
+    /// to demote it (the HUD-Undo path), so the immediate rule is "confirmed more
+    /// than rejected", not "confirmed at least once" — otherwise one confirmation
+    /// would pin a term boosted forever regardless of how often the user corrected
+    /// it away.
     static func isBoosted(_ term: NicheTerm, nowUnix: Double) -> Bool {
-        if term.userConfirmed >= 1 { return true }
+        if term.userConfirmed > term.rejections { return true }
+        guard term.occurrences >= NicheTuning.minOccurrencesForBoost else { return false }
         return score(term, nowUnix: nowUnix) >= NicheTuning.graduationThreshold
     }
 

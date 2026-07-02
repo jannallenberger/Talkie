@@ -162,3 +162,5 @@
 "Time spoken" = "발화 시간";
 "avg wpm" = "평균 wpm";
 "no data yet" = "아직 데이터 없음";
+"Learned vocabulary" = "학습한 어휘";
+"Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "받아쓰고 고친 내용에서 Talkie가 익힌 단어입니다. 이제 규칙 없이도 비슷한 오인식을 스스로 바로잡습니다. 잘못된 단어는 삭제해 Talkie에 알려 주세요.";

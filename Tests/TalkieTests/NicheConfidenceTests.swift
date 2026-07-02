@@ -36,6 +36,31 @@ final class NicheConfidenceTests: XCTestCase {
         XCTAssertTrue(NicheConfidence.isBoosted(four, nowUnix: now))
     }
 
+    /// The occurrence floor (A1's graduation-math tightening): a harvest-only term
+    /// must be heard at least `minOccurrencesForBoost` times before it can boost,
+    /// even if its raw confidence would otherwise clear the threshold. Two harvests
+    /// alone (`log2(1+2) ≈ 1.58 > midpoint 1.5`) would have graduated under the old
+    /// rule — this is exactly the looseness the false-positive corpus test guards.
+    func testHarvestOnlyNeedsOccurrenceFloor() {
+        XCTAssertEqual(NicheTuning.minOccurrencesForBoost, 3,
+                       "settled against the false-positive corpus: occurrence-only graduates at 3")
+        XCTAssertFalse(NicheConfidence.isBoosted(term("widget", occ: 2), nowUnix: now),
+                       "two harvests stay a tracked candidate, not boosted")
+        XCTAssertTrue(NicheConfidence.isBoosted(term("widget", occ: 3), nowUnix: now),
+                      "three harvests graduate a harvest-only term")
+    }
+
+    /// A confirmed term graduates immediately, but a later rejection must be able to
+    /// demote it — one confirm then one reject nets to not-boosted (the HUD-Undo
+    /// path). Otherwise a single confirmation would pin a term boosted forever.
+    func testConfirmThenRejectDemotes() {
+        XCTAssertTrue(NicheConfidence.isBoosted(term("Talkie", confirmed: 1), nowUnix: now))
+        XCTAssertFalse(NicheConfidence.isBoosted(term("Talkie", confirmed: 1, rejections: 1), nowUnix: now),
+                       "an undone/rejected confirmation demotes the term")
+        XCTAssertTrue(NicheConfidence.isBoosted(term("Talkie", confirmed: 2, rejections: 1), nowUnix: now),
+                      "net-positive confirmations keep it boosted")
+    }
+
     /// One explicit user confirmation graduates a term immediately, even with zero
     /// harvested occurrences — it's the strongest signal.
     func testUserConfirmGraduatesImmediately() {
@@ -100,15 +125,18 @@ final class NicheConfidenceTests: XCTestCase {
         let snap = NicheVocabSnapshot(niches: [], termsByNiche: [NicheID.default.key: terms],
                                       termGuard: .default, nowUnix: now)
 
-        let phrases = snap.biasPhrases(forNiche: NicheID.default.key, limit: 10)
-        XCTAssertEqual(phrases, ["idempotent", "Kubernetes"])
-        XCTAssertFalse(phrases.contains("widget"))
-        XCTAssertFalse(phrases.contains("kube"))
-        XCTAssertFalse(phrases.contains("code"))
+        // `correctorTerms` is the live surface (feeds the post-hoc NicheCorrector);
+        // `biasPhrases` delegates to it. Both must gate + rank + cap identically.
+        let terms2 = snap.correctorTerms(forNiche: NicheID.default.key, limit: 10)
+        XCTAssertEqual(terms2, ["idempotent", "Kubernetes"])
+        XCTAssertEqual(snap.biasPhrases(forNiche: NicheID.default.key, limit: 10), terms2)
+        XCTAssertFalse(terms2.contains("widget"))
+        XCTAssertFalse(terms2.contains("kube"))
+        XCTAssertFalse(terms2.contains("code"))
 
         // Cap is honored.
-        XCTAssertEqual(snap.biasPhrases(forNiche: NicheID.default.key, limit: 1), ["idempotent"])
+        XCTAssertEqual(snap.correctorTerms(forNiche: NicheID.default.key, limit: 1), ["idempotent"])
         // Unknown niche → empty, never a crash.
-        XCTAssertEqual(snap.biasPhrases(forNiche: "nope", limit: 10), [])
+        XCTAssertEqual(snap.correctorTerms(forNiche: "nope", limit: 10), [])
     }
 }

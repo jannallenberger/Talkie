@@ -162,3 +162,5 @@
 "Time spoken" = "Tiempo hablado";
 "avg wpm" = "ppm media";
 "no data yet" = "aún no hay datos";
+"Learned vocabulary" = "Vocabulario aprendido";
+"Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "Palabras que Talkie ha aprendido de lo que dictas y corriges. Ahora corrigen errores parecidos por su cuenta, sin necesidad de ninguna regla. Quita una para decirle a Talkie que se equivocó con ella.";

@@ -1,8 +1,14 @@
 import Foundation
 
 /// An immutable, `Sendable` view of the niche vocabulary — the single query
-/// surface the dictation/meeting bias assembly reads, mirroring
+/// surface the live corrector and the settings UI read, mirroring
 /// `ContextGraphSnapshot`. Produced by `NicheVocabStore.snapshot()`.
+///
+/// The graduated terms flow into the **post-hoc `NicheCorrector`**
+/// (`correctorTerms`), not the recognizer's bias slot — on-device
+/// `contextualStrings` biasing is a proven no-op on this stack (gate-zero verdict),
+/// so the correction happens on the finalized transcript instead. `biasPhrases`
+/// is retained for the offline bias A/B probe only.
 struct NicheVocabSnapshot: Sendable {
     let niches: [Niche]
     /// All terms, keyed by `nicheKey`.
@@ -21,12 +27,15 @@ struct NicheVocabSnapshot: Sendable {
         NicheConfidence.score(term, nowUnix: nowUnix)
     }
 
-    /// Phrases to bias the recognizer toward for the active niche: **only graduated
-    /// terms that clear the false-boost guard**, highest confidence first, deduped,
-    /// capped to `limit`. This is the niche layer's contribution to the bias union
-    /// assembled in `AppDelegate.beginDictation` — appended before the global cap so
-    /// confidence governs which terms win budget.
-    func biasPhrases(forNiche key: String, limit: Int) -> [String] {
+    /// The graduated niche terms to feed the post-hoc `NicheCorrector` for the
+    /// active niche: **only boosted terms that clear the false-boost guard**,
+    /// highest confidence first, deduped, capped to `limit`. Unioned with the
+    /// hand-curated `dictionary.vocabulary` in `AppDelegate.endDictation` — the cap
+    /// bounds the corrector's O(words × targets) cost, and confidence governs which
+    /// terms make the cut. The guard (`isSafeToInject`) is what stops a jargon
+    /// spelling from being forced onto a common word the user actually said, so it
+    /// gates the corrector list exactly as it once gated the (retired) bias list.
+    func correctorTerms(forNiche key: String, limit: Int) -> [String] {
         let candidates = termsByNiche[key] ?? []
         let boosted = candidates
             .filter { NicheConfidence.isBoosted($0, nowUnix: nowUnix) && termGuard.isSafeToInject($0.term) }
@@ -38,6 +47,13 @@ struct NicheVocabSnapshot: Sendable {
             if out.count >= limit { break }
         }
         return out
+    }
+
+    /// Retained for the offline bias A/B probe (`BiasABProbe`) only — the live path
+    /// no longer biases the recognizer (gate-zero verdict). Same graduated + guarded
+    /// + confidence-ranked selection as `correctorTerms`.
+    func biasPhrases(forNiche key: String, limit: Int) -> [String] {
+        correctorTerms(forNiche: key, limit: limit)
     }
 
     /// All terms for a niche sorted by confidence — the data behind the

@@ -185,8 +185,12 @@ enum BiasComparison {
         if o.absoluteDeltaPoints >= 1.0 && o.improved > o.worsened {
             return """
             VERDICT ✓  On-device contextualStrings biasing MEASURABLY reduces WER.
-                       The niche-vocabulary architecture is viable — proceed to wiring
-                       NicheVocabStore into the bias union (AppDelegate.beginDictation).
+                       The niche-vocabulary architecture is viable via the recognizer
+                       bias slot on this stack/locale. (NOTE: the shipping verdict was
+                       ≈/✗ — biasing is a no-op here — so the live path feeds graduated
+                       terms to the post-hoc NicheCorrector instead; see
+                       NicheVocabSnapshot.correctorTerms. Re-open bias wiring only if a
+                       future run flips this to ✓.)
             """
         } else if o.absoluteDeltaPoints <= -1.0 || o.worsened > o.improved {
             return """

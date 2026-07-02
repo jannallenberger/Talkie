@@ -81,6 +81,7 @@ final class MainWindowController {
         macros: MacroStore,
         profiles: AppProfileStore,
         searchEngine: SearchEngine,
+        nicheVocab: NicheVocabStore,
         commandRouter: CommandRouter,
         hud: HUDController,
         onRetryHotKey: @escaping () -> Void
@@ -101,6 +102,7 @@ final class MainWindowController {
             macros: macros,
             profiles: profiles,
             searchEngine: searchEngine,
+            nicheVocab: nicheVocab,
             commandRouter: commandRouter,
             hud: hud,
             router: router,
@@ -150,6 +152,7 @@ struct MainView: View {
     @ObservedObject var macros: MacroStore
     @ObservedObject var profiles: AppProfileStore
     @ObservedObject var searchEngine: SearchEngine
+    @ObservedObject var nicheVocab: NicheVocabStore
     let commandRouter: CommandRouter
     let hud: HUDController
     @ObservedObject var router: SettingsRouter
@@ -185,7 +188,7 @@ struct MainView: View {
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore, settings: settings)
         case .dictionary:
-            DictionarySettings(dictionary: dictionary)
+            DictionarySettings(dictionary: dictionary, nicheVocab: nicheVocab)
         case .memory:
             MemoryView(contextGraph: contextGraph, history: history,
                        searchEngine: searchEngine, meetingStore: meetingStore)
@@ -1033,7 +1036,17 @@ private struct BehaviorSettings: View {
 
 private struct DictionarySettings: View {
     @ObservedObject var dictionary: DictionaryStore
+    @ObservedObject var nicheVocab: NicheVocabStore
     @State private var newTerm: String = ""
+
+    /// The self-learned terms that have graduated into the live corrector — the ones
+    /// currently rescuing close misses without a hand-curated Dictionary entry.
+    private var learnedTerms: [String] {
+        nicheVocab.snapshot()
+            .correctorTerms(forNiche: NicheID.default.key, limit: 60)
+            // Don't repeat terms the user has already curated by hand above.
+            .filter { term in !dictionary.vocabulary.contains { $0.lowercased() == term.lowercased() } }
+    }
 
     var body: some View {
         ScrollView {
@@ -1070,6 +1083,24 @@ private struct DictionarySettings: View {
                     }
                 }
                 .talkieCard()
+
+                // Learned vocabulary — jargon Talkie picked up from what you say and
+                // confirm, now correcting close misses on its own. Read-only; stays
+                // hidden until something has graduated, so it never adds noise.
+                if !learnedTerms.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Eyebrow(text: "Learned vocabulary")
+                        Text("Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong.")
+                            .font(.talkieHeading(13, weight: .regular))
+                            .foregroundStyle(Theme.inkSecondary)
+                        FlowLayout(spacing: 8) {
+                            ForEach(learnedTerms, id: \.self) { term in
+                                VocabChip(term: term) { nicheVocab.recordRejection(term) }
+                            }
+                        }
+                    }
+                    .talkieCard()
+                }
 
                 // Replacements.
                 VStack(alignment: .leading, spacing: 14) {
