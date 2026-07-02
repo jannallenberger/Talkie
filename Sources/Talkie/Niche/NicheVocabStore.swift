@@ -24,8 +24,13 @@ final class NicheVocabStore: ObservableObject {
     private let provenanceCap = 12
     private let termGuard = NicheTermGuard.default
 
-    init() {
-        let dir = AppPaths.supportDirectory().appendingPathComponent("niche", isDirectory: true)
+    convenience init() {
+        self.init(directory: AppPaths.supportDirectory().appendingPathComponent("niche", isDirectory: true))
+    }
+
+    /// Designated init taking the storage directory. The default `init()` uses the
+    /// real support dir; tests inject a temporary one so disk state is hermetic.
+    init(directory dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("vocab.json")
         load()

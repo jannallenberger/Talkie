@@ -162,3 +162,5 @@
 "Time spoken" = "発話時間";
 "avg wpm" = "平均wpm";
 "no data yet" = "まだデータがありません";
+"Learned vocabulary" = "学習した語彙";
+"Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "あなたが話して修正した内容から Talkie が覚えた単語です。ルールがなくても、近い聞き間違いを自動で直します。間違っていた単語は削除して Talkie に知らせてください。";

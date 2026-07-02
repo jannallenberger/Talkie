@@ -24,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let macros = MacroStore()
     let profiles = AppProfileStore()
     let searchEngine = SearchEngine()
+    /// The confidence-based niche vocabulary store: jargon Talkie learns silently
+    /// from what you dictate and confirm, graduating into the post-hoc
+    /// `NicheCorrector` without a hand-curated Dictionary entry. `@MainActor`;
+    /// every write stays on the main actor.
+    let nicheVocab = NicheVocabStore()
     /// Not `private` — the Commands tab's sandbox exercises this exact live
     /// instance (and `hud` below) rather than a parallel throwaway router, so
     /// "try a command" tests the real thing.
@@ -786,10 +791,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showProcessing()
 
         let replacements = dictionary.replacementsSnapshot()
-        // The user's saved jargon — fed to the post-hoc niche corrector below. These
-        // were also fed to the recognizer's `contextualStrings`, which is a proven
-        // no-op on this stack; post-hoc proofreading is the path that actually fires.
-        let nicheTerms = dictionary.vocabulary
+        // The jargon fed to the post-hoc niche corrector below: the hand-curated
+        // Dictionary vocabulary UNIONED with the self-learned niche terms that have
+        // graduated (confidence-boosted AND guard-safe). Snapshotted here on the main
+        // actor — the corrector runs inside the endDictation Task off-main, and the
+        // snapshot is Sendable. Deduped case-insensitively with the curated terms
+        // winning (their exact spelling is authoritative). The self-learned union is
+        // why coverage compounds silently: terms you actually say and confirm start
+        // getting rescued without ever touching the Dictionary. The old
+        // `contextualStrings` bias slot stays untouched — a proven no-op on this
+        // stack, so post-hoc proofreading is the path that actually fires.
+        var nicheTerms = dictionary.vocabulary
+        do {
+            var seen = Set(dictionary.vocabulary.map { $0.lowercased() })
+            for term in nicheVocab.snapshot().correctorTerms(forNiche: NicheID.default.key, limit: 300)
+            where seen.insert(term.lowercased()).inserted {
+                nicheTerms.append(term)
+            }
+        }
         // The per-app rules resolved at session start (falls back to a fresh
         // resolve if a session somehow ends without a begin-side snapshot). For a
         // user with no per-app rules, `resolve` mirrors `settings.*` for every
@@ -960,10 +979,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Recognizer-agnostic and deterministic; runs before the dictionary's exact
             // find-and-replace so those literal spellings still win on top.
             var nicheFixes: [String] = []
+            // The canonical spellings the corrector swapped IN this session. Threaded
+            // into the learn-from-edits watcher below so that if the user then corrects
+            // one of them away, we record a rejection against the niche term — the
+            // corrector fixed the wrong thing, and that term should demote.
+            var nicheFixTargets: [String] = []
             if !nicheTerms.isEmpty {
                 let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms)
                 cleaned = corrected.text
                 nicheFixes = corrected.fixes.map(\.to)
+                nicheFixTargets = nicheFixes
             }
 
             // Spoken numbers → digits (deterministic, runs in every cleanup mode):
@@ -1117,12 +1142,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.appUsage.record(target: target, words: words)
             }
             // Feed the on-device context graph from what was just dictated.
+            let nowUnix = Date().timeIntervalSince1970
             self.contextGraph.ingest(
                 ContextGraphExtractor.candidates(from: finalText),
                 provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
-                                       dateUnix: Date().timeIntervalSince1970,
+                                       dateUnix: nowUnix,
                                        snippet: String(finalText.prefix(120)))
             )
+            // Harvest niche-vocabulary candidates from the same transcript — proper
+            // nouns, identifiers, filenames — as a frequency signal (batched once per
+            // session, per the store's contract). These start as tracked candidates
+            // and only graduate into the corrector after enough repetition; nothing
+            // here injects on a single sighting. Shares the dictation id so provenance
+            // ("why is this term here?") points back to the exact entry.
+            let harvested = PhraseMiner.mine(from: [finalText])
+            if !harvested.isEmpty {
+                self.nicheVocab.ingest(
+                    harvested,
+                    provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
+                                           dateUnix: nowUnix,
+                                           snippet: String(finalText.prefix(120)))
+                )
+            }
 
             let outcome: TextInjector.Outcome
             if let opt = optimistic {
@@ -1145,12 +1186,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // fixes a word Talkie misrecognized, add it to the dictionary and
                 // ping them with an Undo (WhisperFlow-style live learning).
                 if self.settings.learnFromEdits {
+                    let fixTargets = nicheFixTargets
                     self.learning.beginWatching(inserted: finalText) { [weak self] from, to in
                         guard let self else { return }
+                        // Reject signal: the user corrected AWAY from a spelling the
+                        // niche corrector just swapped in this session — it fixed the
+                        // wrong thing, so demote that term (it stops entering the
+                        // corrector's list until re-confirmed). Checked before the
+                        // dictionary guard so a rejection lands even if there's no new
+                        // learned replacement to add.
+                        if let rejected = fixTargets.first(where: { $0.lowercased() == from.lowercased() }) {
+                            self.nicheVocab.recordRejection(rejected)
+                        }
                         guard self.dictionary.addLearnedReplacement(from: from, to: to) else { return }
+                        // Confirm signal: the user explicitly typed `to` over Talkie's
+                        // output — the strongest evidence this spelling is real jargon.
+                        // Graduates the niche term immediately so the corrector rescues
+                        // a close miss of it next time, no Dictionary entry required.
+                        self.nicheVocab.recordUserConfirmed(
+                            to,
+                            provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
+                                                   dateUnix: Date().timeIntervalSince1970,
+                                                   snippet: String(finalText.prefix(120)))
+                        )
                         self.hud.showLearned("Added “\(to)” to dictionary") { [weak self] in
-                            self?.dictionary.removeLearnedReplacement(from: from, to: to)
-                            self?.hud.showReverted()
+                            guard let self else { return }
+                            self.dictionary.removeLearnedReplacement(from: from, to: to)
+                            // Undoing the learn demotes the term too: the user rejected
+                            // the whole learn, not just the dictionary rule.
+                            self.nicheVocab.recordRejection(to)
+                            self.hud.showReverted()
                         }
                     }
                 }
@@ -1224,6 +1289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 macros: macros,
                 profiles: profiles,
                 searchEngine: searchEngine,
+                nicheVocab: nicheVocab,
                 commandRouter: commandRouter,
                 hud: hud,
                 onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }

@@ -162,3 +162,5 @@
 "Time spoken" = "Spreektijd";
 "avg wpm" = "gem. wpm";
 "no data yet" = "nog geen gegevens";
+"Learned vocabulary" = "Geleerde woordenschat";
+"Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "Woorden die Talkie heeft opgepikt uit wat je dicteert en corrigeert. Ze verbeteren vergelijkbare missers nu zelf, zonder regel. Verwijder er een om Talkie te laten weten dat het die fout had.";
