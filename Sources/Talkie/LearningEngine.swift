@@ -34,7 +34,7 @@ final class LearningEngine {
         stopWatching()
         let captured = inserted
         watchTask = Task { @MainActor in
-            talkieDebugLog("learn: watching after insert (\(captured.count) chars), app=\(Self.frontAppName())")
+            talkieDebugLog("learn: watching after insert (\(captured.count) chars), app=\(AXFieldReader.frontAppName())")
 
             // Acquire a baseline that reflects our insertion, retrying while the
             // paste lands. We don't HARD-require an exact substring (apps reformat:
@@ -45,25 +45,25 @@ final class LearningEngine {
             for attempt in 0..<6 {                          // ~6 × 300ms ≈ 1.8s
                 try? await Task.sleep(for: .milliseconds(300))
                 if Task.isCancelled { return }
-                guard let (el, val) = self.focusedElementValue() else {
+                guard let (el, val) = AXFieldReader.focusedElementValue() else {
                     if attempt == 5 {
-                        talkieDebugLog("learn: ✗ focused field exposes NO AX value (app=\(Self.frontAppName()), role=\(Self.focusedRole())) — can't watch here")
+                        talkieDebugLog("learn: ✗ focused field exposes NO AX value (app=\(AXFieldReader.frontAppName()), role=\(AXFieldReader.focusedRole())) — can't watch here")
                     }
                     continue
                 }
-                if Self.looseContains(val, captured) {
-                    talkieDebugLog("learn: ✓ baseline acquired (app=\(Self.frontAppName()), role=\(Self.focusedRole()), \(val.count) chars)")
+                if AXFieldReader.looseContains(val, captured) {
+                    talkieDebugLog("learn: ✓ baseline acquired (app=\(AXFieldReader.frontAppName()), role=\(AXFieldReader.focusedRole()), \(val.count) chars)")
                     element = el; baseline = val
                     break
                 }
                 if attempt == 5 {
-                    talkieDebugLog("learn: ⚠︎ inserted text not found in AX value (app=\(Self.frontAppName()), role=\(Self.focusedRole())) — watching from current value anyway")
+                    talkieDebugLog("learn: ⚠︎ inserted text not found in AX value (app=\(AXFieldReader.frontAppName()), role=\(AXFieldReader.focusedRole())) — watching from current value anyway")
                     element = el; baseline = val
                 }
             }
             guard let element, let baseline else {
                 talkieDebugLog("learn: gave up — no readable field after deep read")
-                Self.logFocusedTree()   // dump what IS there, so we know if it's recoverable
+                AXFieldReader.logFocusedTree()   // dump what IS there, so we know if it's recoverable
                 return
             }
 
@@ -76,7 +76,7 @@ final class LearningEngine {
                 // Compare only when the SAME field is still focused & readable; a
                 // transient focus blip (clicking around to edit) just skips a poll
                 // rather than aborting the whole watch.
-                guard let (current, value) = self.focusedElementValue(),
+                guard let (current, value) = AXFieldReader.focusedElementValue(),
                       CFEqual(current, element) else { continue }
 
                 // The field emptied/collapsed — in a chat you EDIT then SEND, and the
@@ -129,137 +129,10 @@ final class LearningEngine {
         watchTask = nil
     }
 
-    // MARK: Accessibility read
-
-    /// The focused text element and its current value. Reads the focused element's
-    /// own value first; if that's empty — common in Electron/Chromium apps like
-    /// Claude, where the top focused element is a generic group — it walks the app's
-    /// tree for the editable text element (AXTextArea / AXTextField / AXWebArea with
-    /// a value), the way a screen reader would. nil only when no text is reachable.
-    private func focusedElementValue() -> (AXUIElement, String)? {
-        if let el = Self.focusedElement() {
-            if let v = Self.stringValue(of: el) { return (el, v) }
-            if let hit = Self.findTextDescendant(el, depth: 0) { return hit }
-        }
-        // Fall back through the focused application's own focused element + window.
-        if let app = Self.focusedAppElement() {
-            for attr in [kAXFocusedUIElementAttribute, kAXFocusedWindowAttribute] {
-                if let child = Self.copyElement(app, attr as CFString) {
-                    if let v = Self.stringValue(of: child) { return (child, v) }
-                    if let hit = Self.findTextDescendant(child, depth: 0) { return hit }
-                }
-            }
-        }
-        return nil
-    }
-
-    private static func focusedElement() -> AXUIElement? {
-        let system = AXUIElementCreateSystemWide()
-        return copyElement(system, kAXFocusedUIElementAttribute as CFString)
-    }
-
-    private static func focusedAppElement() -> AXUIElement? {
-        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
-        return AXUIElementCreateApplication(pid)
-    }
-
-    /// Bounded DFS for an editable text element under `el` — a text-role node that
-    /// exposes a non-empty string value.
-    private static func findTextDescendant(_ el: AXUIElement, depth: Int) -> (AXUIElement, String)? {
-        if depth > 8 { return nil }
-        let textRoles: Set<String> = ["AXTextArea", "AXTextField", "AXComboBox", "AXWebArea", "AXTextView"]
-        if textRoles.contains(roleOf(el)), let v = stringValue(of: el) { return (el, v) }
-        for child in children(el).prefix(40) {
-            if let hit = findTextDescendant(child, depth: depth + 1) { return hit }
-        }
-        return nil
-    }
-
-    // MARK: AX primitives
-
-    private static func copyElement(_ el: AXUIElement, _ attr: CFString) -> AXUIElement? {
-        var ref: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(el, attr, &ref) == .success, let r = ref,
-              CFGetTypeID(r) == AXUIElementGetTypeID() else { return nil }
-        return (r as! AXUIElement)
-    }
-
-    private static func stringValue(of el: AXUIElement) -> String? {
-        var ref: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(el, kAXValueAttribute as CFString, &ref) == .success,
-              let s = ref as? String, !s.isEmpty else { return nil }
-        return s
-    }
-
-    private static func roleOf(_ el: AXUIElement) -> String {
-        var ref: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &ref) == .success,
-              let r = ref as? String else { return "" }
-        return r
-    }
-
-    private static func children(_ el: AXUIElement) -> [AXUIElement] {
-        var ref: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &ref) == .success,
-              let arr = ref as? [AXUIElement] else { return [] }
-        return arr
-    }
-
-    /// One-shot diagnostic: dump the focused subtree's roles + value presence to the
-    /// debug log, so we can SEE whether an AX-blind-looking app actually exposes its
-    /// text somewhere (and where), rather than guessing.
-    private static func logFocusedTree() {
-        guard let root = focusedElement() ?? focusedAppElement() else {
-            talkieDebugLog("axprobe: no focused element"); return
-        }
-        var lines: [String] = []
-        func walk(_ e: AXUIElement, _ depth: Int) {
-            if depth > 6 || lines.count > 80 { return }
-            let role = roleOf(e)
-            let v = stringValue(of: e)
-            let desc = v.map { "= \"\($0.replacingOccurrences(of: "\n", with: "⏎").prefix(28))\" (\($0.count)ch)" } ?? ""
-            lines.append(String(repeating: "· ", count: depth) + (role.isEmpty ? "?" : role) + " " + desc)
-            for c in children(e).prefix(15) { walk(c, depth + 1) }
-        }
-        walk(root, 0)
-        talkieDebugLog("axprobe tree (app=\(frontAppName())):\n" + lines.joined(separator: "\n"))
-    }
-
-    // MARK: Diagnostics + matching
-
-    /// The frontmost app's name — for the debug log, to see which apps expose a
-    /// readable field and which don't.
-    private static func frontAppName() -> String {
-        NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
-    }
-
-    /// The AX role of the focused element (e.g. AXTextArea, AXTextField), or
-    /// "none"/"?" when nothing readable is focused — a strong signal in the log of
-    /// whether the app exposes an editable text element at all.
-    private static func focusedRole() -> String {
-        guard let el = focusedElement() else { return "none" }
-        var roleRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &roleRef) == .success,
-              let role = roleRef as? String else { return "?" }
-        return role
-    }
-
-    /// Substring match that tolerates the reformatting apps apply on insert —
-    /// smart quotes, en/em dashes, non-breaking spaces — so the baseline still
-    /// recognises our inserted text.
-    private static func looseContains(_ haystack: String, _ needle: String) -> Bool {
-        normalizeForMatch(haystack).contains(normalizeForMatch(needle))
-    }
-
-    private static func normalizeForMatch(_ s: String) -> String {
-        var out = s
-        for (from, to) in [("\u{2018}", "'"), ("\u{2019}", "'"), ("\u{201C}", "\""),
-                           ("\u{201D}", "\""), ("\u{2013}", "-"), ("\u{2014}", "-"),
-                           ("\u{00A0}", " ")] {
-            out = out.replacingOccurrences(of: from, with: to)
-        }
-        return out
-    }
+    // The Accessibility read machinery (focused-element read, AX primitives, the
+    // subtree diagnostic, and the reformatting-tolerant `looseContains`) now lives
+    // in `AXFieldReader`, shared with `InsertionVerifier`. This engine delegates to
+    // it above; the behavior is identical to when these methods were file-private.
 }
 
 /// Pure word-level diff that extracts a single conservative correction the user
