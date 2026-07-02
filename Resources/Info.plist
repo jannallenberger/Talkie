@@ -59,5 +59,50 @@
     <string>Talkie reads the event you're in to title a meeting recording and spell attendee names right. It never creates, edits, or deletes anything, and your calendar data stays on your Mac.</string>
     <key>NSCalendarsUsageDescription</key>
     <string>Talkie reads the event you're in to title a meeting recording and spell attendee names right. It never creates, edits, or deletes anything, and your calendar data stays on your Mac.</string>
+    <!-- .talkiepack: a shareable one-file dictionary (vocabulary + replacement rules).
+         We own the type, so we EXPORT the UTI (conforming to public.json since the file
+         is JSON) and register a document type so double-clicking one opens Talkie and
+         routes to the Dictionary import preview. Kept in sync with
+         TalkiePack.utTypeIdentifier / .fileExtension. -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.coralate.talkie.talkiepack</string>
+            <key>UTTypeDescription</key>
+            <string>Talkie dictionary</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.json</string>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>talkiepack</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>application/json</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Talkie dictionary</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.coralate.talkie.talkiepack</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 #if TALKIE_DEV_TOOLS
 import TalkieUpdater
@@ -1048,11 +1049,25 @@ private struct DictionarySettings: View {
             .filter { term in !dictionary.vocabulary.contains { $0.lowercased() == term.lowercased() } }
     }
 
+    // Import/export (.talkiepack). The preview is computed BEFORE anything is
+    // written, so the sheet can show what will be added vs. what already exists and
+    // the user confirms once. `importError` shows a calm message when a dropped or
+    // picked file isn't a valid pack — and nothing is changed.
+    @State private var pendingPack: TalkiePack?
+    @State private var pendingPreview: MergePreview?
+    @State private var importError: String?
+    @State private var mergeResult: MergeSummary?
+    @State private var isTargetedForDrop = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                PageHeader(title: "Dictionary",
-                           subtitle: "Names, brands, and jargon Talkie should spell correctly.")
+                HStack(alignment: .top) {
+                    PageHeader(title: "Dictionary",
+                               subtitle: "Names, brands, and jargon Talkie should spell correctly.")
+                    Spacer()
+                    importExportButtons
+                }
 
                 // Custom vocabulary.
                 VStack(alignment: .leading, spacing: 14) {
@@ -1133,9 +1148,67 @@ private struct DictionarySettings: View {
             .padding(28)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Theme.canvas)
+        .background(
+            // A calm brand wash confirms a valid drag is over the pane.
+            Theme.canvas.overlay(
+                isTargetedForDrop
+                    ? Theme.coral.opacity(0.06)
+                    : Color.clear
+            )
+        )
         .onChange(of: dictionary.replacements) { _, _ in dictionary.save() }
         .onChange(of: dictionary.vocabulary) { _, _ in dictionary.save() }
+        // Drag a .talkiepack onto the Dictionary tab to import it.
+        .onDrop(of: [.fileURL], isTargeted: $isTargetedForDrop) { providers in
+            loadDroppedPack(providers)
+        }
+        // Double-clicking a .talkiepack in Finder routes here (see AppDelegate).
+        .onReceive(NotificationCenter.default.publisher(for: .talkieOpenDictionaryPack)) { note in
+            if let url = note.object as? URL { openPack(at: url) }
+        }
+        .sheet(item: Binding(
+            get: { pendingPreview.map { PreviewBox(preview: $0) } },
+            set: { if $0 == nil { pendingPreview = nil; pendingPack = nil } }
+        )) { box in
+            ImportPreviewSheet(
+                preview: box.preview,
+                onConfirm: { confirmImport() },
+                onCancel: { pendingPreview = nil; pendingPack = nil }
+            )
+        }
+        .alert("Couldn't read that file",
+               isPresented: Binding(get: { importError != nil },
+                                    set: { if !$0 { importError = nil } })) {
+            Button("OK", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "")
+        }
+        .alert("Dictionary imported",
+               isPresented: Binding(get: { mergeResult != nil },
+                                    set: { if !$0 { mergeResult = nil } })) {
+            Button("OK", role: .cancel) { mergeResult = nil }
+        } message: {
+            Text(mergeResultMessage)
+        }
+    }
+
+    // MARK: Import / export UI
+
+    private var importExportButtons: some View {
+        HStack(spacing: 8) {
+            Button { presentImportPanel() } label: {
+                Label("Import…", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.bordered)
+            .help("Import a .talkiepack file — preview what's inside before adding it")
+
+            Button { presentExportPanel() } label: {
+                Label("Export…", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.bordered)
+            .disabled(dictionary.vocabulary.isEmpty && dictionary.replacementsSnapshot().isEmpty)
+            .help("Save your whole dictionary to a shareable .talkiepack file")
+        }
     }
 
     private func addTerm() {
@@ -1152,6 +1225,111 @@ private struct DictionarySettings: View {
             dictionary.removeReplacements(at: IndexSet(integer: i))
         }
     }
+
+    // MARK: Export
+
+    /// Write the whole dictionary to a `.talkiepack` via a save panel. The pack name
+    /// defaults to the machine's short name so the shared file has a sensible title;
+    /// the user can rename the file in the panel.
+    private func presentExportPanel() {
+        let defaultName = Host.current().localizedName ?? "Talkie"
+        let pack = dictionary.exportPack(name: defaultName, description: nil, attribution: nil)
+        let panel = NSSavePanel()
+        panel.title = "Export dictionary"
+        panel.nameFieldStringValue = pack.suggestedFileName
+        panel.canCreateDirectories = true
+        if let type = UTType(filenameExtension: TalkiePack.fileExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try pack.encoded().write(to: url, options: .atomic)
+            } catch {
+                importError = "Talkie couldn't save the file. Please try a different location.".loc
+            }
+        }
+    }
+
+    // MARK: Import
+
+    private func presentImportPanel() {
+        let panel = NSOpenPanel()
+        panel.title = "Import dictionary"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if let type = UTType(filenameExtension: TalkiePack.fileExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            openPack(at: url)
+        }
+    }
+
+    /// Read a pack file and stage its merge preview — writes nothing yet. A malformed
+    /// or unreadable file shows an error and changes nothing (acceptance criterion).
+    private func openPack(at url: URL) {
+        let needsScope = url.startAccessingSecurityScopedResource()
+        defer { if needsScope { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else {
+            importError = "Talkie couldn't open that file.".loc
+            return
+        }
+        do {
+            let pack = try TalkiePack.decoded(from: data)
+            pendingPack = pack
+            pendingPreview = dictionary.previewMerge(pack: pack)
+        } catch {
+            importError = "That doesn't look like a Talkie dictionary (.talkiepack).".loc
+        }
+    }
+
+    /// Handle a file dropped onto the pane. We only accept a single file URL; anything
+    /// else is ignored. Returns true when we took the drop.
+    private func loadDroppedPack(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+            guard let url else { return }
+            Task { @MainActor in openPack(at: url) }
+        }
+        return true
+    }
+
+    /// Commit the staged merge. Idempotent by construction — the merge only adds
+    /// entries that don't already exist, so re-confirming the same pack adds nothing.
+    private func confirmImport() {
+        guard let pack = pendingPack else { return }
+        let result = dictionary.merge(pack: pack)
+        pendingPreview = nil
+        pendingPack = nil
+        mergeResult = result
+    }
+
+    /// The post-import confirmation. Built from localized format strings (`%d`
+    /// placeholders) so each language keeps grammatical control of the whole
+    /// sentence; `.loc` looks the templates up in every `.lproj`.
+    private var mergeResultMessage: String {
+        guard let r = mergeResult else { return "" }
+        if r.isEmpty {
+            return "Everything in that pack was already in your dictionary — nothing to add.".loc
+        }
+        if r.vocabularyAdded > 0 && r.replacementsAdded > 0 {
+            return String(format: "Added %d words and %d rules to your dictionary.".loc,
+                          r.vocabularyAdded, r.replacementsAdded)
+        }
+        if r.vocabularyAdded > 0 {
+            return String(format: "Added %d words to your dictionary.".loc, r.vocabularyAdded)
+        }
+        return String(format: "Added %d rules to your dictionary.".loc, r.replacementsAdded)
+    }
+}
+
+/// `MergePreview` isn't `Identifiable`, and `.sheet(item:)` needs identity — wrap it.
+private struct PreviewBox: Identifiable {
+    let id = UUID()
+    let preview: MergePreview
 }
 
 private struct VocabChip: View {
@@ -1210,6 +1388,175 @@ private struct ReplacementRow: View {
             .help("Delete this rule")
         }
     }
+}
+
+// MARK: - Import preview sheet
+
+/// Shows exactly what a `.talkiepack` will add before anything is written: the pack's
+/// name/attribution, the new terms and rules, and — dimmed — the ones you already have
+/// (so a re-import obviously adds nothing). One Confirm applies it; Cancel changes
+/// nothing. Reuses the app's `Theme`, `talkieCard`, and `Eyebrow` so it's
+/// indistinguishable from the rest of the dictionary UI.
+private struct ImportPreviewSheet: View {
+    let preview: MergePreview
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if !preview.vocab.isEmpty { vocabSection }
+                    if !preview.rules.isEmpty { rulesSection }
+                    if preview.vocab.isEmpty && preview.rules.isEmpty {
+                        Text("This pack is empty — there's nothing to add.")
+                            .font(.talkieHeading(13, weight: .regular))
+                            .foregroundStyle(Theme.inkTertiary)
+                    }
+                    // BYO-sync note (iCloud sync is out of scope — this is the doc for it).
+                    Text("Tip: keep a .talkiepack in iCloud Drive or a dotfiles repo to sync it across your Macs — Talkie never uploads anything.")
+                        .font(.talkieHeading(11.5, weight: .regular))
+                        .foregroundStyle(Theme.inkTertiary)
+                        .padding(.top, 4)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Divider()
+            footer
+        }
+        .frame(width: 460, height: 540)
+        .background(Theme.canvas)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Eyebrow(text: "Import dictionary")
+            Text(preview.packName)
+                .font(.talkieDisplay(22))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(2)
+            if let desc = preview.packDescription, !desc.isEmpty {
+                Text(desc)
+                    .font(.talkieHeading(13, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+            if let attribution = preview.attribution, !attribution.isEmpty {
+                Text(attribution)
+                    .font(.talkieHeading(12, weight: .regular))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            summaryLine
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var summaryLine: some View {
+        let newV = preview.newVocabCount
+        let newR = preview.newRuleCount
+        let existing = (preview.vocab.count - newV) + (preview.rules.count - newR)
+        return Text(summaryText(newVocab: newV, newRules: newR, alreadyHave: existing))
+            .font(.talkieHeading(12.5, weight: .medium))
+            .foregroundStyle(newV + newR > 0 ? Theme.coral : Theme.inkSecondary)
+            .padding(.top, 2)
+    }
+
+    /// The one-line summary at the top of the sheet. Localized format strings (`%d`)
+    /// keep each language grammatical; `.loc` resolves the templates per `.lproj`.
+    private func summaryText(newVocab: Int, newRules: Int, alreadyHave: Int) -> String {
+        if newVocab + newRules == 0 {
+            return "You already have everything in this pack.".loc
+        }
+        var line: String
+        if newVocab > 0 && newRules > 0 {
+            line = String(format: "Adds %d new words and %d new rules.".loc, newVocab, newRules)
+        } else if newVocab > 0 {
+            line = String(format: "Adds %d new words.".loc, newVocab)
+        } else {
+            line = String(format: "Adds %d new rules.".loc, newRules)
+        }
+        if alreadyHave > 0 {
+            line += " " + String(format: "%d already in your dictionary.".loc, alreadyHave)
+        }
+        return line
+    }
+
+    private var vocabSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Vocabulary")
+            FlowLayout(spacing: 8) {
+                ForEach(preview.vocab) { row in
+                    Text(row.term)
+                        .font(.talkieHeading(12.5, weight: .medium))
+                        .foregroundStyle(row.existing ? Theme.inkTertiary : Theme.ink)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Theme.surfaceSunken))
+                        .opacity(row.existing ? 0.5 : 1)
+                        .help(row.existing ? "Already in your dictionary".loc : "Will be added".loc)
+                }
+            }
+        }
+        .talkieCard()
+    }
+
+    private var rulesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Replacements")
+            VStack(spacing: 8) {
+                ForEach(preview.rules) { row in
+                    HStack(spacing: 8) {
+                        Text(row.from)
+                            .font(.talkieHeading(13, weight: .regular))
+                            .foregroundStyle(row.existing ? Theme.inkTertiary : Theme.inkSecondary)
+                            .lineLimit(1)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Theme.inkTertiary)
+                        Text(row.to)
+                            .font(.talkieHeading(13, weight: .medium))
+                            .foregroundStyle(row.existing ? Theme.inkTertiary : Theme.ink)
+                            .lineLimit(1)
+                        Spacer()
+                        if row.existing {
+                            Text("Have it")
+                                .font(.talkieHeading(11, weight: .medium))
+                                .foregroundStyle(Theme.inkTertiary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .opacity(row.existing ? 0.5 : 1)
+                }
+            }
+        }
+        .talkieCard()
+    }
+
+    private var footer: some View {
+        HStack {
+            Spacer()
+            Button("Cancel", action: onCancel)
+                .buttonStyle(.bordered)
+                .keyboardShortcut(.cancelAction)
+            Button(preview.hasSomethingToAdd ? "Add to dictionary" : "Nothing to add",
+                   action: onConfirm)
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.coral)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!preview.hasSomethingToAdd)
+        }
+        .controlSize(.large)
+        .padding(16)
+    }
+}
+
+extension Notification.Name {
+    /// Posted by AppDelegate when a `.talkiepack` is opened from Finder, so the
+    /// Dictionary pane can stage the import preview. Object is the file `URL`.
+    static let talkieOpenDictionaryPack = Notification.Name("talkieOpenDictionaryPack")
 }
 
 // MARK: - Privacy & Permissions
