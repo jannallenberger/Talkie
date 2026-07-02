@@ -10,11 +10,15 @@ struct ProjectIndexData: Codable {
     var scannedAtUnix: Double?
     var files: [String] = []        // basenames, e.g. "ExerciseLibrary.tsx"
     var symbols: [String] = []      // bare identifiers, e.g. "ExerciseLibrary"
+    /// Jargon mined from the project's docs (CLAUDE.md/README/docs) + git branch and
+    /// commit-message words (A3). Feeds the post-hoc niche corrector so "cloud MD"
+    /// snaps to `CLAUDE.md` when you dictate in this project. Deduped, capped.
+    var docTerms: [String] = []
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case folderPaths, folderPath, scannedAtUnix, files, symbols
+        case folderPaths, folderPath, scannedAtUnix, files, symbols, docTerms
     }
 
     init(from decoder: Decoder) throws {
@@ -28,6 +32,7 @@ struct ProjectIndexData: Codable {
         scannedAtUnix = try c.decodeIfPresent(Double.self, forKey: .scannedAtUnix)
         files = try c.decodeIfPresent([String].self, forKey: .files) ?? []
         symbols = try c.decodeIfPresent([String].self, forKey: .symbols) ?? []
+        docTerms = try c.decodeIfPresent([String].self, forKey: .docTerms) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -36,6 +41,7 @@ struct ProjectIndexData: Codable {
         try c.encodeIfPresent(scannedAtUnix, forKey: .scannedAtUnix)
         try c.encode(files, forKey: .files)
         try c.encode(symbols, forKey: .symbols)
+        try c.encode(docTerms, forKey: .docTerms)
     }
 }
 
@@ -58,8 +64,18 @@ struct ProjectIndexSnapshot: Sendable {
     var keyMap: [String: String]   // normalized spoken key → canonical filename
     var maxKeyTokens: Int
     var biasPhrases: [String]      // filenames + base words for contextual biasing
+    /// Project jargon (from docs + git) safe to feed the post-hoc niche corrector:
+    /// each term has cleared `NicheTermGuard.isSafeToInject` and the corrector's own
+    /// 4-letter floor, so folding it into the corrector's term set can only rescue a
+    /// close-sounding misrecognition, never force a rare spelling onto a common word.
+    var correctorTerms: [String] = []
 
-    static let empty = ProjectIndexSnapshot(keyMap: [:], maxKeyTokens: 0, biasPhrases: [])
+    static let empty = ProjectIndexSnapshot(keyMap: [:], maxKeyTokens: 0, biasPhrases: [], correctorTerms: [])
+    /// `isEmpty` gates the spoken-filename matcher only, so it keys off `keyMap`
+    /// exactly as before A3 — its meaning is unchanged. Corrector terms are a
+    /// separate channel read directly (`correctorTerms`) at the endDictation union,
+    /// so a docs-only project (terms but no matchable filenames) still contributes
+    /// its jargon without perturbing the file-matching fast path.
     var isEmpty: Bool { keyMap.isEmpty }
 }
 
@@ -143,6 +159,7 @@ final class ProjectIndexStore: ObservableObject {
             scanTask = nil
             data.files = []
             data.symbols = []
+            data.docTerms = []
             data.scannedAtUnix = nil
             isScanning = false
             save()
@@ -161,6 +178,7 @@ final class ProjectIndexStore: ObservableObject {
         scanTask = nil
         data.files = result.files
         data.symbols = result.symbols
+        data.docTerms = result.docTerms
         data.scannedAtUnix = Date().timeIntervalSince1970
         isScanning = false
         save()
@@ -168,7 +186,8 @@ final class ProjectIndexStore: ObservableObject {
     }
 
     private func rebuildSnapshot() {
-        snapshot = SpokenFileMatcher.buildSnapshot(files: data.files, symbols: data.symbols)
+        snapshot = SpokenFileMatcher.buildSnapshot(files: data.files, symbols: data.symbols,
+                                                   docTerms: data.docTerms)
     }
 
     private func load() {
@@ -206,15 +225,48 @@ enum ProjectScanner {
     /// deterministic up to the cap.
     static let maxEntries = 200_000
 
-    struct Result { var files: [String]; var symbols: [String] }
+    struct Result {
+        var files: [String]
+        var symbols: [String]
+        /// Deduped jargon mined from each root's docs + git (A3). Empty unless the
+        /// walk found doc files / a `.git` to read. Capped by `maxDocTerms`.
+        var docTerms: [String] = []
+        /// Doc-file URLs the walk flagged for mining (CLAUDE.md / README* / docs/*.md).
+        /// Transient scan-time output consumed by `scanAll`; never persisted.
+        var docFiles: [URL] = []
+    }
+
+    /// Doc files worth mining for jargon: the project's `CLAUDE.md`, any `README*`,
+    /// and Markdown that is a DIRECT child of a `docs/` directory. Matched by name/path
+    /// during the existing walk so we never do a second pass over the tree.
+    static let maxDocTerms = 200
+    /// A hard ceiling on doc files we open per scan. Kept small on purpose: the
+    /// highest-signal jargon lives in CLAUDE.md, the README, and top-level docs — not
+    /// in a deep `docs/plans/**` tree — and reading fewer files keeps the mine's cost a
+    /// small fraction of the file walk (the "<20% scan-time growth" budget). A repo with
+    /// dozens of docs still only pays for the first `maxDocFiles`.
+    static let maxDocFiles = 6
+    /// Per-doc read bound (bytes). Jargon (backticked terms, the intro, identifiers)
+    /// clusters in the first few KB of a README/CLAUDE.md, so a small partial read
+    /// captures it while keeping parse cost a small fraction of the file walk.
+    static let maxDocBytes = 4_000
 
     /// Scan several roots and merge them into one index, de-duping filenames
     /// across folders (first folder wins a colliding basename) and capping the
-    /// total so a stack of monorepos can't blow up memory.
+    /// total so a stack of monorepos can't blow up memory. Also mines each root's
+    /// docs + git metadata into `docTerms` (A3) — the doc-file URLs and the git root
+    /// are collected DURING the file walk (no second traversal).
     static func scanAll(roots: [URL]) -> Result {
         var files: [String] = []
         var symbolSet = Set<String>()
         var seen = Set<String>()
+        var docSeen = Set<String>()
+        var docTerms: [String] = []
+        func admitTerms(_ terms: [String]) {
+            for t in terms where docTerms.count < maxDocTerms {
+                if docSeen.insert(t.lowercased()).inserted { docTerms.append(t) }
+            }
+        }
         for root in roots {
             if files.count >= maxFiles { break }
             if Task.isCancelled { break }
@@ -225,13 +277,27 @@ enum ProjectScanner {
                 files.append(f)
             }
             symbolSet.formUnion(r.symbols)
+
+            // A3: mine this root's git metadata (branches + recent commits) and the
+            // doc files the walk flagged. All reads are try?-guarded inside the miner.
+            if Task.isCancelled { break }
+            admitTerms(RepoTermMiner.mineGit(root: root))
+            for docURL in r.docFiles.prefix(maxDocFiles) {
+                if Task.isCancelled { break }
+                if docTerms.count >= maxDocTerms { break }
+                // Read only the first `maxDocBytes` so a giant doc can't dominate the
+                // scan. try? — an unreadable/vanished doc (parallel edit) is skipped.
+                guard let contents = readPrefix(of: docURL, maxBytes: maxDocBytes) else { continue }
+                admitTerms(RepoTermMiner.mineMarkdown(contents, maxBytes: maxDocBytes))
+            }
         }
-        return Result(files: files, symbols: Array(symbolSet))
+        return Result(files: files, symbols: Array(symbolSet), docTerms: docTerms)
     }
 
     static func scan(root: URL) -> Result {
         var files: [String] = []
         var symbolSet = Set<String>()
+        var docFiles: [URL] = []
         let fm = FileManager.default
         guard let walker = fm.enumerator(
             at: root,
@@ -254,6 +320,10 @@ enum ProjectScanner {
                 if ignoredDirs.contains(name) { walker.skipDescendants() }
                 continue
             }
+            // A3: flag docs to mine for jargon (CLAUDE.md / README* / docs/*.md).
+            // Capped so a docs-heavy repo can't collect thousands of URLs. This is
+            // additive to — not a replacement for — keeping .md files in `files`.
+            if docFiles.count < maxDocFiles, isDocFile(url) { docFiles.append(url) }
             let ext = url.pathExtension.lowercased()
             guard codeExtensions.contains(ext) else { continue }
             guard seen.insert(name.lowercased()).inserted else { continue }
@@ -261,7 +331,50 @@ enum ProjectScanner {
             let base = url.deletingPathExtension().lastPathComponent
             if base.count >= 3 { symbolSet.insert(base) }
         }
-        return Result(files: files, symbols: Array(symbolSet))
+        return Result(files: files, symbols: Array(symbolSet), docTerms: [], docFiles: docFiles)
+    }
+
+    /// Whether a file is worth mining for project jargon (A3): the project's
+    /// `CLAUDE.md`, any `README*`, or a Markdown file that is a DIRECT child of a
+    /// `docs/` directory. Matched by name/path only — no read here; the miner reads
+    /// (bounded) later. The direct-child rule keeps a big `docs/plans/**` tree of
+    /// planning prose out of the jargon mine (that's design writing, not vocabulary),
+    /// which is both higher-signal and cheaper.
+    static func isDocFile(_ url: URL) -> Bool {
+        let name = url.lastPathComponent.lowercased()
+        let ext = url.pathExtension.lowercased()
+        let isMarkdown = ext == "md" || ext == "markdown"
+        if name == "claude.md" { return true }
+        if name.hasPrefix("readme") { return true }
+        if isMarkdown {
+            // Only when the immediate parent directory is named "docs".
+            if url.deletingLastPathComponent().lastPathComponent.lowercased() == "docs" { return true }
+        }
+        return false
+    }
+
+    /// Read at most `maxBytes` bytes of a file without pulling the whole thing into
+    /// memory (a doc could be arbitrarily large). Uses a `FileHandle`; `try?` so an
+    /// unreadable or vanished file yields nil rather than throwing. When the file is
+    /// longer than `maxBytes` the read is trimmed back to the last ASCII whitespace, so
+    /// the final token is a complete word — never a mid-word cut ("GitHub"→"GitHu")
+    /// that would pollute the mined term set. Decoded leniently as UTF-8.
+    static func readPrefix(of url: URL, maxBytes: Int) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = (try? handle.read(upToCount: maxBytes)) ?? nil else { return nil }
+        var bytes = [UInt8](data)
+        // Only trim when we likely hit the cap mid-file (a full read == maxBytes bytes).
+        if bytes.count >= maxBytes {
+            var cut = bytes.count
+            while cut > 0 {
+                let b = bytes[cut - 1]
+                if b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D || b == 0x0B || b == 0x0C { break }
+                cut -= 1
+            }
+            if cut > 0 { bytes.removeLast(bytes.count - cut) }
+        }
+        return String(decoding: bytes, as: UTF8.self)
     }
 }
 
@@ -279,7 +392,8 @@ enum SpokenFileMatcher {
     ]
 
     /// Build the off-main snapshot once, when the index changes.
-    static func buildSnapshot(files: [String], symbols: [String]) -> ProjectIndexSnapshot {
+    static func buildSnapshot(files: [String], symbols: [String],
+                             docTerms: [String] = []) -> ProjectIndexSnapshot {
         var keyMap: [String: String] = [:]
         var maxTokens = 0
         var bias = Set<String>()
@@ -303,8 +417,43 @@ enum SpokenFileMatcher {
         return ProjectIndexSnapshot(
             keyMap: keyMap,
             maxKeyTokens: maxTokens,
-            biasPhrases: Array(bias.prefix(250))
+            biasPhrases: Array(bias.prefix(250)),
+            correctorTerms: correctorTerms(from: docTerms)
         )
+    }
+
+    /// The repo-mined terms that are safe to hand the post-hoc `NicheCorrector` (A3).
+    /// THREE gates, because repo terms are auto-harvested with zero human confirmation
+    /// and so carry the highest false-positive risk:
+    ///   1. a 4-letter LETTER floor, mirroring `NicheCorrector.buildTargets` (which
+    ///      drops sub-4-letter cores anyway) — so "CLAUDE.md" (7 letters) passes and a
+    ///      short slug like "a-b" does not;
+    ///   2. `NicheTermGuard.isSafeToInject` — rejects a term that IS, or is edit-
+    ///      distance-1 from, a common word;
+    ///   3. `RepoTermMiner.isPhoneticallyCommon` — rejects a term whose *phonetic
+    ///      skeleton* is within edit-distance-1 of a common English word's, so a mined
+    ///      term can't rewrite ordinary prose in the corrector ("mining"↔"morning",
+    ///      "Talkie"↔"talked", "Coralate"↔"correlate"). This third gate is what makes
+    ///      the false-positive-corpus re-run pass with real repo terms loaded.
+    /// Deduped case-insensitively, capped so one project's docs can't flood the
+    /// corrector's global budget.
+    static func correctorTerms(from docTerms: [String], limit: Int = 200,
+                              termGuard: NicheTermGuard = .default) -> [String] {
+        var out: [String] = []
+        var seen = Set<String>()
+        for raw in docTerms {
+            let term = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            let letterCount = term.filter { $0.isLetter }.count
+            guard letterCount >= 4 else { continue }
+            guard termGuard.isSafeToInject(term) else { continue }
+            guard !RepoTermMiner.isPhoneticallyCommon(term) else { continue }
+            let key = term.lowercased()
+            if seen.insert(key).inserted {
+                out.append(term)
+                if out.count >= limit { break }
+            }
+        }
+        return out
     }
 
     /// Apply the snapshot to a transcript. Returns the rewritten text and the

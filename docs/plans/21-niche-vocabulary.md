@@ -114,3 +114,47 @@ weak-bias locales still benefit.
 detection is English-biased where this multilingual branch needs it most (lexical
 signals carry, embedding goes additive-to-zero); the ~8 tuning constants need an
 offline `HistoryStore`-replay harness to tune against, or the loop is unfalsifiable.
+
+## 11. A3 — repo-aware jargon mining (implemented 2026-07-02)
+
+Ships `RepoTermMiner` (pure) + `ProjectScanner` doc/git mining + a repo→corrector
+channel in `ProjectIndexSnapshot.correctorTerms`, unioned into the endDictation
+corrector term set (after the curated dictionary and the self-learned niche terms,
+sharing A1's 300-term cap) when vibe coding is on. Terms come from CLAUDE.md /
+README* / direct `docs/*.md` children plus `.git` branch names & reflog commit
+subjects, read as plain files (no `Process`, ever). Notes where reality diverged
+from the A3 spec (source wins, per playbook §7):
+
+- **Spec line numbers had drifted.** The spec pointed at `AppDelegate.swift:788-792`
+  for a `let nicheTerms` union; on the actual A1 base `nicheTerms` is already `var`
+  and A1 already unions its graduated niche terms with a 300 cap. A3's repo union was
+  added *after* A1's block (dictionary → niche → repo, one shared cap), not by editing
+  A1's line. Located by symbol, not line.
+
+- **Doc-source scope was tightened to DIRECT `docs/` children.** The sketch said
+  `docs/*.md`; matching every markdown under a nested `docs/plans/**` tree both mined
+  design prose (low signal, high false-positive pressure) and blew the scan budget.
+  `isDocFile` now matches CLAUDE.md, README*, and markdown whose immediate parent dir
+  is `docs`. Deep planning trees are intentionally excluded.
+
+- **The "<20% scan-time growth" criterion holds on realistically-sized projects, not
+  on a trivially tiny one.** Measured on this repo: a source-heavy tree (~48ms walk)
+  grows ~7% with mining; a tiny tree (~3ms walk) grows ~100% because the *fixed*
+  mining cost (read+parse ≤6 docs ≤4KB each + a few small git files, ~3ms, off-main,
+  once per folder change) is a large fraction of a 3ms baseline. Absolute mining cost
+  was minimized hard (byte-level tokenizer with a pre-filter so prose tokens never
+  allocate a String; 4KB/6-file read caps; `.git` via direct reads at ~0.1ms). The
+  criterion is met where it matters; the >20% case is only a near-zero baseline, not a
+  real slowdown. If a strict ≤20%-on-any-repo bar is required, mining would need to be
+  deferred/lazy (mine on first dictation into a project rather than during the folder
+  scan) — flagged, not silently assumed.
+
+- **False-positive defense is a THIRD gate.** Because repo terms are auto-harvested
+  with zero human confirmation, `correctorTerms` adds `RepoTermMiner.isPhonetically
+  Common` on top of the 4-letter floor and `NicheTermGuard.isSafeToInject`: a mined
+  term whose phonetic skeleton is within edit-distance-1 of a common English word is
+  dropped (`mining`↔`morning`, `Talkie`↔`talked`, `Coralate`↔`correlate`). This is
+  what lets A1's `plainProse` corpus re-run with real mined terms loaded produce zero
+  fixes (the package gate, `RepoTermMinerTests.testFalsePositiveCorpusWithMinedTerms
+  ProducesZeroFixes`). Hex hashes/colour codes, ALL-CAPS acronyms, and git-structural
+  words (feat/main/worktree/…) are filtered at extraction.
