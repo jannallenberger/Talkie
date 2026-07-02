@@ -41,6 +41,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The always-on floating macaw (separate from the transient capture pill).
     private let birdBuddy = BirdBuddyController()
     private let learning = LearningEngine()
+    /// Learns corrections from Claude Code prompts on the AX-blind coding/terminal
+    /// surface where `learning` (the field watcher) is blind. Lazy so its consent
+    /// closures can read/write `settings`, which is a stored property. Reads/writes
+    /// the tri-state `claudeTranscriptLearning` default (no settings row by design).
+    private lazy var claudeLearner = ClaudeTranscriptLearner(
+        readConsent: { [settings] in
+            ClaudeTranscriptLearner.Consent(rawValue: settings.claudeTranscriptLearning) ?? .unset
+        },
+        writeConsent: { [settings] consent in
+            settings.claudeTranscriptLearning = consent.rawValue
+        }
+    )
     /// Pauses now-playing media for the duration of a dictation and resumes it after.
     private let musicController = MusicController()
     private let cleanup = CleanupEngine()
@@ -1214,36 +1226,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // ping them with an Undo (WhisperFlow-style live learning).
                 if self.settings.learnFromEdits {
                     let fixTargets = nicheFixTargets
+                    // Shared per-insertion latch: the AX watcher and the Claude Code
+                    // scan run side by side (the scan only matters where the watcher
+                    // is blind), so whichever learns first flips this and the other
+                    // stands down — no double rule, no double ping.
+                    let learnedOnce = LearnOnceFlag()
                     self.learning.beginWatching(inserted: finalText) { [weak self] from, to in
                         guard let self else { return }
-                        // Reject signal: the user corrected AWAY from a spelling the
-                        // niche corrector just swapped in this session — it fixed the
-                        // wrong thing, so demote that term (it stops entering the
-                        // corrector's list until re-confirmed). Checked before the
-                        // dictionary guard so a rejection lands even if there's no new
-                        // learned replacement to add.
-                        if let rejected = fixTargets.first(where: { $0.lowercased() == from.lowercased() }) {
-                            self.nicheVocab.recordRejection(rejected)
+                        if self.applyLearnedCorrection(
+                            from: from, to: to, dictationID: dictationID,
+                            snippet: String(finalText.prefix(120)), fixTargets: fixTargets
+                        ) {
+                            learnedOnce.value = true
                         }
-                        guard self.dictionary.addLearnedReplacement(from: from, to: to) else { return }
-                        // Confirm signal: the user explicitly typed `to` over Talkie's
-                        // output — the strongest evidence this spelling is real jargon.
-                        // Graduates the niche term immediately so the corrector rescues
-                        // a close miss of it next time, no Dictionary entry required.
-                        self.nicheVocab.recordUserConfirmed(
-                            to,
-                            provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
-                                                   dateUnix: Date().timeIntervalSince1970,
-                                                   snippet: String(finalText.prefix(120)))
+                    }
+                    // Cure the AX-blind spot: when we dictated into a coding/terminal
+                    // surface (Claude Code in Terminal/iTerm/Warp or a VS Code/Cursor
+                    // integrated terminal), the field watcher above learns nothing —
+                    // schedule the opportunistic transcript scan instead. Gated behind
+                    // the same `learnFromEdits` toggle AND its own one-time consent.
+                    if target.category == .terminal || target.category == .coding {
+                        self.claudeLearner.scheduleScan(
+                            inserted: finalText,
+                            insertionUnix: Date().timeIntervalSince1970,
+                            alreadyLearned: { learnedOnce.value },
+                            offerConsent: { [weak self] in self?.offerClaudeTranscriptConsent() },
+                            onLearned: { [weak self] from, to in
+                                guard let self else { return }
+                                _ = self.applyLearnedCorrection(
+                                    from: from, to: to, dictationID: dictationID,
+                                    snippet: String(finalText.prefix(120)), fixTargets: fixTargets,
+                                    source: .claudeCode
+                                )
+                            }
                         )
-                        self.hud.showLearned("Added “\(to)” to dictionary") { [weak self] in
-                            guard let self else { return }
-                            self.dictionary.removeLearnedReplacement(from: from, to: to)
-                            // Undoing the learn demotes the term too: the user rejected
-                            // the whole learn, not just the dictionary rule.
-                            self.nicheVocab.recordRejection(to)
-                            self.hud.showReverted()
-                        }
                     }
                 }
             case .leftOnClipboard(let reason):
@@ -1258,6 +1274,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.hud.hide()
             }
         }
+    }
+
+    // MARK: Learn-from-edits (shared by the AX watcher and the Claude Code scan)
+
+    /// Where a learned correction came from — only affects the HUD wording, so the
+    /// user knows we read their Claude Code prompt (vs. watched the field).
+    enum LearnSource { case fieldEdit, claudeCode }
+
+    /// Apply one from→to correction the SAME way regardless of how it was detected:
+    /// record any niche rejection, add the dictionary rule, log the confirm signal,
+    /// and ping with an Undo that reverses all of it. Returns whether a new rule was
+    /// actually added (false if it was already known) so the caller can latch "learned"
+    /// and stop a second path from re-learning the identical fix.
+    @discardableResult
+    private func applyLearnedCorrection(
+        from: String, to: String, dictationID: UUID, snippet: String,
+        fixTargets: [String], source: LearnSource = .fieldEdit
+    ) -> Bool {
+        // Reject signal: the user corrected AWAY from a spelling the niche corrector
+        // swapped in this session — it fixed the wrong thing, so demote that term.
+        // Checked before the dictionary guard so a rejection lands even with no new
+        // rule to add.
+        if let rejected = fixTargets.first(where: { $0.lowercased() == from.lowercased() }) {
+            self.nicheVocab.recordRejection(rejected)
+        }
+        guard self.dictionary.addLearnedReplacement(from: from, to: to) else { return false }
+        // Confirm signal: the user explicitly typed `to` over Talkie's output — the
+        // strongest evidence this spelling is real jargon. Graduates the niche term.
+        self.nicheVocab.recordUserConfirmed(
+            to,
+            provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
+                                   dateUnix: Date().timeIntervalSince1970, snippet: snippet)
+        )
+        let message: String
+        switch source {
+        case .fieldEdit:
+            message = "Added “\(to)” to dictionary"
+        case .claudeCode:
+            message = String(format: "Added “%@” — from your Claude Code prompt".loc, to)
+        }
+        self.hud.showLearned(message) { [weak self] in
+            guard let self else { return }
+            self.dictionary.removeLearnedReplacement(from: from, to: to)
+            // Undoing the learn demotes the term too: the user rejected the whole
+            // learn, not just the dictionary rule.
+            self.nicheVocab.recordRejection(to)
+            self.hud.showReverted()
+        }
+        return true
+    }
+
+    /// The one-time offer to learn from Claude Code prompts. Reuses the command-preview
+    /// pill (a genuine two-choice decision, no auto-dismiss): "Insert" accepts, "Undo"
+    /// declines — and the choice sticks forever. No scan runs on this insertion; the
+    /// offer IS the interaction, and future eligible insertions scan once granted.
+    private func offerClaudeTranscriptConsent() {
+        hud.showCommandPreview(
+            "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac.".loc,
+            onConfirm: { [weak self] in self?.claudeLearner.resolveConsent(granted: true) },
+            onUndo: { [weak self] in
+                self?.claudeLearner.resolveConsent(granted: false)
+                self?.hud.hide()
+            }
+        )
     }
 
     // MARK: Paste last transcript (⌥⌘V)

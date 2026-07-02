@@ -228,3 +228,6 @@
 "Talkie couldn't save the file. Please try a different location." = "Talkie non è riuscito a salvare il file. Prova un’altra posizione.";
 "Talkie couldn't open that file." = "Talkie non è riuscito ad aprire il file.";
 "That doesn't look like a Talkie dictionary (.talkiepack)." = "Non sembra un dizionario Talkie (.talkiepack).";
+
+"Added “%@” — from your Claude Code prompt" = "Aggiunto “%@” — dal tuo prompt di Claude Code";
+"Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Imparare le correzioni dai tuoi prompt di Claude Code? Sono file locali; niente lascia il tuo Mac.";
