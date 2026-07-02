@@ -149,7 +149,11 @@ struct CommandsView: View {
     }
 
     private var exampleCommands: [String] {
-        var examples = ["make this a list", "fix this", "translate to German", "summarize this"]
+        // "spell …" is the honest escape hatch for strings the recognizer mangles and
+        // the corrector can't rescue (ticket IDs, license keys). NATO words are the
+        // reliable path — the recognizer nails "tango/alpha" but garbles bare letters.
+        var examples = ["make this a list", "fix this", "translate to German", "summarize this",
+                        "spell tango alpha lima kilo india echo"]
         if Dev.isEnabled, settings.crossSurfaceCommandsEnabled {
             examples.append("what did I commit to this week")
         }

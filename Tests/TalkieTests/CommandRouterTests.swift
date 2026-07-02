@@ -55,4 +55,47 @@ final class CommandRouterTests: XCTestCase {
         )
         XCTAssertNil(result)
     }
+
+    // MARK: Spelling command (A13) routing precedence
+
+    /// A spelling command resolves to `SpellingIntent` and assembles the exact string —
+    /// no selection, no model. The output must NOT depend on the (here-unavailable) LLM.
+    func testSpellingCommandRoutesAndInsertsAssembledString() async {
+        let result = await router(nil).run(          // model unavailable — must not matter
+            spoken: "spell tango alpha lima kilo india echo",
+            selection: nil,
+            target: .unknown,
+            graph: .empty
+        )
+        XCTAssertEqual(result?.replacement, "talkie",
+                       "a spelling command assembles the letters deterministically, no model needed")
+        XCTAssertFalse(result?.preview ?? true,
+                       "spelling is deterministic — it inserts directly like a macro, no preview")
+    }
+
+    /// The intent is specifically `SpellingIntent`, and it needs no selection — so it can
+    /// never be lost the way a `needsSelection` intent with no selection would be.
+    func testSpellingIntentTypeAndNoSelectionRequired() {
+        let intent = router(nil).intent(for: "spell capital tango one two three dash x-ray")
+        XCTAssertEqual(intent?.id, "spell", "a well-formed spell utterance routes to SpellingIntent")
+        XCTAssertEqual(intent?.needsSelection, false, "spelling inserts at the cursor, never needs a selection")
+    }
+
+    /// Prose that merely starts with the verb "spell" must fall through to dictation —
+    /// the parser's ≥2-spellable-token floor is what protects this, checked via the router.
+    func testProseStartingWithSpellIsNotACommand() {
+        XCTAssertNil(router(nil).intent(for: "spell it out for the team in the doc"),
+                     "'spell' used as an ordinary verb is not a command and must dictate normally")
+    }
+
+    /// A whole-utterance macro still wins over the spelling parser (precedence: macro >
+    /// spell). If a user teaches a macro whose trigger happens to be a spellable phrase,
+    /// their macro takes priority.
+    func testMacroWinsOverSpelling() {
+        let macros = MacroStore()
+        macros.add(trigger: "spell alpha bravo", expansion: "EXPANDED")
+        let r = CommandRouter(macros: macros, summarizer: StubLLM(output: nil))
+        let intent = r.intent(for: "spell alpha bravo")
+        XCTAssertEqual(intent?.id, "insert-macro", "a matching macro outranks the spelling parser")
+    }
 }
