@@ -498,3 +498,34 @@ corpus download.** Specifics:
   or the bridge (18) — it is a leaf feature that quietly underwrites the product's central
   speed claim.
 ```
+
+---
+
+## G4 correction note (2026-07-03) — shared file-kit extraction + `talkie` CLI
+
+Work package **G4** delivered the "transcribe a dropped file" reuse this plan
+anticipated (see the *Overlaps* bullet above: `AudioFileLoader` + `transcribeFile`
+"reusable by any future transcribe-a-dropped-file feature"). What landed:
+
+- `AudioFileLoader` and the file transcriber were **moved out of `Sources/TalkieBench`
+  into a new shared library target `TalkieFileKit`** (`Sources/TalkieFileKit/`), and
+  `talkie-bench` now depends on it. The transcriber was renamed `BenchTranscriber` →
+  **`FileTranscriber`**. Bench behavior is unchanged — `talkie-bench --selftest` is
+  byte-identical before/after, verified.
+- `FileTranscriber` gained an **additive** `transcribeTimed(...)` returning
+  `(text, [TimedSegment])` from `SpeechTranscriber.Result.range`; the bench keeps using
+  the text-only `transcribe(...)` and never pays for it.
+- A new executable **`talkie-cli`** (`Sources/TalkieCLI/`) provides `talkie transcribe`
+  (plain / `--md` / `--srt` / `--vtt` / `--json`, `--locale`) and `talkie last [-n N]`.
+  Hand-rolled arg parsing, zero dependencies, on-device only.
+
+**Spec deviation (case-insensitive APFS):** the G4 spec said to copy the CLI to
+`Talkie.app/Contents/MacOS/talkie`. That is **impossible** — the app's main executable
+is `Contents/MacOS/Talkie`, and macOS ships on case-INSENSITIVE APFS, so `talkie` and
+`Talkie` are the SAME path; the copy silently overwrote the 7.9 MB app binary with the
+~280 KB CLI (the bundle then launched the CLI instead of the app). Fixed by bundling the
+CLI at **`Contents/Helpers/talkie`** instead (a standard nested-tool location that keeps
+the exact `talkie` basename). The SwiftPM product stays `talkie-cli` for the same reason.
+README's PATH symlink is therefore
+`ln -s /Applications/Talkie.app/Contents/Helpers/talkie /usr/local/bin/talkie`.
+`check-no-network.sh` now also scans `Sources/TalkieFileKit` + `Sources/TalkieCLI`.

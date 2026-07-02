@@ -49,11 +49,39 @@ var targets: [Target] = [
             .swiftLanguageMode(.v6),
         ]
     ),
+    // G4: the shared, offline file-transcription kit. Extracted from TalkieBench
+    // (AudioFileLoader decode/resample + FileTranscriber, a faithful standalone
+    // mirror of the app's SpeechAnalyzer path) so BOTH `talkie-bench` and the
+    // `talkie` CLI reuse one implementation. Zero dependencies, no import of the
+    // app target — the recognition stack is exercised read-only, so this stays a
+    // separate, network-free library and the bench's WER numbers are unchanged.
+    .target(
+        name: "TalkieFileKit",
+        path: "Sources/TalkieFileKit",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+        ]
+    ),
     // Feature 17: a self-contained on-device transcription benchmark (WER +
-    // real-time-factor). Independent of the app target.
+    // real-time-factor). Independent of the app target; shares the decode +
+    // recognition path with the CLI via TalkieFileKit.
     .executableTarget(
         name: "talkie-bench",
+        dependencies: ["TalkieFileKit"],
         path: "Sources/TalkieBench",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+        ]
+    ),
+    // G4: MacWhisper-Pro-style local batch file transcription for free —
+    // `talkie transcribe interview.m4a --srt`, `talkie last`. Named `talkie-cli`
+    // (NOT `talkie`) because the app binary is `Talkie` and APFS is
+    // case-insensitive; build_app.sh copies it to Contents/MacOS/talkie at bundle
+    // time. Hand-rolled arg parsing (no swift-argument-parser), 100% on-device.
+    .executableTarget(
+        name: "talkie-cli",
+        dependencies: ["TalkieFileKit"],
+        path: "Sources/TalkieCLI",
         swiftSettings: [
             .swiftLanguageMode(.v6),
         ]
