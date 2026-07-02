@@ -231,3 +231,19 @@
 
 "Added “%@” — from your Claude Code prompt" = "已添加“%@”——来自你的 Claude Code 提示词";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "从你的 Claude Code 提示词中学习纠正？它们是本地文件，不会离开你的 Mac。";
+/* G1 — Connect to Claude connector card */
+"Connect to Claude" = "连接到 Claude";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie 附带一个小型本地服务器，让 Claude 可以读取你的会议、简报、承诺和上下文——只读、在设备上运行，任何内容都不会离开你的 Mac。已随应用一起提供：无需单独下载或构建。";
+"Claude Desktop" = "Claude Desktop";
+"Install the connector with one click" = "一键安装连接器";
+"Install…" = "安装…";
+"Claude Code & other MCP clients" = "Claude Code 及其他 MCP 客户端";
+"Add this to your .mcp.json, or run the command" = "将其添加到你的 .mcp.json，或运行该命令";
+"Copy config" = "复制配置";
+"Or from the terminal" = "或在终端中";
+"Copy command" = "复制命令";
+"What Claude can read" = "Claude 可以读取的内容";
+"The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "连接器二进制文件尚不存在。请从已构建的 Talkie.app（./scripts/run.sh）运行本应用，它便会随附其中——无需额外步骤。";
+"Opened in Claude Desktop" = "已在 Claude Desktop 中打开";
+"Revealed in Finder — drag it into Claude Desktop" = "已在访达中显示——将其拖入 Claude Desktop";
+"Connector file not found in this build" = "在此构建中未找到连接器文件";

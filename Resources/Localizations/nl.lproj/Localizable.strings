@@ -231,3 +231,19 @@
 
 "Added “%@” — from your Claude Code prompt" = "“%@” toegevoegd — uit je Claude Code-prompt";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Correcties leren uit je Claude Code-prompts? Het zijn lokale bestanden; er verlaat niets je Mac.";
+/* G1 — Connect to Claude connector card */
+"Connect to Claude" = "Verbinden met Claude";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie bevat een kleine lokale server zodat Claude je vergaderingen, briefing, toezeggingen en context kan lezen — alleen-lezen, op het apparaat, er verlaat niets je Mac. Meegeleverd met de app: geen aparte download of build.";
+"Claude Desktop" = "Claude Desktop";
+"Install the connector with one click" = "Installeer de connector met één klik";
+"Install…" = "Installeren…";
+"Claude Code & other MCP clients" = "Claude Code en andere MCP-clients";
+"Add this to your .mcp.json, or run the command" = "Voeg dit toe aan je .mcp.json, of voer de opdracht uit";
+"Copy config" = "Configuratie kopiëren";
+"Or from the terminal" = "Of vanuit de terminal";
+"Copy command" = "Opdracht kopiëren";
+"What Claude can read" = "Wat Claude kan lezen";
+"The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "De connector-binary is er nog niet. Start deze app vanuit een gebouwde Talkie.app (./scripts/run.sh) en hij wordt meegeleverd — zonder extra stap.";
+"Opened in Claude Desktop" = "Geopend in Claude Desktop";
+"Revealed in Finder — drag it into Claude Desktop" = "Weergegeven in Finder — sleep het naar Claude Desktop";
+"Connector file not found in this build" = "Connector-bestand niet gevonden in deze build";

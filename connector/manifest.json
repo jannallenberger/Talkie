@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "talkie",
   "display_name": "Talkie",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Query your local Talkie meetings, daily brief, context graph, and dictation history — on-device, no network.",
   "long_description": "Talkie's local MCP server exposes your meetings, today's brief, your personal context graph (people, projects, commitments), and your dictation history to Claude — read-only and 100% on-device. Nothing leaves your Mac.",
   "author": {
