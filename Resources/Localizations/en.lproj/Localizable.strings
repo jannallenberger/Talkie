@@ -164,3 +164,8 @@
 "no data yet" = "no data yet";
 "Learned vocabulary" = "Learned vocabulary";
 "Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong.";
+
+/* export destinations */
+"Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags.";
+"Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)";
+"That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable.";

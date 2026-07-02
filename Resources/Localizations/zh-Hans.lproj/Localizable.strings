@@ -164,3 +164,8 @@
 "no data yet" = "暂无数据";
 "Learned vocabulary" = "已学词汇";
 "Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "Talkie 从你口述和纠正的内容中学到的词。现在它们会自动修正相近的识别错误，无需规则。删除某个词即可告诉 Talkie 它弄错了。";
+
+/* export destinations */
+"Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "检测到 Obsidian 仓库 — 笔记将包含 front-matter、[[wikilinks]] 和 #标签。";
+"Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "纯 Markdown。（提示：选择一个仓库文件夹，Talkie 会自动按 Obsidian 格式排版。）";
+"That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "该文件夹当前无法读取 — 在恢复可用之前，笔记会保存到 ~/Talkie Meetings。";

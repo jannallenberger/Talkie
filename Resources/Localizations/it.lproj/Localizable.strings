@@ -164,3 +164,8 @@
 "no data yet" = "ancora nessun dato";
 "Learned vocabulary" = "Vocabolario appreso";
 "Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong." = "Parole che Talkie ha imparato da ciò che detti e correggi. Ora correggono da sole gli errori simili, senza bisogno di una regola. Rimuovine una per dire a Talkie che ha sbagliato.";
+
+/* export destinations */
+"Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Vault di Obsidian rilevato — le note includeranno front-matter, [[wikilink]] e #tag.";
+"Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "Markdown semplice. (Suggerimento: scegli una cartella vault e Talkie formatta per Obsidian automaticamente.)";
+"That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "Questa cartella non è leggibile in questo momento — le note andranno in ~/Talkie Meetings finché non sarà raggiungibile.";

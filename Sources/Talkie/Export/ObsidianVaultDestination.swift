@@ -37,16 +37,17 @@ struct ObsidianVaultDestination: NoteDestination {
     var extraTags: [String] = ["talkie"]
 
     /// Prepend a YAML front-matter block. Defaults ON (Obsidian's signature), but
-    /// honoured per-export so the "Front-matter" toggle in Export destinations is
-    /// not dead-wired — `ExportPreferences.resolvedDestination()` threads the user's
-    /// choice through here.
+    /// honoured per-export: `ExportPreferences.resolvedDestination()` constructs
+    /// this destination with all three format flags set from `.obsidian` detection
+    /// — ON for a real vault, OFF for a plain chosen folder — so the same type
+    /// serves both cases and no formatting knob is exposed in Settings.
     var includeFrontMatter: Bool = true
 
     /// Render the note's `links` as `[[wikilinks]]` in a Related block. Defaults ON;
-    /// threaded from the "Wikilinks" toggle so the preference is honoured.
+    /// set from vault detection at construction (see `includeFrontMatter`).
     var includeWikilinks: Bool = true
 
-    /// Append a `#tag` line. Defaults ON; threaded from the "Tags" toggle.
+    /// Append a `#tag` line. Defaults ON; set from vault detection at construction.
     var includeTags: Bool = true
 
     /// Configured when the vault folder exists and is writable.
@@ -68,8 +69,9 @@ struct ObsidianVaultDestination: NoteDestination {
         let existing = Self.existingBaseNames(in: dir)
         let base = NoteTemplate.fileName(fileNameTemplate, for: note, existing: existing)
 
-        // Obsidian's signature is front-matter / [[wikilinks]] / tags ON, but each
-        // is now honoured per-export so the Export-destinations toggles aren't dead.
+        // Obsidian's signature is front-matter / [[wikilinks]] / tags ON; each is
+        // honoured per-export, so a plain chosen folder (all flags OFF) writes
+        // clean Markdown through this very same destination.
         let markdown = NoteTemplate.wrap(
             note,
             frontMatter: includeFrontMatter,

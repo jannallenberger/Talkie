@@ -606,3 +606,39 @@ the user's intent but couples 06/15 to a setting. **This single decision (fan-ou
 vs. relocate) should be settled with the 06 and 15 planners before step 3 of the
 MVP**, because it determines whether `AppPaths.meetingsDirectory()` stays the
 source of truth or becomes just the default.
+
+---
+
+### Implementation note — 2026-07-02 (package H10: Obsidian auto-detect)
+
+Shipped the "one export question" simplification (idea #15). The three
+half-disabled Markdown-format toggles (`includeFrontMatter` / `includeWikilinks`
+/ `includeTags`) in **Export destinations** are **deleted** — a net settings
+reduction. Formatting is now derived, not configured:
+
+- `ExportPreferences.isObsidianVault(_ path:)` (pure, `nonisolated`) checks for a
+  `.obsidian` **directory** and is evaluated **fresh** inside
+  `resolvedDestination()` on every export — so creating `.obsidian` inside an
+  already-chosen folder upgrades the *next* export with no settings change.
+- A picked folder that **is** a vault → `ObsidianVaultDestination` with
+  front-matter + `[[wikilinks]]` + `#talkie` and `{date}-{title}` filenames; a
+  picked folder that is **not** a vault → same destination type with all three
+  flags off and `{datetime}-{kind}` filenames (plain Markdown *in that folder*);
+  an inaccessible folder → `TalkieFolderDestination()` fallback (unchanged).
+- The pane now shows a status `SettingsNote` after a folder is chosen (vault
+  detected / plain-Markdown tip), so the auto-detect is visible.
+- **Back-compat:** `ExportPreferences.Snapshot` now persists only `destination`
+  + `folderPath`; old `export_prefs.json` files carrying the three removed keys
+  decode cleanly (JSONDecoder ignores the extra keys, dropped on next save).
+
+**Accepted tradeoff (keep-it-simple mandate):** a user who had deliberately
+turned **off** front-matter *in a vault* loses that knob — the vault case was the
+only reason the toggles existed. Logseq / other vaults without a `.obsidian`
+directory get plain Markdown; the "pick a vault folder…" tip copy is the honest
+boundary.
+
+**Base-commit note:** the H10 package spec named base `43d841d` (the A1 niche
+merge). The agent worktree was initially cut from an older line whose `git log`
+did not show that merge, so per the package instructions it was `git reset --hard
+main` onto `43d841d` before implementing. This deviates from nothing in the code;
+recorded only so the merge history reads clearly.

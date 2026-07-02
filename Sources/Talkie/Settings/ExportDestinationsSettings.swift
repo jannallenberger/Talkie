@@ -19,8 +19,10 @@ final class ExportPreferences: ObservableObject {
     enum Destination: String, Codable, CaseIterable, Identifiable {
         /// The zero-config default: plain Markdown in `~/Talkie Meetings/`.
         case talkieFolder
-        /// A user-picked folder (e.g. an Obsidian vault) with optional
-        /// front-matter / wikilinks / tags.
+        /// A user-picked folder. If it's an Obsidian vault (`.obsidian` present)
+        /// Talkie formats for Obsidian automatically; otherwise it writes plain
+        /// Markdown there. No format toggles — the folder decides. (See
+        /// `resolvedDestination()`.)
         case folder
 
         var id: String { rawValue }
@@ -36,12 +38,6 @@ final class ExportPreferences: ObservableObject {
     @Published var destination: Destination { didSet { save() } }
     /// The chosen folder when `destination == .folder` (absolute path).
     @Published var folderPath: String { didSet { save() } }
-    /// Prepend a YAML front-matter block (title, date, participants, …).
-    @Published var includeFrontMatter: Bool { didSet { save() } }
-    /// Render extracted people/projects as `[[wikilinks]]` in a Related block.
-    @Published var includeWikilinks: Bool { didSet { save() } }
-    /// Append a `#tag` line built from the note's tags.
-    @Published var includeTags: Bool { didSet { save() } }
 
     private let fileURL: URL
 
@@ -50,9 +46,6 @@ final class ExportPreferences: ObservableObject {
         // Zero-config defaults reproduce today's plain-folder behaviour exactly.
         destination = .talkieFolder
         folderPath = ""
-        includeFrontMatter = true
-        includeWikilinks = false
-        includeTags = false
         load()
     }
 
@@ -65,6 +58,31 @@ final class ExportPreferences: ObservableObject {
         return FileManager.default.isWritableFile(atPath: folderPath)
     }
 
+    /// True when `path` looks like an Obsidian vault — i.e. it contains a
+    /// `.obsidian` config directory. Pure and cheap (one `stat`); evaluated FRESH
+    /// inside `resolvedDestination()` on every export rather than cached, so a
+    /// vault the user creates *after* picking the folder (or converts a plain
+    /// folder into) is honoured on the very next note with zero settings change.
+    ///
+    /// `nonisolated` because it reads no `@Published` state — just the filesystem —
+    /// so `resolvedDestination()` and the tests can call it directly (the pure
+    /// helper it is, per the house idiom).
+    nonisolated static func isObsidianVault(_ path: String) -> Bool {
+        guard !path.isEmpty else { return false }
+        let dotObsidian = URL(fileURLWithPath: path)
+            .appendingPathComponent(".obsidian", isDirectory: true)
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: dotObsidian.path, isDirectory: &isDir)
+            && isDir.boolValue
+    }
+
+    /// True when the currently-picked folder is a vault — drives the status note
+    /// in the pane. Same fresh check the resolver uses, so the UI and the actual
+    /// export never disagree.
+    var pickedFolderIsVault: Bool {
+        folderIsAccessible && Self.isObsidianVault(folderPath)
+    }
+
     /// The settings-index subtitle ("Talkie folder" / a folder name / "Pick a folder").
     var summary: String {
         switch destination {
@@ -75,35 +93,48 @@ final class ExportPreferences: ObservableObject {
         }
     }
 
-    /// The concrete `NoteDestination` the export writers should use. Falls back to
-    /// the zero-config default when "A folder I choose" is selected but the folder
-    /// is missing — a note is never lost to a bad path.
+    /// The concrete `NoteDestination` the export writers should use. Export is one
+    /// question — *where* — and the vault case configures itself:
+    ///
+    /// - `.talkieFolder` → the zero-config plain-Markdown default in `~/Talkie Meetings/`.
+    /// - `.folder` + a `.obsidian` directory present → full Obsidian formatting
+    ///   (front-matter, `[[wikilinks]]`, a `#talkie` tag, human-titled filenames).
+    /// - `.folder` with no `.obsidian` → plain Markdown written into *that* folder
+    ///   (no front-matter / wikilinks / tags, timestamped `{datetime}-{kind}` names).
+    /// - `.folder` that's missing or unwritable → falls back to the zero-config
+    ///   default so a note is never lost to a bad path.
+    ///
+    /// The vault check is run FRESH here (not cached at pick time), so a vault
+    /// created after the folder was chosen upgrades the next export automatically.
     func resolvedDestination() -> any NoteDestination {
         switch destination {
         case .talkieFolder:
             return TalkieFolderDestination()
         case .folder:
             guard folderIsAccessible else { return TalkieFolderDestination() }
+            let isVault = Self.isObsidianVault(folderPath)
             return ObsidianVaultDestination(
                 vaultURL: URL(fileURLWithPath: folderPath),
                 subfolder: "",
-                fileNameTemplate: includeWikilinks ? "{date}-{title}" : "{datetime}-{kind}",
-                extraTags: includeTags ? ["talkie"] : [],
-                includeFrontMatter: includeFrontMatter,
-                includeWikilinks: includeWikilinks,
-                includeTags: includeTags
+                fileNameTemplate: isVault ? "{date}-{title}" : "{datetime}-{kind}",
+                extraTags: isVault ? ["talkie"] : [],
+                includeFrontMatter: isVault,
+                includeWikilinks: isVault,
+                includeTags: isVault
             )
         }
     }
 
     // MARK: Persistence
 
+    /// Only `destination` + `folderPath` persist now — formatting is derived from
+    /// `.obsidian` detection, not stored. Old `export_prefs.json` files that still
+    /// carry `includeFrontMatter` / `includeWikilinks` / `includeTags` decode fine:
+    /// `JSONDecoder` ignores keys absent from the struct, so those extra fields are
+    /// simply dropped on the next save.
     private struct Snapshot: Codable {
         var destination: Destination
         var folderPath: String
-        var includeFrontMatter: Bool
-        var includeWikilinks: Bool
-        var includeTags: Bool
     }
 
     private func load() {
@@ -111,15 +142,10 @@ final class ExportPreferences: ObservableObject {
               let s = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         destination = s.destination
         folderPath = s.folderPath
-        includeFrontMatter = s.includeFrontMatter
-        includeWikilinks = s.includeWikilinks
-        includeTags = s.includeTags
     }
 
     private func save() {
-        let s = Snapshot(destination: destination, folderPath: folderPath,
-                         includeFrontMatter: includeFrontMatter,
-                         includeWikilinks: includeWikilinks, includeTags: includeTags)
+        let s = Snapshot(destination: destination, folderPath: folderPath)
         guard let data = try? JSONEncoder().encode(s) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }
@@ -137,7 +163,7 @@ struct ExportDestinationsSettings: View {
                 header: "Destination",
                 footer: prefs.destination == .talkieFolder
                     ? "Plain Markdown in ~/Talkie Meetings — a folder you own, easy to point any tool at. No third-party app needed."
-                    : "Writes Markdown into the folder you pick. Great for an Obsidian, Logseq, or daily-note vault."
+                    : "Writes Markdown into the folder you pick. Point it at an Obsidian vault and Talkie formats for Obsidian automatically."
             ) {
                 SettingsRow(title: "Save notes to") {
                     Picker("", selection: $prefs.destination) {
@@ -156,37 +182,25 @@ struct ExportDestinationsSettings: View {
                         Button(prefs.folderPath.isEmpty ? "Choose…" : "Change…", action: pickFolder)
                     }
                     if !prefs.folderPath.isEmpty, !prefs.folderIsAccessible {
+                        // Bad path takes priority: say why, and that nothing is lost.
                         SettingsDivider(leadingInset: 0)
-                        SettingsNote(text: "That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable.",
+                        SettingsNote(text: "That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable.".loc,
                                      tone: Theme.warning, icon: "exclamationmark.triangle.fill")
+                    } else if prefs.folderIsAccessible {
+                        // Reachable folder: tell the user, honestly, what shape the
+                        // notes will take — decided by whether it's a vault, with no
+                        // knob to set. This is the whole feature, made visible.
+                        SettingsDivider(leadingInset: 0)
+                        if prefs.pickedFolderIsVault {
+                            SettingsNote(text: "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags.".loc,
+                                         tone: Theme.inkTertiary, icon: "sparkles")
+                        } else {
+                            SettingsNote(text: "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)".loc,
+                                         tone: Theme.inkTertiary)
+                        }
                     }
                 }
             }
-
-            SettingsCard(
-                header: "Markdown format",
-                footer: "Front-matter and tags help a vault organize your notes; wikilinks turn the people and projects Talkie extracted into navigable [[links]]. The plain folder ignores these — they shape the folder export."
-            ) {
-                SettingsToggleRow(
-                    title: "Front-matter",
-                    subtitle: "A YAML header with title, date, and participants.",
-                    isOn: $prefs.includeFrontMatter
-                )
-                SettingsDivider()
-                SettingsToggleRow(
-                    title: "Wikilinks",
-                    subtitle: "Link people and projects as [[Name]] in a Related block.",
-                    isOn: $prefs.includeWikilinks
-                )
-                SettingsDivider()
-                SettingsToggleRow(
-                    title: "Tags",
-                    subtitle: "Append a #tag line for vault search.",
-                    isOn: $prefs.includeTags
-                )
-            }
-            .opacity(prefs.destination == .folder ? 1 : 0.5)
-            .disabled(prefs.destination != .folder)
         }
     }
 
