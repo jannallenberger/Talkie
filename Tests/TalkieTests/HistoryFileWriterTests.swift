@@ -25,11 +25,16 @@ final class HistoryFileWriterTests: XCTestCase {
         ]
     }
 
-    /// The bytes on disk match exactly what the old synchronous `save()` wrote:
-    /// `JSONEncoder().encode(entries)`. Only the timing/actor moved.
+    /// The bytes on disk match exactly what `HistoryFileWriter` encodes with its
+    /// deterministic (`.sortedKeys`) encoder. The `expected` encoder MUST use the
+    /// same formatting — otherwise this comparison would flake, because Foundation
+    /// doesn't guarantee stable JSON key ordering and two bare encodes of the same
+    /// value can differ byte-for-byte (same length, different order).
     func testWrittenBytesMatchDirectEncode() async throws {
         let entries = sample()
-        let expected = try JSONEncoder().encode(entries)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let expected = try encoder.encode(entries)
 
         let writer = HistoryFileWriter(fileURL: fileURL)
         await writer.write(entries, generation: 1)
