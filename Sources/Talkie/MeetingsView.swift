@@ -6,7 +6,7 @@ struct MeetingsView: View {
     @ObservedObject var store: MeetingStore
     @ObservedObject var settings: AppSettings
 
-    @State private var newAppBundleID = ""
+    @State private var showingAppPicker = false
 
     var body: some View {
         ScrollView {
@@ -34,7 +34,8 @@ struct MeetingsView: View {
                             meeting: meeting,
                             onReveal: { reveal(meeting) },
                             onCopy: { copy(meeting) },
-                            onDelete: { store.delete(meeting) }
+                            onDelete: { store.delete(meeting) },
+                            onRegenerate: { await regenerateSummary(meeting) }
                         )
                     }
                 }
@@ -230,18 +231,14 @@ struct MeetingsView: View {
             Text("Talkie offers to record when one of these apps starts using your microphone.".loc)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
-            HStack(spacing: 8) {
-                TextField("Add an app’s bundle id…".loc, text: $newAppBundleID)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(addApp)
-                Button("Add".loc, action: addApp)
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
-                    .disabled(newAppBundleID.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button {
+                showingAppPicker = true
+            } label: {
+                Label("Browse installed apps…".loc, systemImage: "square.grid.2x2")
             }
             .controlSize(.large)
             if settings.meetingAllowlist.isEmpty {
-                Text("No apps yet — add one by bundle id (e.g. us.zoom.xos).".loc)
+                Text("No apps yet — browse your installed apps above.".loc)
                     .font(.talkieHeading(13, weight: .regular))
                     .foregroundStyle(Theme.inkTertiary)
             } else {
@@ -253,6 +250,9 @@ struct MeetingsView: View {
             }
         }
         .talkieCard()
+        .sheet(isPresented: $showingAppPicker) {
+            MeetingAppPickerSheet(settings: settings) { showingAppPicker = false }
+        }
     }
 
     private var mutedCard: some View {
@@ -268,14 +268,6 @@ struct MeetingsView: View {
             }
         }
         .talkieCard()
-    }
-
-    private func addApp() {
-        let id = newAppBundleID.trimmingCharacters(in: .whitespaces)
-        newAppBundleID = ""
-        guard !id.isEmpty, !settings.meetingAllowlist.contains(where: { $0.bundleID == id }) else { return }
-        // A user-added app defaults to the strong "meeting app" tier; name = bundle id.
-        settings.meetingAllowlist.append(MeetingApp(bundleID: id, displayName: id, tier: .meetingApp))
     }
 
     private func removeApp(_ app: MeetingApp) {
@@ -301,6 +293,17 @@ struct MeetingsView: View {
         pb.setString(meeting.transcript, forType: .string)
     }
 
+    /// Re-runs on-device summarization for one past meeting and persists the
+    /// result — the fix for meetings recorded before the map-reduce change (or
+    /// while the on-device model briefly wasn't ready), which are otherwise
+    /// stuck with an empty or generic summary forever.
+    private func regenerateSummary(_ meeting: Meeting) async {
+        guard let summary = await MeetingSummarizer().summarize(meeting.transcript) else { return }
+        var updated = meeting
+        updated.summary = summary
+        store.update(updated)
+    }
+
     private func timeString(_ t: TimeInterval) -> String {
         let s = Int(t)
         return String(format: "%02d:%02d", s / 60, s % 60)
@@ -324,8 +327,10 @@ private struct MeetingRow: View {
     let onReveal: () -> Void
     let onCopy: () -> Void
     let onDelete: () -> Void
+    let onRegenerate: () async -> Void
     @State private var expanded = false
     @State private var hovering = false
+    @State private var regenerating = false
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; return f
@@ -343,7 +348,16 @@ private struct MeetingRow: View {
                         .foregroundStyle(Theme.inkTertiary)
                 }
                 Spacer()
-                if hovering {
+                if regenerating {
+                    ProgressView().controlSize(.small)
+                } else if hovering {
+                    if !meeting.transcript.isEmpty, MeetingSummarizer.isAvailable {
+                        Button {
+                            Task { regenerating = true; await onRegenerate(); regenerating = false }
+                        } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.plain)
+                        .help("Regenerate summary")
+                    }
                     Button(action: onCopy) { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("Copy transcript")
                     Button(action: onReveal) { Image(systemName: "folder") }.buttonStyle(.plain).help("Reveal note in Finder")
                 }
@@ -380,11 +394,27 @@ private struct MeetingRow: View {
 private struct MeetingAppChip: View {
     let app: MeetingApp
     let onRemove: () -> Void
+
+    /// The installed app's real icon, when it's still on disk; falls back to a
+    /// tier glyph (e.g. for a bundle id the user picked whose app was later
+    /// removed).
+    private var icon: NSImage? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID)
+            .map { NSWorkspace.shared.icon(forFile: $0.path) }
+    }
+
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: app.tier == .browser ? "globe" : "video.fill")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.inkTertiary)
+            Group {
+                if let icon {
+                    Image(nsImage: icon).resizable().scaledToFit()
+                } else {
+                    Image(systemName: app.tier == .browser ? "globe" : "video.fill")
+                        .foregroundStyle(Theme.inkTertiary)
+                }
+            }
+            .font(.system(size: 10, weight: .semibold))
+            .frame(width: 13, height: 13)
             Text(app.displayName)
                 .font(.talkieHeading(12.5, weight: .medium))
                 .foregroundStyle(Theme.ink)
