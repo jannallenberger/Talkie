@@ -247,3 +247,12 @@
 "Opened in Claude Desktop" = "Claude Desktop で開きました";
 "Revealed in Finder — drag it into Claude Desktop" = "Finder で表示しました。Claude Desktop にドラッグしてください";
 "Connector file not found in this build" = "このビルドにコネクタファイルが見つかりません";
+
+/* D1 — drop-to-transcribe file import */
+"Import" = "読み込む";
+"Import audio…" = "音声を読み込む…";
+"…or drop an audio or video file onto this tab." = "…またはこのタブに音声・動画ファイルをドロップします。";
+"Drop audio or video to transcribe" = "文字起こしする音声・動画をドロップ";
+"That file isn’t audio or video" = "そのファイルは音声・動画ではありません";
+"Waiting for dictation to finish…" = "ディクテーションの終了を待っています…";
+"Choose audio or video files to transcribe into meetings." = "ミーティングに文字起こしする音声・動画ファイルを選択します。";

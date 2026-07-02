@@ -1,12 +1,22 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MeetingsView: View {
     @ObservedObject var recorder: MeetingRecorder
     @ObservedObject var store: MeetingStore
     @ObservedObject var settings: AppSettings
+    /// The drop-to-transcribe coordinator. Defaulted from the shared AppDelegate so the
+    /// existing `MeetingsView(recorder:store:settings:)` call site stays untouched (the
+    /// composition root is owned elsewhere); nil only in previews/tests, where the import
+    /// affordances simply don't render.
+    var importer: FileImportCoordinator? = AppDelegate.shared?.fileImporter
 
     @State private var showingAppPicker = false
+    /// Flashes the drop zone briefly when a non-audio file is rejected.
+    @State private var rejectedDrop = false
+    /// True while a supported file is hovering over the drop target.
+    @State private var dropTargeting = false
 
     var body: some View {
         ScrollView {
@@ -21,6 +31,7 @@ struct MeetingsView: View {
                 }
 
                 recordCard
+                if let importer { ImportControls(importer: importer) }
                 languageModeRow
                 if recorder.isRecording { notesCard }
                 folderRow
@@ -43,6 +54,55 @@ struct MeetingsView: View {
             .padding(28)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .dropDestination(for: URL.self) { urls, _ in handleDrop(urls) }
+        isTargeted: { hovering in
+            // Only light up for files we can actually take; a hover of anything else
+            // leaves the zone calm (the rejection flash fires on drop, not hover).
+            dropTargeting = hovering
+        }
+        .overlay {
+            if dropTargeting || rejectedDrop {
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .strokeBorder(
+                        rejectedDrop ? Theme.featherRed : Theme.coral,
+                        style: StrokeStyle(lineWidth: 2, dash: [7, 5])
+                    )
+                    .padding(10)
+                    .overlay(alignment: .top) {
+                        Text(rejectedDrop
+                             ? "That file isn’t audio or video".loc
+                             : "Drop audio or video to transcribe".loc)
+                            .font(.talkieEyebrow)
+                            .foregroundStyle(rejectedDrop ? Theme.featherRed : Theme.coral)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Theme.surface))
+                            .padding(.top, 18)
+                    }
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: dropTargeting)
+        .animation(.easeInOut(duration: 0.2), value: rejectedDrop)
+    }
+
+    /// Route a dropped batch: hand supported files to the importer, flash the zone red
+    /// for a moment if nothing in the drop was importable (a visible rejection, never a
+    /// silent no-op). Returns whether anything was accepted.
+    @discardableResult
+    private func handleDrop(_ urls: [URL]) -> Bool {
+        let supported = ImportableMedia.supported(in: urls)
+        guard !supported.isEmpty else {
+            rejectedDrop = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(900))
+                rejectedDrop = false
+            }
+            return false
+        }
+        importer?.enqueue(supported)
+        return true
     }
 
     // MARK: Language mode
@@ -454,5 +514,101 @@ private struct MutedAppChip: View {
         }
         .buttonStyle(.plain)
         .help("Un-mute".loc)
+    }
+}
+
+/// The drop-to-transcribe affordances: an "Import audio…" button (an `NSOpenPanel`
+/// counterpart to dropping onto the tab) plus, while an import runs, one progress row
+/// with the filename, percent, and Cancel. Observes the coordinator so progress and the
+/// "waiting for dictation to finish" state stay live. Rendered only when the importer
+/// exists (nil in previews).
+private struct ImportControls: View {
+    @ObservedObject var importer: FileImportCoordinator
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Button {
+                    importViaPanel()
+                } label: {
+                    Label("Import audio…".loc, systemImage: "square.and.arrow.down")
+                }
+                .controlSize(.large)
+                .disabled(!FileImportEngine.isAvailable)
+
+                Text("…or drop an audio or video file onto this tab.".loc)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.inkTertiary)
+                Spacer()
+            }
+
+            if let active = importer.active {
+                progressRow(fileName: active.fileName)
+            } else if importer.waitingForSession {
+                waitingRow
+            }
+
+            if let error = importer.lastError {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.featherRed)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func progressRow(fileName: String) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.coral)
+                    Text(fileName)
+                        .font(.talkieHeading(13, weight: .medium))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 8)
+                    Text("\(Int((importer.progress * 100).rounded()))%")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Theme.inkSecondary)
+                }
+                ProgressView(value: importer.progress)
+                    .tint(Theme.coral)
+            }
+            Button("Cancel".loc) { importer.cancel() }
+                .controlSize(.small)
+        }
+        .talkieCard(padding: 12)
+    }
+
+    private var waitingRow: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Waiting for dictation to finish…".loc)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.inkSecondary)
+            Spacer()
+            Button("Cancel".loc) { importer.cancel() }
+                .controlSize(.small)
+        }
+        .talkieCard(padding: 12)
+    }
+
+    /// Pick one or more audio/video files and enqueue them. On-device only — reads files
+    /// the user chose; nothing leaves the machine.
+    private func importViaPanel() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = ImportableMedia.allExtensions.compactMap { UTType(filenameExtension: $0) }
+        panel.prompt = "Import".loc
+        panel.message = "Choose audio or video files to transcribe into meetings.".loc
+        if panel.runModal() == .OK {
+            importer.enqueue(panel.urls)
+        }
     }
 }

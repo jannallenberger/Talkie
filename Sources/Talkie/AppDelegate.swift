@@ -37,6 +37,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var engine: TranscriptionEngine!
     private var meetingRecorder: MeetingRecorder!
+    /// Imports dropped audio/video files into Meetings (transcript + summary + graph),
+    /// off the main actor, one at a time, deferring while a dictation/recording is live.
+    /// Built in `applicationDidFinishLaunching` so it can capture the same session probes
+    /// as `meetingRecorder`. Not `private` so `MeetingsView` observes its progress.
+    private(set) var fileImporter: FileImportCoordinator!
     private let audio = AudioCapture()
     /// The always-on floating macaw (separate from the transient capture pill).
     private let birdBuddy = BirdBuddyController()
@@ -132,6 +137,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         meetingRecorder.contextGraph = contextGraph
         meetingRecorder.meetingLanguageMode = { [weak self] in self?.settings.meetingLanguageMode ?? "auto" }
         meetingRecorder.recoverPartialIfNeeded()
+
+        // Drop-to-transcribe: imported files become Meetings. Injected with the same
+        // meeting store + context graph the recorder uses, and the SAME live-session
+        // probes (`isDictating`/`isProcessing`/`isRecording`) so an import never spins up
+        // its extra analyzers over a live dictation or recording.
+        fileImporter = FileImportCoordinator(
+            meetingStore: meetingStore,
+            contextGraph: contextGraph,
+            primaryLocale: { [weak self] in
+                self?.settings.spokenLanguages.first ?? self?.settings.localeIdentifier ?? "en-US"
+            },
+            spokenLanguages: { [weak self] in self?.settings.spokenLanguages ?? [] },
+            isDictating: { [weak self] in self?.isDictating == true },
+            isProcessing: { [weak self] in self?.isProcessing == true },
+            isRecording: { [weak self] in self?.meetingRecorder?.isRecording == true }
+        )
 
         setupMeetingDetection()
 
