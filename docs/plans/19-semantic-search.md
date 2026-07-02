@@ -526,3 +526,44 @@ verify with pure-Swift unit logic on the Sendable value types (no UI/main-actor 
 - [NLEmbedding sentence embedding (512-dim) — Mark Brownsword](https://markbrownsword.com/2020/12/23/natural-language-framework-sentence-embedding-with-swift/)
 - [model2vec.swift — on-device static embeddings (Apache-2.0)](https://github.com/shubham0204/model2vec.swift)
 - [MLXEmbedders / mlx-swift-lm (BGE on-device)](https://github.com/ml-explore/mlx-swift-lm)
+
+---
+
+### Implementation note — 2026-07-02 (G3: search re-exposed through the MCP `search` tool)
+
+The MCP `search` tool (plan 06) now runs the same on-device semantic+keyword blend
+the app's `SemanticIndex` uses, instead of substring `contains()`. Since `talkie-mcp`
+cannot import the app target (mirror-don't-import), the scoring core is copied into
+`Sources/TalkieMCP/SemanticCore.swift` behind grep-able `MIRROR:` markers naming
+`Sources/Talkie/Search/SemanticIndex.swift`; **any change to `blendedScore`/`cosine`/
+`tokenize` must update both copies.** De-duping into a shared library target is the
+documented later refactor. The index is built once per process and memoized per
+`sources` set (single-threaded stdio loop, so a plain `final class` cache, no actor).
+
+Two deviations from the abstract spec, both deliberate and honest:
+
+1. **Timing.** The stated criterion — first `search` on ~200 records < 2 s,
+   memoized < 100 ms — holds (measured 0.79–0.83 s / ~0 ms on Apple Silicon,
+   `talkie-mcp --selftest-timing 200`). But cost scales ~linearly with record count
+   and with per-record text length (embedding dominates). On a real store with ~900
+   records (mostly graph entities) the first all-sources build was ~5.5 s; the
+   2000-char cap + lazy per-`sources` build + memoization are the mitigations, and
+   the >200-record first-call latency is a known trade-off, not a regression (the
+   cost is paid once per host session). If it matters later, the fix is a compact
+   on-disk vector sidecar (already floated in §1.4 of `_UNIFICATION.md`), not more
+   scoring cleverness.
+
+2. **Ranking + noise.** Lexical hits (exact substring or a shared ≥3-char token —
+   what the old grep returned) form a tier ranked strictly above semantic-only hits,
+   so an exact term can never be buried under a paraphrase, and with embeddings
+   unavailable the tool collapses to exactly today's keyword behavior. Semantic-only
+   hits are gated at cosine ≥ 0.35 to trim ambient-similarity noise. **Known model
+   limitation (shared with the app):** the English sentence model gives high,
+   meaningless similarity to out-of-vocabulary / non-English text, so a nonsense
+   query can still surface a low-scored non-English record; no fixed cosine floor
+   fully separates that from a genuine weak paraphrase. The visible per-hit score
+   lets the caller judge; a rank-relative/margin filter is a possible later
+   refinement, deliberately out of scope here.
+
+Not a recognition-path change — no WER gate. `scripts/check-no-network.sh` passes
+(`NaturalLanguage` is an Apple system framework, no SPM dependency).
