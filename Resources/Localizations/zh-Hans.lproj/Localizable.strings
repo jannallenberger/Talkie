@@ -196,3 +196,35 @@
 "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "检测到 Obsidian 仓库 — 笔记将包含 front-matter、[[wikilinks]] 和 #标签。";
 "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "纯 Markdown。（提示：选择一个仓库文件夹，Talkie 会自动按 Obsidian 格式排版。）";
 "That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "该文件夹当前无法读取 — 在恢复可用之前，笔记会保存到 ~/Talkie Meetings。";
+
+/* A4 — .talkiepack import/export */
+"Import…" = "导入…";
+"Export…" = "导出…";
+"Import dictionary" = "导入词典";
+"Export dictionary" = "导出词典";
+"Add to dictionary" = "添加到词典";
+"Nothing to add" = "无内容可添加";
+"Have it" = "已有";
+"Vocabulary" = "词汇";
+"Replacements" = "替换";
+"OK" = "好";
+"Already in your dictionary" = "已在你的词典中";
+"Will be added" = "将会添加";
+"Import a .talkiepack file — preview what's inside before adding it" = "导入 .talkiepack 文件——添加前先预览内容";
+"Save your whole dictionary to a shareable .talkiepack file" = "将整个词典保存为可分享的 .talkiepack 文件";
+"This pack is empty — there's nothing to add." = "此词典包为空——没有可添加的内容。";
+"Tip: keep a .talkiepack in iCloud Drive or a dotfiles repo to sync it across your Macs — Talkie never uploads anything." = "提示：把 .talkiepack 放在 iCloud 云盘或 dotfiles 仓库中，即可在多台 Mac 间同步——Talkie 从不上传任何内容。";
+"Couldn't read that file" = "无法读取该文件";
+"Dictionary imported" = "已导入词典";
+"Everything in that pack was already in your dictionary — nothing to add." = "该词典包中的内容都已在你的词典中——没有可添加的内容。";
+"Added %d words and %d rules to your dictionary." = "已向你的词典添加 %d 个词和 %d 条规则。";
+"Added %d words to your dictionary." = "已向你的词典添加 %d 个词。";
+"Added %d rules to your dictionary." = "已向你的词典添加 %d 条规则。";
+"You already have everything in this pack." = "此词典包中的内容你都已拥有。";
+"Adds %d new words and %d new rules." = "将添加 %d 个新词和 %d 条新规则。";
+"Adds %d new words." = "将添加 %d 个新词。";
+"Adds %d new rules." = "将添加 %d 条新规则。";
+"%d already in your dictionary." = "其中 %d 个已在你的词典中。";
+"Talkie couldn't save the file. Please try a different location." = "Talkie 无法保存该文件。请尝试其他位置。";
+"Talkie couldn't open that file." = "Talkie 无法打开该文件。";
+"That doesn't look like a Talkie dictionary (.talkiepack)." = "这看起来不是 Talkie 词典（.talkiepack）。";

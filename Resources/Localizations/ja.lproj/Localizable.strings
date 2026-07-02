@@ -196,3 +196,35 @@
 "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Obsidian のボールトを検出しました — ノートには front-matter、[[wikilink]]、#タグ が含まれます。";
 "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "プレーンな Markdown です。（ヒント：ボールトのフォルダを選ぶと、Talkie が自動で Obsidian 用に整形します。）";
 "That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "そのフォルダは今読み取れません — 到達できるようになるまで、ノートは ~/Talkie Meetings に保存されます。";
+
+/* A4 — .talkiepack import/export */
+"Import…" = "読み込む…";
+"Export…" = "書き出す…";
+"Import dictionary" = "辞書を読み込む";
+"Export dictionary" = "辞書を書き出す";
+"Add to dictionary" = "辞書に追加";
+"Nothing to add" = "追加するものはありません";
+"Have it" = "登録済み";
+"Vocabulary" = "単語";
+"Replacements" = "置換";
+"OK" = "OK";
+"Already in your dictionary" = "すでに辞書にあります";
+"Will be added" = "追加されます";
+"Import a .talkiepack file — preview what's inside before adding it" = ".talkiepack ファイルを読み込みます。追加する前に内容を確認できます";
+"Save your whole dictionary to a shareable .talkiepack file" = "辞書全体を共有できる .talkiepack ファイルに保存します";
+"This pack is empty — there's nothing to add." = "このパックは空です。追加するものはありません。";
+"Tip: keep a .talkiepack in iCloud Drive or a dotfiles repo to sync it across your Macs — Talkie never uploads anything." = "ヒント：.talkiepack を iCloud Drive や dotfiles リポジトリに置くと、複数の Mac で同期できます。Talkie が何かをアップロードすることはありません。";
+"Couldn't read that file" = "ファイルを読み込めませんでした";
+"Dictionary imported" = "辞書を読み込みました";
+"Everything in that pack was already in your dictionary — nothing to add." = "そのパックの内容はすべてすでに辞書にありました。追加するものはありません。";
+"Added %d words and %d rules to your dictionary." = "%d 個の単語と %d 個のルールを辞書に追加しました。";
+"Added %d words to your dictionary." = "%d 個の単語を辞書に追加しました。";
+"Added %d rules to your dictionary." = "%d 個のルールを辞書に追加しました。";
+"You already have everything in this pack." = "このパックの内容はすべてすでにあります。";
+"Adds %d new words and %d new rules." = "%d 個の新しい単語と %d 個の新しいルールを追加します。";
+"Adds %d new words." = "%d 個の新しい単語を追加します。";
+"Adds %d new rules." = "%d 個の新しいルールを追加します。";
+"%d already in your dictionary." = "%d 個はすでに辞書にあります。";
+"Talkie couldn't save the file. Please try a different location." = "Talkie はファイルを保存できませんでした。別の場所を試してください。";
+"Talkie couldn't open that file." = "Talkie はそのファイルを開けませんでした。";
+"That doesn't look like a Talkie dictionary (.talkiepack)." = "これは Talkie の辞書（.talkiepack）ではないようです。";

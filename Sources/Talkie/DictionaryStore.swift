@@ -153,6 +153,130 @@ final class DictionaryStore: ObservableObject {
         vocabulary.remove(atOffsets: offsets)
     }
 
+    // MARK: One-file import / export (.talkiepack)
+
+    /// Snapshot the whole dictionary into a shareable pack. `name`/`description`/
+    /// `attribution` come from the export UI. Learned rules are exported too — they're
+    /// still your corrections — but the `learned` flag is deliberately dropped in the
+    /// pack (see `TalkiePack.PackReplacement`), so a recipient gets them as curated
+    /// rules, not "Talkie learned this" rows. Only rules with a non-empty `from` are
+    /// exported (mirrors `replacementsSnapshot()`), so a blank draft row never ships.
+    func exportPack(name: String, description: String?, attribution: String?) -> TalkiePack {
+        let rules = replacements
+            .filter { !$0.from.trimmingCharacters(in: .whitespaces).isEmpty
+                        && !$0.to.trimmingCharacters(in: .whitespaces).isEmpty }
+            .map {
+                TalkiePack.PackReplacement(from: $0.from, to: $0.to,
+                                           caseSensitive: $0.caseSensitive, wholeWord: $0.wholeWord)
+            }
+        return TalkiePack(name: name,
+                          description: description?.isEmpty == true ? nil : description,
+                          attribution: attribution?.isEmpty == true ? nil : attribution,
+                          createdAtUnix: Date().timeIntervalSince1970,
+                          vocabulary: vocabulary,
+                          replacements: rules)
+    }
+
+    /// Dry-run a merge against the CURRENT state without writing anything, so the
+    /// import sheet can show what will be added vs. what already exists (collisions).
+    /// Pure with respect to the store (reads `vocabulary`/`replacements`, mutates
+    /// nothing). Dedup rules match `merge(pack:)` exactly: vocabulary is compared
+    /// case-insensitively; a replacement collides on its (from, to) pair, both compared
+    /// case-insensitively — so re-importing the same pack shows every row as existing.
+    /// Rows that repeat WITHIN the pack are de-duplicated here too, so the preview count
+    /// equals what `merge` will actually add.
+    func previewMerge(pack: TalkiePack) -> MergePreview {
+        let existingVocabLower = Set(vocabulary.map { $0.lowercased() })
+        var seenVocabLower = Set<String>()
+        var vocabRows: [MergePreview.VocabRow] = []
+        for term in pack.vocabulary {
+            let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let lower = trimmed.lowercased()
+            let alreadyInPack = seenVocabLower.contains(lower)
+            seenVocabLower.insert(lower)
+            let existing = existingVocabLower.contains(lower) || alreadyInPack
+            vocabRows.append(.init(term: trimmed, existing: existing))
+        }
+
+        let existingRuleKeys = Set(replacements.map { ruleKey($0.from, $0.to) })
+        var seenRuleKeys = Set<String>()
+        var ruleRows: [MergePreview.RuleRow] = []
+        for rule in pack.replacements {
+            let from = rule.from.trimmingCharacters(in: .whitespaces)
+            let to = rule.to.trimmingCharacters(in: .whitespaces)
+            guard !from.isEmpty, !to.isEmpty else { continue }
+            let key = ruleKey(from, to)
+            let alreadyInPack = seenRuleKeys.contains(key)
+            seenRuleKeys.insert(key)
+            let existing = existingRuleKeys.contains(key) || alreadyInPack
+            ruleRows.append(.init(from: from, to: to, existing: existing))
+        }
+
+        return MergePreview(packName: pack.name,
+                            packDescription: pack.description,
+                            attribution: pack.attribution,
+                            vocab: vocabRows,
+                            rules: ruleRows)
+    }
+
+    /// Merge a pack into the dictionary and return what actually changed. This is the
+    /// import commit: it appends only the entries that don't already exist, NEVER
+    /// overwrites one of your existing rules (dedup is add-if-absent, not replace), and
+    /// tags imported rules as curated — `learned: false` — so they read as your own,
+    /// not as auto-learned. Persists once at the end via `save()`. All-or-nothing isn't
+    /// needed because the operation only ever adds; a duplicate pack is a no-op.
+    @discardableResult
+    func merge(pack: TalkiePack) -> MergeSummary {
+        var summary = MergeSummary()
+
+        // Vocabulary — case-insensitive dedup against existing AND within the pack.
+        var vocabLower = Set(vocabulary.map { $0.lowercased() })
+        for term in pack.vocabulary {
+            let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let lower = trimmed.lowercased()
+            if vocabLower.contains(lower) {
+                summary.vocabularySkipped += 1
+            } else {
+                vocabLower.insert(lower)
+                vocabulary.append(trimmed)
+                summary.vocabularyAdded += 1
+            }
+        }
+
+        // Replacements — dedup on the (from, to) pair, case-insensitively. An imported
+        // rule keeps its own case-sensitivity / whole-word flags but is curated, not
+        // learned.
+        var ruleKeys = Set(replacements.map { ruleKey($0.from, $0.to) })
+        for rule in pack.replacements {
+            let from = rule.from.trimmingCharacters(in: .whitespaces)
+            let to = rule.to.trimmingCharacters(in: .whitespaces)
+            guard !from.isEmpty, !to.isEmpty else { continue }
+            let key = ruleKey(from, to)
+            if ruleKeys.contains(key) {
+                summary.replacementsSkipped += 1
+            } else {
+                ruleKeys.insert(key)
+                replacements.append(Replacement(from: from, to: to,
+                                                caseSensitive: rule.resolvedCaseSensitive,
+                                                wholeWord: rule.resolvedWholeWord,
+                                                learned: false))
+                summary.replacementsAdded += 1
+            }
+        }
+
+        if !summary.isEmpty { save() }
+        return summary
+    }
+
+    /// The dedup key for a replacement: the (from, to) pair, lowercased so
+    /// "API"→"API" and "api"→"API" collide. Kept here so `previewMerge` and `merge`
+    /// can't disagree on what "already have this rule" means.
+    private func ruleKey(_ from: String, _ to: String) -> String {
+        "\(from.trimmingCharacters(in: .whitespaces).lowercased())\u{0}\(to.trimmingCharacters(in: .whitespaces).lowercased())"
+    }
+
     // MARK: Snapshots for the engine (Sendable plain values)
 
     /// Phrases that bias recognition: vocabulary plus the corrected spellings.

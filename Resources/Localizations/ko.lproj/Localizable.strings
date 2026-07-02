@@ -196,3 +196,35 @@
 "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Obsidian 보관함을 감지했어요 — 노트에 front-matter, [[위키링크]], #태그 가 포함됩니다.";
 "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "일반 Markdown이에요. (팁: 보관함 폴더를 고르면 Talkie가 자동으로 Obsidian용으로 서식을 맞춰요.)";
 "That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "지금은 그 폴더를 읽을 수 없어요 — 다시 접근할 수 있을 때까지 노트는 ~/Talkie Meetings에 저장돼요.";
+
+/* A4 — .talkiepack import/export */
+"Import…" = "가져오기…";
+"Export…" = "내보내기…";
+"Import dictionary" = "사전 가져오기";
+"Export dictionary" = "사전 내보내기";
+"Add to dictionary" = "사전에 추가";
+"Nothing to add" = "추가할 항목 없음";
+"Have it" = "이미 있음";
+"Vocabulary" = "어휘";
+"Replacements" = "대체";
+"OK" = "확인";
+"Already in your dictionary" = "이미 사전에 있음";
+"Will be added" = "추가될 항목";
+"Import a .talkiepack file — preview what's inside before adding it" = ".talkiepack 파일을 가져옵니다. 추가하기 전에 내용을 미리 볼 수 있습니다";
+"Save your whole dictionary to a shareable .talkiepack file" = "전체 사전을 공유 가능한 .talkiepack 파일로 저장합니다";
+"This pack is empty — there's nothing to add." = "이 팩은 비어 있어 추가할 항목이 없습니다.";
+"Tip: keep a .talkiepack in iCloud Drive or a dotfiles repo to sync it across your Macs — Talkie never uploads anything." = "팁: .talkiepack을 iCloud Drive나 dotfiles 저장소에 두면 여러 Mac에서 동기화할 수 있습니다. Talkie는 아무것도 업로드하지 않습니다.";
+"Couldn't read that file" = "파일을 읽을 수 없습니다";
+"Dictionary imported" = "사전을 가져왔습니다";
+"Everything in that pack was already in your dictionary — nothing to add." = "그 팩의 모든 항목이 이미 사전에 있어 추가할 항목이 없습니다.";
+"Added %d words and %d rules to your dictionary." = "단어 %d개와 규칙 %d개를 사전에 추가했습니다.";
+"Added %d words to your dictionary." = "단어 %d개를 사전에 추가했습니다.";
+"Added %d rules to your dictionary." = "규칙 %d개를 사전에 추가했습니다.";
+"You already have everything in this pack." = "이 팩의 모든 항목을 이미 가지고 있습니다.";
+"Adds %d new words and %d new rules." = "새 단어 %d개와 새 규칙 %d개를 추가합니다.";
+"Adds %d new words." = "새 단어 %d개를 추가합니다.";
+"Adds %d new rules." = "새 규칙 %d개를 추가합니다.";
+"%d already in your dictionary." = "%d개는 이미 사전에 있습니다.";
+"Talkie couldn't save the file. Please try a different location." = "Talkie가 파일을 저장하지 못했습니다. 다른 위치를 시도해 보세요.";
+"Talkie couldn't open that file." = "Talkie가 파일을 열지 못했습니다.";
+"That doesn't look like a Talkie dictionary (.talkiepack)." = "Talkie 사전(.talkiepack)이 아닌 것 같습니다.";

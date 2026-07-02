@@ -228,6 +228,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    /// Double-clicking a `.talkiepack` in Finder (or `open`-ing one) routes here.
+    /// We open the Dictionary tab and hand each pack URL to the pane, which stages the
+    /// same import preview the in-app Import button shows — a confirmed, non-destructive
+    /// merge. Purely local: this reads a file the user chose; no network.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let packs = urls.filter { $0.pathExtension.lowercased() == TalkiePack.fileExtension }
+        guard !packs.isEmpty else { return }
+        openSettings(tab: .dictionary)
+        for url in packs {
+            NotificationCenter.default.post(name: .talkieOpenDictionaryPack, object: url)
+        }
+    }
+
     @objc private func appBecameActive() {
         permissions.refresh()
         // If Input Monitoring was just granted, the tap can now install.

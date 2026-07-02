@@ -196,3 +196,35 @@
 "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Cofre do Obsidian detectado — as notas vão incluir front-matter, [[wikilinks]] e #tags.";
 "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "Markdown simples. (Dica: escolha uma pasta de cofre e o Talkie formata para o Obsidian automaticamente.)";
 "That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "Essa pasta não está legível agora — as notas vão para ~/Talkie Meetings até ela ficar acessível.";
+
+/* A4 — .talkiepack import/export */
+"Import…" = "Importar…";
+"Export…" = "Exportar…";
+"Import dictionary" = "Importar dicionário";
+"Export dictionary" = "Exportar dicionário";
+"Add to dictionary" = "Adicionar ao dicionário";
+"Nothing to add" = "Nada a adicionar";
+"Have it" = "Já tem";
+"Vocabulary" = "Vocabulário";
+"Replacements" = "Substituições";
+"OK" = "OK";
+"Already in your dictionary" = "Já está no seu dicionário";
+"Will be added" = "Será adicionado";
+"Import a .talkiepack file — preview what's inside before adding it" = "Importe um arquivo .talkiepack: veja o conteúdo antes de adicionar";
+"Save your whole dictionary to a shareable .talkiepack file" = "Salve todo o seu dicionário em um arquivo .talkiepack compartilhável";
+"This pack is empty — there's nothing to add." = "Este pacote está vazio: não há nada a adicionar.";
+"Tip: keep a .talkiepack in iCloud Drive or a dotfiles repo to sync it across your Macs — Talkie never uploads anything." = "Dica: mantenha um .talkiepack no iCloud Drive ou em um repositório dotfiles para sincronizá-lo entre seus Macs. O Talkie nunca envia nada.";
+"Couldn't read that file" = "Não foi possível ler o arquivo";
+"Dictionary imported" = "Dicionário importado";
+"Everything in that pack was already in your dictionary — nothing to add." = "Tudo nesse pacote já estava no seu dicionário: nada a adicionar.";
+"Added %d words and %d rules to your dictionary." = "Adicionadas %d palavras e %d regras ao seu dicionário.";
+"Added %d words to your dictionary." = "Adicionadas %d palavras ao seu dicionário.";
+"Added %d rules to your dictionary." = "Adicionadas %d regras ao seu dicionário.";
+"You already have everything in this pack." = "Você já tem tudo deste pacote.";
+"Adds %d new words and %d new rules." = "Adiciona %d novas palavras e %d novas regras.";
+"Adds %d new words." = "Adiciona %d novas palavras.";
+"Adds %d new rules." = "Adiciona %d novas regras.";
+"%d already in your dictionary." = "%d já no seu dicionário.";
+"Talkie couldn't save the file. Please try a different location." = "O Talkie não conseguiu salvar o arquivo. Tente outro local.";
+"Talkie couldn't open that file." = "O Talkie não conseguiu abrir o arquivo.";
+"That doesn't look like a Talkie dictionary (.talkiepack)." = "Isso não parece um dicionário do Talkie (.talkiepack).";

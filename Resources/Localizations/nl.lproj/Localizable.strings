@@ -196,3 +196,35 @@
 "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Obsidian-kluis gedetecteerd — notities bevatten front-matter, [[wikilinks]] en #tags.";
 "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "Platte Markdown. (Tip: kies een kluismap en Talkie maakt automatisch op voor Obsidian.)";
 "That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "Die map is nu niet leesbaar — notities gaan naar ~/Talkie Meetings totdat de map weer bereikbaar is.";
+
+/* A4 — .talkiepack import/export */
+"Import…" = "Importeren…";
+"Export…" = "Exporteren…";
+"Import dictionary" = "Woordenboek importeren";
+"Export dictionary" = "Woordenboek exporteren";
+"Add to dictionary" = "Aan woordenboek toevoegen";
+"Nothing to add" = "Niets toe te voegen";
+"Have it" = "Al aanwezig";
+"Vocabulary" = "Woordenschat";
+"Replacements" = "Vervangingen";
+"OK" = "OK";
+"Already in your dictionary" = "Al in je woordenboek";
+"Will be added" = "Wordt toegevoegd";
+"Import a .talkiepack file — preview what's inside before adding it" = "Importeer een .talkiepack-bestand: bekijk de inhoud voordat je het toevoegt";
+"Save your whole dictionary to a shareable .talkiepack file" = "Bewaar je hele woordenboek in een deelbaar .talkiepack-bestand";
+"This pack is empty — there's nothing to add." = "Dit pakket is leeg: er is niets toe te voegen.";
+"Tip: keep a .talkiepack in iCloud Drive or a dotfiles repo to sync it across your Macs — Talkie never uploads anything." = "Tip: bewaar een .talkiepack in iCloud Drive of een dotfiles-repo om het tussen je Macs te synchroniseren. Talkie uploadt nooit iets.";
+"Couldn't read that file" = "Kon dat bestand niet lezen";
+"Dictionary imported" = "Woordenboek geïmporteerd";
+"Everything in that pack was already in your dictionary — nothing to add." = "Alles in dat pakket stond al in je woordenboek: niets toe te voegen.";
+"Added %d words and %d rules to your dictionary." = "%d woorden en %d regels aan je woordenboek toegevoegd.";
+"Added %d words to your dictionary." = "%d woorden aan je woordenboek toegevoegd.";
+"Added %d rules to your dictionary." = "%d regels aan je woordenboek toegevoegd.";
+"You already have everything in this pack." = "Je hebt alles uit dit pakket al.";
+"Adds %d new words and %d new rules." = "Voegt %d nieuwe woorden en %d nieuwe regels toe.";
+"Adds %d new words." = "Voegt %d nieuwe woorden toe.";
+"Adds %d new rules." = "Voegt %d nieuwe regels toe.";
+"%d already in your dictionary." = "%d al in je woordenboek.";
+"Talkie couldn't save the file. Please try a different location." = "Talkie kon het bestand niet opslaan. Probeer een andere locatie.";
+"Talkie couldn't open that file." = "Talkie kon dat bestand niet openen.";
+"That doesn't look like a Talkie dictionary (.talkiepack)." = "Dat lijkt geen Talkie-woordenboek (.talkiepack).";
