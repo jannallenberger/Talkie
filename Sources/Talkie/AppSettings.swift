@@ -221,6 +221,17 @@ final class AppSettings: ObservableObject {
     @Published var learnFromEdits: Bool {
         didSet { defaults.set(learnFromEdits, forKey: Keys.learnFromEdits) }
     }
+    /// One-time consent for learning corrections from your Claude Code prompts (the
+    /// AX-blind coding/terminal surface). Tri-state on purpose — `"unset"` until the
+    /// first time a scan *would* run, then `"granted"` or `"denied"` for good.
+    /// Deliberately NOT a settings row: reading a conversation file is qualitatively
+    /// different from watching the field Talkie just pasted into, so a silent default
+    /// would betray the trust story — but a permanent toggle would be sprawl. The
+    /// one-time HUD offer is the smart default. Additionally gated behind
+    /// `learnFromEdits`, so turning edit-learning off disables this too.
+    @Published var claudeTranscriptLearning: String {
+        didSet { defaults.set(claudeTranscriptLearning, forKey: Keys.claudeTranscriptLearning) }
+    }
     /// Experimental: paste the raw transcript the instant you stop, then swap in
     /// the cleaned version once the on-device model finishes — so there's no
     /// visible wait. Off by default: the in-place swap selects backward over the
@@ -331,6 +342,7 @@ final class AppSettings: ObservableObject {
             Keys.autoCapitalize: true,
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
+            Keys.claudeTranscriptLearning: "unset",
             Keys.optimisticInsertion: true,
             Keys.crossSurfaceCommandsEnabled: false,
             Keys.implicitCommandTarget: true,
@@ -373,6 +385,7 @@ final class AppSettings: ObservableObject {
         autoCapitalize = d.bool(forKey: Keys.autoCapitalize)
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
+        claudeTranscriptLearning = d.string(forKey: Keys.claudeTranscriptLearning) ?? "unset"
         optimisticInsertion = d.bool(forKey: Keys.optimisticInsertion)
         crossSurfaceCommandsEnabled = d.bool(forKey: Keys.crossSurfaceCommandsEnabled)
         implicitCommandTarget = d.bool(forKey: Keys.implicitCommandTarget)
@@ -445,6 +458,7 @@ final class AppSettings: ObservableObject {
         static let autoCapitalize = "autoCapitalize"
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
+        static let claudeTranscriptLearning = "claudeTranscriptLearning"
         static let optimisticInsertion = "optimisticInsertion"
         static let crossSurfaceCommandsEnabled = "crossSurfaceCommandsEnabled"
         static let implicitCommandTarget = "implicitCommandTarget"
