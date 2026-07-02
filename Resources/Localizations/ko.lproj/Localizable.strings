@@ -228,3 +228,20 @@
 "Talkie couldn't save the file. Please try a different location." = "Talkie가 파일을 저장하지 못했습니다. 다른 위치를 시도해 보세요.";
 "Talkie couldn't open that file." = "Talkie가 파일을 열지 못했습니다.";
 "That doesn't look like a Talkie dictionary (.talkiepack)." = "Talkie 사전(.talkiepack)이 아닌 것 같습니다.";
+
+/* G1 — Connect to Claude connector card */
+"Connect to Claude" = "Claude에 연결";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie에는 작은 로컬 서버가 포함되어 있어 Claude가 회의, 브리핑, 약속, 컨텍스트를 읽을 수 있습니다. 읽기 전용이며 기기 내에서 처리되고, 어떤 것도 Mac을 떠나지 않습니다. 앱에 기본 포함: 별도 다운로드나 빌드가 필요 없습니다.";
+"Claude Desktop" = "Claude Desktop";
+"Install the connector with one click" = "클릭 한 번으로 커넥터 설치";
+"Install…" = "설치…";
+"Claude Code & other MCP clients" = "Claude Code 및 기타 MCP 클라이언트";
+"Add this to your .mcp.json, or run the command" = ".mcp.json에 추가하거나 명령을 실행하세요";
+"Copy config" = "구성 복사";
+"Or from the terminal" = "또는 터미널에서";
+"Copy command" = "명령 복사";
+"What Claude can read" = "Claude가 읽을 수 있는 항목";
+"The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "커넥터 바이너리가 아직 없습니다. 빌드된 Talkie.app(./scripts/run.sh)에서 이 앱을 실행하면 함께 포함됩니다. 추가 단계는 없습니다.";
+"Opened in Claude Desktop" = "Claude Desktop에서 열림";
+"Revealed in Finder — drag it into Claude Desktop" = "Finder에 표시됨 — Claude Desktop으로 끌어다 놓으세요";
+"Connector file not found in this build" = "이 빌드에서 커넥터 파일을 찾을 수 없습니다";

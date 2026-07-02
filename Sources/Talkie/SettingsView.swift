@@ -370,60 +370,173 @@ private struct DeveloperSettings: View {
     }
 }
 
-/// "Local MCP server" — surfaces the `talkie-mcp` binary (zero-network stdio
-/// JSON-RPC server over the on-disk stores) so it's discoverable, instead of a
-/// user having to find the binary and hand-configure an MCP client themselves.
-/// Config/discovery only — no server management UI, matching its nature as a
-/// CLI-facing tool the app doesn't run or supervise.
+/// "Connect to Claude" — the one-click connector card. Every installed Talkie.app
+/// now bundles the `talkie-mcp` stdio server (Contents/MacOS/talkie-mcp) plus a
+/// ready-to-install `.mcpb` (Contents/Resources/Talkie.mcpb), so this works with no
+/// checkout, no `swift build`, and no maker-specific paths. Two rows: Claude Desktop
+/// (hand the `.mcpb` to the OS handler) and Claude Code / other MCP clients (copy the
+/// exact `mcpServers` config or the `claude mcp add` one-liner, both pointing at the
+/// resolved binary path). 100% on-device — the server only reads your local stores.
 private struct MCPConnectorCard: View {
-    @State private var copied = false
-
-    /// `talkie-mcp` is a separate SwiftPM product, never bundled into the app —
-    /// only present on disk if it's been built. Search plausible build-output
-    /// locations rather than assume one; show an honest "not built yet" state
-    /// instead of copying a path that doesn't exist.
-    private var binaryPath: String? {
+    /// The `talkie-mcp` binary this machine should use. Prefers the copy bundled
+    /// inside THIS app (the common case for every installed Talkie); falls back to
+    /// the two dev-checkout build paths so a maker running from source still gets a
+    /// live path instead of the old "not built yet" dead end.
+    private static func binaryPath() -> String? {
+        let bundled = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS/talkie-mcp").path
+        let home = NSHomeDirectory()
         let candidates = [
-            "\(NSHomeDirectory())/Talkie/.build/release/talkie-mcp",
-            "\(NSHomeDirectory())/Talkie/.build/debug/talkie-mcp",
+            bundled,
+            "\(home)/Talkie/.build/release/talkie-mcp",   // dev checkout (release)
+            "\(home)/Talkie/.build/debug/talkie-mcp",     // dev checkout (debug)
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
+    /// The `.mcpb` bundled beside the app, if present.
+    private static func mcpbURL() -> URL? {
+        guard let url = Bundle.main.url(forResource: "Talkie", withExtension: "mcpb") else { return nil }
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// The exact `mcpServers` config both Claude Desktop and Claude Code accept
+    /// (the old `{"tools": …}` shape was rejected by both).
+    private static func mcpServersJSON(_ path: String) -> String {
+        // Hand-rolled so the shape is guaranteed and escaping stays predictable;
+        // macOS paths don't contain quotes/backslashes in practice, but escape the
+        // two JSON-significant characters defensively anyway.
+        let escaped = path.replacingOccurrences(of: "\\", with: "\\\\")
+                          .replacingOccurrences(of: "\"", with: "\\\"")
+        return """
+        {
+          "mcpServers": {
+            "talkie": {
+              "command": "\(escaped)"
+            }
+          }
+        }
+        """
+    }
+
+    /// `claude mcp add <name> -- <command>`; quote the path in case it lives
+    /// somewhere with spaces.
+    private static func claudeAddCommand(_ path: String) -> String {
+        "claude mcp add talkie -- \"\(path)\""
+    }
+
+    private let toolNames = ["list_meetings", "get_meeting", "get_brief",
+                             "list_commitments", "lookup_entity", "search"]
+
+    @State private var copiedConfig = false
+    @State private var copiedCommand = false
+    @State private var desktopStatus: String?
+
+    private var path: String? { Self.binaryPath() }
+
     var body: some View {
         SettingsCard(
-            header: "Local MCP server",
-            footer: "talkie-mcp is a separate, zero-network stdio server exposing your meetings, brief, commitments, and search to Claude Desktop or any MCP client — read-mostly, entirely on-device."
+            header: "Connect to Claude",
+            footer: "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build.".loc
         ) {
-            if let binaryPath {
-                SettingsRow(title: "talkie-mcp", subtitle: binaryPath) {
-                    Button(copied ? "Copied" : "Copy config") { copyConfig(binaryPath) }
-                        .buttonStyle(.bordered)
+            if let path {
+                // (a) Claude Desktop — one double-click via the bundled .mcpb.
+                SettingsRow(
+                    title: "Claude Desktop".loc,
+                    subtitle: desktopStatus ?? "Install the connector with one click".loc
+                ) {
+                    Button("Install…") { openDesktopConnector() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.coral)
+                        .disabled(Self.mcpbURL() == nil)
                 }
+                SettingsDivider()
+
+                // (b) Claude Code / other MCP clients — copyable config + CLI one-liner.
+                SettingsRow(
+                    title: "Claude Code & other MCP clients".loc,
+                    subtitle: "Add this to your .mcp.json, or run the command".loc
+                ) {
+                    Button {
+                        copyToPasteboard(Self.mcpServersJSON(path))
+                        flash($copiedConfig)
+                    } label: {
+                        Label(copiedConfig ? "Copied".loc : "Copy config".loc,
+                              systemImage: copiedConfig ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.coral)
+                }
+                SettingsRow(title: "Or from the terminal".loc) {
+                    Button {
+                        copyToPasteboard(Self.claudeAddCommand(path))
+                        flash($copiedCommand)
+                    } label: {
+                        Label(copiedCommand ? "Copied".loc : "Copy command".loc,
+                              systemImage: copiedCommand ? "checkmark" : "terminal")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.coral)
+                }
+                SettingsDivider()
+
+                // The read-only tools Claude gains, as chips.
+                VStack(alignment: .leading, spacing: 8) {
+                    Eyebrow(text: "What Claude can read")
+                    FlowLayout(spacing: 6) {
+                        ForEach(toolNames, id: \.self) { name in
+                            Text(name)
+                                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Theme.inkSecondary)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                                        .fill(Theme.surface)
+                                )
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
             } else {
+                // Only reachable from a checkout with no built binary — bundle users
+                // always have Contents/MacOS/talkie-mcp. Softened, honest copy.
                 SettingsNote(
-                    text: "Not built yet. Run `swift build --product talkie-mcp` from the Talkie checkout, then reopen this pane.",
+                    text: "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step.".loc,
                     tone: Theme.inkTertiary
                 )
             }
         }
     }
 
-    private func copyConfig(_ path: String) {
-        let json = """
-        {
-          "tools": {
-            "talkie": {
-              "command": "\(path)"
-            }
-          }
+    /// Hands the bundled `.mcpb` to the OS. Claude Desktop registers itself as the
+    /// `.mcpb` handler, so `open` launches its install dialog; if no handler is
+    /// registered (Claude Desktop not installed), fall back to revealing the file in
+    /// Finder so the user can drag it in manually (plan 07 §"Reveal in Finder").
+    private func openDesktopConnector() {
+        guard let url = Self.mcpbURL() else {
+            desktopStatus = "Connector file not found in this build".loc
+            return
         }
-        """
+        if NSWorkspace.shared.open(url) {
+            desktopStatus = "Opened in Claude Desktop".loc
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            desktopStatus = "Revealed in Finder — drag it into Claude Desktop".loc
+        }
+    }
+
+    private func copyToPasteboard(_ text: String) {
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.setString(json, forType: .string)
-        copied = true
-        Task { try? await Task.sleep(for: .seconds(1.6)); copied = false }
+        pb.setString(text, forType: .string)
+    }
+
+    private func flash(_ flag: Binding<Bool>) {
+        flag.wrappedValue = true
+        Task { try? await Task.sleep(for: .seconds(1.4)); flag.wrappedValue = false }
     }
 }
 

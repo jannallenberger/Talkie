@@ -228,3 +228,20 @@
 "Talkie couldn't save the file. Please try a different location." = "Talkie はファイルを保存できませんでした。別の場所を試してください。";
 "Talkie couldn't open that file." = "Talkie はそのファイルを開けませんでした。";
 "That doesn't look like a Talkie dictionary (.talkiepack)." = "これは Talkie の辞書（.talkiepack）ではないようです。";
+
+/* G1 — Connect to Claude connector card */
+"Connect to Claude" = "Claude に接続";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie には小さなローカルサーバーが付属しており、Claude があなたのミーティング、ブリーフ、コミットメント、コンテキストを読み取れます。読み取り専用・オンデバイスで、Mac から何も送信されません。アプリに同梱：別途のダウンロードやビルドは不要です。";
+"Claude Desktop" = "Claude Desktop";
+"Install the connector with one click" = "ワンクリックでコネクタをインストール";
+"Install…" = "インストール…";
+"Claude Code & other MCP clients" = "Claude Code とその他の MCP クライアント";
+"Add this to your .mcp.json, or run the command" = ".mcp.json に追加するか、コマンドを実行してください";
+"Copy config" = "設定をコピー";
+"Or from the terminal" = "またはターミナルから";
+"Copy command" = "コマンドをコピー";
+"What Claude can read" = "Claude が読み取れる内容";
+"The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "コネクタのバイナリがまだありません。ビルド済みの Talkie.app（./scripts/run.sh）からこのアプリを起動すると同梱されます。追加の手順は不要です。";
+"Opened in Claude Desktop" = "Claude Desktop で開きました";
+"Revealed in Finder — drag it into Claude Desktop" = "Finder で表示しました。Claude Desktop にドラッグしてください";
+"Connector file not found in this build" = "このビルドにコネクタファイルが見つかりません";

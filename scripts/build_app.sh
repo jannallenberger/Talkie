@@ -48,6 +48,35 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Talkie"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
+
+# Bundle the `talkie-mcp` connector binary INSIDE the app (Contents/MacOS/talkie-mcp)
+# so every installed Talkie ships a working "Connect to Claude" experience — no
+# checkout, no `swift build`, no maker-specific paths. The Settings connector card
+# points Claude clients at THIS path first (see MCPConnectorCard.binaryPath). It is
+# the same zero-dependency stdio JSON-RPC server the .mcpb wraps; nesting it costs a
+# few MB and buys one-click setup for non-maker machines.
+echo "▶ Building talkie-mcp ($CONFIG)…"
+swift build -c "$CONFIG" --product talkie-mcp
+MCP_BIN="$(swift build -c "$CONFIG" --show-bin-path)/talkie-mcp"
+if [[ ! -f "$MCP_BIN" ]]; then
+  echo "✗ talkie-mcp binary not found at $MCP_BIN" >&2
+  exit 1
+fi
+cp "$MCP_BIN" "$APP/Contents/MacOS/talkie-mcp"
+
+# Also ship the one-click Claude Desktop connector (.mcpb) inside the bundle, in
+# Contents/Resources/Talkie.mcpb, so the connector card can hand it straight to
+# Claude Desktop (which registers as the .mcpb handler). build_mcpb.sh produces it
+# from the SAME talkie-mcp target; the bundle therefore embeds a SECOND copy of the
+# binary inside the zip (~a few MB) — accepted, it's the price of a self-contained,
+# double-click install with no download step.
+echo "▶ Building Talkie.mcpb…"
+"$ROOT/scripts/build_mcpb.sh"
+if [[ -f "$ROOT/connector/Talkie.mcpb" ]]; then
+  cp "$ROOT/connector/Talkie.mcpb" "$APP/Contents/Resources/Talkie.mcpb"
+else
+  echo "⚠  connector/Talkie.mcpb not produced — connector card's Claude Desktop button will be unavailable."
+fi
 if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
   cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
@@ -85,6 +114,21 @@ if [[ -d "$ROOT/Resources/AppIcon.icon" ]]; then
 fi
 
 echo "▶ Signing (identity: $SIGN_ID)…"
+# Inside-out signing (NO --deep): sign every nested Mach-O executable FIRST, then
+# the bundle, so each signature is sealed by the outer one. Getting this order right
+# now means the future notarization package (WS-J) inherits a correctly-signed nested
+# binary instead of a re-sign scramble at release time. The nested talkie-mcp is a
+# plain stdio helper: it takes NO app entitlements (it must never carry the audio /
+# calendar / apple-events grants), only the Hardened-Runtime/timestamp flags on the
+# Developer ID branch that notarization requires.
+NESTED_SIGN_ARGS=(--force --sign "$SIGN_ID" --identifier com.coralate.talkie.mcp)
+if [[ "$SIGN_ID" == *"Developer ID"* ]]; then
+  NESTED_SIGN_ARGS+=(--options runtime --timestamp)
+fi
+if [[ -f "$APP/Contents/MacOS/talkie-mcp" ]]; then
+  codesign "${NESTED_SIGN_ARGS[@]}" "$APP/Contents/MacOS/talkie-mcp"
+fi
+
 SIGN_ARGS=(--force --sign "$SIGN_ID" --identifier com.coralate.talkie
            --entitlements "$ROOT/Resources/talkie.entitlements")
 # Hardened Runtime + timestamp are only needed for Developer ID notarization;
