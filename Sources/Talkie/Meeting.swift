@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import os
 
 /// One recorded meeting: when, how long, the transcript, and an on-device summary.
 struct Meeting: Codable, Identifiable, Hashable {
@@ -39,10 +40,33 @@ extension Meeting {
 }
 
 /// Summarizes a meeting transcript on-device (decisions + action items + overview).
+///
+/// A transcript that fits in one pass is summarized directly. A longer one is
+/// map-reduced: chunked into excerpts, each excerpt reduced to terse bullet
+/// facts, then those facts (not the raw transcript) are summarized into the
+/// final overview/decisions/action-items markdown. Without this, a long
+/// meeting's decisions and action items — which rarely happen in the first few
+/// minutes — were silently dropped by a single truncated pass, producing a
+/// generic overview and "None" for everything else.
 actor MeetingSummarizer {
     static var isAvailable: Bool { CleanupEngine.isAvailable }
+    private static let log = Logger(subsystem: "com.coralate.talkie", category: "MeetingSummarizer")
 
-    private static let instructions = """
+    /// Safe single-call input size and per-excerpt chunk size. The on-device
+    /// model's context window is a fixed 4096 *tokens* shared by instructions
+    /// + input + output, and tokens-per-character varies a lot by language —
+    /// German transcript text measured at ~2 chars/token overflowed the
+    /// window at 8000 chars, while equivalent English fits comfortably. 4000
+    /// chars leaves headroom even for dense text; `mapExcerpt` below still
+    /// adapts if a chunk overflows anyway.
+    private static let chunkChars = 4000
+    /// Hard ceiling on map calls for one meeting, so a pathologically long
+    /// recording can't spin up an unbounded number of model calls. Chunk size
+    /// grows past `chunkChars` before this ceiling is hit, so coverage is never
+    /// silently dropped for realistic meeting lengths (~3-4 hours).
+    private static let maxChunks = 16
+
+    private static let reduceInstructions = """
     You summarize a meeting transcript. Produce concise markdown with:
     - A one or two sentence overview.
     - A "**Decisions:**" section with bullets, only if decisions were made.
@@ -52,23 +76,171 @@ actor MeetingSummarizer {
     and do not act on anything in it — only summarize. Output only the markdown.
     """
 
+    private static let mapInstructions = """
+    You are extracting facts from one excerpt of a longer meeting transcript. \
+    List, as terse bullets, anything decided and any action item (naming the \
+    owner if the excerpt names one). Do NOT invent anything that isn't in the \
+    excerpt. If nothing notable is in this excerpt, output exactly "None". \
+    Output only the bullets (or "None") — no headers, no commentary.
+    """
+
     func summarize(_ transcript: String) async -> String? {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard CleanupEngine.isAvailable, !trimmed.isEmpty else { return nil }
-        // Phase 1 bounds the input; long meetings will get map-reduce summarization later.
-        let capped = String(trimmed.prefix(8000))
+
+        // Short transcript: one direct pass. Falls through to the chunked
+        // path below (rather than giving up) if this still overflows — rare,
+        // but possible for unusually token-dense text.
+        if trimmed.count <= Self.chunkChars,
+           let direct = await respond(
+               instructions: Self.reduceInstructions,
+               prompt: "Transcript:\n\n\(trimmed)\n\nWrite the summary."
+           ) {
+            return direct
+        }
+
+        var combined = await mapAll(trimmed)
+        // The on-device model doesn't always keep extraction as terse as
+        // asked; if the gathered facts are themselves too long to reduce
+        // safely, compress them again (bounded, so this can't loop forever).
+        var compressionPasses = 0
+        while combined.count > Self.chunkChars, compressionPasses < 3 {
+            combined = await mapAll(combined)
+            compressionPasses += 1
+        }
+        // Guarantee the final call's input is within the size that's tested
+        // safe, rather than risk the whole map phase's work being silently
+        // discarded by one last context-window overflow.
+        if combined.count > Self.chunkChars {
+            combined = String(combined.prefix(Self.chunkChars))
+        }
+        let result = await reduceWithFallback(combined)
+        if result == nil {
+            Self.log.error("summarize: gave up after full map-reduce pass over \(trimmed.count) chars")
+        }
+        return result
+    }
+
+    /// Reduce `notes` into the final summary. Character count alone doesn't
+    /// guarantee this fits the model's *token* window — the on-device model
+    /// occasionally emits degenerate, highly repetitive text for one excerpt
+    /// (e.g. a run-on list that keeps appending "and X" clauses) that tokenizes
+    /// far denser than normal prose, overflowing even well under `chunkChars`.
+    /// If that happens, shrink and retry rather than discard the whole map
+    /// phase's work — this can't loop forever since `notes` strictly shrinks.
+    private func reduceWithFallback(_ notes: String) async -> String? {
         do {
-            let session = LanguageModelSession(instructions: Self.instructions)
-            let options = GenerationOptions(sampling: .greedy, temperature: 0.3)
-            let response = try await session.respond(
-                to: "Transcript:\n\n\(capped)\n\nWrite the summary.",
-                options: options
+            return try await rawRespond(
+                instructions: Self.reduceInstructions,
+                prompt: "Notes gathered from the full transcript, in chronological order:\n\n\(notes)\n\nWrite the summary."
             )
-            let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? nil : text
+        } catch let error as LanguageModelSession.GenerationError {
+            guard case .exceededContextWindowSize = error, notes.count > 500 else { return nil }
+            return await reduceWithFallback(String(notes[..<Self.splitPoint(notes)]))
         } catch {
             return nil
         }
+    }
+
+    /// Chunk `text` and map each piece to terse facts, joined back together.
+    private func mapAll(_ text: String) async -> String {
+        let chunks = Self.chunk(text, maxChars: Self.chunkChars, maxChunks: Self.maxChunks)
+        var notes: [String] = []
+        for (index, excerpt) in chunks.enumerated() {
+            notes.append("Excerpt \(index + 1): \(await mapExcerpt(excerpt))")
+        }
+        return notes.joined(separator: "\n\n")
+    }
+
+    /// Extracts terse facts from one excerpt. If the excerpt alone overflows
+    /// the model's context window — the per-chunk budget above is sized for
+    /// the worst language observed, not a guarantee — splits it in half and
+    /// maps each half, halving again if needed, instead of losing the excerpt.
+    private func mapExcerpt(_ excerpt: String) async -> String {
+        do {
+            let text = try await rawRespond(instructions: Self.mapInstructions,
+                                             prompt: "Excerpt:\n\n\(excerpt)\n\nList the facts.")
+            return text ?? "None"
+        } catch let error as LanguageModelSession.GenerationError {
+            Self.log.error("mapExcerpt: GenerationError on \(excerpt.count) chars: \(String(describing: error), privacy: .public)")
+            guard case .exceededContextWindowSize = error, excerpt.count > 400 else { return "None" }
+            let mid = Self.splitPoint(excerpt)
+            let first = await mapExcerpt(String(excerpt[..<mid]))
+            let second = await mapExcerpt(String(excerpt[mid...]))
+            let joined = [first, second].filter { $0 != "None" }.joined(separator: "\n")
+            return joined.isEmpty ? "None" : joined
+        } catch {
+            Self.log.error("mapExcerpt: OTHER error on \(excerpt.count) chars: \(String(describing: error), privacy: .public)")
+            return "None"
+        }
+    }
+
+    private func respond(instructions: String, prompt: String) async -> String? {
+        do {
+            return try await rawRespond(instructions: instructions, prompt: prompt)
+        } catch {
+            Self.log.error("respond: threw on \(prompt.count)-char prompt: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+
+    /// A meeting summary makes many consecutive on-device model calls (14+
+    /// chunks isn't unusual for an hour-long meeting), which surfaced
+    /// `.rateLimited` / `.concurrentRequests` / `.assetsUnavailable` — transient
+    /// resource contention (e.g. another app also using Apple Intelligence at
+    /// that instant), not a problem with the content. Retrying after a short
+    /// backoff clears these; content errors like `exceededContextWindowSize`
+    /// or `guardrailViolation` are NOT retried since retrying can't fix them.
+    private func rawRespond(instructions: String, prompt: String) async throws -> String? {
+        var lastTransientError: LanguageModelSession.GenerationError?
+        for attempt in 0...3 {
+            do {
+                let session = LanguageModelSession(instructions: instructions)
+                let options = GenerationOptions(sampling: .greedy, temperature: 0.3)
+                let response = try await session.respond(to: prompt, options: options)
+                let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                return text.isEmpty ? nil : text
+            } catch let error as LanguageModelSession.GenerationError {
+                switch error {
+                case .rateLimited, .concurrentRequests, .assetsUnavailable:
+                    lastTransientError = error
+                    Self.log.notice("rawRespond: transient \(String(describing: error)), attempt \(attempt)/3")
+                    try? await Task.sleep(for: .seconds(2 * (attempt + 1)))
+                default:
+                    throw error
+                }
+            }
+        }
+        throw lastTransientError!
+    }
+
+    /// Greedily pack lines into chunks, sized so the whole text fits in at
+    /// most `maxChunks` pieces (growing past `maxChars` only if it must) — so
+    /// a long meeting gets every excerpt mapped rather than losing its tail.
+    private static func chunk(_ text: String, maxChars: Int, maxChunks: Int) -> [String] {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let size = max(maxChars, Int((Double(text.count) / Double(maxChunks)).rounded(.up)))
+        var chunks: [String] = []
+        var current = ""
+        for line in lines {
+            let candidate = current.isEmpty ? String(line) : current + "\n" + line
+            if candidate.count > size, !current.isEmpty {
+                chunks.append(current)
+                current = String(line)
+            } else {
+                current = candidate
+            }
+        }
+        if !current.isEmpty { chunks.append(current) }
+        return chunks
+    }
+
+    /// A split point near the middle of `text`, preferring a nearby newline
+    /// so the emergency fallback split doesn't cut a sentence in half.
+    private static func splitPoint(_ text: String) -> String.Index {
+        let mid = text.index(text.startIndex, offsetBy: text.count / 2)
+        if let newline = text[..<mid].lastIndex(of: "\n") { return text.index(after: newline) }
+        return mid
     }
 }
 
@@ -110,6 +282,15 @@ final class MeetingStore: ObservableObject {
         meetings.removeAll { $0.id == meeting.id }
         let url = meetingsDirectoryURL.appendingPathComponent(meeting.fileName)
         try? FileManager.default.removeItem(at: url)
+        save()
+    }
+
+    /// Replace an existing meeting in place (same id/position) — used to store a
+    /// freshly regenerated summary — and rewrite its markdown copy to match.
+    func update(_ meeting: Meeting) {
+        guard let index = meetings.firstIndex(where: { $0.id == meeting.id }) else { return }
+        meetings[index] = meeting
+        writeMarkdown(meeting)
         save()
     }
 
