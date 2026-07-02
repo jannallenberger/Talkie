@@ -339,6 +339,18 @@ protocol Summarizer: Sendable {
   agentic follow-ups, rich graph Q&A) and only when opted in.
 - **Map-reduce** (the long-meeting `8000`-char truncation TODO) lives ABOVE this
   protocol as a helper that chains `generate` calls, so it works with either backend.
+  - *2026-07-03 (F2):* Realized for the **notes-fusion** path as a map-only `digest`
+    method **inside `actor MeetingNotesFusion`** (`Meetings/MeetingNotesFusion.swift`),
+    chaining the injected `summarizer.generate` over 4000-char line-packed chunks
+    (matched to `MeetingSummarizer.chunkChars`). It replaced the `String(body.prefix(8000))`
+    cap in `fuse`, falling back to that prefix when the digest returns nil.
+    NOTE: it did **not** land in `Meeting.swift`/`MeetingSummarizer` (as an earlier WS-F
+    reconciliation note assumed) — `Meeting.swift` is READ-ONLY this pass per
+    `_INTEGRATION_CONTRACT.md` §5, and this protocol's own contract puts map-reduce
+    ABOVE the seam on the injected summarizer, so `MeetingNotesFusion` is the correct
+    home. `MeetingSummarizer`'s separate in-core chunker (the non-notes summary path,
+    landed by `f598a15`) is unchanged. The dead `Sources/TalkieBridge/MapReduceSummarizer.swift`
+    was deleted in the same change (F1 closeout).
 
 ### 2.3 `NoteDestination` — used by 02, 10 (and optionally dictation export)
 
