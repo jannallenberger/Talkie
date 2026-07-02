@@ -83,9 +83,50 @@ final class SystemAudioCapture: @unchecked Sendable {
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var ioProcID: AudioDeviceIOProcID?
-    private var isRunning = false // main-thread only (start/stop)
+    private var isRunning = false // main-thread only (start/stop, checkHealth rebuild)
     private let ioQueue = DispatchQueue(label: "com.coralate.talkie.system-audio")
     private var captured: CapturedAudio? // retains far-end PCM for language re-transcription
+
+    // MARK: Retained session parameters (for watchdog rebuild)
+    //
+    // The far-end tap can die on a long session while its IOProc keeps firing all-zero
+    // PCM (plan 01 §4.2a); the only reliable recovery is a full tap+aggregate teardown
+    // and rebuild. To rebuild without the caller re-driving `start()`, we retain the
+    // exact session parameters here — mirroring `AudioCapture`'s retained-session
+    // pattern. Set in `start()`, cleared in `stop()`. Touched only on the main thread
+    // (start / stop / checkHealth-driven rebuild), so no lock is needed for these.
+    private var targetFormat: AVAudioFormat?
+    private var continuation: AsyncStream<AnalyzerInput>.Continuation?
+    private var bufferAudio = false
+    private var bufferSeconds: Double = 600
+    private var onLevel: (@Sendable (Float) -> Void)?
+
+    // MARK: Tap-health counters (written on the RT thread, read on main)
+    //
+    // The realtime IOProc stamps liveness here; `checkHealth` reads it on the main
+    // thread. Both sides go through `healthLock` — the documented lock discipline for
+    // this `@unchecked Sendable` (like `CapturedAudio`'s own lock for the PCM ring).
+    // Times are `DispatchTime` uptime nanoseconds (monotonic; RT-safe; no allocation).
+    private let healthLock = NSLock()
+    /// Host time of the last buffer whose RMS cleared the silence floor; 0 = none yet.
+    private var lastNonSilentHostTime: UInt64 = 0
+    /// True once any non-silent far-end buffer has arrived for the current tap.
+    private var everReceivedNonSilent = false
+
+    // MARK: Watchdog bookkeeping (main-thread only)
+    private let watchdog = FarEndWatchdog()
+    /// When the current capture (this tap) started, monotonic seconds; nil when idle.
+    private var captureStartHostTime: UInt64 = 0
+    /// Rebuilds performed this meeting (reset in `start()`, preserved across rebuilds).
+    private var rebuildCount = 0
+    /// Host time of the last rebuild; 0 = none yet. Gates the watchdog's backoff.
+    private var lastRebuildHostTime: UInt64 = 0
+
+    /// RMS floor below which a far-end buffer counts as "silent" for the watchdog.
+    /// Matches the plan's ~1e-4 threshold: comfortably above float denormal noise,
+    /// well below real speech, so an all-zero (dead-tap) stream never clears it while
+    /// genuine call audio always does.
+    private static let silenceFloor: Float = 1e-4
 
     /// Best-effort: process taps exist on macOS 14.4+. We deploy to 26, so this is
     /// always true, but the check documents the requirement and guards a future
@@ -108,6 +149,43 @@ final class SystemAudioCapture: @unchecked Sendable {
         onLevel: (@Sendable (Float) -> Void)? = nil
     ) throws {
         guard !isRunning else { return }
+
+        // Retain the session parameters so the watchdog can rebuild the tap+aggregate
+        // against the SAME continuation without the caller re-driving start().
+        self.targetFormat = targetFormat
+        self.continuation = continuation
+        self.bufferAudio = bufferAudio
+        self.bufferSeconds = bufferSeconds
+        self.onLevel = onLevel
+
+        // Fresh meeting: reset the watchdog's per-meeting bookkeeping (rebuild cap,
+        // last-rebuild time) and the RT health counters. A rebuild (below) does NOT
+        // reset these — the cap must span the whole meeting.
+        rebuildCount = 0
+        lastRebuildHostTime = 0
+        resetHealthCounters()
+
+        do {
+            try buildAndStart()
+        } catch {
+            // Nothing came up — release the retained params so a stopped/failed capture
+            // never looks half-configured to a later checkHealth.
+            clearSessionParameters()
+            throw error
+        }
+        isRunning = true
+    }
+
+    /// Build the tap + aggregate + IOProc from the retained session parameters and
+    /// start the device. Shared by `start()` and `rebuild()` so the exact
+    /// resolve-self → create-tap → read-format → create-aggregate → build-converter →
+    /// install-IOProc → device-start sequence lives in one place (mirroring
+    /// `AudioCapture.installAndStart`). On any failure it tears down partial Core Audio
+    /// state and throws; the caller decides whether to degrade to mic-only.
+    private func buildAndStart() throws {
+        guard let targetFormat, let continuation else {
+            throw SystemAudioError.noConverter
+        }
 
         // 1. Resolve our own process as an AudioObjectID so the tap can exclude us.
         let selfObject = try Self.audioObject(forPID: getpid())
@@ -174,16 +252,31 @@ final class SystemAudioCapture: @unchecked Sendable {
             : nil
         captured = capture
 
+        // Mark this tap's start for the watchdog's grace window.
+        captureStartHostTime = DispatchTime.now().uptimeNanoseconds
+
+        let onLevel = self.onLevel
+        let floor = Self.silenceFloor
+
         // 6. Install the I/O proc. It fires on a realtime thread with the tap's PCM.
+        //    `[weak self]` so the RT block can stamp the (lock-guarded) health counters
+        //    without retaining the capture.
         var newProcID: AudioDeviceIOProcID?
         let procStatus = AudioDeviceCreateIOProcIDWithBlock(
             &newProcID, aggregateID, ioQueue
-        ) { _, inInputData, _, _, _ in
+        ) { [weak self] _, inInputData, _, _, _ in
             guard let wrapped = AVAudioPCMBuffer(pcmFormat: sourceFormat, bufferListNoCopy: inInputData) else {
                 return
             }
             guard wrapped.frameLength > 0 else { return }
-            if let onLevel { onLevel(Self.level(of: wrapped)) }
+            let level = Self.level(of: wrapped)
+            // Watchdog health stamp: record the host time of any non-silent buffer.
+            // An all-zero (dead-tap) stream never clears the floor, so this timestamp
+            // stops advancing exactly when the documented bug strikes.
+            if level > floor {
+                self?.markNonSilent(at: DispatchTime.now().uptimeNanoseconds)
+            }
+            if let onLevel { onLevel(level) }
             guard let converted = Self.convert(buffer: wrapped, using: converter, to: targetFormat),
                   converted.frameLength > 0 else { return }
             capture?.append(converted)
@@ -200,19 +293,163 @@ final class SystemAudioCapture: @unchecked Sendable {
             cleanUpCoreAudio()
             throw SystemAudioError.ioProcFailed(startStatus)
         }
-        isRunning = true
     }
 
     func stop() {
         guard isRunning else { return }
         isRunning = false
         cleanUpCoreAudio()
+        clearSessionParameters()
+        resetHealthCounters()
     }
 
     /// The converted far-end audio captured during the last recording, drained for
     /// language re-transcription. Survives `stop()` (the Core Audio teardown does
     /// not touch it); cleared on the next `start()`.
     func bufferedAudio() -> [AVAudioPCMBuffer] { captured?.drain() ?? [] }
+
+    // MARK: Zero-PCM watchdog (plan 01 §4.2a)
+
+    /// The outcome of a `checkHealth` poll, for the recorder's honest-UI decision.
+    enum HealthOutcome: Equatable, Sendable {
+        /// The far-end tap looks healthy (or the watchdog isn't yet decidable).
+        case healthy
+        /// The tap looked dead and was rebuilt in place — transcription continues
+        /// transparently on the same continuation.
+        case rebuilt
+        /// The tap stayed dead past the rebuild cap (or a rebuild failed). Far-end is
+        /// given up; the recorder should set `capturingFarEnd = false` (mic-only).
+        case gaveUp
+    }
+
+    /// Poll the far-end tap's health and act on the watchdog's decision. Called ~1 Hz
+    /// from `MeetingRecorder.tick()` on the main actor.
+    ///
+    /// `micSecondsSinceLastBuffer` is the mic-alive cross-check: seconds since the mic
+    /// last delivered a buffer (nil = never / stopped). It distinguishes "the call is
+    /// genuinely silent" from "the far-end tap died" — a dead tap while the mic is
+    /// still producing audio is the signal to rebuild; a quiet call with a quiet mic is
+    /// left alone. See `FarEndWatchdog` for the full decision.
+    ///
+    /// Returns `.healthy` when nothing was done, `.rebuilt` when the tap was torn down
+    /// and rebuilt in place, or `.gaveUp` when far-end capture is abandoned. A no-op
+    /// (`.healthy`) when not running.
+    @discardableResult
+    func checkHealth(micSecondsSinceLastBuffer: TimeInterval?) -> HealthOutcome {
+        guard isRunning else { return .healthy }
+
+        let now = DispatchTime.now().uptimeNanoseconds
+        let (lastNonSilent, everReceived) = healthSnapshot()
+
+        let micAlive: Bool
+        if let mic = micSecondsSinceLastBuffer {
+            micAlive = mic <= watchdog.thresholds.micAliveWindow
+        } else {
+            micAlive = false
+        }
+
+        let input = FarEndWatchdog.Input(
+            now: seconds(now),
+            startedAt: seconds(captureStartHostTime),
+            lastNonSilentAt: lastNonSilent == 0 ? nil : seconds(lastNonSilent),
+            everReceivedNonSilent: everReceived,
+            rebuildCount: rebuildCount,
+            lastRebuildAt: lastRebuildHostTime == 0 ? nil : seconds(lastRebuildHostTime),
+            micAliveRecently: micAlive
+        )
+
+        switch watchdog.decide(input) {
+        case .ok:
+            return .healthy
+        case .rebuild:
+            let ok = rebuild()
+            lastRebuildHostTime = DispatchTime.now().uptimeNanoseconds
+            rebuildCount += 1
+            if ok {
+                talkieDebugLog("FarEndWatchdog: far-end tap looked dead (silent while mic alive) — rebuilt tap+aggregate (rebuild \(rebuildCount)/\(watchdog.thresholds.maxRebuilds)).")
+                return .rebuilt
+            } else {
+                // A rebuild that can't come back means far-end is gone for this meeting.
+                talkieDebugLog("FarEndWatchdog: rebuild \(rebuildCount) FAILED to restart the tap — giving up on far-end (mic-only).")
+                isRunning = false
+                clearSessionParameters()
+                return .gaveUp
+            }
+        case .giveUp:
+            talkieDebugLog("FarEndWatchdog: far-end tap stayed dead past the rebuild cap (\(watchdog.thresholds.maxRebuilds)) — degrading to mic-only.")
+            stop()
+            return .gaveUp
+        }
+    }
+
+    /// Full teardown + rebuild of the tap AND aggregate against the retained session
+    /// parameters (plan 01 §4.2a: only a complete tap+aggregate rebuild recovers the
+    /// all-zero-PCM bug — restarting the IOProc or rebuilding just the aggregate is not
+    /// reliable). The far-end engine and `TurnLog` sit upstream of the continuation, so
+    /// this is transparent to transcription — the stream simply resumes. Returns false
+    /// if the rebuild couldn't restart (caller degrades to mic-only). Resets the RT
+    /// health counters so the fresh tap gets its own grace window; the per-meeting
+    /// rebuild cap is deliberately preserved.
+    ///
+    /// `cleanUpCoreAudio()` does `ioQueue.sync {}`, briefly blocking the main thread
+    /// while the last in-flight IOProc buffer drains — the same block that already
+    /// happens at every `stop()`; acceptable at ~1 Hz from `tick()`.
+    private func rebuild() -> Bool {
+        guard isRunning else { return false }
+        cleanUpCoreAudio()
+        // A rebuilt tap starts its own grace window; the meeting-wide cap is untouched.
+        // (`buildAndStart` re-stamps `captureStartHostTime`, so the grace measures from
+        // the fresh tap, not the original start.)
+        resetHealthCounters()
+        do {
+            try buildAndStart()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: Watchdog state helpers
+
+    /// Record (from the RT thread) that a non-silent far-end buffer arrived. Guarded;
+    /// the only RT-thread writer of the health counters.
+    private func markNonSilent(at host: UInt64) {
+        healthLock.lock()
+        lastNonSilentHostTime = host
+        everReceivedNonSilent = true
+        healthLock.unlock()
+    }
+
+    /// Read the health counters under the lock (main-thread reader).
+    private func healthSnapshot() -> (lastNonSilentHostTime: UInt64, everReceived: Bool) {
+        healthLock.lock()
+        defer { healthLock.unlock() }
+        return (lastNonSilentHostTime, everReceivedNonSilent)
+    }
+
+    /// Clear the RT health counters (new tap gets a clean slate). Does NOT reset the
+    /// per-meeting rebuild cap.
+    private func resetHealthCounters() {
+        healthLock.lock()
+        lastNonSilentHostTime = 0
+        everReceivedNonSilent = false
+        healthLock.unlock()
+    }
+
+    /// Release the retained session parameters (called on stop / give-up / failed
+    /// start) so a torn-down capture never looks half-configured.
+    private func clearSessionParameters() {
+        targetFormat = nil
+        continuation = nil
+        onLevel = nil
+        captureStartHostTime = 0
+    }
+
+    /// Convert monotonic host nanoseconds to seconds for the pure watchdog. A zero
+    /// origin maps to 0 (the watchdog only reads it when the paired flag says valid).
+    private func seconds(_ host: UInt64) -> TimeInterval {
+        TimeInterval(host) / 1_000_000_000
+    }
 
     /// Tear down whatever Core Audio objects exist, in dependency order. Safe to
     /// call from a partially-constructed state (every step is guarded).
