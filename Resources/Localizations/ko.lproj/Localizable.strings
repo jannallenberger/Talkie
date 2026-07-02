@@ -192,3 +192,7 @@
 "Double-tap to cycle to the next cleanup style." = "두 번 탭하면 다음 정리 스타일로 전환됩니다.";
 "Talkie is listening." = "Talkie가 듣고 있습니다.";
 "Talkie dictation indicator. Hold your dictation key and speak." = "Talkie 받아쓰기 표시기. 받아쓰기 키를 누른 채 말하세요.";
+/* export destinations */
+"Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Obsidian 보관함을 감지했어요 — 노트에 front-matter, [[위키링크]], #태그 가 포함됩니다.";
+"Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "일반 Markdown이에요. (팁: 보관함 폴더를 고르면 Talkie가 자동으로 Obsidian용으로 서식을 맞춰요.)";
+"That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "지금은 그 폴더를 읽을 수 없어요 — 다시 접근할 수 있을 때까지 노트는 ~/Talkie Meetings에 저장돼요.";

@@ -192,3 +192,7 @@
 "Double-tap to cycle to the next cleanup style." = "双击可切换到下一个整理风格。";
 "Talkie is listening." = "Talkie 正在聆听。";
 "Talkie dictation indicator. Hold your dictation key and speak." = "Talkie 口述指示器。按住口述键并说话。";
+/* export destinations */
+"Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "检测到 Obsidian 仓库 — 笔记将包含 front-matter、[[wikilinks]] 和 #标签。";
+"Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "纯 Markdown。（提示：选择一个仓库文件夹，Talkie 会自动按 Obsidian 格式排版。）";
+"That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "该文件夹当前无法读取 — 在恢复可用之前，笔记会保存到 ~/Talkie Meetings。";

@@ -192,3 +192,7 @@
 "Double-tap to cycle to the next cleanup style." = "ダブルタップで次の整形スタイルに切り替えます。";
 "Talkie is listening." = "Talkie が聞き取っています。";
 "Talkie dictation indicator. Hold your dictation key and speak." = "Talkie の口述インジケーター。口述キーを押しながら話してください。";
+/* export destinations */
+"Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Obsidian のボールトを検出しました — ノートには front-matter、[[wikilink]]、#タグ が含まれます。";
+"Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "プレーンな Markdown です。（ヒント：ボールトのフォルダを選ぶと、Talkie が自動で Obsidian 用に整形します。）";
+"That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "そのフォルダは今読み取れません — 到達できるようになるまで、ノートは ~/Talkie Meetings に保存されます。";

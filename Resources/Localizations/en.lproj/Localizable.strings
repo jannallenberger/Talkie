@@ -192,3 +192,7 @@
 "Double-tap to cycle to the next cleanup style." = "Double-tap to cycle to the next cleanup style.";
 "Talkie is listening." = "Talkie is listening.";
 "Talkie dictation indicator. Hold your dictation key and speak." = "Talkie dictation indicator. Hold your dictation key and speak.";
+/* export destinations */
+"Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags.";
+"Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)";
+"That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable.";

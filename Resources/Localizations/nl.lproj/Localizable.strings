@@ -192,3 +192,7 @@
 "Double-tap to cycle to the next cleanup style." = "Dubbeltik om naar de volgende opschoonstijl te gaan.";
 "Talkie is listening." = "Talkie luistert.";
 "Talkie dictation indicator. Hold your dictation key and speak." = "Talkie-dicteerindicator. Houd je dicteertoets ingedrukt en spreek.";
+/* export destinations */
+"Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Obsidian-kluis gedetecteerd — notities bevatten front-matter, [[wikilinks]] en #tags.";
+"Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "Platte Markdown. (Tip: kies een kluismap en Talkie maakt automatisch op voor Obsidian.)";
+"That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "Die map is nu niet leesbaar — notities gaan naar ~/Talkie Meetings totdat de map weer bereikbaar is.";

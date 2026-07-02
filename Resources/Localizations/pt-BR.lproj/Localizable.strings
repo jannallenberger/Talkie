@@ -192,3 +192,7 @@
 "Double-tap to cycle to the next cleanup style." = "Toque duas vezes para passar ao próximo estilo de limpeza.";
 "Talkie is listening." = "O Talkie está ouvindo.";
 "Talkie dictation indicator. Hold your dictation key and speak." = "Indicador de ditado do Talkie. Mantenha pressionada sua tecla de ditado e fale.";
+/* export destinations */
+"Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Cofre do Obsidian detectado — as notas vão incluir front-matter, [[wikilinks]] e #tags.";
+"Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "Markdown simples. (Dica: escolha uma pasta de cofre e o Talkie formata para o Obsidian automaticamente.)";
+"That folder isn't readable right now — notes will fall back to ~/Talkie Meetings until it's reachable." = "Essa pasta não está legível agora — as notas vão para ~/Talkie Meetings até ela ficar acessível.";
