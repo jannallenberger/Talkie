@@ -278,6 +278,20 @@ final class MeetingRecorder: ObservableObject {
             let text = MeetingTranscriptRenderer.render(turnLog.snapshot())
             try? text.data(using: .utf8)?.write(to: partialURL, options: .atomic)
         }
+
+        // Zero-PCM far-end tap watchdog (plan 01 §4.2a). Only meaningful while we
+        // believe we're capturing the far end: poll its health, passing the mic-alive
+        // cross-check so a genuinely quiet call isn't mistaken for a dead tap. The
+        // watchdog rebuilds a dead tap transparently; if it stays dead past the cap it
+        // gives up, and we honestly downgrade the record card to "Recording (mic
+        // only)…" (MeetingsView flips automatically off `capturingFarEnd`).
+        if capturingFarEnd {
+            let micAge = audio.secondsSinceLastBuffer()
+            if systemAudio.checkHealth(micSecondsSinceLastBuffer: micAge) == .gaveUp {
+                capturingFarEnd = false
+                talkieDebugLog("MeetingRecorder: far-end capture gave up (dead tap) — now recording mic only.")
+            }
+        }
     }
 
     /// Stop, transcribe-finalize both streams, summarize, and save the meeting note.

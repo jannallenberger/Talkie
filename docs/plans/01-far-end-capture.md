@@ -172,6 +172,27 @@ Implementation in `SystemAudioCapture`:
   rebuild forever) from "the tap died" by requiring that the MIC stream is still
   producing audio when we decide the far-end is unexpectedly dead.
 
+> **IMPLEMENTED 2026-07-02 (package C6) — thresholds refined + a correctness fix
+> vs. this sketch.** The watchdog shipped as a pure `FarEndWatchdog` state machine
+> (`Sources/Talkie/Meetings/FarEndWatchdog.swift`, unit-tested like
+> `ActiveMeetingDetector`) driven from `MeetingRecorder.tick()`. Deviations from the
+> sketch above, all deliberate:
+> - **Cap is per *meeting*, not per hour** (default **3**), with an inter-rebuild
+>   **backoff** (~20 s) so a tap that keeps dying can't burn the cap in a burst.
+> - **Never-received grace is ~10 s** (a born-dead tap), separate from the ~90 s
+>   mid-meeting silence window.
+> - **The mic-alive cross-check gates BOTH silence branches, not just the
+>   mid-meeting one.** The sketch's never-received path (grace → rebuild → give up)
+>   was *not* mic-alive-gated, which would falsely downgrade a real call where nobody
+>   has spoken in the first minute (joining early is common). Fix: the never-received
+>   branch also requires the mic to be delivering buffers, so a genuinely quiet start
+>   (mic also silent) holds at `.ok` indefinitely and never gives up. Covered by
+>   `FarEndWatchdogTests.testEarlyJoinQuietCallNeverDowngrades`.
+> - Mic-alive is read via a new lock-guarded `AudioCapture.secondsSinceLastBuffer()`.
+> - The **30-min soak** and the **real Zoom/YouTube-audio no-false-trip** checks
+>   below (§13) are the two acceptance items that need a live call — left PENDING
+>   HUMAN; the code + unit gate + rebuild path are done.
+
 **(b) Clock drift.** `kAudioSubTapDriftCompensationKey: true` is already set on the
 sub-tap. Because diarization is by **arrival time into the `TurnLog`**, not by
 audio-sample timestamps, small residual drift only nudges interleave ordering by a

@@ -55,6 +55,21 @@ final class AudioCapture: @unchecked Sendable {
     private var isRunning = false // touched only on the main thread (start/stop)
     private var captured: CapturedAudio?
 
+    /// Monotonic host time (`DispatchTime` uptime nanoseconds) of the most recent
+    /// buffer the mic tap delivered, or 0 if none since the last `start()`. Written on
+    /// the realtime tap thread, read on the main thread, so every access is guarded by
+    /// `bufferClockLock` — the documented lock discipline for this `@unchecked Sendable`
+    /// (the class already relies on `CapturedAudio`'s own lock for its buffer ring; this
+    /// covers the one scalar the render thread and main thread both touch).
+    ///
+    /// This is the far-end watchdog's *mic-alive* cross-check (C6 / plan 01 §4.2a): a
+    /// dead system-audio tap is distinguished from a genuinely quiet call by asking
+    /// whether the mic is still producing buffers. We stamp on *every* mic buffer
+    /// (not just non-silent ones): the question is "is the recording pipeline alive",
+    /// not "is the user speaking" — a silent-but-live mic still proves the app runs.
+    private let bufferClockLock = NSLock()
+    private var lastBufferHostTime: UInt64 = 0
+
     /// Observer for `.AVAudioEngineConfigurationChange`, registered in `start()` and
     /// removed in `stop()`. Cleared symmetrically with `isRunning` so a stopped
     /// capture never reacts to a stray config change.
@@ -121,6 +136,12 @@ final class AudioCapture: @unchecked Sendable {
         self.onLevel = onLevel
         self.onCaptureFailed = onCaptureFailed
 
+        // Fresh session: clear any stale mic-alive stamp from a prior recording so the
+        // watchdog doesn't read a live mic before the first new buffer actually lands.
+        bufferClockLock.lock()
+        lastBufferHostTime = 0
+        bufferClockLock.unlock()
+
         try installAndStart()
 
         // Watch for mid-session device/config changes. When the active input device
@@ -185,7 +206,16 @@ final class AudioCapture: @unchecked Sendable {
 
         let capture = self.captured
         let onLevel = self.onLevel
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
+        // Captured by value (a reference type, safe across the RT boundary) so the
+        // render thread stamps mic-liveness without touching `self`.
+        let clockLock = self.bufferClockLock
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+            // Mic-alive stamp for the far-end watchdog: record that a buffer arrived,
+            // regardless of level. Guarded write; cheap enough for the RT thread.
+            let host = DispatchTime.now().uptimeNanoseconds
+            clockLock.lock()
+            self?.lastBufferHostTime = host
+            clockLock.unlock()
             if let onLevel {
                 onLevel(Self.level(of: buffer))
             }
@@ -263,6 +293,23 @@ final class AudioCapture: @unchecked Sendable {
         captured?.drain() ?? []
     }
 
+    /// Seconds since the mic tap last delivered a buffer, on the caller's monotonic
+    /// clock (`DispatchTime` uptime seconds), or `nil` if no buffer has arrived since
+    /// the last `start()`. The far-end watchdog's mic-alive probe: a fresh timestamp
+    /// means the recording pipeline is live, so far-end silence implies a dead tap
+    /// rather than a quiet call. Safe to call from the main thread while the RT tap
+    /// runs (guarded read).
+    func secondsSinceLastBuffer(now: UInt64 = DispatchTime.now().uptimeNanoseconds) -> TimeInterval? {
+        bufferClockLock.lock()
+        let last = lastBufferHostTime
+        bufferClockLock.unlock()
+        guard last != 0 else { return nil }
+        // Monotonic clock: `now` can only be ≥ `last`. Guard anyway so a paranoid
+        // caller never sees a negative age.
+        guard now >= last else { return 0 }
+        return TimeInterval(now - last) / 1_000_000_000
+    }
+
     /// Perceptual 0…1 level (dB-mapped RMS) of a mic buffer, for the HUD waveform.
     private static func level(of buffer: AVAudioPCMBuffer) -> Float {
         guard let channels = buffer.floatChannelData else { return 0 }
@@ -291,6 +338,10 @@ final class AudioCapture: @unchecked Sendable {
         onLevel = nil
         onCaptureFailed = nil
         currentDeviceUID = nil
+        // Clear the mic-alive stamp so a stopped capture never reads as "alive".
+        bufferClockLock.lock()
+        lastBufferHostTime = 0
+        bufferClockLock.unlock()
         // `captured` is intentionally left intact: bufferedAudio() drains it after stop().
     }
 
