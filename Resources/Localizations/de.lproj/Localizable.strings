@@ -247,3 +247,12 @@
 "Opened in Claude Desktop" = "In Claude Desktop geöffnet";
 "Revealed in Finder — drag it into Claude Desktop" = "Im Finder angezeigt – zieh sie in Claude Desktop";
 "Connector file not found in this build" = "Connector-Datei in diesem Build nicht gefunden";
+
+/* D1 — drop-to-transcribe file import */
+"Import" = "Importieren";
+"Import audio…" = "Audio importieren…";
+"…or drop an audio or video file onto this tab." = "…oder ziehe eine Audio- oder Videodatei auf diesen Tab.";
+"Drop audio or video to transcribe" = "Audio oder Video zum Transkribieren ablegen";
+"That file isn’t audio or video" = "Diese Datei ist kein Audio oder Video";
+"Waiting for dictation to finish…" = "Warte, bis das Diktat beendet ist…";
+"Choose audio or video files to transcribe into meetings." = "Wähle Audio- oder Videodateien, die in Meetings transkribiert werden.";

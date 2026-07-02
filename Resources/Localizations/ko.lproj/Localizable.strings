@@ -247,3 +247,12 @@
 "Opened in Claude Desktop" = "Claude Desktop에서 열림";
 "Revealed in Finder — drag it into Claude Desktop" = "Finder에 표시됨 — Claude Desktop으로 끌어다 놓으세요";
 "Connector file not found in this build" = "이 빌드에서 커넥터 파일을 찾을 수 없습니다";
+
+/* D1 — drop-to-transcribe file import */
+"Import" = "가져오기";
+"Import audio…" = "오디오 가져오기…";
+"…or drop an audio or video file onto this tab." = "…또는 오디오나 비디오 파일을 이 탭에 놓으세요.";
+"Drop audio or video to transcribe" = "받아쓸 오디오나 비디오를 놓으세요";
+"That file isn’t audio or video" = "오디오나 비디오 파일이 아닙니다";
+"Waiting for dictation to finish…" = "받아쓰기가 끝나기를 기다리는 중…";
+"Choose audio or video files to transcribe into meetings." = "회의로 받아쓸 오디오나 비디오 파일을 선택하세요.";
