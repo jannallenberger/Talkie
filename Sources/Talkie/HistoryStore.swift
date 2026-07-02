@@ -42,7 +42,16 @@ actor HistoryFileWriter {
     func write(_ entries: [DictationEntry], generation: Int) {
         guard generation > latestWritten else { return }
         latestWritten = generation
-        guard let data = try? JSONEncoder().encode(entries) else { return }
+        // `.sortedKeys` makes the encoding deterministic: Foundation does NOT
+        // guarantee stable JSON key ordering, so a bare `JSONEncoder().encode`
+        // can emit the same value with keys in different order between calls
+        // (even within one process). Pinning the order keeps history.json stable
+        // and diffable on disk, and makes any byte-exact comparison meaningful.
+        // Key ORDER only — decoding is order-independent, so files written by
+        // older builds still decode unchanged (back-compat safe).
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let data = try? encoder.encode(entries) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }
 }
