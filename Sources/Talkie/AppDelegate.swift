@@ -835,6 +835,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
         let vibeSnapshot = currentVibeSnapshot
+        // A3: when vibe coding is on, also let THIS project's mined jargon (its
+        // CLAUDE.md / README / docs + git branch & commit words) be rescued by the
+        // niche corrector. Appended LAST — after the curated Dictionary and the
+        // self-learned niche terms — so the provenance order is authoritative-first
+        // (dictionary), proven-usage-second (niche), repo-context-last; and it shares
+        // A1's global 300-term corrector cap so one repo's docs can't crowd out the
+        // terms you've actually confirmed. Each repo term already cleared the
+        // false-boost guard + 4-letter floor when the snapshot was built.
+        if vibeOn {
+            var seen = Set(nicheTerms.map { $0.lowercased() })
+            for term in vibeSnapshot.correctorTerms where nicheTerms.count < 300 {
+                if seen.insert(term.lowercased()).inserted { nicheTerms.append(term) }
+            }
+        }
         let target = currentTarget
         let selfBundle = AppPaths.bundleIdentifier
         // Reuse the cleanup config captured at session start, so a mid-session
