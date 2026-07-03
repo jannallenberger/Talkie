@@ -439,3 +439,9 @@
 "This is exactly what will be copied — read it first. Nothing has been copied yet." = "这正是将要复制的内容——请先阅读。目前尚未复制任何内容。";
 "Close" = "关闭";
 "Copy" = "复制";
+
+// I1 — Private app (neverStore)
+"Private app" = "隐私应用";
+"Dictation works here, but Talkie keeps no history and learns nothing." = "在这里也能听写，但 Talkie 不保留任何历史记录，也不会学习任何内容。";
+"Private" = "隐私";
+"Private app — kept no history, learned nothing." = "隐私应用 — 未保留历史记录，未学习任何内容。";

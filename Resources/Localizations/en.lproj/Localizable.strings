@@ -439,3 +439,9 @@
 "This is exactly what will be copied — read it first. Nothing has been copied yet." = "This is exactly what will be copied — read it first. Nothing has been copied yet.";
 "Close" = "Close";
 "Copy" = "Copy";
+
+// I1 — Private app (neverStore)
+"Private app" = "Private app";
+"Dictation works here, but Talkie keeps no history and learns nothing." = "Dictation works here, but Talkie keeps no history and learns nothing.";
+"Private" = "Private";
+"Private app — kept no history, learned nothing." = "Private app — kept no history, learned nothing.";

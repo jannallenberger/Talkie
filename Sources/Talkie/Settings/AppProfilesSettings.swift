@@ -87,6 +87,7 @@ struct AppProfilesSettings: View {
     /// A compact one-line description of what a profile overrides.
     private func summary(for p: AppProfile) -> String {
         var parts: [String] = []
+        if p.neverStore == true { parts.append("Private".loc) }
         if let s = p.cleanupStyle { parts.append(s.displayName) }
         if let m = p.insertionMode { parts.append(m == .paste ? "Paste" : "Type") }
         if let filter = p.vocabularyFilter, !filter.isEmpty {
@@ -239,6 +240,28 @@ private struct AppProfileEditor: View {
                             }
                             .labelsHidden().fixedSize()
                         }
+                    }
+
+                    // "Private app" (I1): dictation still works, but Talkie stores and
+                    // learns NOTHING from what you say here. The binding writes `true`
+                    // when on and `nil` when off so the field stays sparse in
+                    // `app_profiles.json` — an all-off profile is still dropped as empty.
+                    SettingsCard(
+                        header: "Privacy",
+                        footer: "Turn this on for anything sensitive — a password manager, a private journal, a therapy note. Talkie still types what you say; it just never keeps a copy or learns from it. Your lifetime word count and streak still tick up (no content, no app name)."
+                    ) {
+                        // `SettingsToggleRow` renders its title/subtitle as plain
+                        // `Text(String)`, which does NOT auto-localize a `String`
+                        // argument — so route both through `.loc` (the same lever
+                        // `Eyebrow` uses) and add the keys to all 10 `.lproj` files.
+                        SettingsToggleRow(
+                            title: "Private app".loc,
+                            subtitle: "Dictation works here, but Talkie keeps no history and learns nothing.".loc,
+                            isOn: Binding(
+                                get: { profile.neverStore ?? false },
+                                set: { profile.neverStore = $0 ? true : nil }
+                            )
+                        )
                     }
 
                     if !dictionaryVocab.isEmpty {
