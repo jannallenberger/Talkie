@@ -26,6 +26,19 @@ import Foundation
 /// marked line against the HARD tier, so a marker could never excuse a real
 /// `URLSession`. There are none: this is pure read-only fd introspection.
 ///
+/// One deliberate, disclosed exception to the own-pid-only rule lives ELSEWHERE,
+/// not here: `Diagnostics/ProcessFootprint` reads the *memory footprint* of OTHER
+/// running apps (via `proc_pid_rusage`, same-user processes only) to power the
+/// "why it might be slow" page's most-memory-hungry-apps list. That is a different
+/// kind of introspection from this file's zero-network socket proof — it touches
+/// no sockets and trips no network gate — but it is the one place Talkie reads
+/// beyond its own pid, so it is called out here for the reader auditing our
+/// process-introspection surface, and disclosed to users in `docs/PRIVACY.md`
+/// ("These apps are using the most memory right now. Read on demand, never stored,
+/// never leaves this Mac."). It reads only a memory number + app name, on demand,
+/// never `task_for_pid`, and stores nothing. `SocketAudit` itself remains strictly
+/// own-pid: it never inspects another process.
+///
 /// `nonisolated enum` with only `static func`s — no stored state, nothing to make
 /// `Sendable`; the returned `Snapshot` is an immutable value the UI can hold.
 enum SocketAudit {                                                             // talkie:no-network(self-inspection)

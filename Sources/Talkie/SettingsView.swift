@@ -75,6 +75,8 @@ final class MainWindowController {
         appUsage: AppUsageStore,
         activity: ActivityStore,
         wordFreq: WordFrequencyStore,
+        latency: LatencyStore,
+        systemPressure: SystemPressure,
         scratchpad: ScratchpadStore,
         projectIndex: ProjectIndexStore,
         contextSummary: ContextSummaryStore,
@@ -98,6 +100,8 @@ final class MainWindowController {
             appUsage: appUsage,
             activity: activity,
             wordFreq: wordFreq,
+            latency: latency,
+            systemPressure: systemPressure,
             scratchpad: scratchpad,
             projectIndex: projectIndex,
             contextSummary: contextSummary,
@@ -150,6 +154,8 @@ struct MainView: View {
     @ObservedObject var appUsage: AppUsageStore
     @ObservedObject var activity: ActivityStore
     @ObservedObject var wordFreq: WordFrequencyStore
+    @ObservedObject var latency: LatencyStore
+    @ObservedObject var systemPressure: SystemPressure
     @ObservedObject var scratchpad: ScratchpadStore
     @ObservedObject var projectIndex: ProjectIndexStore
     @ObservedObject var contextSummary: ContextSummaryStore
@@ -191,7 +197,8 @@ struct MainView: View {
         case .dashboard:
             DashboardView(settings: settings, stats: stats, history: history,
                           activity: activity, appUsage: appUsage,
-                          scratchpad: scratchpad, wordFreq: wordFreq, router: router)
+                          scratchpad: scratchpad, wordFreq: wordFreq,
+                          latency: latency, pressure: systemPressure, router: router)
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore, settings: settings)
         case .dictionary:
