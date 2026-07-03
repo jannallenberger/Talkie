@@ -1213,7 +1213,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 var interim = interimProcessed.text
                 if vibeOn, !vibeSnapshot.isEmpty {
-                    interim = SpokenFileMatcher.format(interim, snapshot: vibeSnapshot).0
+                    // G10: a terminal gets the repo-relative path (Sources/Views/File.tsx);
+                    // an editor keeps the bare basename.
+                    interim = SpokenFileMatcher.format(interim, snapshot: vibeSnapshot,
+                                                       preferPaths: target.category == .terminal).0
                 }
                 if !interim.isEmpty, interim.count <= Self.optimisticMaxChars,
                    self.commandRouter.intent(for: interim,
@@ -1310,7 +1313,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ("exercise library dot tsx" → "ExerciseLibrary.tsx").
             var fileFixes = 0
             if vibeOn, !vibeSnapshot.isEmpty {
-                let (vibed, hits) = SpokenFileMatcher.format(finalText, snapshot: vibeSnapshot)
+                // G10: in a terminal, insert the repo-relative path (Sources/Views/File.tsx)
+                // that the shell + Claude Code want; an editor keeps the bare basename.
+                let (vibed, hits) = SpokenFileMatcher.format(finalText, snapshot: vibeSnapshot,
+                                                             preferPaths: target.category == .terminal)
                 finalText = vibed
                 fileFixes = hits
             }
