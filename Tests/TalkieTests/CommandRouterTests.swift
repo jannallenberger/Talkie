@@ -17,8 +17,26 @@ final class CommandRouterTests: XCTestCase {
         func generate(instructions: String, input: String) async -> String? { output }
     }
 
+    /// A fresh temp dir per test, injected into every `MacroStore` below, so the
+    /// router's macro store never loads from — nor appends to — the developer's
+    /// real `~/Library/Application Support/Talkie/macros.json`. Without this the
+    /// store hits the on-disk file, which leaks entries across runs and lets one
+    /// test's persisted macros contaminate another's routing assertions. Mirrors
+    /// `MeetingStoreTests`.
+    private var tmp: URL!
+
+    override func setUpWithError() throws {
+        tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CommandRouterTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        if let tmp { try? FileManager.default.removeItem(at: tmp) }
+    }
+
     private func router(_ output: String?) -> CommandRouter {
-        CommandRouter(macros: MacroStore(), summarizer: StubLLM(output: output))
+        CommandRouter(macros: MacroStore(supportDirectory: tmp), summarizer: StubLLM(output: output))
     }
 
     /// The ship-blocker contract: matched rewrite + unavailable model → nil.

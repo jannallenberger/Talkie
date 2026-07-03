@@ -17,8 +17,11 @@ final class MacroStore: ObservableObject {
 
     private let fileURL: URL
 
-    init() {
-        fileURL = AppPaths.supportDirectory().appendingPathComponent("macros.json")
+    /// `supportDirectory` defaults to the real `~/Library/Application Support/Talkie`
+    /// in the app; tests inject a temp dir so `load`/`save` never touch (nor grow)
+    /// the developer's real `macros.json`. Mirrors `MeetingStore(supportDirectory:)`.
+    init(supportDirectory: URL = AppPaths.supportDirectory()) {
+        fileURL = supportDirectory.appendingPathComponent("macros.json")
         load()
     }
 
