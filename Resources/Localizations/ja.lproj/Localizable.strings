@@ -319,3 +319,29 @@
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "ハンズフリーで聞き取り中です。録音は固定されています。キーを1回タップすると停止します。";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "キーを押し続けて話すか、2回タップしてハンズフリー録音を固定します。";
 "Click here, then hold %@ and speak…" = "ここをクリックし、%@ を押しながら話してください…";
+
+/* I5 — privacy proof card + live socket readout */
+"Open network sockets" = "開いているネットワークソケット";
+"Share the proof" = "証拠を共有";
+"Copy proof card" = "証明カードをコピー";
+"A shareable receipt that nothing leaves this Mac." = "この Mac から何も出ていかないことを示す共有可能な証明です。";
+"Open network sockets right now:" = "現在開いているネットワークソケット:";
+"Couldn’t read this process’s sockets on this build." = "このビルドではこのプロセスのソケットを読み取れませんでした。";
+"An internet socket is open — that’s unexpected for the on-device core." = "インターネットソケットが開いています。オンデバイスのコアでは想定外です。";
+"Open network sockets: couldn't read" = "開いているネットワークソケット: 読み取り不可";
+"Open network sockets: %d" = "開いているネットワークソケット: %d";
+"Nothing leaves this Mac." = "この Mac から何も出ていきません。";
+"Entitlements" = "エンタイトルメント";
+"No entitlements readable (un-signed build)." = "読み取れるエンタイトルメントがありません（未署名ビルド）。";
+"Network entitlement present — that's a bug." = "ネットワークのエンタイトルメントがあります。これはバグです。";
+"No network entitlement." = "ネットワークのエンタイトルメントはありません。";
+"Signature" = "署名";
+"unsigned build (no cdhash)" = "未署名ビルド（cdhash なし）";
+"Version" = "バージョン";
+"Taken" = "取得日時";
+"Talkie — Nothing leaves this Mac." = "Talkie — この Mac から何も出ていきません。";
+"Entitlements: none readable (un-signed build)" = "エンタイトルメント: 読み取り不可（未署名ビルド）";
+"Entitlements: %@" = "エンタイトルメント: %@";
+"Signature: %@" = "署名: %@";
+"Version: %@" = "バージョン: %@";
+"Taken: %@" = "取得日時: %@";

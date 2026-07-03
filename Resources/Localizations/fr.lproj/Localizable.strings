@@ -319,3 +319,29 @@
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "À l’écoute, mains libres. L’enregistrement est verrouillé — appuyez une fois sur votre touche pour l’arrêter.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "Maintenez votre touche pour parler, ou appuyez deux fois pour verrouiller l’enregistrement mains libres.";
 "Click here, then hold %@ and speak…" = "Cliquez ici, puis maintenez %@ et parlez…";
+
+/* I5 — privacy proof card + live socket readout */
+"Open network sockets" = "Sockets réseau ouverts";
+"Share the proof" = "Partager la preuve";
+"Copy proof card" = "Copier la carte de preuve";
+"A shareable receipt that nothing leaves this Mac." = "Un reçu partageable prouvant que rien ne quitte ce Mac.";
+"Open network sockets right now:" = "Sockets réseau ouverts en ce moment :";
+"Couldn’t read this process’s sockets on this build." = "Impossible de lire les sockets de ce processus sur cette version.";
+"An internet socket is open — that’s unexpected for the on-device core." = "Un socket internet est ouvert — c’est inattendu pour le cœur sur l’appareil.";
+"Open network sockets: couldn't read" = "Sockets réseau ouverts : lecture impossible";
+"Open network sockets: %d" = "Sockets réseau ouverts : %d";
+"Nothing leaves this Mac." = "Rien ne quitte ce Mac.";
+"Entitlements" = "Autorisations";
+"No entitlements readable (un-signed build)." = "Aucune autorisation lisible (version non signée).";
+"Network entitlement present — that's a bug." = "Autorisation réseau présente — c’est un bug.";
+"No network entitlement." = "Aucune autorisation réseau.";
+"Signature" = "Signature";
+"unsigned build (no cdhash)" = "version non signée (pas de cdhash)";
+"Version" = "Version";
+"Taken" = "Prise le";
+"Talkie — Nothing leaves this Mac." = "Talkie — Rien ne quitte ce Mac.";
+"Entitlements: none readable (un-signed build)" = "Autorisations : aucune lisible (version non signée)";
+"Entitlements: %@" = "Autorisations : %@";
+"Signature: %@" = "Signature : %@";
+"Version: %@" = "Version : %@";
+"Taken: %@" = "Prise le : %@";

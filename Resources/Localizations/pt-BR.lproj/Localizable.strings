@@ -319,3 +319,29 @@
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "Ouvindo, em mãos livres. A gravação está travada — toque na tecla uma vez para parar.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "Segure sua tecla para falar ou toque duas vezes para travar a gravação em mãos livres.";
 "Click here, then hold %@ and speak…" = "Clique aqui, segure %@ e fale…";
+
+/* I5 — privacy proof card + live socket readout */
+"Open network sockets" = "Sockets de rede abertos";
+"Share the proof" = "Compartilhe a prova";
+"Copy proof card" = "Copiar cartão de prova";
+"A shareable receipt that nothing leaves this Mac." = "Um comprovante compartilhável de que nada sai deste Mac.";
+"Open network sockets right now:" = "Sockets de rede abertos agora:";
+"Couldn’t read this process’s sockets on this build." = "Não foi possível ler os sockets deste processo nesta compilação.";
+"An internet socket is open — that’s unexpected for the on-device core." = "Há um socket de internet aberto — inesperado para o núcleo no dispositivo.";
+"Open network sockets: couldn't read" = "Sockets de rede abertos: não foi possível ler";
+"Open network sockets: %d" = "Sockets de rede abertos: %d";
+"Nothing leaves this Mac." = "Nada sai deste Mac.";
+"Entitlements" = "Permissões";
+"No entitlements readable (un-signed build)." = "Nenhuma permissão legível (compilação não assinada).";
+"Network entitlement present — that's a bug." = "Permissão de rede presente — isso é um bug.";
+"No network entitlement." = "Sem permissão de rede.";
+"Signature" = "Assinatura";
+"unsigned build (no cdhash)" = "compilação não assinada (sem cdhash)";
+"Version" = "Versão";
+"Taken" = "Gerado";
+"Talkie — Nothing leaves this Mac." = "Talkie — Nada sai deste Mac.";
+"Entitlements: none readable (un-signed build)" = "Permissões: nenhuma legível (compilação não assinada)";
+"Entitlements: %@" = "Permissões: %@";
+"Signature: %@" = "Assinatura: %@";
+"Version: %@" = "Versão: %@";
+"Taken: %@" = "Gerado: %@";

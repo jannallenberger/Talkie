@@ -319,3 +319,29 @@
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "正在免手聆听。录音已锁定——点按按键一次即可停止。";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "按住按键说话，或点按两次锁定免手录音。";
 "Click here, then hold %@ and speak…" = "点击这里，然后按住 %@ 说话…";
+
+/* I5 — privacy proof card + live socket readout */
+"Open network sockets" = "打开的网络套接字";
+"Share the proof" = "分享证明";
+"Copy proof card" = "复制证明卡";
+"A shareable receipt that nothing leaves this Mac." = "一份可分享的凭证，证明没有任何内容离开这台 Mac。";
+"Open network sockets right now:" = "当前打开的网络套接字：";
+"Couldn’t read this process’s sockets on this build." = "在此版本中无法读取该进程的套接字。";
+"An internet socket is open — that’s unexpected for the on-device core." = "有一个互联网套接字处于打开状态——这对设备端核心来说是意外的。";
+"Open network sockets: couldn't read" = "打开的网络套接字：无法读取";
+"Open network sockets: %d" = "打开的网络套接字：%d";
+"Nothing leaves this Mac." = "没有任何内容离开这台 Mac。";
+"Entitlements" = "授权";
+"No entitlements readable (un-signed build)." = "无可读取的授权（未签名版本）。";
+"Network entitlement present — that's a bug." = "存在网络授权——这是一个缺陷。";
+"No network entitlement." = "无网络授权。";
+"Signature" = "签名";
+"unsigned build (no cdhash)" = "未签名版本（无 cdhash）";
+"Version" = "版本";
+"Taken" = "生成时间";
+"Talkie — Nothing leaves this Mac." = "Talkie — 没有任何内容离开这台 Mac。";
+"Entitlements: none readable (un-signed build)" = "授权：无可读取（未签名版本）";
+"Entitlements: %@" = "授权：%@";
+"Signature: %@" = "签名：%@";
+"Version: %@" = "版本：%@";
+"Taken: %@" = "生成时间：%@";

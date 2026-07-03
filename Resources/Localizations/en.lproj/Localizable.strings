@@ -319,3 +319,29 @@
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "Listening, hands-free. Recording is locked — tap your key once to stop.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "Hold your key to talk, or tap it twice to lock hands-free recording.";
 "Click here, then hold %@ and speak…" = "Click here, then hold %@ and speak…";
+
+/* I5 — privacy proof card + live socket readout */
+"Open network sockets" = "Open network sockets";
+"Share the proof" = "Share the proof";
+"Copy proof card" = "Copy proof card";
+"A shareable receipt that nothing leaves this Mac." = "A shareable receipt that nothing leaves this Mac.";
+"Open network sockets right now:" = "Open network sockets right now:";
+"Couldn’t read this process’s sockets on this build." = "Couldn’t read this process’s sockets on this build.";
+"An internet socket is open — that’s unexpected for the on-device core." = "An internet socket is open — that’s unexpected for the on-device core.";
+"Open network sockets: couldn't read" = "Open network sockets: couldn't read";
+"Open network sockets: %d" = "Open network sockets: %d";
+"Nothing leaves this Mac." = "Nothing leaves this Mac.";
+"Entitlements" = "Entitlements";
+"No entitlements readable (un-signed build)." = "No entitlements readable (un-signed build).";
+"Network entitlement present — that's a bug." = "Network entitlement present — that's a bug.";
+"No network entitlement." = "No network entitlement.";
+"Signature" = "Signature";
+"unsigned build (no cdhash)" = "unsigned build (no cdhash)";
+"Version" = "Version";
+"Taken" = "Taken";
+"Talkie — Nothing leaves this Mac." = "Talkie — Nothing leaves this Mac.";
+"Entitlements: none readable (un-signed build)" = "Entitlements: none readable (un-signed build)";
+"Entitlements: %@" = "Entitlements: %@";
+"Signature: %@" = "Signature: %@";
+"Version: %@" = "Version: %@";
+"Taken: %@" = "Taken: %@";
