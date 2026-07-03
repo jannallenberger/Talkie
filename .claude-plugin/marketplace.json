@@ -1,0 +1,21 @@
+{
+  "name": "talkie",
+  "owner": {
+    "name": "Talkie",
+    "email": "jannallenberger@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "talkie",
+      "source": "./claude-plugin/talkie",
+      "description": "Query your local Talkie meetings, daily brief, context graph, and dictation history — 100% on-device, no network. Requires Talkie.app installed.",
+      "version": "0.1.1",
+      "author": {
+        "name": "Talkie"
+      },
+      "homepage": "https://github.com/jannallenberger/Talkie",
+      "keywords": ["dictation", "meetings", "on-device", "mcp", "context", "privacy"],
+      "category": "productivity"
+    }
+  ]
+}

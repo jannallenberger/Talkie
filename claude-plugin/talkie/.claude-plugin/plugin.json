@@ -1,0 +1,10 @@
+{
+  "name": "talkie",
+  "description": "Query your local Talkie meetings, daily brief, context graph, and dictation history from Claude Code — 100% on-device, no network. Bundles Talkie's local MCP server plus recall workflows. Requires Talkie.app installed.",
+  "version": "0.1.1",
+  "author": {
+    "name": "Talkie"
+  },
+  "homepage": "https://github.com/jannallenberger/Talkie",
+  "keywords": ["dictation", "meetings", "on-device", "mcp", "context", "privacy"]
+}
