@@ -163,6 +163,100 @@ enum SemanticSelfTest {
             print("SKIP  paraphrase semantic recall (NLEmbedding sentence model unavailable — keyword-only mode)")
         }
 
+        // --- L14: recency decay preserves the tier rule -------------------------
+        // The G3 lexical-above-semantic rule must survive decay: an OLD lexical hit
+        // (raw ≥ 1.0) must still outrank a FRESH semantic-only hit (raw < 1.0) even at
+        // an extreme age. Decay multiplies only the tier's inner term, so a fully
+        // decayed lexical hit floors at 1.0 — above any semantic hit's 0.7 ceiling.
+        let tauT = TalkieStore.recencyTau(windowSeconds: 15 * 60)
+        // Old lexical: a strong lexical raw (1.0 base + ~0.9 inner) aged 30 days.
+        let oldLexical = TalkieStore.recencyDecay(rawScore: 1.9, ageSeconds: 30 * 86400, tau: tauT)
+        // Fresh semantic-only: the max a semantic hit can score (0.7 · cosine ≤ 0.7),
+        // aged 0 seconds (no decay).
+        let freshSemantic = TalkieStore.recencyDecay(rawScore: 0.7, ageSeconds: 0, tau: tauT)
+        check("decay: old lexical still outranks fresh semantic-only",
+              oldLexical > freshSemantic && oldLexical >= 1.0)
+        // Within a tier, fresher wins: same raw, younger age scores higher.
+        let youngLexInner = TalkieStore.recencyDecay(rawScore: 1.5, ageSeconds: 60, tau: tauT)
+        let oldLexInner = TalkieStore.recencyDecay(rawScore: 1.5, ageSeconds: 3600, tau: tauT)
+        check("decay: within a tier, fresher outranks older", youngLexInner > oldLexInner)
+        // A zero-age hit is undecayed (exp(0)=1): score' == raw.
+        check("decay: zero age is a no-op",
+              abs(TalkieStore.recencyDecay(rawScore: 1.5, ageSeconds: 0, tau: tauT) - 1.5) < 1e-9)
+        // τ floors at 10 min even for a tiny window.
+        check("recencyTau floors at 10 minutes",
+              TalkieStore.recencyTau(windowSeconds: 60) == 10 * 60 &&
+              TalkieStore.recencyTau(windowSeconds: 30 * 60) == 30 * 60)
+
+        // --- L14: window-boundary inclusion (pure interval test) ----------------
+        // The report includes items with cutoff ≤ t ≤ now. Verify the boundary is
+        // inclusive at both ends and exclusive just outside.
+        let nowW = 1_000_000.0
+        let windowW = 15.0 * 60
+        let cutoffW = nowW - windowW
+        func inWindow(_ t: Double) -> Bool { t >= cutoffW && t <= nowW }
+        check("window: item exactly at cutoff is included", inWindow(cutoffW))
+        check("window: item exactly at now is included", inWindow(nowW))
+        check("window: item one second before cutoff is excluded", !inWindow(cutoffW - 1))
+        check("window: item in the future (after now) is excluded", !inWindow(nowW + 1))
+        // Meeting overlap: a meeting that started before the window but runs into it
+        // (start + duration ≥ cutoff) overlaps; one that ended before cutoff does not.
+        func overlaps(start: Double, dur: Double) -> Bool { start <= nowW && (start + dur) >= cutoffW }
+        check("window: meeting straddling the cutoff overlaps",
+              overlaps(start: cutoffW - 120, dur: 300))     // started 2m before, 5m long → into window
+        check("window: meeting ending before cutoff does not overlap",
+              !overlaps(start: cutoffW - 600, dur: 60))      // ended 9m before cutoff
+
+        // --- L14: co-occurrence join on fixture entities ------------------------
+        // Two entities sharing a provenance sourceID must join; shared-count ranks.
+        func ent(_ kind: String, _ name: String, _ sourceIDs: [String]) -> TalkieStore.Entity {
+            TalkieStore.Entity(
+                id: TalkieStore.EntityID(kind: kind, key: name.lowercased()),
+                displayName: name, aliases: nil, mentions: sourceIDs.count, pinned: nil,
+                firstSeenUnix: 0, lastSeenUnix: 0,
+                provenance: sourceIDs.map { TalkieStore.Provenance(source: "meeting", sourceID: $0, dateUnix: 0, snippet: nil) })
+        }
+        let target = ent("project", "Talkie", ["m1", "m2", "m3"])
+        let cohort = [
+            target,
+            ent("person", "Lars", ["m1", "m2"]),      // 2 shared → ranks first
+            ent("term", "MCP", ["m3"]),                 // 1 shared
+            ent("person", "Sarah", ["x9"]),             // 0 shared → excluded
+        ]
+        let cooc = TalkieStore.coOccurring(target: target, all: cohort)
+        check("co-occurrence: excludes the target itself and zero-overlap entities",
+              cooc.map { $0.entity.displayName } == ["Lars", "MCP"])
+        check("co-occurrence: ranked by shared-source count (desc)",
+              cooc.first?.entity.displayName == "Lars" && cooc.first?.shared == 2 &&
+              cooc.last?.shared == 1)
+        // An entity with no sourceIDs on the target yields no co-occurrence at all.
+        let lonely = ent("project", "Solo", [])
+        check("co-occurrence: target with no shared-able sources returns empty",
+              TalkieStore.coOccurring(target: lonely, all: cohort).isEmpty)
+
+        // --- L14: stamp invalidation (touch a temp file ⇒ rebuild observed) ------
+        // The cache must rebuild when the store stamp changes. Drive the cache with a
+        // real temp file, mutate it, and confirm the build closure re-runs.
+        do {
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("talkie-mcp-selftest-\(UUID().uuidString).json")
+            try? "[]".data(using: .utf8)!.write(to: tmp)
+            defer { try? FileManager.default.removeItem(at: tmp) }
+            let cache = SemanticSearchCache()
+            var builds = 0
+            let mkIndex: () -> SemanticIndex = {
+                builds += 1
+                return SemanticIndex(records: [SemanticRecord(line: "x", text: "x", sourceRank: 1)])
+            }
+            _ = cache.index(for: nil, stamp: StoreStamp(files: [tmp]), build: mkIndex)  // build 1
+            _ = cache.index(for: nil, stamp: StoreStamp(files: [tmp]), build: mkIndex)  // same stamp → memo
+            check("stamp: identical stamp reuses the cached index", builds == 1)
+            // Change the file's size (and content) so the stamp differs.
+            try? "[1,2,3]".data(using: .utf8)!.write(to: tmp)
+            _ = cache.index(for: nil, stamp: StoreStamp(files: [tmp]), build: mkIndex)  // changed → rebuild
+            check("stamp: changed store file forces a rebuild", builds == 2)
+        }
+
         print(failures == 0 ? "\nOK — all semantic-core checks passed."
                             : "\n\(failures) semantic-core check(s) FAILED.")
         exit(failures == 0 ? 0 : 1)
@@ -189,12 +283,16 @@ enum SemanticSelfTest {
             records.append(SemanticRecord(line: "record [\(i)]", text: text, sourceRank: 1))
         }
         let cache = SemanticSearchCache()
+        // A fixed synthetic stamp for both fetches: the memoization gate measures the
+        // SAME-stamp fast path, so the two calls must present an identical stamp (an
+        // empty file list stamps to an empty, stable fingerprint).
+        let fixedStamp = StoreStamp(files: [])
         let t0 = Date()
-        let idx = cache.index(for: nil) { SemanticIndex(records: records) }
+        let idx = cache.index(for: nil, stamp: fixedStamp) { SemanticIndex(records: records) }
         let buildMs = Date().timeIntervalSince(t0) * 1000
         _ = idx.search("shipping the updater", limit: 5)  // warm a query
         let t1 = Date()
-        let idx2 = cache.index(for: nil) { SemanticIndex(records: records) }  // memoized
+        let idx2 = cache.index(for: nil, stamp: fixedStamp) { SemanticIndex(records: records) }  // memoized
         let memoMs = Date().timeIntervalSince(t1) * 1000
         _ = idx2.search("grocery list", limit: 5)
         print("selftest-timing: \(count) records — semantic=\(idx.isSemantic)")

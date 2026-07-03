@@ -5,6 +5,12 @@ import NaturalLanguage
 enum SearchRecordKind: String, Sendable { case dictation, meeting, entity }
 
 /// A piece of text the index can search over, with a stable id to jump back to.
+///
+/// `dateUnix` is mirrored by `SemanticRecord.dateUnix` in the MCP twin
+/// (Sources/TalkieMCP/SemanticCore.swift) — the mirror had dropped it and L14
+/// re-added it so `get_recent_context` can recency-decay a hit by its age. This
+/// struct is the app's own (not a byte-faithful copy), so only the field is shared;
+/// the scoring helpers below carry the strict `MIRROR:` markers.
 struct SearchRecord: Sendable {
     var id: String
     var text: String

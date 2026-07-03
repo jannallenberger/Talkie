@@ -183,14 +183,31 @@ struct SemanticRecord: Sendable {
     /// A base tie-breaker mirroring today's fixed per-source scores (2/1/3), so
     /// that when two records blend-tie, the old ordering is preserved.
     let sourceRank: Int
+    /// When this record's source occurred (unix seconds). MIRROR of the app's
+    /// `SearchRecord.dateUnix` (SemanticIndex.swift): the mirror had DROPPED this
+    /// field; adding it CONVERGES the two. The `search` tool ignores it (its ranking
+    /// stays byte-identical); it exists so `get_recent_context` can recency-decay a
+    /// hit by its age (Δt = now − dateUnix). Defaulted to 0 so existing call sites
+    /// (and undecayed `search`) compile and behave unchanged.
+    let dateUnix: Double
+
+    init(line: String, text: String, sourceRank: Int, dateUnix: Double = 0) {
+        self.line = line
+        self.text = text
+        self.sourceRank = sourceRank
+        self.dateUnix = dateUnix
+    }
 }
 
-/// One ranked hit: the record's line, the blended score, and a snippet.
+/// One ranked hit: the record's line, the blended score, a snippet, and the source
+/// date. `dateUnix` MIRRORS the app's `SearchHit.dateUnix`; `search` doesn't read it,
+/// but `get_recent_context` uses it to label a hit's age and to apply recency decay.
 struct SemanticHit: Sendable {
     let line: String
     let snippet: String
     let score: Double
     let sourceRank: Int
+    let dateUnix: Double
 }
 
 /// An immutable on-device semantic + keyword index over text records — built once,
@@ -319,7 +336,8 @@ struct SemanticIndex: Sendable {
             best[entry.record.line] = SemanticHit(line: entry.record.line,
                                                   snippet: SemanticIndex.snippet(entry.chunkText),
                                                   score: score,
-                                                  sourceRank: entry.record.sourceRank)
+                                                  sourceRank: entry.record.sourceRank,
+                                                  dateUnix: entry.record.dateUnix)
         }
         // Rank by score; break ties by today's fixed per-source rank (entities 3 >
         // meetings 2 > dictations 1), then by line so equal-rank ties are stable.

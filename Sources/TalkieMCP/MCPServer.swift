@@ -18,7 +18,7 @@ struct MCPServer {
             return ok(id, [
                 "protocolVersion": protocolVersion,
                 "capabilities": ["tools": ["listChanged": false]],
-                "serverInfo": ["name": "talkie", "version": "0.1.0"],
+                "serverInfo": ["name": "talkie", "version": "0.2.0"],
             ])
         case "notifications/initialized", "initialized", "notifications/cancelled":
             return nil
@@ -73,6 +73,13 @@ struct MCPServer {
         case "search":
             guard let q = strArg("query") else { return toolErr(id, "search requires query") }
             text = store.search(query: q, limit: intArg("limit", 15), sources: strArr("sources"))
+        case "get_recent_context":
+            text = store.getRecentContext(minutes: intArg("minutes", 15),
+                                          topic: strArg("topic"),
+                                          limit: (args["limit"] != nil) ? intArg("limit", 5) : nil)
+        case "graph_query":
+            guard let e = strArg("entity") else { return toolErr(id, "graph_query requires entity") }
+            text = store.graphQuery(entity: e, limit: (args["limit"] != nil) ? intArg("limit", 8) : nil)
         case "add_vocabulary_term":
             guard let term = strArg("term") else { return toolErr(id, "add_vocabulary_term requires term") }
             text = store.queueVocabularyTerm(term, note: strArg("note"))
@@ -123,6 +130,18 @@ struct MCPServer {
                  ["query": strProp("Search text — a phrase or paraphrase works; exact terms still rank at top."),
                   "limit": numProp("Max hits (default 15)."),
                   "sources": arrProp("Restrict to: meetings|dictations|entities.")]),
+            // L14 recall tools. Read-only and annotation-free (auto-approvable like the
+            // other reads). Honest register: "recent context recall, with provenance,
+            // on-device" — deliberately NOT "knowledge graph"; this is recall + recent
+            // context, v1.
+            spec("get_recent_context", "Recent context recall, with provenance, on-device: what the user has been dictating, meeting about, and mentioning in the last N minutes. Returns a timestamped, sectioned report — recent dictations, overlapping meetings, and the people/projects/terms touched in the window (commitment phrases are a noisy heuristic, labelled as such). Pass a topic to also get recency-weighted related items from the user's full history. Use this to answer \"what was I just working on / talking about?\".",
+                 ["minutes": numProp("Look-back window in minutes (default 15)."),
+                  "topic": strProp("Optional: also surface related items across all history, freshest first."),
+                  "limit": numProp("Optional: max related items when a topic is given (default 5).")]),
+            spec("graph_query", "Recall what's known about one person / project / term, with provenance, on-device. Resolves by name or alias and returns: a header (kind, mention count, first/last seen), recent stamped provenance snippets, and \"Seen together\" — other entities that appear in the same dictations or meetings (derived on the fly from shared sources, never stored). Use this to answer \"what do you know about X?\".",
+                 ["entity": strProp("Name or alias to look up (e.g. a person, project, or term)."),
+                  "limit": numProp("Optional: max provenance snippets and co-occurring entities (default 8).")],
+                 required: ["entity"]),
             // The two teach-back tools (A5). MUTATING, but the mutation is a QUEUED
             // suggestion, never a direct dictionary write: each call drops one atomic
             // file into the inbox, and the app applies it only after showing an
