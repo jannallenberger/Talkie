@@ -426,3 +426,9 @@
 "Relaunch now" = "Relaunch now";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key.";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key.";
+
+// I1 — Private app (neverStore)
+"Private app" = "Private app";
+"Dictation works here, but Talkie keeps no history and learns nothing." = "Dictation works here, but Talkie keeps no history and learns nothing.";
+"Private" = "Private";
+"Private app — kept no history, learned nothing." = "Private app — kept no history, learned nothing.";

@@ -26,7 +26,10 @@ enum HUDPhase: Equatable {
     case listening
     case transcribing
     case processing
-    case inserting([String])   // replaced words to show as chips; empty if none
+    // Replaced words to show as chips (empty if none), plus whether this was a
+    // "Private app" session (I1) — when true the pill shows an eye.slash glyph, a
+    // wordless trust moment confirming Talkie kept no history and learned nothing.
+    case inserting([String], privateSession: Bool)
     case copyPrompt(String)
     case copied
     // The proposed replacement text, awaiting confirm; `replacing` is non-nil
@@ -352,9 +355,12 @@ final class HUDController {
         model.busyNudge &+= 1
     }
 
-    func showInserting(replacedWords: [String] = []) {
+    /// `privateSession` (I1) is true when the app dictated into was marked "Private":
+    /// the pill then shows an eye.slash glyph next to "Inserted" as a wordless
+    /// confirmation that Talkie kept no history and learned nothing from it.
+    func showInserting(replacedWords: [String] = [], privateSession: Bool = false) {
         cancelHide()
-        model.phase = .inserting(replacedWords)
+        model.phase = .inserting(replacedWords, privateSession: privateSession)
     }
 
     /// A paste couldn't land — show a tappable alert; tapping copies the text to
@@ -930,7 +936,7 @@ private struct HUDView: View {
             .transition(.blurReplace)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Polishing your dictation.".loc)
-        case .inserting(let words):
+        case .inserting(let words, let privateSession):
             HStack(spacing: 6) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .bold))
@@ -938,6 +944,15 @@ private struct HUDView: View {
                 Text("Inserted")
                     .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
                     .foregroundStyle(ink(0.8))
+                // Private-app trust moment (I1): an eye.slash confirms, wordlessly,
+                // that Talkie inserted the text but kept no history and learned
+                // nothing from it. Folded into the group's accessibility label below.
+                if privateSession {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(ink(0.6))
+                        .accessibilityHidden(true)
+                }
                 if !words.isEmpty {
                     Text("·")
                         .font(.system(size: 12, weight: .medium))
@@ -959,14 +974,18 @@ private struct HUDView: View {
             }
             .transition(.blurReplace)
             // Read as one confirmation; name the corrected words so a VoiceOver user
-            // hears what Talkie fixed, not just "inserted".
+            // hears what Talkie fixed, not just "inserted". For a Private app, say so —
+            // the eye.slash is silent to VoiceOver, so the trust moment is spoken here.
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(
-                words.isEmpty
+            .accessibilityLabel({
+                let base = words.isEmpty
                     ? "Inserted your dictation.".loc
                     : String(format: "Inserted your dictation. Corrected: %@".loc,
                              words.prefix(3).joined(separator: ", "))
-            )
+                return privateSession
+                    ? base + " " + "Private app — kept no history, learned nothing.".loc
+                    : base
+            }())
         case .copyPrompt(let message):
             // Expands downward into a second line when the re-paste shortcut is on,
             // spelling out how to use it rather than relying on a bare keycap.

@@ -426,3 +426,9 @@
 "Relaunch now" = "지금 다시 시작";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "입력 모니터링은 허용되었지만, 키를 인식하려면 Talkie를 다시 시작해야 합니다.";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "입력 모니터링이 켜져 있지만, 키를 인식하려면 Talkie를 잠깐 다시 시작해야 합니다.";
+
+// I1 — Private app (neverStore)
+"Private app" = "비공개 앱";
+"Dictation works here, but Talkie keeps no history and learns nothing." = "여기서도 받아쓰기는 되지만, Talkie는 기록을 남기지 않고 아무것도 학습하지 않습니다.";
+"Private" = "비공개";
+"Private app — kept no history, learned nothing." = "비공개 앱 — 기록을 남기지 않았고, 아무것도 학습하지 않았습니다.";

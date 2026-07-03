@@ -426,3 +426,9 @@
 "Relaunch now" = "Relancer maintenant";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "La surveillance de la saisie est accordée, mais Talkie doit redémarrer pour entendre votre touche.";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "La surveillance de la saisie est active, mais Talkie doit redémarrer brièvement pour entendre votre touche.";
+
+// I1 — Private app (neverStore)
+"Private app" = "App privée";
+"Dictation works here, but Talkie keeps no history and learns nothing." = "La dictée fonctionne ici, mais Talkie ne conserve aucun historique et n’apprend rien.";
+"Private" = "Privée";
+"Private app — kept no history, learned nothing." = "App privée — aucun historique conservé, rien appris.";

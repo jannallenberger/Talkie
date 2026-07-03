@@ -426,3 +426,9 @@
 "Relaunch now" = "立即重新启动";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "已授予输入监控权限，但 Talkie 需要重新启动才能识别你的按键。";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "输入监控已开启，但 Talkie 需要快速重新启动才能识别你的按键。";
+
+// I1 — Private app (neverStore)
+"Private app" = "隐私应用";
+"Dictation works here, but Talkie keeps no history and learns nothing." = "在这里也能听写，但 Talkie 不保留任何历史记录，也不会学习任何内容。";
+"Private" = "隐私";
+"Private app — kept no history, learned nothing." = "隐私应用 — 未保留历史记录，未学习任何内容。";
