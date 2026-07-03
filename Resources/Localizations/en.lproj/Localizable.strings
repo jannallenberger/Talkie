@@ -601,3 +601,10 @@
 "Makes this cleanup style the default for this app." = "Makes this cleanup style the default for this app.";
 "%@ will use %@ from now on." = "%@ will use %@ from now on.";
 "Keep" = "Keep";
+
+/* H1 — toggle sweep: inline dashboard name edit + merged meeting-pill subtitle */
+"Add your name" = "Add your name";
+"Welcome back, %@" = "Welcome back, %@";
+"Your name" = "Your name";
+"Click to edit your name" = "Click to edit your name";
+"A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident.";

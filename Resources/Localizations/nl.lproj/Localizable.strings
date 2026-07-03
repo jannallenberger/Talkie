@@ -599,3 +599,10 @@
 "Makes this cleanup style the default for this app." = "Maakt deze opschoonstijl de standaard voor deze app.";
 "%@ will use %@ from now on." = "%@ gebruikt voortaan %@.";
 "Keep" = "Behouden";
+
+/* H1 — toggle sweep: inline dashboard name edit + merged meeting-pill subtitle */
+"Add your name" = "Je naam toevoegen";
+"Welcome back, %@" = "Welkom terug, %@";
+"Your name" = "Je naam";
+"Click to edit your name" = "Klik om je naam te bewerken";
+"A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "Een kleine indicator onder de camera tijdens het opnemen, met een live-timer en het huidige onderwerp wanneer Talkie zeker is.";

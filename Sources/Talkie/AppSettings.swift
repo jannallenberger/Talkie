@@ -234,12 +234,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(autoDetectMeetings, forKey: Keys.autoDetectMeetings); notifyChanged() }
     }
     /// Show the live meeting pill under the notch while a recording is in progress.
+    /// H1 folded the separate "show the live topic" toggle into this one — the pill is
+    /// where the live topic and chapters surface, so a single switch governs all of it.
     @Published var showMeetingPill: Bool {
         didSet { defaults.set(showMeetingPill, forKey: Keys.showMeetingPill); notifyChanged() }
-    }
-    /// Show the live "subtopic" inside the meeting pill (a sub-feature of the pill).
-    @Published var meetingLiveTopic: Bool {
-        didSet { defaults.set(meetingLiveTopic, forKey: Keys.meetingLiveTopic); notifyChanged() }
     }
     /// Keep each recorded meeting's raw audio in ~/Talkie Meetings/ (D9), so clicking
     /// a transcript line plays that exact moment. Default **OFF**: retaining raw call
@@ -283,8 +281,10 @@ final class AppSettings: ObservableObject {
     }
     /// Experimental: paste the raw transcript the instant you stop, then swap in
     /// the cleaned version once the on-device model finishes — so there's no
-    /// visible wait. Off by default: the in-place swap selects backward over the
-    /// inserted text, which is unreliable if the caret moved or you kept typing.
+    /// visible wait. Off by default (H1 flipped the registered default to match this
+    /// doc and the "Experimental — may misfire" UI label): the in-place swap selects
+    /// backward over the inserted text, which is unreliable if the caret moved or you
+    /// kept typing. A user who explicitly enabled it keeps their stored `true`.
     @Published var optimisticInsertion: Bool {
         didSet { defaults.set(optimisticInsertion, forKey: Keys.optimisticInsertion) }
     }
@@ -294,22 +294,6 @@ final class AppSettings: ObservableObject {
     /// dictation, so it stays a manual opt-in until it's dogfooded.
     @Published var crossSurfaceCommandsEnabled: Bool {
         didSet { defaults.set(crossSurfaceCommandsEnabled, forKey: Keys.crossSurfaceCommandsEnabled) }
-    }
-    /// On by default: when a command like "make this a list" has nothing
-    /// selected, fall back to treating your last dictation (same app, within
-    /// `ImplicitSelectionGate.maxAge`) as the target instead of silently
-    /// typing the command out literally. Unlike `crossSurfaceCommandsEnabled`,
-    /// this changes nothing about which utterances get matched as commands —
-    /// only what happens once a command is already matched and has nowhere to
-    /// act — and every use is gated behind an explicit HUD preview before
-    /// anything is written, so it's safe to default on.
-    @Published var implicitCommandTarget: Bool {
-        didSet { defaults.set(implicitCommandTarget, forKey: Keys.implicitCommandTarget) }
-    }
-    /// Enable the ⌥⌘V shortcut that re-pastes your most recent transcript into the
-    /// focused field (and surface it in the pill when a dictation couldn't paste).
-    @Published var pasteLastShortcutEnabled: Bool {
-        didSet { defaults.set(pasteLastShortcutEnabled, forKey: Keys.pasteLastShortcutEnabled) }
     }
     /// Per-app-category cleanup *style* — Talkie's single cleanup model. Maps
     /// AppCategory.rawValue → CleanupStyle.rawValue; the resolved style is the
@@ -367,16 +351,14 @@ final class AppSettings: ObservableObject {
             }
         }
     }
-    /// Pause currently-playing media (Apple Music / Spotify, and — with the fallback
-    /// on — anything else outputting audio) while you dictate, then resume it.
+    /// Pause currently-playing media while you dictate, then resume it. Covers
+    /// scriptable players (Apple Music / Spotify) directly, and — since H1 removed the
+    /// separate opt-in — also nudges the system play/pause key for anything else that's
+    /// actually outputting audio (browsers, podcasts). The media-key nudge is gated on
+    /// real output activity in `MusicController.pauseForDictation`, so it never fires
+    /// blindly.
     @Published var pauseMusicWhileDictating: Bool {
         didSet { defaults.set(pauseMusicWhileDictating, forKey: Keys.pauseMusicWhileDictating) }
-    }
-    /// When pausing music and no scriptable player (Music/Spotify) was playing, also
-    /// nudge the system play/pause key for other apps. Best-effort and blind (can't
-    /// read state), so it's off by default; gated on real output activity.
-    @Published var pauseMusicMediaKeyFallback: Bool {
-        didSet { defaults.set(pauseMusicMediaKeyFallback, forKey: Keys.pauseMusicMediaKeyFallback) }
     }
     /// Show the always-on floating macaw ("Bird Buddy") above every app while Talkie
     /// runs. Posts a change so the app can show/hide it live when toggled.
@@ -438,15 +420,15 @@ final class AppSettings: ObservableObject {
             Keys.learnFromEdits: true,
             Keys.historyRetentionDays: 7,
             Keys.claudeTranscriptLearning: "unset",
-            Keys.optimisticInsertion: true,
+            // H1 resolved the optimisticInsertion contradiction: registered default is
+            // now `false`, matching the doc comment and the "Experimental — may misfire"
+            // label. Anyone who had explicitly turned it on keeps their stored `true`.
+            Keys.optimisticInsertion: false,
             Keys.crossSurfaceCommandsEnabled: false,
-            Keys.implicitCommandTarget: true,
             Keys.meetingLanguageMode: "auto",
             Keys.autoDetectMeetings: true,
             Keys.showMeetingPill: true,
-            Keys.meetingLiveTopic: true,
             Keys.keepMeetingAudio: false,
-            Keys.pasteLastShortcutEnabled: true,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
             Keys.lastVibeOfferUnix: 0.0,
@@ -498,15 +480,12 @@ final class AppSettings: ObservableObject {
         claudeTranscriptLearning = d.string(forKey: Keys.claudeTranscriptLearning) ?? "unset"
         optimisticInsertion = d.bool(forKey: Keys.optimisticInsertion)
         crossSurfaceCommandsEnabled = d.bool(forKey: Keys.crossSurfaceCommandsEnabled)
-        implicitCommandTarget = d.bool(forKey: Keys.implicitCommandTarget)
         meetingLanguageMode = d.string(forKey: Keys.meetingLanguageMode) ?? "auto"
         autoDetectMeetings = d.bool(forKey: Keys.autoDetectMeetings)
         showMeetingPill = d.bool(forKey: Keys.showMeetingPill)
-        meetingLiveTopic = d.bool(forKey: Keys.meetingLiveTopic)
         keepMeetingAudio = d.bool(forKey: Keys.keepMeetingAudio)
         meetingAllowlist = AppSettings.decodeAllowlist(d.data(forKey: Keys.meetingAllowlist))
         mutedMeetingApps = d.stringArray(forKey: Keys.mutedMeetingApps) ?? []
-        pasteLastShortcutEnabled = d.bool(forKey: Keys.pasteLastShortcutEnabled)
         appCleanupStyles = (d.dictionary(forKey: Keys.appCleanupStyles) as? [String: String])
             ?? AppSettings.defaultAppCleanupStyles
         contextAwareness = d.bool(forKey: Keys.contextAwareness)
@@ -519,8 +498,11 @@ final class AppSettings: ObservableObject {
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
         preferredInputDeviceUID = d.string(forKey: Keys.preferredInputDeviceUID)
         pauseMusicWhileDictating = d.bool(forKey: Keys.pauseMusicWhileDictating)
-        pauseMusicMediaKeyFallback = d.bool(forKey: Keys.pauseMusicMediaKeyFallback)
         showBirdBuddy = d.bool(forKey: Keys.showBirdBuddy)
+        // H1: drop the four toggle-sweep keys from the plist so nothing stale lingers.
+        // Their behaviors are now unconditional-by-construction (see the property
+        // deletions above); leaving orphaned values would be harmless but untidy.
+        AppSettings.removeSweptToggleKeys(d)
     }
 
     /// Sensible per-category defaults for the adaptive cleanup personality.
@@ -598,6 +580,19 @@ final class AppSettings: ObservableObject {
         d.removeObject(forKey: Keys.cleanupFillers)
     }
 
+    /// H1 "great toggle sweep" cleanup: the re-paste, implicit-command-target,
+    /// media-key-fallback, and live-topic toggles were deleted because each was
+    /// safe-by-construction or folded into another switch. Drop their stored values so
+    /// they don't linger orphaned in the plist. No migration of intent is needed — the
+    /// behaviors are now always-on (or, for the live topic, governed by `showMeetingPill`).
+    /// Idempotent: once the keys are gone this does nothing.
+    static func removeSweptToggleKeys(_ d: UserDefaults) {
+        d.removeObject(forKey: Keys.implicitCommandTarget)
+        d.removeObject(forKey: Keys.pasteLastShortcutEnabled)
+        d.removeObject(forKey: Keys.pauseMusicMediaKeyFallback)
+        d.removeObject(forKey: Keys.meetingLiveTopic)
+    }
+
     private enum Keys {
         static let activationKey = "activationKey"
         /// Legacy key — the Hold/Toggle Mode picker was removed in B4 (one unified
@@ -622,6 +617,10 @@ final class AppSettings: ObservableObject {
         static let claudeTranscriptLearning = "claudeTranscriptLearning"
         static let optimisticInsertion = "optimisticInsertion"
         static let crossSurfaceCommandsEnabled = "crossSurfaceCommandsEnabled"
+        /// Legacy key — the "let commands target your last dictation" toggle was removed
+        /// in H1 (the implicit-selection fallback is now always on, still bounded by
+        /// `ImplicitSelectionGate` + an HUD preview). Retained only so `init` can
+        /// `removeObject` the stale value from existing installs.
         static let implicitCommandTarget = "implicitCommandTarget"
         /// Legacy key — the cleanup *intensity level* was removed in H2 (per-category
         /// style is the only cleanup model). Retained only so the H2 migration can read
@@ -630,10 +629,16 @@ final class AppSettings: ObservableObject {
         static let meetingLanguageMode = "meetingLanguageMode"
         static let autoDetectMeetings = "autoDetectMeetings"
         static let showMeetingPill = "showMeetingPill"
+        /// Legacy key — the standalone "show the live topic" toggle was folded into
+        /// `showMeetingPill` in H1 (one switch governs the pill, its live topic, and
+        /// chapters). Retained only so `init` can `removeObject` the stale value.
         static let meetingLiveTopic = "meetingLiveTopic"
         static let keepMeetingAudio = "keepMeetingAudio"
         static let meetingAllowlist = "meetingAllowlist"
         static let mutedMeetingApps = "mutedMeetingApps"
+        /// Legacy key — the re-paste enable/disable toggle was removed in H1 (the chord
+        /// is collision-proof by construction, so it's always live). Retained only so
+        /// `init` can `removeObject` the stale value from existing installs.
         static let pasteLastShortcutEnabled = "pasteLastShortcutEnabled"
         /// Legacy key — the "Adapt the style to the app" master toggle was removed in
         /// H2 (per-category style is always the active path). Retained only so the H2
@@ -651,6 +656,9 @@ final class AppSettings: ObservableObject {
         static let launchAtLogin = "launchAtLogin"
         static let preferredInputDeviceUID = "preferredInputDeviceUID"
         static let pauseMusicWhileDictating = "pauseMusicWhileDictating"
+        /// Legacy key — the "also pause other apps" sub-toggle was removed in H1 (the
+        /// media-key fallback is now always allowed, gated on real output activity in
+        /// `MusicController`). Retained only so `init` can `removeObject` the stale value.
         static let pauseMusicMediaKeyFallback = "pauseMusicMediaKeyFallback"
         static let showBirdBuddy = "showBirdBuddy"
     }

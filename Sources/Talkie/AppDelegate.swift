@@ -410,9 +410,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .dropFirst()
             .sink { [weak self] days in self?.history.updateRetention(days: days) }
 
-        // Open the main window on launch — onboarding/permissions are handled
-        // inside the window now; just land on the Dashboard.
-        openSettings(tab: .dashboard)
+        // H1: only auto-open the window on a genuine first run — a user who hasn't
+        // finished onboarding needs the welcome flow (it lives inside the window).
+        // Existing users launch quietly into the menu bar instead of having the window
+        // thrown at them every relaunch, consistent with H7 ("vanish into the menu
+        // bar"); they reopen it from the status item, Dock, or Spotlight whenever they
+        // want it. This also means the first-run onboarding never auto-triggers for
+        // someone who already completed it.
+        if !settings.hasOnboarded {
+            openSettings(tab: .dashboard)
+        }
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(appBecameActive),
@@ -825,10 +832,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         meetingPill.attach(recorder: meetingRecorder, subtopic: subtopicModel)
 
-        // Feed finalized transcript segments to the subtopic engine (gated by setting).
+        // Feed finalized transcript segments to the subtopic engine. H1 merged the
+        // separate "show the live topic" toggle into `showMeetingPill` — the pill is
+        // where the live topic surfaces, so one switch governs both.
         meetingRecorder.onLiveSegment = { [weak self] _, text in
             Task { @MainActor in
-                guard let self, self.settings.meetingLiveTopic else { return }
+                guard let self, self.settings.showMeetingPill else { return }
                 await self.subtopicEngine.ingest(text)
             }
         }
@@ -892,16 +901,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // recorder also clears this in start(); doing it here too means an accept
         // that somehow races the very start of a recording can't inherit stale state.
         meetingRecorder.pendingChapters = []
-        // D8 pill-guard decision: the subtopic engine is started OUTSIDE the
-        // `showMeetingPill` guard, gated only on `meetingLiveTopic`. Chapters are a
-        // notes/export artifact, not a HUD one — a user who computes live topics
-        // (`meetingLiveTopic` on) but hides the pill (a presentation preference) still
-        // gets chapters in the saved note. The pill's own visibility below is
-        // unchanged, so pill behavior is bit-identical to before this change.
-        if settings.meetingLiveTopic {
-            Task { await subtopicEngine.start() }
-        }
+        // H1: the standalone "show the live topic" toggle was folded into
+        // `showMeetingPill`. The subtopic engine (which also produces chapters for the
+        // saved note) and the pill now share the one switch — turning the pill on gives
+        // you the live topic and chapters; turning it off skips both.
         guard settings.showMeetingPill else { return }
+        Task { await subtopicEngine.start() }
         meetingPill.show()
     }
 
@@ -1237,8 +1242,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // the mic, then flip the pill to the red "recording" state. Resumed
                 // on every teardown path in `endDictation`.
                 if self.settings.pauseMusicWhileDictating {
-                    self.musicController.pauseForDictation(
-                        allowMediaKeyFallback: self.settings.pauseMusicMediaKeyFallback)
+                    // H1: the "also pause other apps" sub-toggle is gone — the media-key
+                    // fallback is now always allowed. It's gated on real output activity
+                    // in `MusicController.pauseForDictation` (it only sends play/pause when
+                    // another process is actually playing), so it can't fire spuriously.
+                    self.musicController.pauseForDictation(allowMediaKeyFallback: true)
                 }
                 self.hud.showListening()
             } catch {
@@ -1811,7 +1819,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // recent dictation if it's still eligible (same app, recent) rather
                 // than silently typing the command out literally.
                 var usedImplicitFallback = false
-                if intent.needsSelection, selection?.isEmpty != false, self.settings.implicitCommandTarget,
+                // H1: the "let commands target your last dictation" toggle is gone —
+                // this fallback is now always on. It's safe by construction: it only
+                // changes what a command does once it's ALREADY matched and has nothing
+                // selected, the `ImplicitSelectionGate` still bounds it to the same app
+                // within `maxAge`, and every use is gated behind an explicit HUD preview
+                // before anything is written.
+                if intent.needsSelection, selection?.isEmpty != false,
                    let fallback = ImplicitSelectionGate.eligible(
                        lastEntry: self.history.entries.first, now: Date(), currentTarget: target
                    ) {
@@ -2165,7 +2179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self.hud.showCopyPrompt(
                     text: finalText, message: message,
-                    shortcut: self.settings.pasteLastShortcutEnabled ? self.pasteLastShortcutDisplay : nil
+                    shortcut: self.pasteLastShortcutDisplay
                 )
             case .empty:
                 // B9: nothing landed — no valid edit target.
@@ -2585,9 +2599,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Re-insert the most recent transcript into whatever's focused now — the recovery
     /// path when a dictation couldn't find a field (focus one, press ⌥⌘V), and a
     /// general "paste my last words again" shortcut. No-op while a dictation is in
-    /// flight (shared insertion path) or when the feature is disabled.
+    /// flight (shared insertion path).
     private func pasteLastTranscript() {
-        guard settings.pasteLastShortcutEnabled else { return }
+        // H1: the enable/disable toggle is gone — the re-paste chord is always live.
+        // The key combo is derived to never collide with the activation key
+        // (`ActivationKey.pasteShortcut`), so there's nothing to opt out of.
         guard !isDictating, !isProcessing else { return }
         guard let text = history.entries.first?.text,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

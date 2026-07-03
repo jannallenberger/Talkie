@@ -599,3 +599,10 @@
 "Makes this cleanup style the default for this app." = "将此清理风格设为此应用的默认值。";
 "%@ will use %@ from now on." = "从现在起，%@ 将使用“%@”。";
 "Keep" = "保留";
+
+/* H1 — toggle sweep: inline dashboard name edit + merged meeting-pill subtitle */
+"Add your name" = "添加你的名字";
+"Welcome back, %@" = "欢迎回来，%@";
+"Your name" = "你的名字";
+"Click to edit your name" = "点击以编辑你的名字";
+"A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "录制时显示在摄像头下方的小指示器，带有实时计时器，并在 Talkie 有把握时显示当前主题。";

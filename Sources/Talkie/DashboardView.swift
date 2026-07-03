@@ -130,9 +130,11 @@ struct DashboardView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.talkieDisplay(28))
-                    .foregroundStyle(Theme.ink)
+                // H1: the dedicated Settings ▸ Profile "Name" field is gone. The
+                // dashboard title IS the name editor now — click it to type your name
+                // inline (or "Add your name" when it's empty), commit on Return/blur.
+                // Same one setting (`settings.userName`), one fewer settings section.
+                EditableNameTitle(name: $settings.userName)
                 Text(greeting)
                     .font(.talkieHeading(13, weight: .regular))
                     .foregroundStyle(Theme.inkSecondary)
@@ -142,15 +144,68 @@ struct DashboardView: View {
         }
     }
 
-    private var title: String {
-        let name = settings.userName.trimmingCharacters(in: .whitespaces)
-        return name.isEmpty ? "Dashboard" : "Welcome back, \(name)"
-    }
-
     private var greeting: String {
         let total = stats.totalWords
         if total == 0 { return "Hold your dictation key and speak — your stats will fill in here." }
         return "\(total.formatted()) words dictated, all on-device."
+    }
+}
+
+/// The dashboard's serif title, doubling as the inline editor for `userName`
+/// (H1 — replaces the deleted Settings ▸ Profile "Name" field, zero capability
+/// lost). Reads as a plain title until clicked; a click swaps in a borderless
+/// `TextField` bound to the same setting, which commits on Return or when focus
+/// leaves it. Empty name → an "Add your name" affordance instead of a dead
+/// "Dashboard" label, so the one place to set your name is discoverable.
+private struct EditableNameTitle: View {
+    @Binding var name: String
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    /// The non-editing label: "Welcome back, {name}" once set, else a prompt.
+    private var displayText: String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "Add your name".loc
+                               : String(format: "Welcome back, %@".loc, trimmed)
+    }
+
+    var body: some View {
+        Group {
+            if editing {
+                TextField("Your name".loc, text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.talkieDisplay(28))
+                    .foregroundStyle(Theme.ink)
+                    .focused($focused)
+                    .onSubmit(commit)
+                    .onChange(of: focused) { _, isFocused in
+                        // Commit on blur too, so clicking away saves rather than discards.
+                        if !isFocused { commit() }
+                    }
+                    .frame(maxWidth: 360, alignment: .leading)
+            } else {
+                Button(action: beginEditing) {
+                    Text(displayText)
+                        .font(.talkieDisplay(28))
+                        .foregroundStyle(name.trimmingCharacters(in: .whitespaces).isEmpty
+                                         ? Theme.inkTertiary : Theme.ink)
+                }
+                .buttonStyle(.plain)
+                .help("Click to edit your name".loc)
+            }
+        }
+    }
+
+    private func beginEditing() {
+        draft = name
+        editing = true
+        focused = true
+    }
+
+    private func commit() {
+        name = draft.trimmingCharacters(in: .whitespaces)
+        editing = false
     }
 }
 

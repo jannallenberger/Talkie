@@ -599,3 +599,10 @@
 "Makes this cleanup style the default for this app." = "このクリーンアップスタイルをこのアプリの既定にします。";
 "%@ will use %@ from now on." = "今後 %@ は %@ を使用します。";
 "Keep" = "保持";
+
+/* H1 — toggle sweep: inline dashboard name edit + merged meeting-pill subtitle */
+"Add your name" = "名前を追加";
+"Welcome back, %@" = "おかえりなさい、%@さん";
+"Your name" = "名前";
+"Click to edit your name" = "クリックして名前を編集";
+"A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "録画中にカメラの下に表示される小さなインジケーター。ライブタイマーと、Talkieが確信したときの現在のトピックを表示します。";

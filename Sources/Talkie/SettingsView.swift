@@ -332,9 +332,8 @@ private struct SettingsHome: View {
                 PageHeader(title: "Settings",
                            subtitle: "Tune how Talkie listens, cleans up, and behaves.")
 
-                section("Profile") {
-                    ProfileSettings(settings: settings)
-                }
+                // H1: the dedicated Profile section is gone — your name is edited inline
+                // on the Dashboard header now (click "Welcome back, …"). One fewer section.
                 section("Dictation") {
                     ActivationSettings(settings: settings)
                     MicrophoneSettings(settings: settings)
@@ -350,12 +349,24 @@ private struct SettingsHome: View {
                     BehaviorSettings(settings: settings)
                     ExportDestinationsSettings()
                 }
+                // The public "Connect to Claude" card lives at the root (H1 hoisted it
+                // out of the Developer section, which is now hidden in normal builds).
+                // It ships with every install and is 100% on-device, so it belongs in
+                // front of every user, not behind a dev flag.
+                section("Claude") {
+                    MCPConnectorCard()
+                }
                 section("Privacy & Permissions") {
                     PrivacyAndPermissionsSettings(settings: settings, permissions: permissions,
                                                   history: history, onRetryHotKey: onRetryHotKey)
                 }
-                section("Developer") {
-                    DeveloperSettings(settings: settings)
+                // H1: the Developer section is hidden in a normal public build. It
+                // reappears in Debug builds, when `TalkieDevMode` is set in defaults, or
+                // in `TALKIE_DEV_TOOLS` dev-channel builds (see `showDeveloperSection`).
+                if showDeveloperSection {
+                    section("Developer") {
+                        DeveloperSettings(settings: settings)
+                    }
                 }
             }
             .padding(28)
@@ -371,11 +382,33 @@ private struct SettingsHome: View {
             content()
         }
     }
+
+    /// Whether the Developer section is shown (H1). It's hidden in a plain public
+    /// Release build and reappears in three cases:
+    ///   • `Dev.isEnabled` — a Debug build, or `TalkieDevMode` set in defaults
+    ///     (`defaults write com.coralate.talkie TalkieDevMode -bool YES`), and
+    ///   • `TALKIE_DEV_TOOLS` dev-channel builds — which are *Release* builds
+    ///     (`run.sh`/`release_dev.sh` build `-c release`), so `Dev.isEnabled` is false
+    ///     there. We must still show the section in that case, because the in-app
+    ///     updater (`AppUpdateSection`, compiled only under `TALKIE_DEV_TOOLS`) lives
+    ///     inside it — gating on `Dev.isEnabled` alone would strand dev-channel
+    ///     collaborators without a way to pull the next build.
+    private var showDeveloperSection: Bool {
+        #if TALKIE_DEV_TOOLS
+        return true
+        #else
+        return Dev.isEnabled
+        #endif
+    }
 }
 
-/// Developer tools (replaying the first-run onboarding, etc.). The Settings index
-/// always shows this row now, so these are reachable in any build — no need for a
-/// Debug build or the `TalkieDevMode` default.
+/// Developer tools — replaying the first-run onboarding, the diagnostic bundle, and
+/// the on-device jargon-bias A/B probe. Hidden in a normal public build (H1); the
+/// enclosing section only renders when `SettingsHome.showDeveloperSection` is true
+/// (a Debug build, the `TalkieDevMode` defaults escape hatch, or a `TALKIE_DEV_TOOLS`
+/// dev-channel build). The public "Connect to Claude" card used to live here too —
+/// H1 hoisted it out to its own root "Claude" section so it stays reachable when this
+/// section is hidden.
 private struct DeveloperSettings: View {
     @ObservedObject var settings: AppSettings
     @State private var replaying = false
@@ -404,8 +437,6 @@ private struct DeveloperSettings: View {
                     .disabled(replaying)
                 }
             }
-
-            MCPConnectorCard()
 
             ImproveTalkieCard(settings: settings)
 
@@ -999,21 +1030,6 @@ struct SettingsNote: View {
     }
 }
 
-private struct ProfileSettings: View {
-    @ObservedObject var settings: AppSettings
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsCard(footer: "Shown on your dashboard as “Welcome back”. Stays on your Mac.") {
-                SettingsRow(title: "Name") {
-                    TextField("Your name", text: $settings.userName)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 240)
-                }
-            }
-        }
-    }
-}
-
 private struct MicrophoneSettings: View {
     @ObservedObject var settings: AppSettings
     @State private var devices: [AudioInputDevice] = []
@@ -1037,17 +1053,10 @@ private struct MicrophoneSettings: View {
 
             SettingsCard(
                 header: "Music",
-                footer: "Pauses Apple Music or Spotify while you dictate, then resumes it when you stop. macOS will ask for permission to control them the first time."
+                footer: "Pauses Apple Music or Spotify while you dictate, then resumes it when you stop — and best-effort pauses anything else that's actually playing (browsers, podcasts). macOS will ask for permission to control Music/Spotify the first time."
             ) {
                 SettingsToggleRow(title: "Pause music while dictating",
                                   isOn: $settings.pauseMusicWhileDictating)
-                if settings.pauseMusicWhileDictating {
-                    SettingsDivider()
-                    SettingsToggleRow(
-                        title: "Also pause other apps",
-                        subtitle: "Best-effort play/pause for browsers, podcasts, etc. when Music/Spotify aren't playing. Can't read state, so it may occasionally toggle the wrong thing.",
-                        isOn: $settings.pauseMusicMediaKeyFallback)
-                }
             }
         }
         .onAppear { devices = AudioDevices.inputDevices() }
@@ -1080,28 +1089,19 @@ private struct ActivationSettings: View {
                     .labelsHidden().fixedSize()
                 }
             }
-            SettingsCard(header: "Insertion") {
-                // Talkie always pastes (fast) and silently retries with per-character
-                // typing when a paste verifiably doesn't land, remembering the winner
-                // per app — so there's no global Paste/Type control to pick. The only
-                // insertion knob is optimistic insertion below (paste is the universal
-                // default); an app that needs typing is set in Settings ▸ per-app rules.
+            SettingsCard(
+                header: "Insertion",
+                // H1 removed the always-safe toggles here: the implicit-command-target
+                // fallback and the re-paste chord are now always on (both are safe by
+                // construction). The one remaining knob is optimistic insertion.
+                // Re-paste still works with the key combo below; the copy-prompt pill
+                // still shows it whenever a dictation couldn't find a field to paste into.
+                footer: "Talkie pastes instantly and retries with typing if a paste doesn't land, learning the winner per app — no Paste/Type switch needed. Press \(settings.activationKey.pasteShortcut.display) any time to re-paste your most recent transcript into the focused field."
+            ) {
                 SettingsToggleRow(
                     title: "Insert instantly, polish in place",
                     subtitle: "Experimental — pastes your raw words the moment you stop, then swaps in the cleaned version. May misfire if you keep typing right after.",
                     isOn: $settings.optimisticInsertion
-                )
-                SettingsDivider()
-                SettingsToggleRow(
-                    title: "Let commands target your last dictation",
-                    subtitle: "If nothing's selected, a command like “make this a list” can rewrite the text you just dictated instead of doing nothing — only in the same app, within 45 seconds, and you'll always see a preview before it lands.",
-                    isOn: $settings.implicitCommandTarget
-                )
-                SettingsDivider()
-                SettingsToggleRow(
-                    title: "Re-paste last transcript with \(settings.activationKey.pasteShortcut.display)",
-                    subtitle: "Press \(settings.activationKey.pasteShortcut.display) to drop your most recent transcript into the focused field — handy when Talkie couldn’t find one to paste into. Picked to never clash with your dictation key.",
-                    isOn: $settings.pasteLastShortcutEnabled
                 )
             }
         }
