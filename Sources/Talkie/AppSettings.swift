@@ -197,9 +197,6 @@ final class AppSettings: ObservableObject {
     @Published var activationMode: ActivationMode {
         didSet { defaults.set(activationMode.rawValue, forKey: Keys.activationMode); notifyChanged() }
     }
-    @Published var insertionMode: InsertionMode {
-        didSet { defaults.set(insertionMode.rawValue, forKey: Keys.insertionMode) }
-    }
     @Published var localeIdentifier: String {
         didSet { defaults.set(localeIdentifier, forKey: Keys.localeIdentifier) }
     }
@@ -378,7 +375,6 @@ final class AppSettings: ObservableObject {
         d.register(defaults: [
             Keys.activationKey: ActivationKey.rightOption.rawValue,
             Keys.activationMode: ActivationMode.holdToTalk.rawValue,
-            Keys.insertionMode: InsertionMode.paste.rawValue,
             Keys.localeIdentifier: canonicalLocaleID(Locale.current.identifier),
             Keys.autoCapitalize: true,
             Keys.cleanupFillers: true,
@@ -407,7 +403,11 @@ final class AppSettings: ObservableObject {
         ])
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
         activationMode = ActivationMode(rawValue: d.string(forKey: Keys.activationMode) ?? "") ?? .holdToTalk
-        insertionMode = InsertionMode(rawValue: d.string(forKey: Keys.insertionMode) ?? "") ?? .paste
+        // B2 migration: the global "Insert text by" control is gone — paste is now the
+        // universal default and any app that needs typing learns it per-bundle (or the
+        // user sets it in the per-app rule sheet). Silently drop the stale scalar so it
+        // doesn't linger in the plist; `InsertionMode` survives as an internal enum.
+        d.removeObject(forKey: Keys.insertionMode)
         // The Languages grid only renders catalog locales, so the stored set must
         // stay catalog-authoritative: canonicalize, drop anything not in the
         // catalog (e.g. a Swedish/Polish Mac whose `sv-SE` canonicalizes to a
@@ -495,6 +495,8 @@ final class AppSettings: ObservableObject {
     private enum Keys {
         static let activationKey = "activationKey"
         static let activationMode = "activationMode"
+        /// Legacy key — the global insertion-mode control was removed in B2. Retained
+        /// only so `init` can `removeObject` the stale value from existing installs.
         static let insertionMode = "insertionMode"
         static let localeIdentifier = "localeIdentifier"
         static let spokenLanguages = "spokenLanguages"

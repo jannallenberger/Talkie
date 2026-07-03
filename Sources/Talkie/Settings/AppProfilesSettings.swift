@@ -238,6 +238,12 @@ private struct AppProfileEditor: View {
                     }
 
                     SettingsCard(header: "Insertion & basics") {
+                        // Since B2 removed the global insert-by picker, this per-app
+                        // control is BOTH the sole escape hatch and the visible readout
+                        // of what Talkie learned: an app shows "Type" here after a paste
+                        // verifiably failed to land in it (Talkie switched it
+                        // automatically). Pick "Inherit" to go back to the paste default
+                        // and let it re-learn.
                         SettingsRow(title: "Insert text by") {
                             Picker("", selection: insertionMode) {
                                 Text("Inherit").tag(InsertionMode?.none)
