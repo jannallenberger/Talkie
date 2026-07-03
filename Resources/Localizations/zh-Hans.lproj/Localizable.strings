@@ -409,3 +409,15 @@
 "Pin a folder…" = "固定一个文件夹…";
 "Talkie detects the project behind the editor or terminal you dictate into automatically — including parallel worktrees — and scopes filenames to it. Everything stays on your Mac; it only reads filenames, never file contents." = "Talkie 会自动检测你正在口述的编辑器或终端背后的项目（包括并行 worktree），并将文件名匹配范围限定到该项目。一切都留在你的 Mac 上；它只读取文件名，从不读取文件内容。";
 "Optional — pin a project you always want indexed, so its filenames snap even before you dictate into it." = "可选 — 固定一个你希望始终索引的项目，这样在你向它口述之前，其文件名就能匹配。";
+
+/* A12 — low-confidence review chip (learning inside Talkie's own UI) */
+"Fix" = "修正";
+"Not sure about “%@”" = "不确定 “%@”";
+"Not sure about %@" = "不确定 %@";
+"Opens a small box to correct the spelling for next time." = "打开一个小输入框，为下次修正拼写。";
+"Not sure about %@. Activate Fix to correct the spelling for next time." = "不确定 %@。激活“修正”即可为下次更正拼写。";
+"Heard “%@” — fix it for next time" = "听到 “%@” — 为下次修正";
+"Correct spelling" = "正确拼写";
+"Fix the spelling of %@ for next time." = "为下次修正 %@ 的拼写。";
+"Added “%@” to dictionary" = "已将 “%@” 添加到词典";
+"Already learning “%@”" = "已在学习 “%@”";

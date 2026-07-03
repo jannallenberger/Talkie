@@ -98,6 +98,15 @@ actor TranscriptionEngine {
     /// Each finalized segment's audio-clock span, in spoken order — the timed
     /// mirror of `finalizedSegments`. Returned by `finishSessionDetailed`.
     private var finalizedTimedSegments: [TimedSegment] = []
+    /// Per-word recognition confidence accumulated across the live session, in
+    /// spoken order (A12). These are the `.transcriptionConfidence` values already
+    /// requested on every session (`makeTranscriber`) but historically discarded in
+    /// the live results loop — read here so the stop-time review gate can flag the
+    /// words the recognizer was visibly unsure about. Purely additive: nothing here
+    /// changes the transcript, the timing, or when text reaches the focused app;
+    /// the accumulation is allocation-light and on the SAME actor + result stream
+    /// (no extra pass, no second decode). Returned by `finishSessionDetailed`.
+    private var sessionWordConfidences: [WordConfidence] = []
 
     init(localeIdentifier: String) {
         self.locale = Locale(identifier: localeIdentifier)
@@ -358,6 +367,7 @@ actor TranscriptionEngine {
         finalizedText = ""
         finalizedSegments = []
         finalizedTimedSegments = []
+        sessionWordConfidences = []
         volatileText = ""
         onSegment = segmentHandler
         onTimedSegment = timedSegmentHandler
@@ -398,7 +408,23 @@ actor TranscriptionEngine {
                     var end = (result.range.start + result.range.duration).seconds
                     if !start.isFinite { start = 0 }
                     if !end.isFinite { end = start }
-                    await self.ingest(text: text, isFinal: result.isFinal, start: start, end: end)
+                    // A12: harvest per-word confidence from the SAME finalized result
+                    // (only finalized runs carry stable confidence; volatile partials
+                    // churn). This walks the runs already materialized above — the same
+                    // pattern the multilingual re-transcribe path uses — and appends
+                    // (word, confidence) pairs. Behavior-neutral: it neither alters
+                    // `text` nor gates anything the live path does with it.
+                    var words: [WordConfidence] = []
+                    if result.isFinal {
+                        for run in result.text.runs {
+                            guard let c = run.transcriptionConfidence else { continue }
+                            let w = String(result.text[run.range].characters)
+                                .trimmingCharacters(in: .whitespaces)
+                            if !w.isEmpty { words.append(WordConfidence(word: w, confidence: c)) }
+                        }
+                    }
+                    await self.ingest(text: text, isFinal: result.isFinal,
+                                      start: start, end: end, wordConfidences: words)
                 }
             } catch is CancellationError {
                 // Expected on teardown.
@@ -414,7 +440,8 @@ actor TranscriptionEngine {
     /// Fold one recognizer result into the running transcript and notify the UI.
     /// When a segment finalizes, also emit it on its own so the caller can clean
     /// each batch incrementally (instead of one huge pass at the end).
-    private func ingest(text: String, isFinal: Bool, start: Double = 0, end: Double = 0) {
+    private func ingest(text: String, isFinal: Bool, start: Double = 0, end: Double = 0,
+                        wordConfidences: [WordConfidence] = []) {
         if isFinal {
             if !text.isEmpty {
                 finalizedText = appendCommitted(finalizedText, text)
@@ -423,6 +450,12 @@ actor TranscriptionEngine {
                 let timed = TimedSegment(text: text, start: start, end: end)
                 finalizedTimedSegments.append(timed)
                 onTimedSegment?(timed)
+                // Accumulate the finalized segment's per-word confidences (A12),
+                // in spoken order, only for a segment we actually committed — so
+                // the list stays aligned with `finalizedText`.
+                if !wordConfidences.isEmpty {
+                    sessionWordConfidences.append(contentsOf: wordConfidences)
+                }
             }
             volatileText = ""
         } else {
@@ -471,10 +504,13 @@ actor TranscriptionEngine {
 
     /// Like `finishSession`, but also returns the per-segment list so the caller
     /// can de-seam pause boundaries (see `SentenceFlow`), plus the audio-clock–timed
-    /// segments so meeting/import callers can persist real per-segment timings.
-    /// The plain `segments` shape is unchanged; `timedSegments` is purely additive.
-    /// Concrete-only.
-    func finishSessionDetailed() async -> (text: String, segments: [String], timedSegments: [TimedSegment]) {
+    /// segments so meeting/import callers can persist real per-segment timings, plus
+    /// the per-word recognition confidences (A12) so the dictation path can run the
+    /// low-confidence review gate. The plain `segments` shape is unchanged;
+    /// `timedSegments` and `wordConfidences` are purely additive — a caller that
+    /// ignores them pays nothing. Concrete-only.
+    func finishSessionDetailed() async
+        -> (text: String, segments: [String], timedSegments: [TimedSegment], wordConfidences: [WordConfidence]) {
         inputContinuation?.finish()
         inputContinuation = nil
 
@@ -513,6 +549,11 @@ actor TranscriptionEngine {
         finalizedSegments = []
         let timedSegments = finalizedTimedSegments
         finalizedTimedSegments = []
+        // Hand off the accumulated per-word confidences (A12) and clear them so the
+        // next session starts empty. The finalize-throws volatile tail (above) never
+        // finalized, so it legitimately contributes no confidence entries.
+        let wordConfidences = sessionWordConfidences
+        sessionWordConfidences = []
 
         // Emit a terminal update so the HUD can dismiss cleanly.
         emit(isComplete: true)
@@ -521,7 +562,7 @@ actor TranscriptionEngine {
         onTimedSegment = nil
         analyzer = nil
         transcriber = nil
-        return (result.trimmingCharacters(in: .whitespacesAndNewlines), segments, timedSegments)
+        return (result.trimmingCharacters(in: .whitespacesAndNewlines), segments, timedSegments, wordConfidences)
     }
 
     /// Hard-cancel without producing a transcript (e.g. user aborted).
@@ -536,6 +577,7 @@ actor TranscriptionEngine {
         finalizedText = ""
         finalizedSegments = []
         finalizedTimedSegments = []
+        sessionWordConfidences = []
         volatileText = ""
         onSegment = nil
         onTimedSegment = nil

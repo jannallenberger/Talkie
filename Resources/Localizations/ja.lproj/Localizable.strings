@@ -409,3 +409,15 @@
 "Pin a folder…" = "フォルダをピン留め…";
 "Talkie detects the project behind the editor or terminal you dictate into automatically — including parallel worktrees — and scopes filenames to it. Everything stays on your Mac; it only reads filenames, never file contents." = "Talkie は、あなたが音声入力しているエディタやターミナルの背後にあるプロジェクト（並行するワークツリーを含む）を自動的に検出し、ファイル名の対象をそこに絞ります。すべては Mac 内にとどまり、読み取るのはファイル名だけで、内容は決して読み取りません。";
 "Optional — pin a project you always want indexed, so its filenames snap even before you dictate into it." = "任意 — 常にインデックスしておきたいプロジェクトをピン留めすると、そこに音声入力する前でもファイル名が合わせられます。";
+
+/* A12 — low-confidence review chip (learning inside Talkie's own UI) */
+"Fix" = "修正";
+"Not sure about “%@”" = "“%@” が不確かです";
+"Not sure about %@" = "%@ が不確かです";
+"Opens a small box to correct the spelling for next time." = "次回のためにつづりを直す小さな入力欄を開きます。";
+"Not sure about %@. Activate Fix to correct the spelling for next time." = "%@ が不確かです。「修正」を実行すると、次回のためにつづりを直せます。";
+"Heard “%@” — fix it for next time" = "“%@” と認識しました — 次回のために修正";
+"Correct spelling" = "正しいつづり";
+"Fix the spelling of %@ for next time." = "次回のために %@ のつづりを修正します。";
+"Added “%@” to dictionary" = "“%@” を辞書に追加しました";
+"Already learning “%@”" = "“%@” はすでに学習中です";

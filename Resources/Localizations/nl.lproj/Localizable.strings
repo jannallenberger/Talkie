@@ -409,3 +409,15 @@
 "Pin a folder…" = "Map vastzetten…";
 "Talkie detects the project behind the editor or terminal you dictate into automatically — including parallel worktrees — and scopes filenames to it. Everything stays on your Mac; it only reads filenames, never file contents." = "Talkie detecteert automatisch het project achter de editor of terminal waarin je dicteert — inclusief parallelle worktrees — en beperkt bestandsnamen daartoe. Alles blijft op je Mac; het leest alleen bestandsnamen, nooit de inhoud.";
 "Optional — pin a project you always want indexed, so its filenames snap even before you dictate into it." = "Optioneel — zet een project vast dat je altijd geïndexeerd wilt hebben, zodat de bestandsnamen al kloppen voordat je erin dicteert.";
+
+/* A12 — low-confidence review chip (learning inside Talkie's own UI) */
+"Fix" = "Corrigeren";
+"Not sure about “%@”" = "Twijfel over ‘%@’";
+"Not sure about %@" = "Twijfel over %@";
+"Opens a small box to correct the spelling for next time." = "Opent een klein venster om de spelling voor de volgende keer te corrigeren.";
+"Not sure about %@. Activate Fix to correct the spelling for next time." = "Twijfel over %@. Activeer ‘Corrigeren’ om de spelling voor de volgende keer te verbeteren.";
+"Heard “%@” — fix it for next time" = "‘%@’ gehoord — corrigeer het voor de volgende keer";
+"Correct spelling" = "Juiste spelling";
+"Fix the spelling of %@ for next time." = "Corrigeer de spelling van %@ voor de volgende keer.";
+"Added “%@” to dictionary" = "‘%@’ toegevoegd aan woordenboek";
+"Already learning “%@”" = "‘%@’ wordt al geleerd";
