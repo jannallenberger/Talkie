@@ -246,6 +246,9 @@
 "Added “%@” — from your Claude Code prompt" = "“%@” toegevoegd — uit je Claude Code-prompt";
 "Claude added “%@” to dictionary" = "Claude voegde “%@” toe aan het woordenboek";
 "Claude added “%@” → “%@” to dictionary" = "Claude voegde “%@” → “%@” toe aan het woordenboek";
+"Claude removed “%@” → “%@” from dictionary" = "Claude verwijderde “%@” → “%@” uit het woordenboek";
+"Claude changed “%@” → “%@” to “%@”" = "Claude wijzigde “%@” → “%@” in “%@”";
+"Claude removed “%@” from dictionary" = "Claude verwijderde “%@” uit het woordenboek";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Correcties leren uit je Claude Code-prompts? Het zijn lokale bestanden; er verlaat niets je Mac.";
 /* G1 — Connect to Claude connector card */
 "Connect to Claude" = "Verbinden met Claude";
@@ -655,4 +658,4 @@
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
 "What Claude can do" = "Wat Claude kan doen";
 "asks first" = "vraagt eerst";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie levert een kleine lokale server zodat Claude je vergaderingen, briefing, toezeggingen, context, statistieken, je woordenboek en notities kan lezen — op het apparaat, er verlaat niets je Mac. Claude kan ook woordenboekvermeldingen voorstellen — elk wacht op je bevestiging met één tik en een Ongedaan maken. Meegeleverd met de app: geen aparte download of build.";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie levert een kleine lokale server zodat Claude je vergaderingen, briefing, toezeggingen, context, statistieken, je woordenboek en notities kan lezen — op het apparaat, er verlaat niets je Mac. Claude kan je woordenboek ook beheren — vermeldingen en regels toevoegen, wijzigen of verwijderen — maar elke wijziging wacht op je bevestiging met één tik en een Ongedaan maken. Meegeleverd met de app: geen aparte download of build.";

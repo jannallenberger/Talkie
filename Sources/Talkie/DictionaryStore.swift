@@ -164,6 +164,72 @@ final class DictionaryStore: ObservableObject {
         vocabulary.remove(atOffsets: offsets)
     }
 
+    // MARK: L15 — dictionary management applied from the confirm-with-Undo inbox
+    //
+    // These back the Claude-suggested EDIT/REMOVE operations (`DictionaryInbox`),
+    // the same way `addVocabularyTerm`/`addLearnedReplacement` back the ADDs. They
+    // match a rule by its (from, to) pair case-insensitively — the same key
+    // `get_dictionary` displays and the model references — and return enough state
+    // (the exact prior `Replacement`, preserving id + all flags) for the HUD Undo to
+    // restore the previous state verbatim. Each persists via `save()` since inbox
+    // writes aren't driven by the Dictionary view's `.onChange`.
+
+    /// Remove the FIRST replacement rule matching (from, to) case-insensitively,
+    /// regardless of whether it was learned or curated (Claude can manage either).
+    /// Returns the removed rule (for an exact Undo restore) or nil if none matched.
+    @discardableResult
+    func removeReplacementMatching(from: String, to: String) -> Replacement? {
+        let f = from.trimmingCharacters(in: .whitespaces).lowercased()
+        let t = to.trimmingCharacters(in: .whitespaces).lowercased()
+        guard let idx = replacements.firstIndex(where: {
+            $0.from.lowercased() == f && $0.to.lowercased() == t
+        }) else { return nil }
+        let removed = replacements.remove(at: idx)
+        save()
+        return removed
+    }
+
+    /// Change the target of the FIRST rule matching (from, to) case-insensitively to
+    /// `newTo`, preserving the rule's id and flags. Returns the rule's PRIOR state
+    /// (for an exact Undo restore) or nil if none matched or `newTo` is empty / the
+    /// same as the current target (a no-op).
+    @discardableResult
+    func updateReplacementTarget(from: String, to: String, newTo: String) -> Replacement? {
+        let f = from.trimmingCharacters(in: .whitespaces).lowercased()
+        let t = to.trimmingCharacters(in: .whitespaces).lowercased()
+        let n = newTo.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty else { return nil }
+        guard let idx = replacements.firstIndex(where: {
+            $0.from.lowercased() == f && $0.to.lowercased() == t
+        }) else { return nil }
+        let prior = replacements[idx]
+        guard prior.to != n else { return nil }   // already at the requested target
+        replacements[idx].to = n
+        save()
+        return prior
+    }
+
+    /// Restore a replacement rule captured before a remove/update, for the HUD Undo.
+    /// Re-inserts it verbatim (id + flags preserved). If a rule with the same id is
+    /// somehow already present, this replaces it in place rather than duplicating —
+    /// so a double-fire can't leave two copies. Persists.
+    func restoreReplacement(_ rule: Replacement) {
+        if let idx = replacements.firstIndex(where: { $0.id == rule.id }) {
+            replacements[idx] = rule
+        } else {
+            replacements.append(rule)
+        }
+        save()
+    }
+
+    /// Re-add a vocabulary term for the HUD Undo of a removal. Symmetric with
+    /// `removeVocabularyTerm`; persists. (Ordering isn't preserved — vocabulary is a
+    /// set-like bias list — but the term reappears, which is what Undo promises.)
+    func restoreVocabularyTerm(_ term: String) {
+        addVocabularyTerm(term)
+        save()
+    }
+
     // MARK: One-file import / export (.talkiepack)
 
     /// Snapshot the whole dictionary into a shareable pack. `name`/`description`/

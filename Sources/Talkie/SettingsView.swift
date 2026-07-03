@@ -709,6 +709,9 @@ private struct MCPConnectorCard: View {
         .init(name: "read_scratchpad", write: false),
         .init(name: "add_vocabulary_term", write: true),
         .init(name: "add_replacement", write: true),
+        .init(name: "remove_replacement", write: true),
+        .init(name: "update_replacement", write: true),
+        .init(name: "remove_vocabulary_term", write: true),
     ]
 
     @State private var copiedConfig = false
@@ -720,7 +723,7 @@ private struct MCPConnectorCard: View {
     var body: some View {
         SettingsCard(
             header: "Connect to Claude",
-            footer: "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc
+            footer: "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc
         ) {
             if let path {
                 // (a) Claude Desktop — one double-click via the bundled .mcpb.

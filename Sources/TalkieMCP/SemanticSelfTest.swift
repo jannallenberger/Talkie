@@ -93,6 +93,52 @@ enum SemanticSelfTest {
         check("partition: dictation-only + no-provenance land in dictation bucket",
               parts.dictationOnly.map(\.displayName) == ["let me check the logs", "we need to ship"])
 
+        // --- L15: dictionary-suggestion schema (back-compat + new ops) -----------
+        // The inbox Suggestion is a byte-compatible contract mirrored on the app
+        // side. Assert (a) an OLD add-only file (no `op`/`newTo` fields) still
+        // decodes — the back-compat guarantee — and (b) each L15 op round-trips its
+        // fields. Uses only Foundation JSON, no model.
+        do {
+            let dec = JSONDecoder()
+            // (a) Back-compat: the exact shape the A5 writers produced pre-L15 — no
+            // `op`, no `newTo`. Must decode; a reader that required `op` would break
+            // every queued-but-not-yet-applied file after an upgrade.
+            let legacyVocab = Data("""
+            {"createdUnix":1,"kind":"vocabulary","term":"Higgsfield","version":1}
+            """.utf8)
+            let legacyRepl = Data("""
+            {"createdUnix":1,"from":"higgs field","kind":"replacement","to":"Higgsfield","version":1}
+            """.utf8)
+            let lv = try? dec.decode(TalkieStore.DictionarySuggestion.self, from: legacyVocab)
+            let lr = try? dec.decode(TalkieStore.DictionarySuggestion.self, from: legacyRepl)
+            check("L15 suggestion: legacy add-only vocab file decodes (op absent)",
+                  lv?.kind == "vocabulary" && lv?.term == "Higgsfield" && lv?.op == nil)
+            check("L15 suggestion: legacy add-only replacement file decodes (op absent)",
+                  lr?.kind == "replacement" && lr?.from == "higgs field" && lr?.to == "Higgsfield" && lr?.op == nil && lr?.newTo == nil)
+
+            // (b) Each new op round-trips through encode→decode with its fields intact.
+            let enc = JSONEncoder(); enc.outputFormatting = [.sortedKeys]
+            func roundTrip(_ s: TalkieStore.DictionarySuggestion) -> TalkieStore.DictionarySuggestion? {
+                guard let d = try? enc.encode(s) else { return nil }
+                return try? dec.decode(TalkieStore.DictionarySuggestion.self, from: d)
+            }
+            let removeRepl = TalkieStore.DictionarySuggestion(
+                kind: "replacement", op: "removeReplacement", term: nil, from: "higgs field",
+                to: "Higgsfield", newTo: nil, note: nil, createdUnix: 1, version: 1)
+            let updateRepl = TalkieStore.DictionarySuggestion(
+                kind: "replacement", op: "updateReplacement", term: nil, from: "higgs field",
+                to: "Higgsfield", newTo: "HiggsField", note: "typo", createdUnix: 1, version: 1)
+            let removeVocab = TalkieStore.DictionarySuggestion(
+                kind: "vocabulary", op: "removeVocabularyTerm", term: "Higgsfield", from: nil,
+                to: nil, newTo: nil, note: nil, createdUnix: 1, version: 1)
+            check("L15 suggestion: removeReplacement round-trips",
+                  roundTrip(removeRepl)?.op == "removeReplacement" && roundTrip(removeRepl)?.from == "higgs field")
+            check("L15 suggestion: updateReplacement carries new_to (newTo)",
+                  roundTrip(updateRepl)?.op == "updateReplacement" && roundTrip(updateRepl)?.newTo == "HiggsField")
+            check("L15 suggestion: removeVocabularyTerm round-trips",
+                  roundTrip(removeVocab)?.op == "removeVocabularyTerm" && roundTrip(removeVocab)?.term == "Higgsfield")
+        }
+
         // --- L13-b: transcript chunking (pure, mostly no model) ------------------
 
         // Chunk determinism: same text chunks identically.

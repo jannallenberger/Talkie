@@ -246,6 +246,9 @@
 "Added “%@” — from your Claude Code prompt" = "已添加“%@”——来自你的 Claude Code 提示词";
 "Claude added “%@” to dictionary" = "Claude 将“%@”添加到词典";
 "Claude added “%@” → “%@” to dictionary" = "Claude 将“%@”→“%@”添加到词典";
+"Claude removed “%@” → “%@” from dictionary" = "Claude 从词典中移除了“%@”→“%@”";
+"Claude changed “%@” → “%@” to “%@”" = "Claude 将“%@”→“%@”改为“%@”";
+"Claude removed “%@” from dictionary" = "Claude 从词典中移除了“%@”";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "从你的 Claude Code 提示词中学习纠正？它们是本地文件，不会离开你的 Mac。";
 /* G1 — Connect to Claude connector card */
 "Connect to Claude" = "连接到 Claude";
@@ -655,4 +658,4 @@
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
 "What Claude can do" = "Claude 可以做什么";
 "asks first" = "会先询问";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie 附带一个小型本地服务器，让 Claude 可以读取你的会议、简报、承诺、上下文、统计、词典和笔记——全部在设备上处理，不会离开你的 Mac。Claude 还可以建议词典条目——每一条都会等待你一键确认（可撤销）后才生效。随应用打包：无需单独下载或构建。";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie 附带一个小型本地服务器，让 Claude 可以读取你的会议、简报、承诺、上下文、统计、词典和笔记——全部在设备上处理，不会离开你的 Mac。Claude 还可以管理你的词典——添加、更改或删除条目和规则——但每项更改都会等待你一键确认（可撤销）后才生效。随应用打包：无需单独下载或构建。";

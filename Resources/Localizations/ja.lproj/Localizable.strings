@@ -246,6 +246,9 @@
 "Added “%@” — from your Claude Code prompt" = "「%@」を追加しました——Claude Code のプロンプトから";
 "Claude added “%@” to dictionary" = "Claude が「%@」を辞書に追加しました";
 "Claude added “%@” → “%@” to dictionary" = "Claude が「%@」→「%@」を辞書に追加しました";
+"Claude removed “%@” → “%@” from dictionary" = "Claude が「%@」→「%@」を辞書から削除しました";
+"Claude changed “%@” → “%@” to “%@”" = "Claude が「%@」→「%@」を「%@」に変更しました";
+"Claude removed “%@” from dictionary" = "Claude が「%@」を辞書から削除しました";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Claude Code のプロンプトから修正を学習しますか？ローカルファイルです。Mac から何も送信されません。";
 /* G1 — Connect to Claude connector card */
 "Connect to Claude" = "Claude に接続";
@@ -655,4 +658,4 @@
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
 "What Claude can do" = "Claude ができること";
 "asks first" = "確認します";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie は小さなローカルサーバーを備え、Claude があなたのミーティング、ブリーフ、コミットメント、コンテキスト、統計、辞書、メモを読み取れます — すべてデバイス上で処理され、Mac から何も送信されません。Claude は辞書項目を提案することもできます — いずれもワンタップの確認（取り消し可能）を待ってから反映されます。アプリに同梱: 別途のダウンロードやビルドは不要です。";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie は小さなローカルサーバーを備え、Claude があなたのミーティング、ブリーフ、コミットメント、コンテキスト、統計、辞書、メモを読み取れます — すべてデバイス上で処理され、Mac から何も送信されません。Claude は辞書の管理もできます — 項目やルールの追加・変更・削除 — ただしどの変更もワンタップの確認（取り消し可能）を待ってから反映されます。アプリに同梱: 別途のダウンロードやビルドは不要です。";
