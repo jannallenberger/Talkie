@@ -71,7 +71,7 @@ struct MeetingsView: View {
                     .overlay(alignment: .top) {
                         Text(rejectedDrop
                              ? "That file isn’t audio or video".loc
-                             : "Drop audio or video to transcribe".loc)
+                             : "Drop audio, video, or a folder to transcribe".loc)
                             .font(.talkieEyebrow)
                             .foregroundStyle(rejectedDrop ? Theme.featherRed : Theme.coral)
                             .padding(.horizontal, 12)
@@ -87,12 +87,13 @@ struct MeetingsView: View {
         .animation(.easeInOut(duration: 0.2), value: rejectedDrop)
     }
 
-    /// Route a dropped batch: hand supported files to the importer, flash the zone red
-    /// for a moment if nothing in the drop was importable (a visible rejection, never a
-    /// silent no-op). Returns whether anything was accepted.
+    /// Route a dropped batch: expand any dropped folders (shallow, sorted) and hand the
+    /// supported files to the importer, flashing the zone red for a moment if nothing in
+    /// the drop was importable (a visible rejection, never a silent no-op). Returns whether
+    /// anything was accepted.
     @discardableResult
     private func handleDrop(_ urls: [URL]) -> Bool {
-        let supported = ImportableMedia.supported(in: urls)
+        let supported = ImportableMedia.expand(urls)
         guard !supported.isEmpty else {
             rejectedDrop = true
             Task { @MainActor in
@@ -517,11 +518,12 @@ private struct MutedAppChip: View {
     }
 }
 
-/// The drop-to-transcribe affordances: an "Import audio…" button (an `NSOpenPanel`
-/// counterpart to dropping onto the tab) plus, while an import runs, one progress row
-/// with the filename, percent, and Cancel. Observes the coordinator so progress and the
-/// "waiting for dictation to finish" state stay live. Rendered only when the importer
-/// exists (nil in previews).
+/// The drop-to-transcribe affordances: an "Import…" button (an `NSOpenPanel` counterpart
+/// to dropping onto the tab — files or a whole folder) plus, while a batch runs, a "3 of
+/// 12" progress row with the current filename, percent, and Cancel, and a once-at-end
+/// completion summary. Observes the coordinator so progress, the "waiting for dictation to
+/// finish" state, and the summary stay live. Rendered only when the importer exists (nil in
+/// previews).
 private struct ImportControls: View {
     @ObservedObject var importer: FileImportCoordinator
 
@@ -531,12 +533,12 @@ private struct ImportControls: View {
                 Button {
                     importViaPanel()
                 } label: {
-                    Label("Import audio…".loc, systemImage: "square.and.arrow.down")
+                    Label("Import…".loc, systemImage: "square.and.arrow.down")
                 }
                 .controlSize(.large)
                 .disabled(!FileImportEngine.isAvailable)
 
-                Text("…or drop an audio or video file onto this tab.".loc)
+                Text("…or drop audio, video, or a folder onto this tab.".loc)
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.inkTertiary)
                 Spacer()
@@ -546,6 +548,10 @@ private struct ImportControls: View {
                 progressRow(fileName: active.fileName)
             } else if importer.waitingForSession {
                 waitingRow
+            }
+
+            if let completion = importer.lastCompletion {
+                completionRow(completion)
             }
 
             if let error = importer.lastError {
@@ -558,6 +564,15 @@ private struct ImportControls: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Batch position ("3 of 12") shown only when more than one file is in play; a single
+    /// import just shows the filename and percent.
+    private var batchLabel: String? {
+        guard importer.batchTotal > 1 else { return nil }
+        // 1-based position of the file being worked on: files already finished + this one.
+        let position = min(importer.batchDone + 1, importer.batchTotal)
+        return String(format: "%d of %d".loc, position, importer.batchTotal)
+    }
+
     private func progressRow(fileName: String) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -565,6 +580,11 @@ private struct ImportControls: View {
                     Image(systemName: "waveform")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.coral)
+                    if let batchLabel {
+                        Text(batchLabel)
+                            .font(.talkieEyebrow)
+                            .foregroundStyle(Theme.coral)
+                    }
                     Text(fileName)
                         .font(.talkieHeading(13, weight: .medium))
                         .foregroundStyle(Theme.ink)
@@ -597,16 +617,41 @@ private struct ImportControls: View {
         .talkieCard(padding: 12)
     }
 
-    /// Pick one or more audio/video files and enqueue them. On-device only — reads files
-    /// the user chose; nothing leaves the machine.
+    /// The once-at-end batch summary ("11 imported, 1 skipped: foo.mp3"), dismissible.
+    private func completionRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.coral)
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button {
+                importer.dismissCompletion()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss".loc)
+        }
+        .talkieCard(padding: 12)
+    }
+
+    /// Pick audio/video files or a folder and enqueue them. Folders are shallow-enumerated
+    /// by the coordinator. On-device only — reads what the user chose; nothing leaves the
+    /// machine.
     private func importViaPanel() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowedContentTypes = ImportableMedia.allExtensions.compactMap { UTType(filenameExtension: $0) }
         panel.prompt = "Import".loc
-        panel.message = "Choose audio or video files to transcribe into meetings.".loc
+        panel.message = "Choose audio or video files — or a folder of them — to transcribe into meetings.".loc
         if panel.runModal() == .OK {
             importer.enqueue(panel.urls)
         }

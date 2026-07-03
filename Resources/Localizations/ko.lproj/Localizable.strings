@@ -250,9 +250,8 @@
 
 /* D1 — drop-to-transcribe file import */
 "Import" = "가져오기";
-"Import audio…" = "오디오 가져오기…";
-"…or drop an audio or video file onto this tab." = "…또는 오디오나 비디오 파일을 이 탭에 놓으세요.";
-"Drop audio or video to transcribe" = "받아쓸 오디오나 비디오를 놓으세요";
+"…or drop audio, video, or a folder onto this tab." = "…또는 오디오, 비디오, 폴더를 이 탭에 놓으세요.";
+"Drop audio, video, or a folder to transcribe" = "받아쓸 오디오, 비디오, 폴더를 놓으세요";
 "That file isn’t audio or video" = "오디오나 비디오 파일이 아닙니다";
 "Waiting for dictation to finish…" = "받아쓰기가 끝나기를 기다리는 중…";
 "Choose audio or video files to transcribe into meetings." = "회의로 받아쓸 오디오나 비디오 파일을 선택하세요.";
@@ -269,3 +268,11 @@
 "Forever" = "계속 보관";
 "You're keeping 1 dictation right now." = "현재 받아쓰기 1개를 보관하고 있습니다.";
 "You're keeping %d dictations right now." = "현재 받아쓰기 %d개를 보관하고 있습니다.";
+"Choose audio or video files — or a folder of them — to transcribe into meetings." = "회의로 받아쓸 오디오나 비디오 파일 — 또는 그 폴더 — 을 선택하세요.";
+
+/* D5 — batch folder transcription queue */
+"%d of %d" = "%d / %d";
+"Dismiss" = "닫기";
+"%d imported" = "%d개 가져옴";
+"%d skipped: %@" = "%d개 건너뜀: %@";
+"your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "회의 목록은 최근 %d개만 유지하므로 오래된 가져오기는 목록에서 밀려났습니다(노트는 디스크에 그대로 있습니다).";

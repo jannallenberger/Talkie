@@ -250,9 +250,8 @@
 
 /* D1 — drop-to-transcribe file import */
 "Import" = "导入";
-"Import audio…" = "导入音频…";
-"…or drop an audio or video file onto this tab." = "…或将音频或视频文件拖到此标签页。";
-"Drop audio or video to transcribe" = "拖入音频或视频以转录";
+"…or drop audio, video, or a folder onto this tab." = "…或将音频、视频或文件夹拖到此标签页。";
+"Drop audio, video, or a folder to transcribe" = "拖入音频、视频或文件夹以转录";
 "That file isn’t audio or video" = "该文件不是音频或视频";
 "Waiting for dictation to finish…" = "正在等待听写完成…";
 "Choose audio or video files to transcribe into meetings." = "选择要转录为会议的音频或视频文件。";
@@ -269,3 +268,11 @@
 "Forever" = "永久保留";
 "You're keeping 1 dictation right now." = "你当前保留了 1 条听写。";
 "You're keeping %d dictations right now." = "你当前保留了 %d 条听写。";
+"Choose audio or video files — or a folder of them — to transcribe into meetings." = "选择要转录为会议的音频或视频文件 — 或包含它们的文件夹。";
+
+/* D5 — batch folder transcription queue */
+"%d of %d" = "第 %d 个,共 %d 个";
+"Dismiss" = "关闭";
+"%d imported" = "已导入 %d 个";
+"%d skipped: %@" = "已跳过 %d 个:%@";
+"your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "会议列表仅保留最近的 %d 个,较早的导入已滚出列表(其笔记仍保存在磁盘上)。";

@@ -250,9 +250,8 @@
 
 /* D1 — drop-to-transcribe file import */
 "Import" = "Importeren";
-"Import audio…" = "Audio importeren…";
-"…or drop an audio or video file onto this tab." = "…of sleep een audio- of videobestand naar dit tabblad.";
-"Drop audio or video to transcribe" = "Sleep audio of video om te transcriberen";
+"…or drop audio, video, or a folder onto this tab." = "…of sleep audio, video of een map naar dit tabblad.";
+"Drop audio, video, or a folder to transcribe" = "Sleep audio, video of een map om te transcriberen";
 "That file isn’t audio or video" = "Dat bestand is geen audio of video";
 "Waiting for dictation to finish…" = "Wachten tot het dicteren klaar is…";
 "Choose audio or video files to transcribe into meetings." = "Kies audio- of videobestanden om te transcriberen naar meetings.";
@@ -269,3 +268,11 @@
 "Forever" = "Voor altijd";
 "You're keeping 1 dictation right now." = "Je bewaart nu 1 dictaat.";
 "You're keeping %d dictations right now." = "Je bewaart nu %d dictaten.";
+"Choose audio or video files — or a folder of them — to transcribe into meetings." = "Kies audio- of videobestanden — of een map ervan — om te transcriberen naar meetings.";
+
+/* D5 — batch folder transcription queue */
+"%d of %d" = "%d van %d";
+"Dismiss" = "Sluiten";
+"%d imported" = "%d geïmporteerd";
+"%d skipped: %@" = "%d overgeslagen: %@";
+"your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "je meetinglijst houdt de recentste %d, dus oudere imports zijn uit de lijst gerold (hun notities staan nog op schijf).";

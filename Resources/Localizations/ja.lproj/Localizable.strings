@@ -250,9 +250,8 @@
 
 /* D1 — drop-to-transcribe file import */
 "Import" = "読み込む";
-"Import audio…" = "音声を読み込む…";
-"…or drop an audio or video file onto this tab." = "…またはこのタブに音声・動画ファイルをドロップします。";
-"Drop audio or video to transcribe" = "文字起こしする音声・動画をドロップ";
+"…or drop audio, video, or a folder onto this tab." = "…またはこのタブに音声・動画・フォルダをドロップします。";
+"Drop audio, video, or a folder to transcribe" = "文字起こしする音声・動画・フォルダをドロップ";
 "That file isn’t audio or video" = "そのファイルは音声・動画ではありません";
 "Waiting for dictation to finish…" = "ディクテーションの終了を待っています…";
 "Choose audio or video files to transcribe into meetings." = "ミーティングに文字起こしする音声・動画ファイルを選択します。";
@@ -269,3 +268,11 @@
 "Forever" = "無期限";
 "You're keeping 1 dictation right now." = "現在 1 件のディクテーションを保持しています。";
 "You're keeping %d dictations right now." = "現在 %d 件のディクテーションを保持しています。";
+"Choose audio or video files — or a folder of them — to transcribe into meetings." = "ミーティングに文字起こしする音声・動画ファイル、またはそのフォルダを選択します。";
+
+/* D5 — batch folder transcription queue */
+"%d of %d" = "%d / %d";
+"Dismiss" = "閉じる";
+"%d imported" = "%d 件を読み込み";
+"%d skipped: %@" = "%d 件をスキップ: %@";
+"your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "ミーティング一覧は最新の %d 件までを保持するため、古い読み込みは一覧から外れました(ノートはディスクに残っています)。";
