@@ -70,6 +70,29 @@ enum SemanticSelfTest {
         check("keyword-only: shared term clears threshold", kwHit > 0)
         check("keyword-only: unrelated term scores zero", kwMiss == 0)
 
+        // --- L12: commitment provenance partition (pure, no model) --------------
+        // meeting-sourced = ANY provenance entry with source == "meeting"; anything
+        // else (dictation-only, incl. no provenance) is the noisy heuristic bucket
+        // that list_commitments hides by default.
+        func commit(_ name: String, _ sources: [String]) -> TalkieStore.Entity {
+            TalkieStore.Entity(
+                id: TalkieStore.EntityID(kind: "commitment", key: name.lowercased()),
+                displayName: name, aliases: nil, mentions: 1, pinned: nil,
+                firstSeenUnix: 0, lastSeenUnix: 0,
+                provenance: sources.map { TalkieStore.Provenance(source: $0, sourceID: nil, dateUnix: 0, snippet: nil) })
+        }
+        let partitionInput = [
+            commit("send the deck", ["meeting"]),               // meeting-only
+            commit("let me check the logs", ["dictation"]),     // dictation-only
+            commit("follow up with Lars", ["dictation", "meeting"]), // mixed → meeting
+            commit("we need to ship", []),                       // no provenance → dictation-only
+        ]
+        let parts = TalkieStore.partitionCommitments(partitionInput)
+        check("partition: meeting-only + mixed land in meeting bucket",
+              parts.meeting.map(\.displayName) == ["send the deck", "follow up with Lars"])
+        check("partition: dictation-only + no-provenance land in dictation bucket",
+              parts.dictationOnly.map(\.displayName) == ["let me check the logs", "we need to ship"])
+
         // Criterion 1 (needs the model): a paraphrase with no shared ≥3-char token
         // still surfaces the meeting. Skip honestly if the model is unavailable.
         if index.isSemantic {

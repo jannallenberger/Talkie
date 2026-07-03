@@ -250,16 +250,52 @@ struct TalkieStore {
         return "Today's brief\(when):\n\n\(b.summary)"
     }
 
-    func listCommitments(limit: Int) -> String {
-        let commitments = entities()
+    /// Partition a set of commitment entities into meeting-sourced vs dictation-only.
+    /// "Meeting-sourced" = has *any* provenance entry stamped `source == "meeting"`
+    /// (the LLM finalize path + the meeting import path; see the app's
+    /// `ProvenanceSource` enum, whose raw value for `.meeting` is the string
+    /// "meeting"). Everything else is dictation-only — the noisy cue-phrase heuristic
+    /// ("let me…", "we need to…") that false-positives constantly and shouldn't be
+    /// served as if it were a real commitment. Pure (no I/O) so it's unit-testable.
+    static func partitionCommitments(_ entities: [Entity]) -> (meeting: [Entity], dictationOnly: [Entity]) {
+        var meeting: [Entity] = []
+        var dictationOnly: [Entity] = []
+        for e in entities {
+            if (e.provenance ?? []).contains(where: { $0.source == "meeting" }) {
+                meeting.append(e)
+            } else {
+                dictationOnly.append(e)
+            }
+        }
+        return (meeting, dictationOnly)
+    }
+
+    func listCommitments(limit: Int, includeDictations: Bool = false) -> String {
+        let all = entities()
             .filter { $0.id.kind == "commitment" }
             .sorted { ($0.lastSeenUnix ?? 0) > ($1.lastSeenUnix ?? 0) }
-            .prefix(max(1, limit))
-        guard !commitments.isEmpty else { return "No commitments recorded yet." }
-        return commitments.map { e in
+        let (meetingSourced, dictationOnly) = Self.partitionCommitments(all)
+
+        // Default view: meeting-sourced only. Opt-in (`includeDictations`) returns
+        // everything, preserving the pre-L12 behavior of listing every commitment.
+        let shown = Array((includeDictations ? all : meetingSourced).prefix(max(1, limit)))
+
+        func line(_ e: Entity) -> String {
             let src = e.provenance?.last.map { " — from \($0.source) on \(stamp($0.dateUnix))" } ?? ""
             return "• \(e.displayName)\(src)"
-        }.joined(separator: "\n")
+        }
+
+        guard !shown.isEmpty else {
+            return "No commitments recorded yet — Talkie records these from meeting transcripts, on-device."
+        }
+
+        var out = shown.map(line).joined(separator: "\n")
+        // When we hid dictation-only items (default view), say so honestly in ONE
+        // footer line — and tell the caller how to see them.
+        if !includeDictations, !dictationOnly.isEmpty {
+            out += "\n(\(dictationOnly.count) more heard in dictations — hidden by default: they're usually phrasing like \"let me check…\", not real commitments. Pass include_dictations: true to see them.)"
+        }
+        return out
     }
 
     func lookupEntity(query: String, kinds: [String]?) -> String {

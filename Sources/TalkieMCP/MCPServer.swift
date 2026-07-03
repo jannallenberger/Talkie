@@ -49,6 +49,7 @@ struct MCPServer {
         }
         func strArg(_ k: String) -> String? { (args[k] as? String).flatMap { $0.isEmpty ? nil : $0 } }
         func strArr(_ k: String) -> [String]? { args[k] as? [String] }
+        func boolArg(_ k: String, _ def: Bool) -> Bool { (args[k] as? Bool) ?? def }
 
         let text: String
         switch name {
@@ -64,7 +65,8 @@ struct MCPServer {
         case "get_brief":
             text = store.getBrief()
         case "list_commitments":
-            text = store.listCommitments(limit: intArg("limit", 20))
+            text = store.listCommitments(limit: intArg("limit", 20),
+                                         includeDictations: boolArg("include_dictations", false))
         case "lookup_entity":
             guard let q = strArg("query") else { return toolErr(id, "lookup_entity requires query") }
             text = store.lookupEntity(query: q, kinds: strArr("kinds"))
@@ -111,8 +113,9 @@ struct MCPServer {
                   "title": strProp("Title substring."),
                   "date": strProp("Calendar day (yyyy-MM-dd) — returns a meeting that started that day.")]),
             spec("get_brief", "Today's on-device brief (what you worked on, commitments, open threads).", [:]),
-            spec("list_commitments", "Open commitments / action items from the context graph, newest first.",
-                 ["limit": numProp("Max commitments (default 20).")]),
+            spec("list_commitments", "Commitments / action items extracted from your meetings (context graph), newest first. Nothing is ever marked done — treat these as things you said, not a task list.",
+                 ["limit": numProp("Max commitments (default 20)."),
+                  "include_dictations": boolProp("Also include commitments heard in dictations (off by default — these come from a noisy cue-phrase heuristic and are usually just phrasing, not real commitments).")]),
             spec("lookup_entity", "Look up people / projects / terms by name or alias, with provenance.",
                  ["query": strProp("Name or alias to look up."),
                   "kinds": arrProp("Filter to kinds: person|project|term|commitment.")]),
@@ -155,5 +158,6 @@ struct MCPServer {
     }
     private static func strProp(_ d: String) -> [String: Any] { ["type": "string", "description": d] }
     private static func numProp(_ d: String) -> [String: Any] { ["type": "integer", "description": d] }
+    private static func boolProp(_ d: String) -> [String: Any] { ["type": "boolean", "description": d] }
     private static func arrProp(_ d: String) -> [String: Any] { ["type": "array", "items": ["type": "string"], "description": d] }
 }
