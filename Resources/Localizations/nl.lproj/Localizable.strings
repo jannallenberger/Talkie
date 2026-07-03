@@ -496,3 +496,11 @@
 "≈ the King James Bible (~783,000)" = "≈ de King James-Bijbel (~783.000)";
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ de hele Harry Potter-saga (~1,08 miljoen woorden)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ twee keer de Harry Potter-saga; Het Lied van IJs en Vuur tot nu toe (~1,7 miljoen)";
+
+// Run-shortcut command + on-save Shortcut (G8)
+"Ran shortcut “%@”" = "Opdracht “%@” uitgevoerd";
+"No shortcut named “%@”" = "Geen opdracht met de naam “%@”";
+"Couldn't run the shortcut “%@”" = "Kon de opdracht “%@” niet uitvoeren";
+"After saving" = "Na het opslaan";
+"After saving a meeting note, run" = "Voer uit na het opslaan van een vergadernotitie";
+"Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "Voert een van je macOS-opdrachten uit zodra een vergadernotitie is opgeslagen en geeft het notitiebestand door. Blijft op je Mac — geen netwerk.";

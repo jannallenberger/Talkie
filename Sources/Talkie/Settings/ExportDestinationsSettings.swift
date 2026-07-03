@@ -38,6 +38,11 @@ final class ExportPreferences: ObservableObject {
     @Published var destination: Destination { didSet { save() } }
     /// The chosen folder when `destination == .folder` (absolute path).
     @Published var folderPath: String { didSet { save() } }
+    /// The exact name of a macOS Shortcut to run after a meeting note is saved, or
+    /// nil = off (the default). When set, the meeting writer runs it via
+    /// `ShortcutsRunner`, feeding the saved note's path as input. nil keeps today's
+    /// behaviour byte-identical — nothing runs. (G8.)
+    @Published var postSaveShortcutName: String? { didSet { save() } }
 
     private let fileURL: URL
 
@@ -46,6 +51,7 @@ final class ExportPreferences: ObservableObject {
         // Zero-config defaults reproduce today's plain-folder behaviour exactly.
         destination = .talkieFolder
         folderPath = ""
+        postSaveShortcutName = nil   // off by default → finishing a meeting runs nothing
         load()
     }
 
@@ -135,6 +141,9 @@ final class ExportPreferences: ObservableObject {
     private struct Snapshot: Codable {
         var destination: Destination
         var folderPath: String
+        /// Optional so an `export_prefs.json` written before G8 (no key) decodes with
+        /// the shortcut off, and an older app build simply ignores the newer key.
+        var postSaveShortcutName: String?
     }
 
     private func load() {
@@ -142,10 +151,12 @@ final class ExportPreferences: ObservableObject {
               let s = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         destination = s.destination
         folderPath = s.folderPath
+        postSaveShortcutName = s.postSaveShortcutName
     }
 
     private func save() {
-        let s = Snapshot(destination: destination, folderPath: folderPath)
+        let s = Snapshot(destination: destination, folderPath: folderPath,
+                         postSaveShortcutName: postSaveShortcutName)
         guard let data = try? JSONEncoder().encode(s) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }
@@ -156,6 +167,10 @@ final class ExportPreferences: ObservableObject {
 /// / `SettingsRow` vocabulary so it's indistinguishable from the other panes.
 struct ExportDestinationsSettings: View {
     @ObservedObject private var prefs = ExportPreferences.shared
+    /// The installed Shortcuts, loaded once when the pane appears (off-main, via
+    /// `ShortcutsRunner.list()`). Empty until it loads, or if the user has none —
+    /// the picker then shows only "None". A stable tag (`String?`) drives the Picker.
+    @State private var shortcutNames: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -201,7 +216,42 @@ struct ExportDestinationsSettings: View {
                     }
                 }
             }
+
+            // The one declared on-save automation row (G8): after a meeting note is
+            // saved, optionally run a macOS Shortcut with the note's path as input.
+            // Default "None" = byte-identical to today (nothing runs). Exact-name only;
+            // the list is whatever `shortcuts list` reports on this Mac.
+            SettingsCard(
+                header: "After saving",
+                footer: "Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network."
+            ) {
+                SettingsRow(title: "After saving a meeting note, run") {
+                    Picker("", selection: postSaveBinding) {
+                        Text("None".loc).tag(String?.none)
+                        ForEach(shortcutNames, id: \.self) { name in
+                            Text(name).tag(String?.some(name))
+                        }
+                    }
+                    .labelsHidden().fixedSize()
+                }
+            }
         }
+        .task {
+            // Load the installed Shortcuts once when the pane appears — off-main, and
+            // tolerant of none/failure (an empty list just leaves "None" selectable).
+            shortcutNames = await ShortcutsRunner.list()
+        }
+    }
+
+    /// Binding for the on-save Picker. A previously-chosen shortcut that is no longer
+    /// installed still shows as selected (its tag isn't in `shortcutNames`, so SwiftUI
+    /// renders it blank until re-picked) — we don't silently clear the saved choice on
+    /// a transient empty list (e.g. the tool was slow), only when the user changes it.
+    private var postSaveBinding: Binding<String?> {
+        Binding(
+            get: { prefs.postSaveShortcutName },
+            set: { prefs.postSaveShortcutName = $0 }
+        )
     }
 
     private func pickFolder() {

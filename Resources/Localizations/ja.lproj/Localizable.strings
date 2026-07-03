@@ -496,3 +496,11 @@
 "≈ the King James Bible (~783,000)" = "≈ 欽定訳聖書（約783,000語）";
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ ハリー・ポッター全編（約108万語）";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ ハリー・ポッター全編の2倍、または氷と炎の歌のこれまで（約170万語）";
+
+// Run-shortcut command + on-save Shortcut (G8)
+"Ran shortcut “%@”" = "ショートカット“%@”を実行しました";
+"No shortcut named “%@”" = "“%@”というショートカットはありません";
+"Couldn't run the shortcut “%@”" = "ショートカット“%@”を実行できませんでした";
+"After saving" = "保存後";
+"After saving a meeting note, run" = "会議メモの保存後に実行";
+"Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "会議メモの保存が完了したときにmacOSのショートカットを実行し、メモのファイルを渡します。Macの内部だけで完結し、ネットワークは使いません。";

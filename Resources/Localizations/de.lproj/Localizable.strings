@@ -496,3 +496,11 @@
 "≈ the King James Bible (~783,000)" = "≈ die King-James-Bibel (~783.000)";
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ die ganze Harry-Potter-Saga (~1,08 Millionen Wörter)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ zweimal die Harry-Potter-Saga; Das Lied von Eis und Feuer bisher (~1,7 Millionen)";
+
+// Run-shortcut command + on-save Shortcut (G8)
+"Ran shortcut “%@”" = "Kurzbefehl “%@” ausgeführt";
+"No shortcut named “%@”" = "Kein Kurzbefehl namens “%@”";
+"Couldn't run the shortcut “%@”" = "Kurzbefehl “%@” konnte nicht ausgeführt werden";
+"After saving" = "Nach dem Speichern";
+"After saving a meeting note, run" = "Nach dem Speichern einer Besprechungsnotiz ausführen";
+"Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "Führt einen deiner macOS-Kurzbefehle aus, sobald eine Besprechungsnotiz gespeichert ist, und übergibt ihm die Notizdatei. Bleibt auf deinem Mac — kein Netzwerk.";

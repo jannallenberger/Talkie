@@ -1520,6 +1520,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 },
                                 onUndo: { [weak self] in self?.hud.hide() }
                             )
+                        } else if result.replacement.isEmpty {
+                            // A side-effect intent (e.g. "run shortcut Ship It") ran and
+                            // has nothing to insert — every other CommandResult is
+                            // insertion-only, so an empty replacement is the explicit
+                            // "done, type nothing" signal. Confirm with a toast naming the
+                            // shortcut, never inject the empty string. Parse the name from
+                            // `ctx.spokenCommand` (an immutable copy) rather than the
+                            // `var finalText`, so this read doesn't widen that variable's
+                            // isolation region into the mixed-isolation learning closures below.
+                            let ranName = RunShortcutParser.parse(ctx.spokenCommand) ?? ctx.spokenCommand
+                            self.hud.showSaved(String(format: "Ran shortcut “%@”".loc, ranName))
                         } else {
                             _ = TextInjector.insert(result.replacement, mode: mode)
                             self.hud.hide()

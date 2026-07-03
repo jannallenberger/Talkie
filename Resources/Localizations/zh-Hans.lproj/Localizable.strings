@@ -496,3 +496,11 @@
 "≈ the King James Bible (~783,000)" = "≈《钦定版圣经》（约 783,000）";
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ 整套《哈利·波特》（约 108 万词）";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ 两套《哈利·波特》；或目前的《冰与火之歌》（约 170 万）";
+
+// Run-shortcut command + on-save Shortcut (G8)
+"Ran shortcut “%@”" = "已运行快捷指令“%@”";
+"No shortcut named “%@”" = "没有名为“%@”的快捷指令";
+"Couldn't run the shortcut “%@”" = "无法运行快捷指令“%@”";
+"After saving" = "保存后";
+"After saving a meeting note, run" = "保存会议笔记后运行";
+"Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "当会议笔记保存完成时运行你的一个 macOS 快捷指令，并将笔记文件传递给它。仅在你的 Mac 上完成 — 不联网。";
