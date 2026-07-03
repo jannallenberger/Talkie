@@ -109,6 +109,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         appUsage: AppUsageStore,
         activity: ActivityStore,
         wordFreq: WordFrequencyStore,
+        jobTitle: JobTitleStore,
         latency: LatencyStore,
         systemPressure: SystemPressure,
         scratchpad: ScratchpadStore,
@@ -135,6 +136,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             appUsage: appUsage,
             activity: activity,
             wordFreq: wordFreq,
+            jobTitle: jobTitle,
             latency: latency,
             systemPressure: systemPressure,
             scratchpad: scratchpad,
@@ -207,6 +209,8 @@ struct MainView: View {
     @ObservedObject var appUsage: AppUsageStore
     @ObservedObject var activity: ActivityStore
     @ObservedObject var wordFreq: WordFrequencyStore
+    /// L5-b: the on-device invented job title, shown on the Milestones page.
+    @ObservedObject var jobTitle: JobTitleStore
     @ObservedObject var latency: LatencyStore
     @ObservedObject var systemPressure: SystemPressure
     @ObservedObject var scratchpad: ScratchpadStore
@@ -255,6 +259,7 @@ struct MainView: View {
             DashboardView(settings: settings, stats: stats, history: history,
                           activity: activity, appUsage: appUsage,
                           scratchpad: scratchpad, wordFreq: wordFreq,
+                          jobTitle: jobTitle,
                           latency: latency, pressure: systemPressure, router: router)
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore, settings: settings)
@@ -265,7 +270,8 @@ struct MainView: View {
                        searchEngine: searchEngine, meetingStore: meetingStore,
                        wordFreq: wordFreq, scratchpad: scratchpad,
                        autoAddPreviewLog: autoAddPreviewLog,
-                       contextSummary: contextSummary)
+                       contextSummary: contextSummary,
+                       jobTitle: jobTitle)
         case .commands:
             CommandsView(settings: settings, macros: macros,
                          commandRouter: commandRouter, hud: hud,

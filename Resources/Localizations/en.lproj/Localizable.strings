@@ -502,6 +502,29 @@
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ the entire Harry Potter saga (~1.08 million words)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)";
 
+// L5-b — Invented job title (on-device, playful label — never a real profession)
+"Your invented title" = "Your invented title";
+"Regenerate" = "Regenerate";
+"Coining your title…" = "Coining your title…";
+"A playful label, not a real job — invented on your Mac from where your words go. It never leaves this device." = "A playful label, not a real job — invented on your Mac from where your words go. It never leaves this device.";
+// Fallback titles + sentences, one per app category (used when Apple Intelligence is off)
+"Vibe-Coding Conductor" = "Vibe-Coding Conductor";
+"You don't type code so much as talk it into being." = "You don't type code so much as talk it into being.";
+"Deep-Web Wayfarer" = "Deep-Web Wayfarer";
+"You think out loud across a hundred open tabs and somehow find the thread." = "You think out loud across a hundred open tabs and somehow find the thread.";
+"Inbox Diplomat" = "Inbox Diplomat";
+"You turn a morning of messages into replies that actually sound like you." = "You turn a morning of messages into replies that actually sound like you.";
+"Conversation Keeper" = "Conversation Keeper";
+"Your words live in the back-and-forth — quick, warm, always in motion." = "Your words live in the back-and-forth — quick, warm, always in motion.";
+"Longform Thinker" = "Longform Thinker";
+"You dictate your way to clarity, one paragraph at a time." = "You dictate your way to clarity, one paragraph at a time.";
+"Command-Line Whisperer" = "Command-Line Whisperer";
+"You speak to the machine directly, and it listens." = "You speak to the machine directly, and it listens.";
+"Idea Sketcher" = "Idea Sketcher";
+"You narrate what you see before it exists on the canvas." = "You narrate what you see before it exists on the canvas.";
+"Word Wanderer" = "Word Wanderer";
+"Your voice goes everywhere your work does — a little of everything." = "Your voice goes everywhere your work does — a little of everything.";
+
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "Ran shortcut “%@”";
 "Scratched" = "Scratched";

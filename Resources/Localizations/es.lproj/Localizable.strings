@@ -500,6 +500,29 @@
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ toda la saga de Harry Potter (~1,08 millones de palabras)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ el doble de la saga de Harry Potter; Canción de hielo y fuego hasta ahora (~1,7 millones)";
 
+// L5-b — Invented job title (on-device, playful label — never a real profession)
+"Your invented title" = "Tu título inventado";
+"Regenerate" = "Regenerar";
+"Coining your title…" = "Acuñando tu título…";
+"A playful label, not a real job — invented on your Mac from where your words go. It never leaves this device." = "Una etiqueta lúdica, no un empleo real: inventada en tu Mac a partir de adónde van tus palabras. Nunca sale de este dispositivo.";
+// Fallback titles + sentences, one per app category (used when Apple Intelligence is off)
+"Vibe-Coding Conductor" = "Director de Vibe-Coding";
+"You don't type code so much as talk it into being." = "No tanto tecleas código como lo hablas hasta darle vida.";
+"Deep-Web Wayfarer" = "Explorador de la Web Profunda";
+"You think out loud across a hundred open tabs and somehow find the thread." = "Piensas en voz alta entre cien pestañas abiertas y aun así encuentras el hilo.";
+"Inbox Diplomat" = "Diplomático de la Bandeja";
+"You turn a morning of messages into replies that actually sound like you." = "Conviertes una mañana de mensajes en respuestas que de verdad suenan a ti.";
+"Conversation Keeper" = "Guardián de la Conversación";
+"Your words live in the back-and-forth — quick, warm, always in motion." = "Tus palabras viven en el ir y venir: rápidas, cálidas, siempre en movimiento.";
+"Longform Thinker" = "Pensador de Formato Largo";
+"You dictate your way to clarity, one paragraph at a time." = "Dictas tu camino hacia la claridad, un párrafo a la vez.";
+"Command-Line Whisperer" = "Susurrador de la Terminal";
+"You speak to the machine directly, and it listens." = "Le hablas a la máquina directamente, y ella escucha.";
+"Idea Sketcher" = "Bocetista de Ideas";
+"You narrate what you see before it exists on the canvas." = "Narras lo que ves antes de que exista en el lienzo.";
+"Word Wanderer" = "Trotamundos de Palabras";
+"Your voice goes everywhere your work does — a little of everything." = "Tu voz va a donde va tu trabajo: un poco de todo.";
+
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "Atajo “%@” ejecutado";
 "Scratched" = "Descartado";

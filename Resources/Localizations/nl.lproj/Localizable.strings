@@ -500,6 +500,29 @@
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ de hele Harry Potter-saga (~1,08 miljoen woorden)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ twee keer de Harry Potter-saga; Het Lied van IJs en Vuur tot nu toe (~1,7 miljoen)";
 
+// L5-b — Invented job title (on-device, playful label — never a real profession)
+"Your invented title" = "Je verzonnen titel";
+"Regenerate" = "Opnieuw genereren";
+"Coining your title…" = "Je titel wordt gemunt…";
+"A playful label, not a real job — invented on your Mac from where your words go. It never leaves this device." = "Een speels label, geen echte baan — op je Mac verzonnen op basis van waar je woorden heen gaan. Het verlaat dit apparaat nooit.";
+// Fallback titles + sentences, one per app category (used when Apple Intelligence is off)
+"Vibe-Coding Conductor" = "Vibe-Coding-Dirigent";
+"You don't type code so much as talk it into being." = "Je typt code niet zozeer, je praat hem tot leven.";
+"Deep-Web Wayfarer" = "Verkenner van het diepe web";
+"You think out loud across a hundred open tabs and somehow find the thread." = "Je denkt hardop over honderd open tabbladen en vindt toch de rode draad.";
+"Inbox Diplomat" = "Postvak-Diplomaat";
+"You turn a morning of messages into replies that actually sound like you." = "Je maakt van een ochtend vol berichten antwoorden die echt naar jou klinken.";
+"Conversation Keeper" = "Hoeder van het gesprek";
+"Your words live in the back-and-forth — quick, warm, always in motion." = "Je woorden leven in het heen en weer — snel, warm, altijd in beweging.";
+"Longform Thinker" = "Langvorm-Denker";
+"You dictate your way to clarity, one paragraph at a time." = "Je dicteert je weg naar helderheid, alinea voor alinea.";
+"Command-Line Whisperer" = "Fluisteraar van de opdrachtregel";
+"You speak to the machine directly, and it listens." = "Je spreekt de machine rechtstreeks toe, en ze luistert.";
+"Idea Sketcher" = "Ideeën-Schetser";
+"You narrate what you see before it exists on the canvas." = "Je vertelt wat je ziet voordat het op het canvas bestaat.";
+"Word Wanderer" = "Woord-Zwerver";
+"Your voice goes everywhere your work does — a little of everything." = "Je stem gaat overal heen waar je werk gaat — van alles een beetje.";
+
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "Opdracht “%@” uitgevoerd";
 "Scratched" = "Gewist";

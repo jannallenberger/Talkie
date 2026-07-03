@@ -500,6 +500,29 @@
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ ハリー・ポッター全編（約108万語）";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ ハリー・ポッター全編の2倍、または氷と炎の歌のこれまで（約170万語）";
 
+// L5-b — Invented job title (on-device, playful label — never a real profession)
+"Your invented title" = "あなたの名づけられた肩書き";
+"Regenerate" = "作り直す";
+"Coining your title…" = "肩書きを考えています…";
+"A playful label, not a real job — invented on your Mac from where your words go. It never leaves this device." = "本物の職業ではなく、遊び心のあるラベルです。あなたの言葉がどこへ向かうかから、Mac 上で作られます。この端末から出ることはありません。";
+// Fallback titles + sentences, one per app category (used when Apple Intelligence is off)
+"Vibe-Coding Conductor" = "バイブコーディングの指揮者";
+"You don't type code so much as talk it into being." = "コードを打つというより、話して形にしていく人。";
+"Deep-Web Wayfarer" = "ディープウェブの道案内人";
+"You think out loud across a hundred open tabs and somehow find the thread." = "百個のタブを開いて声に出して考え、それでも筋道を見つける人。";
+"Inbox Diplomat" = "受信トレイの外交官";
+"You turn a morning of messages into replies that actually sound like you." = "メッセージだらけの朝を、本当にあなたらしい返信に変えていく人。";
+"Conversation Keeper" = "会話の番人";
+"Your words live in the back-and-forth — quick, warm, always in motion." = "あなたの言葉はやり取りの中に生きる——素早く、あたたかく、いつも動いている。";
+"Longform Thinker" = "長文の思索家";
+"You dictate your way to clarity, one paragraph at a time." = "一段落ずつ、口述しながら明晰さへと進んでいく人。";
+"Command-Line Whisperer" = "コマンドラインの囁き手";
+"You speak to the machine directly, and it listens." = "機械に直接語りかけると、機械が耳を傾ける。";
+"Idea Sketcher" = "アイデアのスケッチャー";
+"You narrate what you see before it exists on the canvas." = "キャンバスに現れる前の情景を、言葉で語る人。";
+"Word Wanderer" = "言葉の放浪者";
+"Your voice goes everywhere your work does — a little of everything." = "あなたの声は仕事の行く先どこへでも——少しずつ、すべてに。";
+
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "ショートカット“%@”を実行しました";
 "Scratched" = "取り消しました";

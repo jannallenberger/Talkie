@@ -13,6 +13,19 @@ struct MilestonesView: View {
     @ObservedObject var stats: StatsStore
     @ObservedObject var activity: ActivityStore
     @ObservedObject var wordFreq: WordFrequencyStore
+    @ObservedObject var appUsage: AppUsageStore
+    /// L5-b: the on-device invented job title. Injected; defaults to a standalone
+    /// store so previews/tests can construct the page without the full app graph.
+    @ObservedObject var jobTitle: JobTitleStore
+
+    init(stats: StatsStore, activity: ActivityStore, wordFreq: WordFrequencyStore,
+         appUsage: AppUsageStore, jobTitle: JobTitleStore = JobTitleStore()) {
+        self.stats = stats
+        self.activity = activity
+        self.wordFreq = wordFreq
+        self.appUsage = appUsage
+        self.jobTitle = jobTitle
+    }
 
     private let cols = [GridItem(.adaptive(minimum: 300), spacing: Theme.Space.gridGap)]
 
@@ -23,6 +36,8 @@ struct MilestonesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.section) {
                 header
+
+                InventedTitleCard(jobTitle: jobTitle, regenerate: regenerateTitle)
 
                 LazyVGrid(columns: cols, alignment: .leading, spacing: Theme.Space.gridGap) {
                     ProgressCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
@@ -39,6 +54,25 @@ struct MilestonesView: View {
         .background(LiveBackground(mood: .ambient))
         .scrollContentBackground(.hidden)
         .navigationTitle("Plumage")
+        // Generate on appear if needed — async, so the page paints immediately and
+        // the card fills in a moment later. Never blocks.
+        .task { await jobTitle.ensure(currentTier: currentTier, inputs: titleInputs, fallbackCategory: fallbackCategory) }
+    }
+
+    // MARK: Job-title inputs (assembled from the live stores)
+
+    private var titleInputs: JobTitleEngine.Inputs {
+        JobTitleEngine.Inputs.assemble(appUsage: appUsage, wordFreq: wordFreq)
+    }
+
+    /// The single most-used app category — the key for the deterministic fallback
+    /// title when the model is unavailable.
+    private var fallbackCategory: AppCategory? {
+        appUsage.byCategory().first?.category
+    }
+
+    private func regenerateTitle() {
+        Task { await jobTitle.regenerate(currentTier: currentTier, inputs: titleInputs, fallbackCategory: fallbackCategory) }
     }
 
     // MARK: Header — current tier, total words, real time spoken
@@ -361,5 +395,66 @@ private struct FlowChips: View {
                 .background(Capsule().fill(tint.opacity(0.12)))
             }
         }
+    }
+}
+
+// MARK: - Invented job title (L5-b)
+
+/// The on-device *invented* title card. Shows the coined title + its one-line
+/// sentence, a small "Regenerate" button, and a plain footer that says exactly
+/// what this is: a playful label generated on your Mac from where your words go —
+/// NOT a real job. While the first generation is in flight it shows a placeholder,
+/// so the page never blocks. It is never an error state: when Apple Intelligence
+/// is off, the store fills it with a deterministic fallback title instead.
+private struct InventedTitleCard: View {
+    @ObservedObject var jobTitle: JobTitleStore
+    /// Fired by the "Regenerate" button — a button, deliberately NOT a setting.
+    let regenerate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Eyebrow(text: "Your invented title")
+                Spacer(minLength: 8)
+                Button(action: regenerate) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Regenerate")
+                            .font(.talkieHeading(12, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.featherCoral)
+                }
+                .buttonStyle(.plain)
+                .disabled(jobTitle.isGenerating)
+                .opacity(jobTitle.isGenerating ? 0.5 : 1)
+            }
+
+            if jobTitle.hasTitle {
+                Text(jobTitle.title)
+                    .font(.talkieDisplay(22))
+                    .foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(jobTitle.sentence)
+                    .font(.talkieHeading(14, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                // First-run placeholder — the page paints, this fills in a moment
+                // later. Never an error, never a blocking spinner.
+                Text("Coining your title…")
+                    .font(.talkieHeading(15, weight: .medium))
+                    .foregroundStyle(Theme.inkTertiary)
+                    .redacted(reason: jobTitle.isGenerating ? .placeholder : [])
+            }
+
+            Divider().overlay(Theme.hairline).padding(.vertical, 2)
+
+            Text("A playful label, not a real job — invented on your Mac from where your words go. It never leaves this device.")
+                .font(.talkieHeading(11.5, weight: .regular))
+                .foregroundStyle(Theme.inkTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .talkieCard()
     }
 }
