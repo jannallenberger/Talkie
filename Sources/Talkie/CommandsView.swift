@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// "Commands" — a front door for Talkie's voice-copilot layer: the macros you've
-/// taught it, a live reference for the imperative-verb grammar, and a sandbox to
-/// try any command (including the experimental cross-surface ones) against the
+/// taught it, a live reference for the imperative-verb grammar, the opt-in
+/// cross-surface commands toggle, and a sandbox to try any command against the
 /// real `CommandRouter` before it ever runs live during dictation.
 struct CommandsView: View {
     @ObservedObject var settings: AppSettings
@@ -23,17 +23,15 @@ struct CommandsView: View {
                 exampleChips
             }
 
-            if Dev.isEnabled {
-                SettingsCard(
-                    header: "Experimental",
-                    footer: "Lets a spoken request like \u{201c}email Sarah the action items from my last meeting\u{201d} run as a command instead of being dictated literally. Off by default — flip it on once you've tried a few examples above."
-                ) {
-                    SettingsToggleRow(
-                        title: "Cross-surface commands",
-                        subtitle: "Runs on every dictation once enabled.",
-                        isOn: $settings.crossSurfaceCommandsEnabled
-                    )
-                }
+            SettingsCard(
+                header: "Cross-surface commands",
+                footer: "Lets a spoken request like \u{201c}email Sarah the action items from my last meeting\u{201d} run as a command instead of being dictated word for word. It draws only on meetings and notes already on your Mac, and it never sends anything. Off by default; try a few examples above first."
+            ) {
+                SettingsToggleRow(
+                    title: "Turn on cross-surface commands",
+                    subtitle: "Runs on every dictation once enabled. Every match previews as a pill you confirm before a single word is inserted.",
+                    isOn: $settings.crossSurfaceCommandsEnabled
+                )
             }
 
             // New macro.
@@ -154,7 +152,7 @@ struct CommandsView: View {
         // reliable path — the recognizer nails "tango/alpha" but garbles bare letters.
         var examples = ["make this a list", "fix this", "translate to German", "summarize this",
                         "spell tango alpha lima kilo india echo"]
-        if Dev.isEnabled, settings.crossSurfaceCommandsEnabled {
+        if settings.crossSurfaceCommandsEnabled {
             examples.append("what did I commit to this week")
         }
         return examples
@@ -163,8 +161,8 @@ struct CommandsView: View {
     /// Runs `text` through the real `CommandRouter` — the same instance live
     /// dictation uses — and previews the result through the same HUD pill.
     /// Cross-surface parsing is always exercised here (`crossSurfaceEnabled:
-    /// true`) regardless of the live flag's state, so the sandbox always
-    /// demonstrates the full feature even while it's dark in production.
+    /// true`) regardless of the toggle's state, so the sandbox always
+    /// demonstrates the full feature even before you turn it on for live dictation.
     private func run(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

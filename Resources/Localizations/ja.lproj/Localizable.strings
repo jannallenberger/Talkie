@@ -22,6 +22,7 @@
 "Copy All" = "すべてコピー";
 "Copy this dictation" = "この音声入力をコピー";
 "Copy transcript" = "文字起こしをコピー";
+"Cross-surface commands" = "サーフェス横断コマンド";
 "Delete this macro" = "このマクロを削除";
 "Fused with the transcript when you stop" = "停止時に文字起こしと統合されます";
 "Generate brief" = "ブリーフを生成";

@@ -262,17 +262,31 @@ enum CrossSurfaceParser {
                                        channel: channel, recipientHint: recipient)
         }
 
-        // It must reference a meeting AND a content kind to qualify. There is
-        // deliberately no meeting-less fallback here: a prior version accepted an
-        // "explicit" meeting ref (via `.onDate`/`.withPerson`, derived from bare
-        // words like "today" or "with <name>") without requiring the word
-        // "meeting" anywhere — that intercepted ordinary sentences like "I'll
-        // email Sarah the notes from today's lunch". Requiring the literal word
-        // is the conservative, tested-safe behavior; a meeting-less "action items
-        // from the Q3 review" is out of scope for v1 rather than risk a false
-        // positive on unrelated dictation.
-        guard lower.contains("meeting"), let kind = contentKind(in: lower) else { return nil }
-        let ref = meetingRef(in: lower, original: spoken) ?? .last
+        // It must reference a meeting AND a content kind AND an *explicit* meeting
+        // reference to qualify. Three guards, each conservative:
+        //
+        //  1. `lower.contains("meeting")` — a prior version accepted an "explicit"
+        //     meeting ref (via `.onDate`/`.withPerson`, derived from bare words like
+        //     "today" or "with <name>") without the word "meeting" anywhere, which
+        //     intercepted ordinary sentences like "I'll email Sarah the notes from
+        //     today's lunch". Requiring the literal word is tested-safe.
+        //  2. a content kind (action items / decisions / summary / notes).
+        //  3. an explicit meeting reference from `meetingRef` ("my last meeting",
+        //     "yesterday's standup", "the meeting with Sarah", "this week"…).
+        //
+        // The `.last` FALLBACK IS DELIBERATELY GONE (F4). It previously turned any
+        // "meeting" + content-kind phrase with no explicit reference into a draft of
+        // the newest meeting — so a plain dictated statement of fact, "the meeting
+        // notes are attached", parsed as a command and replaced the user's spoken
+        // words with a preview pill. Because this intent runs on EVERY dictation once
+        // enabled, a bare "meeting"+"notes" collision is far likelier to be someone
+        // narrating than commanding; we now dictate it literally and only act when the
+        // user actually points at a meeting. A meeting reference this parser can't yet
+        // name ("action items from the Q3 review") stays out of scope for v1 rather
+        // than risk that false positive.
+        guard lower.contains("meeting"),
+              let kind = contentKind(in: lower),
+              let ref = meetingRef(in: lower, original: spoken) else { return nil }
         return CrossSurfaceRequest(subject: .meetingContent(kind, ref),
                                    channel: channel, recipientHint: recipient)
     }
