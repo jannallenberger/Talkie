@@ -31,16 +31,23 @@ struct VibeCodingView: View {
                 }
                 .talkieCard()
 
-                // Project folders.
+                // Auto-detected + pinned projects. Detection is automatic now (A10):
+                // dictating into an editor/terminal scopes to the checkout it's in — even
+                // a parallel worktree — with no folder-chip maintenance. Pinning stays
+                // available for a project you always want indexed.
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Eyebrow(text: "Project folders")
+                        Eyebrow(text: "Projects")
                         Spacer()
                         if projectIndex.isScanning { ProgressView().controlSize(.small) }
                     }
 
+                    Text("Talkie detects the project behind the editor or terminal you dictate into automatically — including parallel worktrees — and scopes filenames to it. Everything stays on your Mac; it only reads filenames, never file contents.")
+                        .font(.callout)
+                        .foregroundStyle(Theme.inkSecondary)
+
                     if projectIndex.hasFolders {
-                        // The chosen roots, in a sunken well for a touch of depth.
+                        // The pinned roots, in a sunken well for a touch of depth.
                         VStack(spacing: 0) {
                             ForEach(Array(projectIndex.folders.enumerated()), id: \.element.id) { idx, folder in
                                 if idx > 0 {
@@ -56,12 +63,8 @@ struct VibeCodingView: View {
 
                         HStack(spacing: 10) {
                             Button(action: chooseFolders) {
-                                Label("Add folder…", systemImage: "folder.badge.plus")
+                                Label("Pin a folder…", systemImage: "folder.badge.plus")
                             }
-                            Button {
-                                Task { await projectIndex.rescan() }
-                            } label: { Label("Rescan", systemImage: "arrow.clockwise") }
-                                .disabled(projectIndex.isScanning)
                             Spacer()
                             Text(statusLine)
                                 .font(.talkieHeading(12, weight: .regular))
@@ -69,23 +72,10 @@ struct VibeCodingView: View {
                         }
                     } else {
                         Button(action: chooseFolders) {
-                            VStack(spacing: 10) {
-                                ClayIcon(name: "IconFolderPlus", size: 42)
-                                Text("Choose project folders…")
-                                    .font(.talkieHeading(14, weight: .semibold))
-                                    .foregroundStyle(Theme.coral)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 26)
-                            .background(
-                                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                                    .foregroundStyle(Theme.coral.opacity(0.5))
-                            )
+                            Label("Pin a folder…", systemImage: "folder.badge.plus")
                         }
-                        .buttonStyle(.plain)
-                        Text("Add one or more project roots — Talkie indexes them all. Everything stays on your Mac; it only reads filenames, never file contents.")
-                            .font(.callout)
+                        Text("Optional — pin a project you always want indexed, so its filenames snap even before you dictate into it.")
+                            .font(.talkieHeading(12, weight: .regular))
                             .foregroundStyle(Theme.inkTertiary)
                     }
                 }

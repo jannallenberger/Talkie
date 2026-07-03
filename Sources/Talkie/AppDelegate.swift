@@ -738,21 +738,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             minePhrases: settings.contextAwareness
         )
         currentTarget = captured.target
-        currentVibeSnapshot = settings.vibeCoding ? projectIndex.snapshot : .empty
+
+        // A10 — scope filename snapping + repo terms to the checkout the terminal is
+        // actually in. Resolve the project root behind the target: window-title path
+        // first, then (for terminals whose title carries no path) the child shell's cwd
+        // via `proc_pidinfo`. Prefer THAT root's scoped snapshot over the merged global
+        // one. When the root is unknown or ambiguous, or it isn't indexed yet,
+        // `snapshot(for:)` returns nil and we fall back to the merged snapshot — never a
+        // wrong-repo scope. Only resolved when vibe coding is on and the target is an
+        // editor/terminal; otherwise there's nothing to scope.
+        var resolvedVibeRoot: URL?
+        if settings.vibeCoding,
+           captured.target.category == .coding || captured.target.category == .terminal {
+            resolvedVibeRoot = ProjectRootDetector.resolveRoot(
+                bundleID: captured.target.bundleID,
+                windowTitle: captured.windowTitle,
+                processID: captured.processID)
+        }
+        if settings.vibeCoding {
+            if let root = resolvedVibeRoot, let scoped = projectIndex.snapshot(for: root) {
+                currentVibeSnapshot = scoped
+            } else {
+                currentVibeSnapshot = projectIndex.snapshot
+                // A10 index-on-first-sight: a resolved root we haven't indexed yet (e.g. a
+                // worktree Jann just spun up) gets a background scan so a LATER dictation
+                // scopes to it — this session safely uses the merged snapshot meanwhile.
+                // Auto-scanned roots are session-visible but NOT persisted as pinned
+                // folders (LRU-capped), so project_index.json doesn't accumulate every
+                // directory visited. No-op if the root is already indexed or scanning.
+                if let root = resolvedVibeRoot { projectIndex.indexRootOnFirstSight(root) }
+            }
+        } else {
+            currentVibeSnapshot = .empty
+        }
 
         // A9 — Vibe Coding turns itself on. When the feature is OFF and you're
         // dictating into an editor/terminal, try to discover the real git repo behind
-        // the window title; if we find one that's offer-worthy (never declined, not
-        // already offered today), stash it so a successful insertion can surface the
-        // one-tap "Index 〈Repo〉 filenames?" offer. The detector prefers a false
-        // negative over a false positive — a wrong-repo offer would burn trust — and
-        // `windowTitle` is nil unless context awareness is on, so the offer silently
-        // never fires when that setting is off (accepted per the spec).
+        // the window title (or the shell's cwd for a bare terminal); if we find one that's
+        // offer-worthy (never declined, not already offered today), stash it so a
+        // successful insertion can surface the one-tap "Index 〈Repo〉 filenames?" offer.
+        // The detector prefers a false negative over a false positive — a wrong-repo offer
+        // would burn trust.
         pendingVibeOfferRoot = nil
         if !settings.vibeCoding,
            captured.target.category == .coding || captured.target.category == .terminal,
            let root = ProjectRootDetector.resolveRoot(
-               bundleID: captured.target.bundleID, windowTitle: captured.windowTitle),
+               bundleID: captured.target.bundleID, windowTitle: captured.windowTitle,
+               processID: captured.processID),
            settings.mayOfferVibeIndexing(forRoot: root.path) {
             pendingVibeOfferRoot = root
         }
@@ -772,7 +804,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         activeFileMineTask?.cancel()
         activeFileMineTask = nil
         if settings.vibeCoding,
-           let filePath = projectIndex.resolveIndexedFilePath(forWindowTitle: captured.windowTitle) {
+           let filePath = projectIndex.resolveIndexedFilePath(forWindowTitle: captured.windowTitle,
+                                                              root: resolvedVibeRoot) {
             activeFileMineTask = Task.detached(priority: .utility) { [weak self] in
                 let terms = await FileIdentifierCache.shared.terms(forPath: filePath)
                 if Task.isCancelled || terms.isEmpty { return }

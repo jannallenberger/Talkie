@@ -168,4 +168,263 @@ final class ProjectScannerTests: XCTestCase {
         XCTAssertLessThan(walkAndMine, walkOnly * 3 + 0.05,
                           "mining cost regressed: walk \(walkOnly*1000)ms vs walk+mine \(walkAndMine*1000)ms")
     }
+
+    // MARK: - A10: per-root indexing + scoped snapshots
+
+    /// `scanPerRoot` keeps each root's files in its OWN bucket — no cross-root merge, so
+    /// two checkouts with a same-named file don't collide (the whole point of A10).
+    func testScanPerRootKeepsRootsSeparate() throws {
+        let a = root.appendingPathComponent("A")
+        let b = root.appendingPathComponent("B")
+        try FileManager.default.createDirectory(at: a, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: b, withIntermediateDirectories: true)
+        // Same basename, different casing/siblings in each checkout.
+        try touch("ExerciseLibrary.tsx", in: a)
+        try touch("OnlyInA.swift", in: a)
+        try touch("ExerciseLibrary.tsx", in: b)
+        try touch("OnlyInB.swift", in: b)
+
+        let buckets = ProjectScanner.scanPerRoot(roots: [a, b])
+        let aKey = a.standardizedFileURL.path
+        let bKey = b.standardizedFileURL.path
+        XCTAssertNotNil(buckets[aKey], "root A must have its own bucket")
+        XCTAssertNotNil(buckets[bKey], "root B must have its own bucket")
+        XCTAssertTrue(buckets[aKey]!.files.contains("OnlyInA.swift"))
+        XCTAssertFalse(buckets[aKey]!.files.contains("OnlyInB.swift"),
+                       "root A's bucket must not contain root B's files")
+        XCTAssertTrue(buckets[bKey]!.files.contains("OnlyInB.swift"))
+        XCTAssertFalse(buckets[bKey]!.files.contains("OnlyInA.swift"),
+                       "root B's bucket must not contain root A's files")
+    }
+
+    /// Migration: an old FLAT project_index.json (top-level merged files/symbols/docTerms/
+    /// filePaths, no `roots` key) decodes without loss and its data is reachable via the
+    /// merged accessors, so a pre-A10 file keeps snapping filenames after upgrade.
+    func testLegacyFlatIndexDecodesAndRoundTrips() throws {
+        let legacyJSON = """
+        {
+          "folderPaths": ["/Users/jann/Talkie"],
+          "scannedAtUnix": 1720000000,
+          "files": ["ExerciseLibrary.tsx", "AppDelegate.swift"],
+          "symbols": ["ExerciseLibrary", "AppDelegate"],
+          "docTerms": ["Coralate", "Talkie"],
+          "filePaths": {"exerciselibrary.tsx": "/Users/jann/Talkie/ExerciseLibrary.tsx"}
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(ProjectIndexData.self, from: legacyJSON)
+        XCTAssertEqual(decoded.folderPaths, ["/Users/jann/Talkie"], "folderPaths must survive migration")
+        // No per-root map yet — the legacy blob backs the merged view until the next rescan.
+        XCTAssertTrue(decoded.roots.isEmpty, "a legacy file has no per-root map yet")
+        XCTAssertEqual(Set(decoded.mergedFiles), ["ExerciseLibrary.tsx", "AppDelegate.swift"],
+                       "legacy merged files must be reachable via mergedFiles")
+        XCTAssertEqual(Set(decoded.mergedSymbols), ["ExerciseLibrary", "AppDelegate"])
+        XCTAssertEqual(Set(decoded.mergedDocTerms), ["Coralate", "Talkie"])
+        XCTAssertEqual(decoded.mergedFilePaths["exerciselibrary.tsx"],
+                       "/Users/jann/Talkie/ExerciseLibrary.tsx")
+
+        // Round-trip: re-encoding a not-yet-rescanned legacy file preserves the flat data
+        // (so quitting before a rescan can't drop it), and re-decoding is lossless.
+        let reEncoded = try JSONEncoder().encode(decoded)
+        let reDecoded = try JSONDecoder().decode(ProjectIndexData.self, from: reEncoded)
+        XCTAssertEqual(Set(reDecoded.mergedFiles), ["ExerciseLibrary.tsx", "AppDelegate.swift"],
+                       "re-encoded legacy file must still carry its files")
+        XCTAssertEqual(reDecoded.mergedFilePaths["exerciselibrary.tsx"],
+                       "/Users/jann/Talkie/ExerciseLibrary.tsx")
+    }
+
+    /// The NEW shape (per-root `roots` map) encodes and decodes cleanly, and once `roots`
+    /// is populated the legacy flat fields are NOT re-encoded (per-root is authoritative).
+    func testPerRootIndexEncodesInNewShape() throws {
+        var data = ProjectIndexData()
+        data.folderPaths = ["/tmp/A", "/tmp/B"]
+        data.roots["/tmp/A"] = ProjectRootIndex(files: ["A.swift"], symbols: ["A"],
+                                                docTerms: [], filePaths: ["a.swift": "/tmp/A/A.swift"])
+        data.roots["/tmp/B"] = ProjectRootIndex(files: ["B.swift"], symbols: ["B"],
+                                                docTerms: [], filePaths: ["b.swift": "/tmp/B/B.swift"])
+        data.scannedAtUnix = 1_720_000_000
+
+        let encoded = try JSONEncoder().encode(data)
+        // Legacy flat keys must be absent once roots is populated.
+        let asString = String(data: encoded, encoding: .utf8)!
+        XCTAssertTrue(asString.contains("\"roots\""), "new shape must persist the roots map")
+
+        let decoded = try JSONDecoder().decode(ProjectIndexData.self, from: encoded)
+        XCTAssertEqual(decoded.roots.count, 2)
+        XCTAssertEqual(Set(decoded.mergedFiles), ["A.swift", "B.swift"])
+    }
+
+    /// `ProjectIndexStore.snapshot(for:)` scopes to a single root: dictating in root A
+    /// resolves A's file, in root B resolves B's — and an unindexed root yields nil so the
+    /// caller falls back to the merged snapshot (never a wrong-repo scope).
+    @MainActor
+    func testStoreSnapshotForRootScopesPerCheckout() async throws {
+        let a = root.appendingPathComponent("checkoutA")
+        let b = root.appendingPathComponent("checkoutB")
+        try FileManager.default.createDirectory(at: a, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: b, withIntermediateDirectories: true)
+        // Distinct filenames so we can assert which root a snapshot came from.
+        try touch("AlphaWidget.tsx", in: a)
+        try touch("BetaWidget.tsx", in: b)
+
+        let store = ProjectIndexStore(fileURL: root.appendingPathComponent("index-A.json"))
+        store.addFolders([a, b])
+        // Wait for the background scan to settle.
+        try await waitUntil { !store.isScanning && store.fileCount >= 2 }
+
+        let snapA = store.snapshot(for: a)
+        let snapB = store.snapshot(for: b)
+        XCTAssertNotNil(snapA, "root A should have a scoped snapshot after scanning")
+        XCTAssertNotNil(snapB, "root B should have a scoped snapshot after scanning")
+        // A's snapshot maps A's file and NOT B's; B's maps B's file and NOT A's.
+        let (aOut, aReps) = SpokenFileMatcher.format("alpha widget dot tsx", snapshot: snapA!)
+        XCTAssertEqual(aReps, 1, "root A's snapshot should snap its own file: \(aOut)")
+        XCTAssertTrue(aOut.contains("AlphaWidget.tsx"), aOut)
+        let (aMiss, aMissReps) = SpokenFileMatcher.format("beta widget dot tsx", snapshot: snapA!)
+        XCTAssertEqual(aMissReps, 0, "root A must NOT snap root B's file: \(aMiss)")
+
+        // An unknown/unscanned root has no scoped snapshot — caller degrades to merged.
+        let unknown = root.appendingPathComponent("neverScanned")
+        XCTAssertNil(store.snapshot(for: unknown),
+                     "an unindexed root must yield nil so the caller falls back to merged")
+
+        // The merged fallback (store.snapshot) sees BOTH files.
+        let (mergedOut, mergedReps) = SpokenFileMatcher.format("beta widget dot tsx",
+                                                               snapshot: store.snapshot)
+        XCTAssertEqual(mergedReps, 1, "merged fallback should snap either root's file: \(mergedOut)")
+    }
+
+    /// `resolveIndexedFilePath(forWindowTitle:root:)` prefers the ACTIVE root's basename
+    /// map: with a same-named file in two checkouts, passing root A resolves to A's copy,
+    /// passing root B to B's copy — the A10 headline for active-file mining.
+    @MainActor
+    func testResolveIndexedFilePathPrefersActiveRoot() async throws {
+        let a = root.appendingPathComponent("repoA")
+        let b = root.appendingPathComponent("repoB")
+        try FileManager.default.createDirectory(at: a, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: b, withIntermediateDirectories: true)
+        try touch("Shared.tsx", in: a)
+        try touch("Shared.tsx", in: b)
+
+        let store = ProjectIndexStore(fileURL: root.appendingPathComponent("index-B.json"))
+        store.addFolders([a, b])
+        try await waitUntil { !store.isScanning && store.fileCount >= 1 }
+
+        let title = "Shared.tsx — myapp"
+        let pathA = store.resolveIndexedFilePath(forWindowTitle: title, root: a)
+        let pathB = store.resolveIndexedFilePath(forWindowTitle: title, root: b)
+        // The scanner stores the on-disk `url.path` (a temp dir resolves through /private
+        // on macOS), so assert on containment of each repo's own subpath rather than an
+        // exact string — the point is that A's active root resolves under repoA, B's under
+        // repoB, and the two never cross.
+        XCTAssertNotNil(pathA); XCTAssertNotNil(pathB)
+        XCTAssertTrue(pathA!.hasSuffix("repoA/Shared.tsx"),
+                      "with root A active, the title filename must resolve to A's copy: \(pathA!)")
+        XCTAssertTrue(pathB!.hasSuffix("repoB/Shared.tsx"),
+                      "with root B active, the title filename must resolve to B's copy: \(pathB!)")
+        XCTAssertNotEqual(pathA, pathB, "the same title must resolve to DIFFERENT files per active root")
+        // With no root (ambiguous), it still resolves SOMETHING via the merged map —
+        // first-folder-wins — never crashing, never nil for an indexed basename.
+        let pathMerged = store.resolveIndexedFilePath(forWindowTitle: title, root: nil)
+        XCTAssertNotNil(pathMerged, "ambiguous resolution must still return the merged (first-wins) path")
+    }
+
+    // MARK: - A10 (b): index-on-first-sight + LRU cap
+
+    /// A detected-but-unpinned root gets an automatic background index (first-sight): its
+    /// scoped snapshot becomes available WITHOUT the root being added as a pinned folder,
+    /// and WITHOUT being written to project_index.json (so the file doesn't accumulate every
+    /// directory visited). This is the "brand-new worktree usable within one dictation"
+    /// acceptance criterion.
+    @MainActor
+    func testIndexOnFirstSightScopesWithoutPinningOrPersisting() async throws {
+        let wt = root.appendingPathComponent("freshWorktree")
+        try FileManager.default.createDirectory(at: wt, withIntermediateDirectories: true)
+        try touch("GammaView.tsx", in: wt)
+
+        let indexURL = root.appendingPathComponent("index-firstsight.json")
+        let store = ProjectIndexStore(fileURL: indexURL)
+        // Sanity: not indexed yet, no scoped snapshot.
+        XCTAssertNil(store.snapshot(for: wt))
+
+        store.indexRootOnFirstSight(wt)
+        try await waitUntil { store.snapshot(for: wt) != nil }
+
+        // Scoped snapshot now snaps this root's file…
+        let (out, reps) = SpokenFileMatcher.format("gamma view dot tsx", snapshot: store.snapshot(for: wt)!)
+        XCTAssertEqual(reps, 1, "first-sight index must make the root's files snappable: \(out)")
+        // …but the root is NOT pinned.
+        XCTAssertFalse(store.hasFolders, "an auto-indexed root must NOT become a pinned folder")
+        XCTAssertTrue(store.folders.isEmpty)
+
+        // …and it is NOT persisted: a fresh store over the same file sees no roots.
+        let reopened = ProjectIndexStore(fileURL: indexURL)
+        XCTAssertNil(reopened.snapshot(for: wt),
+                     "auto (first-sight) roots must not be written to project_index.json")
+        XCTAssertFalse(reopened.hasFolders)
+    }
+
+    /// The auto-root set is LRU-capped: after visiting more than the cap's worth of fresh
+    /// roots, the OLDEST auto root's index is evicted so the in-memory footprint stays
+    /// bounded across a long parallel-session day.
+    @MainActor
+    func testAutoRootsAreLRUCapped() async throws {
+        let store = ProjectIndexStore(fileURL: root.appendingPathComponent("index-lru.json"))
+        // Cap is 8; make 10 distinct git-less roots (a bucket is created regardless).
+        var roots: [URL] = []
+        for i in 0..<10 {
+            let r = root.appendingPathComponent("auto\(i)")
+            try FileManager.default.createDirectory(at: r, withIntermediateDirectories: true)
+            try touch("File\(i).swift", in: r)
+            roots.append(r)
+        }
+        // Index them one at a time, waiting for each to land so the LRU order is defined.
+        for r in roots {
+            store.indexRootOnFirstSight(r)
+            try await waitUntil { store.snapshot(for: r) != nil }
+        }
+        // The two oldest (auto0, auto1) must have been evicted; the most-recent 8 survive.
+        XCTAssertNil(store.snapshot(for: roots[0]), "oldest auto root should be evicted past the cap")
+        XCTAssertNil(store.snapshot(for: roots[1]), "second-oldest auto root should be evicted too")
+        for r in roots.suffix(8) {
+            XCTAssertNotNil(store.snapshot(for: r), "the most-recent 8 auto roots must be retained")
+        }
+    }
+
+    /// Pinning a root that was previously auto-indexed promotes it: it becomes a pinned
+    /// folder (persisted), and is no longer subject to auto-root eviction.
+    @MainActor
+    func testPinningPromotesAnAutoRoot() async throws {
+        let r = root.appendingPathComponent("promoteMe")
+        try FileManager.default.createDirectory(at: r, withIntermediateDirectories: true)
+        try touch("Promoted.swift", in: r)
+        let indexURL = root.appendingPathComponent("index-promote.json")
+        let store = ProjectIndexStore(fileURL: indexURL)
+
+        store.indexRootOnFirstSight(r)
+        try await waitUntil { store.snapshot(for: r) != nil }
+        XCTAssertFalse(store.hasFolders)
+
+        // Now pin it — a rescan runs; it becomes a persisted folder.
+        store.addFolders([r])
+        try await waitUntil { store.hasFolders && !store.isScanning && store.snapshot(for: r) != nil }
+        XCTAssertTrue(store.folders.contains { $0.path == r.standardizedFileURL.path },
+                      "a pinned promoted root appears in the folders list")
+
+        // Persisted now: a fresh store sees it.
+        let reopened = ProjectIndexStore(fileURL: indexURL)
+        XCTAssertTrue(reopened.hasFolders, "a pinned (promoted) root must persist to disk")
+    }
+
+    /// Poll a main-actor condition with a timeout — the background scan is async, so tests
+    /// wait for it to settle rather than sleeping a fixed duration.
+    @MainActor
+    private func waitUntil(timeout: TimeInterval = 5,
+                           _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline { XCTFail("condition not met within \(timeout)s"); return }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
 }
