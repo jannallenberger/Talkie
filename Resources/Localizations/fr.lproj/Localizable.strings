@@ -123,6 +123,8 @@
 "Right ⌥ Option" = "⌥ Option droite";
 "Left ⌥ Option" = "⌥ Option gauche";
 "Right ⌃ Control" = "⌃ Contrôle droit";
+"Mouse Button 4 (side)" = "Bouton de souris 4 (latéral)";
+"Mouse Button 5 (side)" = "Bouton de souris 5 (latéral)";
 "Paste (fast)" = "Coller (rapide)";
 "Type character-by-character" = "Saisir caractère par caractère";
 "None" = "Aucun";
@@ -324,6 +326,7 @@
 "Hold %@ to talk · tap twice to lock" = "Maintenez %@ pour parler · appuyez deux fois pour verrouiller";
 "Hold to talk · tap twice to lock" = "Maintenez pour parler · appuyez deux fois pour verrouiller";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Maintenez la touche et parlez, puis relâchez pour insérer. Appuyez deux fois pour verrouiller en mains libres — l’enregistrement continue sans rien maintenir ; appuyez une fois pour arrêter et insérer.";
+"The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "Le bouton latéral continue de remplir sa fonction habituelle dans l’app que vous utilisez — Talkie se contente de l’écouter, et il doit parvenir à macOS en tant que vrai bouton (certaines souris le réattribuent dans leur propre logiciel).";
 "Hold, speak, release — or tap twice to go hands-free" = "Maintenez, parlez, relâchez — ou appuyez deux fois pour les mains libres";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Maintenez votre touche, dites ce que vous voulez écrire, puis relâchez — Talkie insère le texte là où vous tapez. Pressé ? Appuyez deux fois sur la touche pour verrouiller l’enregistrement en mains libres, puis une fois pour l’arrêter.";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "À l’écoute, mains libres. L’enregistrement est verrouillé — appuyez une fois sur votre touche pour l’arrêter.";

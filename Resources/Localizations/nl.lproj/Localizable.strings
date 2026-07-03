@@ -123,6 +123,8 @@
 "Right ⌥ Option" = "Rechter ⌥ Option";
 "Left ⌥ Option" = "Linker ⌥ Option";
 "Right ⌃ Control" = "Rechter ⌃ Control";
+"Mouse Button 4 (side)" = "Muisknop 4 (zijkant)";
+"Mouse Button 5 (side)" = "Muisknop 5 (zijkant)";
 "Paste (fast)" = "Plakken (snel)";
 "Type character-by-character" = "Teken voor teken typen";
 "None" = "Geen";
@@ -324,6 +326,7 @@
 "Hold %@ to talk · tap twice to lock" = "Houd %@ ingedrukt om te praten · tik tweemaal om te vergrendelen";
 "Hold to talk · tap twice to lock" = "Houd ingedrukt om te praten · tik tweemaal om te vergrendelen";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Houd de toets ingedrukt en spreek, laat dan los om in te voegen. Tik er tweemaal op om handsfree te vergrendelen — de opname loopt door zonder iets ingedrukt te houden; tik één keer om te stoppen en in te voegen.";
+"The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "De zijknop blijft zijn normale functie vervullen in de app die je gebruikt — Talkie luistert er alleen naar, en de knop moet macOS als een echte knop bereiken (sommige muizen wijzen hem in hun eigen software opnieuw toe).";
 "Hold, speak, release — or tap twice to go hands-free" = "Ingedrukt houden, praten, loslaten — of tik tweemaal voor handsfree";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Houd je toets ingedrukt, zeg wat je wilt schrijven en laat los — Talkie plaatst de tekst waar je aan het typen bent. Haast? Tik tweemaal op de toets om de opname handsfree te vergrendelen en één keer om te stoppen.";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "Luistert, handsfree. De opname is vergrendeld — tik één keer op je toets om te stoppen.";

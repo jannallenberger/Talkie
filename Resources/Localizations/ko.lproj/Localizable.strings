@@ -123,6 +123,8 @@
 "Right ⌥ Option" = "오른쪽 ⌥ Option";
 "Left ⌥ Option" = "왼쪽 ⌥ Option";
 "Right ⌃ Control" = "오른쪽 ⌃ Control";
+"Mouse Button 4 (side)" = "마우스 버튼 4 (측면)";
+"Mouse Button 5 (side)" = "마우스 버튼 5 (측면)";
 "Paste (fast)" = "붙여넣기 (빠름)";
 "Type character-by-character" = "한 글자씩 입력";
 "None" = "없음";
@@ -324,6 +326,7 @@
 "Hold %@ to talk · tap twice to lock" = "%@ 를 누른 채 말하기 · 두 번 눌러 고정";
 "Hold to talk · tap twice to lock" = "누른 채 말하기 · 두 번 눌러 고정";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "키를 누른 채 말한 다음 놓으면 삽입됩니다. 두 번 누르면 핸즈프리로 고정되어 아무것도 누르지 않아도 녹음이 계속되며, 한 번 누르면 멈추고 삽입합니다.";
+"The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "측면 버튼은 사용 중인 앱에서 원래 기능을 그대로 수행합니다. Talkie는 이를 듣기만 하며, 버튼이 실제 버튼으로 macOS에 전달되어야 합니다(일부 마우스는 자체 소프트웨어에서 버튼을 재지정합니다).";
 "Hold, speak, release — or tap twice to go hands-free" = "누르고, 말하고, 놓기 — 또는 두 번 눌러 핸즈프리로";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "키를 누른 채 쓰고 싶은 내용을 말하고 놓으면 — Talkie가 입력 중인 곳에 텍스트를 넣어 줍니다. 급하신가요? 키를 두 번 눌러 녹음을 핸즈프리로 고정하고, 한 번 눌러 멈추세요.";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "핸즈프리로 듣는 중입니다. 녹음이 고정되었습니다 — 키를 한 번 누르면 멈춥니다.";

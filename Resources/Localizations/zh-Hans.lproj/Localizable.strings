@@ -123,6 +123,8 @@
 "Right ⌥ Option" = "右 ⌥ Option";
 "Left ⌥ Option" = "左 ⌥ Option";
 "Right ⌃ Control" = "右 ⌃ Control";
+"Mouse Button 4 (side)" = "鼠标按键 4（侧键）";
+"Mouse Button 5 (side)" = "鼠标按键 5（侧键）";
 "Paste (fast)" = "粘贴（快速）";
 "Type character-by-character" = "逐字符输入";
 "None" = "无";
@@ -324,6 +326,7 @@
 "Hold %@ to talk · tap twice to lock" = "按住 %@ 说话 · 点按两次锁定";
 "Hold to talk · tap twice to lock" = "按住说话 · 点按两次锁定";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "按住按键说话，松开即可插入。点按两次可免手锁定——无需按住任何键即可持续录音；再点按一次即可停止并插入。";
+"The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "侧键在你正在使用的应用中仍执行其原本的功能——Talkie 只是监听它，并且该按键必须作为真实按键传达给 macOS（部分鼠标会在其自有软件中重新映射该按键）。";
 "Hold, speak, release — or tap twice to go hands-free" = "按住、说话、松开 — 或点按两次进入免手模式";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "按住按键，说出你想写的内容，然后松开——Talkie 会把文字放到你正在输入的地方。赶时间？点按按键两次即可免手锁定录音，再点按一次即可停止。";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "正在免手聆听。录音已锁定——点按按键一次即可停止。";

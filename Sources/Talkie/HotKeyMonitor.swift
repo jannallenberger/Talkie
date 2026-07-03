@@ -1,14 +1,17 @@
 import AppKit
 import CoreGraphics
 
-/// Watches a single global activation key (a modifier, or Fn) and reports
-/// press/release. Implemented with a listen-only `CGEventTap` so it needs only
-/// the Input Monitoring permission (never swallows the key, so the modifier
-/// still works normally in other apps). The tap is created synchronously on the
-/// caller's thread; its run-loop source runs on a dedicated thread so a busy
-/// main thread can't trip the system's tap-timeout. All shared state is guarded
-/// by a lock because `handle()` runs on the tap thread while start/stop/update
-/// run on the main thread.
+/// Watches a single global activation trigger — a keyboard modifier or a mouse
+/// side button (button 4/5) — and reports press/release. Implemented with a
+/// listen-only `CGEventTap` so it needs only the Input Monitoring permission
+/// (never swallows the event, so the modifier — or the mouse button's native app
+/// action, e.g. browser back — still works normally in other apps). The tap is
+/// created synchronously on the caller's thread; its run-loop source runs on a
+/// dedicated thread so a busy main thread can't trip the system's tap-timeout.
+/// All shared state is guarded by a lock because `handle()` runs on the tap
+/// thread while start/stop/update run on the main thread. Keyboard and mouse
+/// triggers feed the identical `ActivationGesture` machine — only the event
+/// source differs.
 final class HotKeyMonitor: @unchecked Sendable {
     struct Config: Sendable, Equatable {
         var key: ActivationKey
@@ -86,10 +89,16 @@ final class HotKeyMonitor: @unchecked Sendable {
 
         // Create the tap synchronously so `isStarted`/`tap` are set before we
         // return — no window where a second start() spawns a duplicate thread.
+        // `otherMouseDown`/`otherMouseUp` carry the side buttons (button 4/5) so a
+        // mouse-button `ActivationKey` can drive the same gesture machine; the tap
+        // is still listen-only, so the button keeps performing its native app
+        // action (e.g. browser back).
         let mask: CGEventMask =
             (1 << CGEventType.flagsChanged.rawValue) |
             (1 << CGEventType.keyDown.rawValue) |
-            (1 << CGEventType.keyUp.rawValue)
+            (1 << CGEventType.keyUp.rawValue) |
+            (1 << CGEventType.otherMouseDown.rawValue) |
+            (1 << CGEventType.otherMouseUp.rawValue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -234,26 +243,47 @@ final class HotKeyMonitor: @unchecked Sendable {
             return
         }
 
-        guard type == .flagsChanged else { return } // all supported keys are modifiers/Fn
+        // Mouse side buttons (button 4/5). When the bound key is a mouse button,
+        // its down/up edges arrive as `otherMouseDown`/`otherMouseUp` and feed the
+        // SAME gesture machine as a keyboard modifier would. A keyboard `ActivationKey`
+        // ignores these entirely (the button-number guard fails), and — symmetrically —
+        // a mouse `ActivationKey` ignores `flagsChanged` below.
+        if type == .otherMouseDown || type == .otherMouseUp {
+            lock.lock()
+            let cfg = config
+            guard cfg.key.isMouseButton,
+                  event.getIntegerValueField(.mouseEventButtonNumber) == cfg.key.mouseButtonNumber
+            else { lock.unlock(); return }
+            feedEdgeLocked(down: type == .otherMouseDown)
+            return
+        }
+
+        guard type == .flagsChanged else { return } // remaining supported keys are modifiers
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
+
+        lock.lock()
+        let cfg = config
+        // A mouse-bound key takes the branch above; ignore modifier chatter for it.
+        guard !cfg.key.isMouseButton, keyCode == cfg.key.keyCode else { lock.unlock(); return }
+        feedEdgeLocked(down: cfg.key.isDown(in: flags))
+    }
+
+    /// Feed one down/up edge into the pure gesture machine and fire whatever it
+    /// decides. **Must be called with `lock` already held** (the tap thread must
+    /// not race the deferred-end / health timers); it unlocks before invoking the
+    /// callback so no app code runs under the tap-thread lock. Shared by the
+    /// keyboard-modifier and mouse-button paths so both drive the identical machine.
+    private func feedEdgeLocked(down: Bool) {
         // One monotonic seconds clock for edges AND the deferred-end timer, so the
         // pure machine can compare an edge's timestamp against the timer's fire
         // timestamp. (The event's own timestamp is in different units; using uptime
         // for both keeps them commensurable.)
         let now = ProcessInfo.processInfo.systemUptime
-
-        lock.lock()
-        let cfg = config
-        guard keyCode == cfg.key.keyCode else { lock.unlock(); return }
-        let down = cfg.key.isDown(in: flags)
-        // Feed the timestamped edge to the pure gesture machine and act on what it
-        // decides — all still under `lock` (the tap thread must not race the timers).
         let action = down ? gesture.keyDown(at: now) : gesture.keyUp(at: now)
         let fire = applyLocked(action)
         lock.unlock()
-
         fire?()
     }
 
@@ -325,8 +355,9 @@ final class HotKeyMonitor: @unchecked Sendable {
         lock.unlock()
         guard held else { return }
 
-        let live = CGEventSource.flagsState(.combinedSessionState)
-        guard !cfg.key.isDown(in: live) else { return }
+        // Keyboard keys check the live modifier flags; mouse buttons check the live
+        // button state — same intent (is the trigger still physically down?).
+        guard !cfg.key.isPhysicallyDown(sessionState: .combinedSessionState) else { return }
 
         var fire: (@Sendable () -> Void)?
         lock.lock()
@@ -346,23 +377,60 @@ final class HotKeyMonitor: @unchecked Sendable {
 // MARK: - Key code / flag mapping
 
 private extension ActivationKey {
-    /// Hardware key code reported on `.flagsChanged`.
+    /// Hardware key code reported on `.flagsChanged`. Undefined for mouse buttons
+    /// (they never take the `flagsChanged` path); `-1` can't match any real keycode.
     var keyCode: Int64 {
         switch self {
         case .rightOption: return 61   // 0x3D
         case .leftOption: return 58    // 0x3A
         case .rightControl: return 62  // 0x3E
+        case .mouseButton4, .mouseButton5: return -1
+        }
+    }
+
+    /// The `mouseEventButtonNumber` a `CGEvent` reports for this button. macOS
+    /// numbers buttons 0-indexed (left = 0, right = 1, middle = 2), so the first
+    /// side button ("Button 4") is number 3 and the next ("Button 5") is 4. Only
+    /// meaningful for the mouse cases; `-1` for keyboard keys so it can't match.
+    var mouseButtonNumber: Int64 {
+        switch self {
+        case .mouseButton4: return 3
+        case .mouseButton5: return 4
+        case .rightOption, .leftOption, .rightControl: return -1
+        }
+    }
+
+    /// The `CGMouseButton` this maps to, for the live `buttonState` reconcile
+    /// (stuck-down check). `nil` for keyboard keys.
+    var cgMouseButton: CGMouseButton? {
+        switch self {
+        case .mouseButton4: return CGMouseButton(rawValue: 3)
+        case .mouseButton5: return CGMouseButton(rawValue: 4)
+        case .rightOption, .leftOption, .rightControl: return nil
         }
     }
 
     /// Device-dependent flag bit that distinguishes left vs right of a modifier
     /// pair (the merged `.maskAlternate` / `.maskControl` can't tell sides apart).
+    /// Mouse buttons aren't modifiers, so they're never "down in flags".
     func isDown(in flags: CGEventFlags) -> Bool {
         switch self {
         case .rightOption: return flags.rawValue & 0x40 != 0   // NX_DEVICERALTKEYMASK
         case .leftOption: return flags.rawValue & 0x20 != 0    // NX_DEVICELALTKEYMASK
         case .rightControl: return flags.rawValue & 0x2000 != 0 // NX_DEVICERCTLKEYMASK
+        case .mouseButton4, .mouseButton5: return false
         }
+    }
+
+    /// Whether this trigger is currently physically down according to the live
+    /// system input state — used by the reconcile tick to rescue a dropped release
+    /// so a held session can't latch forever. Keyboard keys read the modifier flag
+    /// state; mouse buttons read `CGEventSource.buttonState` for their button.
+    func isPhysicallyDown(sessionState state: CGEventSourceStateID) -> Bool {
+        if let button = cgMouseButton {
+            return CGEventSource.buttonState(state, button: button)
+        }
+        return isDown(in: CGEventSource.flagsState(state))
     }
 }
 

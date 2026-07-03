@@ -280,4 +280,134 @@ final class ActivationGestureTests: XCTestCase {
         XCTAssertEqual(g.keyUp(at: 3.0), .end)
         XCTAssertFalse(g.isActive)
     }
+
+    // MARK: Mouse-edge path (B7) — the SAME machine, fed by a mouse side button
+    //
+    // `HotKeyMonitor` feeds `otherMouseDown`/`otherMouseUp` edges for a bound mouse
+    // side button (button 4/5) into this exact machine, timestamped identically to a
+    // keyboard modifier's `flagsChanged` edges. The machine is input-source-agnostic
+    // (it consumes only `keyDown`/`keyUp`/`timerFired` with a time), so the full
+    // gesture family must behave identically no matter which HID drove the edge. The
+    // live mouse matrix is the maker's (headless); these pin the headless contract:
+    // a mouse edge sequence yields the same Actions a keyboard sequence would. The
+    // `mouseDown`/`mouseUp` locals below stand for the edges the tap thread derives
+    // from `otherMouseDown`/`otherMouseUp`.
+
+    func testMouseButtonHoldToTalkMatchesKeyboard() {
+        var g = ActivationGesture()
+        // The down/up edges here stand for a mouse side button's
+        // `otherMouseDown`/`otherMouseUp`, fed into the machine identically to a
+        // modifier's edges. Press-hold-release must begin on down and end on the
+        // post-threshold release, exactly like a modifier hold.
+        XCTAssertEqual(g.keyDown(at: 0), .begin, "a mouse side-button press begins immediately (first-phoneme priority)")
+        XCTAssertTrue(g.isHeld, "holding the side button is a held session")
+        XCTAssertEqual(g.keyUp(at: tap + 0.2), .end, "releasing the side button after a hold ends with zero added latency")
+        XCTAssertFalse(g.isActive)
+    }
+
+    func testMouseButtonTapTapLocksAndTapStops() {
+        var g = ActivationGesture()
+        // Quick tap-tap on the side button locks hands-free; a further tap stops.
+        XCTAssertEqual(g.keyDown(at: 0), .begin, "first side-button tap begins")
+        XCTAssertEqual(g.keyUp(at: 0.1), .deferEnd(fireAt: 0.1 + dbl), "first side-button tap defers its end")
+        XCTAssertEqual(g.keyDown(at: 0.2), .lock, "a second side-button press within the window locks")
+        XCTAssertTrue(g.isLocked)
+        XCTAssertEqual(g.keyUp(at: 0.25), .none, "the locking tap's release is ignored")
+        XCTAssertEqual(g.keyDown(at: 1.0), .end, "a later side-button press stops the locked session")
+        XCTAssertFalse(g.isActive)
+    }
+
+    func testMouseButtonLoneTapDefersThenEnds() {
+        var g = ActivationGesture()
+        // A single quick side-button tap with no follow-up ends on the deferred timer
+        // — never latches recording on — identical to the keyboard lone-tap path.
+        XCTAssertEqual(g.keyDown(at: 0), .begin)
+        XCTAssertEqual(g.keyUp(at: 0.1), .deferEnd(fireAt: 0.1 + dbl))
+        XCTAssertEqual(g.timerFired(at: 0.1 + dbl), .end, "with no second side-button tap the lone tap ends")
+        XCTAssertFalse(g.isActive)
+    }
+
+    func testMouseAndKeyboardEdgeSequencesProduceIdenticalActions() {
+        // The strongest statement of the input-source-agnostic contract: replay the
+        // same timestamped edge script through two independent machines — one framed
+        // as "keyboard", one as "mouse" — and assert the emitted Action streams are
+        // byte-for-byte equal. If they ever diverge, some path secretly depends on the
+        // input device, which the machine must never do.
+        let script: [(down: Bool, t: TimeInterval)] = [
+            (true, 0.0),      // begin
+            (false, 0.1),     // defer (quick tap)
+            (true, 0.2),      // lock
+            (false, 0.25),    // ignored
+            (true, 1.0),      // stop
+            (false, 1.05),    // stray
+        ]
+        var keyboard = ActivationGesture()
+        var mouse = ActivationGesture()
+        for step in script {
+            let kb = step.down ? keyboard.keyDown(at: step.t) : keyboard.keyUp(at: step.t)
+            let ms = step.down ? mouse.keyDown(at: step.t) : mouse.keyUp(at: step.t)
+            XCTAssertEqual(kb, ms, "keyboard and mouse edges must yield identical actions at t=\(step.t)")
+        }
+        XCTAssertEqual(keyboard.isActive, mouse.isActive, "both machines end in the same active state")
+    }
+}
+
+/// B7 mouse-button `ActivationKey` mapping — the pure, source-agnostic metadata the
+/// picker, onboarding keycap, and `HotKeyMonitor` read to route a mouse side button
+/// through the identical gesture machine and the collision-free paste chord.
+final class MouseButtonActivationKeyTests: XCTestCase {
+    func testMouseCasesAreClassifiedAsMouseButtons() {
+        XCTAssertTrue(ActivationKey.mouseButton4.isMouseButton)
+        XCTAssertTrue(ActivationKey.mouseButton5.isMouseButton)
+        for key in [ActivationKey.rightOption, .leftOption, .rightControl] {
+            XCTAssertFalse(key.isMouseButton, "\(key) is a keyboard modifier, not a mouse button")
+        }
+    }
+
+    func testMouseCasesCarryAGlyphAndKeyboardCasesDoNot() {
+        // The mouse buttons render as an SF Symbol glyph (no ⌥/⌃-style character
+        // exists for them); keyboard modifiers keep their glyph in the display name
+        // and expose no symbol.
+        XCTAssertEqual(ActivationKey.mouseButton4.symbolName, "computermouse")
+        XCTAssertEqual(ActivationKey.mouseButton5.symbolName, "computermouse")
+        XCTAssertNil(ActivationKey.rightOption.symbolName)
+        XCTAssertNil(ActivationKey.leftOption.symbolName)
+        XCTAssertNil(ActivationKey.rightControl.symbolName)
+    }
+
+    func testMousePasteShortcutIsControlCmdVAndCannotCollide() {
+        // A mouse side button is not a keyboard modifier, so no keyboard chord can
+        // clash with it — the re-paste chord defaults to ⌃⌘V for both cases.
+        for key in [ActivationKey.mouseButton4, .mouseButton5] {
+            XCTAssertEqual(key.pasteShortcut.secondary, .control, "\(key) pairs Command with Control")
+            XCTAssertEqual(key.pasteShortcut.display, "⌃⌘V", "\(key) shows the ⌃⌘V chord")
+        }
+    }
+
+    func testAllCasesIncludeTheTwoMouseButtons() {
+        // The picker renders every `allCases` entry; the two new mouse options must be
+        // present (and no toggles were added — the picker is still the only surface).
+        XCTAssertTrue(ActivationKey.allCases.contains(.mouseButton4))
+        XCTAssertTrue(ActivationKey.allCases.contains(.mouseButton5))
+        XCTAssertEqual(ActivationKey.allCases.count, 5, "three modifiers + two mouse buttons")
+    }
+
+    func testMouseDisplayNamesAreDistinctAndNonEmpty() {
+        // `.loc` falls back to the English source when a translation is missing, so a
+        // non-empty distinct display name proves the source strings are wired.
+        let n4 = ActivationKey.mouseButton4.displayName
+        let n5 = ActivationKey.mouseButton5.displayName
+        XCTAssertFalse(n4.isEmpty)
+        XCTAssertFalse(n5.isEmpty)
+        XCTAssertNotEqual(n4, n5, "the two side buttons have distinct labels")
+    }
+
+    func testCodableRawValuesArePinned() {
+        // Persistence stores the raw value; pin the two new ones so a future rename
+        // can't silently orphan a user's saved binding.
+        XCTAssertEqual(ActivationKey.mouseButton4.rawValue, "mouseButton4")
+        XCTAssertEqual(ActivationKey.mouseButton5.rawValue, "mouseButton5")
+        XCTAssertEqual(ActivationKey(rawValue: "mouseButton4"), .mouseButton4)
+        XCTAssertEqual(ActivationKey(rawValue: "mouseButton5"), .mouseButton5)
+    }
 }
