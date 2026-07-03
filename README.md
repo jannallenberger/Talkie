@@ -23,6 +23,8 @@ cd ~/Talkie
 ./scripts/run.sh            # builds Talkie.app and launches it
 ```
 
+Starting from nothing? One command clones and builds for you — `curl -fsSL https://raw.githubusercontent.com/jannallenberger/Talkie/main/scripts/install.sh | sh` (it may trigger Apple's multi-GB Command Line Tools download; read the ~60-line [script](scripts/install.sh) first, and see [docs/INSTALL.md](docs/INSTALL.md)).
+
 A **microphone icon appears in your menu bar**. First launch opens a setup
 window asking for three permissions (see below). Grant them, then:
 

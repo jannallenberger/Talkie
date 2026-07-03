@@ -59,7 +59,38 @@ After that they stick.
 
 ## Building it yourself
 
-The whole app is open source. If you'd rather build from the repo:
+The whole app is open source. This is the tinkerer / contributor path — for most
+people the Homebrew cask above is simpler, since it's a ready-made notarized
+download and needs no toolchain. But if you'd rather build from the repo, one
+command takes a fresh Mac all the way to a running, locally-built Talkie:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jannallenberger/Talkie/main/scripts/install.sh | sh
+```
+
+Two honest asterisks, up front rather than discovered:
+
+- **It may trigger a multi-GB download.** Building needs Apple's Swift 6 toolchain
+  with the macOS 26 SDK. If you don't already have Xcode, the script kicks off
+  Apple's Command Line Tools installer — *a multi-GB download*. Talkie itself is
+  small; the toolchain is the big part. When it finishes, re-run the same command.
+- **A Command-Line-Tools-only build skips the Liquid Glass app icon.** That icon
+  is compiled by `xcrun actool`, which ships only with the full Xcode app, so a
+  CLT-only build works but wears a plain icon. Install full Xcode if you want it.
+
+Prefer to read before you pipe a script into your shell? Good instinct — it's
+about 60 lines: [scripts/install.sh](../scripts/install.sh). All it does is check
+your Mac (Apple Silicon, macOS 26+), make sure the toolchain is present, clone (or
+fast-forward) the repo into `~/Talkie`, and hand off to `scripts/run.sh`. The only
+thing that touches the network is `git clone` — *your* shell fetching source on
+your behalf, exactly like `brew` does; the Talkie app never reaches out. Re-running
+the same command later is also how you **update** a source install.
+
+> **Note:** the repo is private for now, so this one-liner (and an anonymous
+> `git clone`) only work once the repo is public, or for someone already signed in
+> to GitHub. Until then it's the contributor path.
+
+Rather do it by hand? The equivalent, step by step:
 
 ```bash
 git clone https://github.com/jannallenberger/Talkie.git
@@ -67,7 +98,7 @@ cd Talkie
 ./scripts/run.sh      # builds Talkie.app and launches it
 ```
 
-This produces an ad-hoc local build — great on your own Mac, not for sharing.
+Either way you get an ad-hoc local build — great on your own Mac, not for sharing.
 See `README.md` for the full developer setup, and `scripts/notarize.sh` if you
 have an Apple Developer account and want to sign + notarize your own copy.
 
