@@ -500,6 +500,8 @@
 
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "단축어 “%@”을(를) 실행했습니다";
+"Scratched" = "취소함";
+"Replaced “%@” with “%@”" = "“%@”을(를) “%@”(으)로 교체함";
 "No shortcut named “%@”" = "“%@”(이)라는 단축어가 없습니다";
 "Couldn't run the shortcut “%@”" = "단축어 “%@”을(를) 실행하지 못했습니다";
 "After saving" = "저장 후";

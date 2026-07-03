@@ -502,6 +502,8 @@
 
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "Ran shortcut “%@”";
+"Scratched" = "Scratched";
+"Replaced “%@” with “%@”" = "Replaced “%@” with “%@”";
 "No shortcut named “%@”" = "No shortcut named “%@”";
 "Couldn't run the shortcut “%@”" = "Couldn't run the shortcut “%@”";
 "After saving" = "After saving";

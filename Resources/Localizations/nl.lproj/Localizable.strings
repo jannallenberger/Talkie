@@ -500,6 +500,8 @@
 
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "Opdracht “%@” uitgevoerd";
+"Scratched" = "Gewist";
+"Replaced “%@” with “%@”" = "“%@” vervangen door “%@”";
 "No shortcut named “%@”" = "Geen opdracht met de naam “%@”";
 "Couldn't run the shortcut “%@”" = "Kon de opdracht “%@” niet uitvoeren";
 "After saving" = "Na het opslaan";

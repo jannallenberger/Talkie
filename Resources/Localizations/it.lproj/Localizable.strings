@@ -500,6 +500,8 @@
 
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "Comando rapido “%@” eseguito";
+"Scratched" = "Cancellato";
+"Replaced “%@” with “%@”" = "“%@” sostituito con “%@”";
 "No shortcut named “%@”" = "Nessun comando rapido di nome “%@”";
 "Couldn't run the shortcut “%@”" = "Impossibile eseguire il comando rapido “%@”";
 "After saving" = "Dopo il salvataggio";

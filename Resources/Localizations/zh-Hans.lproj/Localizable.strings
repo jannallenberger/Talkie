@@ -500,6 +500,8 @@
 
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "已运行快捷指令“%@”";
+"Scratched" = "已删除";
+"Replaced “%@” with “%@”" = "已将“%@”替换为“%@”";
 "No shortcut named “%@”" = "没有名为“%@”的快捷指令";
 "Couldn't run the shortcut “%@”" = "无法运行快捷指令“%@”";
 "After saving" = "保存后";

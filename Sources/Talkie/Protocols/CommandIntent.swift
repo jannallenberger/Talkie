@@ -25,6 +25,15 @@ struct CommandContext: Sendable {
     var target: TargetApp
     var graph: ContextGraphSnapshot
     var summarizer: any Summarizer
+    /// The just-dictated entry, when one is still eligible to be edited in place —
+    /// same app, ≤45s old, and its insertion actually landed (B9). Populated at the
+    /// dispatch site from `ImplicitSelectionGate.eligible(...)`, gated on the last
+    /// outcome being `.inserted`. `nil` in every other case (including all callers
+    /// predating B9), so edit intents ("scratch that", "replace X with Y") that depend
+    /// on it simply never route when there's nothing safe to edit — fail-closed.
+    /// Defaulted so call sites predating B9 (the rewrite / macro / cross-surface
+    /// dispatch) keep constructing `CommandContext` unchanged.
+    var lastInserted: DictationEntry? = nil
 }
 
 struct CommandResult: Sendable {

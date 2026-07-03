@@ -500,6 +500,8 @@
 
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "ショートカット“%@”を実行しました";
+"Scratched" = "取り消しました";
+"Replaced “%@” with “%@”" = "“%@”を“%@”に置き換えました";
 "No shortcut named “%@”" = "“%@”というショートカットはありません";
 "Couldn't run the shortcut “%@”" = "ショートカット“%@”を実行できませんでした";
 "After saving" = "保存後";

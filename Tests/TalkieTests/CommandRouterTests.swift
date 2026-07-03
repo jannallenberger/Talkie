@@ -146,4 +146,50 @@ final class CommandRouterTests: XCTestCase {
         XCTAssertEqual(r.intent(for: "run shortcut ship it")?.id, "insert-macro",
                        "a matching macro outranks the run-shortcut parser")
     }
+
+    // MARK: - Edit-of-just-inserted-text (B9) precedence
+
+    private func entry(_ text: String) -> DictationEntry {
+        DictationEntry(timestampUnix: Date().timeIntervalSince1970, text: text,
+                       appName: "TextEdit", appCategory: "writing", bundleID: "com.apple.TextEdit")
+    }
+
+    /// DELIBERATE precedence inversion, documented: a B9 edit command ("scratch that")
+    /// SHADOWS a same-named user macro — but ONLY in the narrow window where an eligible
+    /// last dictation exists to edit (`lastInserted != nil`). In that window, editing
+    /// the text you just spoke is unambiguously what "scratch that" means; the macro is
+    /// still reachable every other time. This is the one place an edit outranks a macro,
+    /// and it's safe precisely because the eligibility gate is so narrow (same app,
+    /// ≤45s, insertion landed). Adds then removes the macro so the on-disk store is
+    /// left exactly as found.
+    func testEditIntentShadowsSameNamedMacroWhileTargetEligible() {
+        let macros = MacroStore()
+        macros.add(trigger: "scratch that", expansion: "EXPANDED")
+        defer { macros.macros.filter { $0.trigger == "scratch that" }.forEach { macros.delete($0) } }
+        let r = CommandRouter(macros: macros, summarizer: StubLLM(output: nil))
+
+        // With an eligible target, the edit wins.
+        XCTAssertEqual(r.intent(for: "scratch that", lastInserted: entry("some text"))?.id,
+                       "scratch-that",
+                       "with a fresh dictation to scratch, the edit intent deliberately shadows the macro")
+
+        // With NO eligible target, the macro is reachable exactly as before.
+        XCTAssertEqual(r.intent(for: "scratch that", lastInserted: nil)?.id,
+                       "insert-macro",
+                       "with nothing to scratch, the same-named macro matches normally — no regression")
+    }
+
+    /// The kill switch composes with macro precedence: "replace X with Y" where X is
+    /// absent from the just-dictated text does NOT become an edit, so a same-named macro
+    /// (if any) or normal dictation still governs. Here, with no macro, it falls through
+    /// to nil (dictates literally) despite an eligible target being present.
+    func testReplaceWithAbsentFindDoesNotShadowMacro() {
+        let macros = MacroStore()
+        let saved = macros.macros
+        for m in saved { macros.delete(m) }
+        defer { for m in saved { macros.add(trigger: m.trigger, expansion: m.expansion) } }
+        let r = CommandRouter(macros: macros, summarizer: StubLLM(output: nil))
+        XCTAssertNil(r.intent(for: "replace apple with orange", lastInserted: entry("meet Sara at nine")),
+                     "X ('apple') absent from the dictated text — kill switch blocks the edit; dictates literally")
+    }
 }

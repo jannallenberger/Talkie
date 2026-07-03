@@ -168,6 +168,23 @@ final class HistoryStore: ObservableObject {
         save()
     }
 
+    /// Rewrite the text of an existing entry in place, keeping its id, timestamp, and
+    /// app metadata (B9). Used when a voice edit ("replace X with Y") fixes text the
+    /// user just dictated: the stored history must reflect what's now on screen so a
+    /// follow-up "replace…" composes on the EDITED text, not the stale original — and
+    /// so the History tab shows the corrected version. Deliberately does NOT touch
+    /// word counts, lifetime stats, or the context graph: an in-place edit isn't a new
+    /// dictation, and re-ingesting it would double-count words and duplicate graph
+    /// provenance. A "scratch that" removes the entry entirely via `delete` instead of
+    /// storing an empty one. No-op if the id isn't found or the new text is empty
+    /// (a full erase should route through `delete`, not this).
+    func updateText(id: UUID, newText: String) {
+        let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let idx = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[idx].text = trimmed
+        save()
+    }
+
     func clearAll() {
         entries.removeAll()
         // Overwrite-then-delete the existing history.json before the empty rewrite,

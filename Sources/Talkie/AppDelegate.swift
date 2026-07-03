@@ -115,6 +115,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// so exactly one record per app run is tagged `coldStart` (first-dictation
     /// warm-up costs, e.g. model spin-up, look different from steady-state).
     private var didRecordLatencyThisLaunch = false
+
+    /// The id of the last real (non-try-it, stored) dictation whose insertion actually
+    /// landed via paste (`.inserted`), or nil when the most recent dictation was left
+    /// on the clipboard / empty / not stored. B9's in-place voice edits ("scratch
+    /// that", "replace X with Y") gate on this: `replaceBackward` / `deleteBackward`
+    /// select-and-paste at the caret, which is only meaningful when the text is really
+    /// in the field — so if the last insertion fell back to the clipboard
+    /// (`leftOnClipboard`), the edit must NOT run and the phrase inserts literally.
+    /// Compared against `history.entries.first?.id` at the dispatch site so a scratch
+    /// only fires when the freshest entry is also the one that landed.
+    private var lastInsertedDictationID: UUID?
     /// Bumped on every begin; lets an in-flight async setup detect that the
     /// user already released the key (or started a newer session) and bail.
     private var sessionID = 0
@@ -1602,6 +1613,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            // B9 — voice editing of just-inserted text ("scratch that" /
+            // "replace X with Y"). Runs BEFORE the general command dispatch and the
+            // dictation path, but ONLY when the last dictation is still a safe, live
+            // edit target: same app + ≤45s (`ImplicitSelectionGate`) AND its insertion
+            // actually landed in the field (`lastInsertedDictationID` matches the
+            // freshest history entry — the last-outcome-`.inserted` bit). Gated on
+            // `optimistic == nil` like every other interception here (with optimistic
+            // insertion on, the interim is already pasted, so intercepting would strand
+            // it). The router additionally enforces the false-positive kill switch
+            // (`replace X with Y` is an edit only if X literally occurs, word-bounded,
+            // in that text); anything that isn't a byte-exact edit command falls through
+            // and dictates literally.
+            if optimistic == nil,
+               let editTarget = ImplicitSelectionGate.eligible(
+                   lastEntry: self.history.entries.first, now: Date(), currentTarget: target
+               ),
+               editTarget.id == self.lastInsertedDictationID,
+               let editIntent = self.commandRouter.intent(for: finalText, lastInserted: editTarget),
+               editIntent is ScratchThatIntent || editIntent is ReplaceWordIntent {
+                if await self.runVoiceEdit(intent: editIntent, target: editTarget, mode: mode) {
+                    self.isProcessing = false
+                    return
+                }
+                // The edit was skipped (best-effort AX check says the field no longer
+                // ends with the expected text, or the recomputed edit didn't apply):
+                // literal insertion is the safe failure, so fall through to dictate the
+                // phrase exactly as spoken.
+            }
+
             // Voice command mode (the on-device copilot): a leading-imperative over
             // a selection ("make this a list", "translate to German"), a
             // whole-utterance macro, or — behind `crossSurfaceCommandsEnabled`,
@@ -1834,6 +1874,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             switch outcome {
             case .inserted:
+                // B9: remember that THIS dictation's text actually landed in the field,
+                // so a follow-up "scratch that" / "replace X with Y" may edit it in
+                // place. Only when it was stored (a Private app keeps no history entry
+                // to edit) — otherwise the edit gate has no matching entry and must not
+                // fire. The optimistic-replace path (`optimistic != nil`) also lands as
+                // `.inserted`, and its text is genuinely on screen, so it qualifies too.
+                self.lastInsertedDictationID = neverStore ? nil : dictationID
                 Feedback.done()
                 self.hud.showInserting(replacedWords: replacedWords, privateSession: neverStore)
                 self.hud.hide(after: replacedWords.isEmpty ? 0.4 : 1.4)
@@ -1934,6 +1981,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // dictionary, and a Private app learns nothing from what you dictate.
                 if !neverStore { self.maybeOfferLowConfidenceReview(reviewFlagged) }
             case .leftOnClipboard(let reason):
+                // B9: the text is on the clipboard, NOT in the field — a caret-relative
+                // edit would corrupt whatever is focused, so clear the edit target.
+                self.lastInsertedDictationID = nil
                 Feedback.notPasted()
                 // Couldn't paste — the text is on the clipboard; offer a tap to
                 // (re)copy it, plus the ⌥⌘V re-paste shortcut once a field is focused.
@@ -1954,6 +2004,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     shortcut: self.settings.pasteLastShortcutEnabled ? self.pasteLastShortcutDisplay : nil
                 )
             case .empty:
+                // B9: nothing landed — no valid edit target.
+                self.lastInsertedDictationID = nil
                 self.hud.hide()
             }
         }
@@ -2006,6 +2058,120 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.hud.showReverted()
         }
         return true
+    }
+
+    // MARK: Voice editing of just-inserted text (B9)
+
+    /// Execute a B9 in-place edit ("scratch that" / "replace X with Y") against the
+    /// text just dictated into the front app. Returns `true` when the edit was applied
+    /// (the caller should stop — nothing else runs for this utterance) and `false` when
+    /// it was deliberately SKIPPED, so the caller falls through and dictates the phrase
+    /// literally (the safe failure).
+    ///
+    /// Runs the edit IMMEDIATELY — no confirm tap. B9 edits are byte-exact (a
+    /// deterministic delete or rightmost-occurrence swap, not a fuzzy LLM rewrite), and
+    /// the RSI user this is built for can't reach for a confirm chip; instead every edit
+    /// shows a tap-optional Undo pill (`showLearned`-style) that restores the original
+    /// via the same clipboard-paste primitive B1/B2 use.
+    ///
+    /// Best-effort safety net beyond the time/app/outcome gate: a cheap AX read of the
+    /// focused field. If the field is READABLE and its text does NOT still end with what
+    /// we inserted, the caret/content moved out from under us — skip and insert
+    /// literally. An UNREADABLE field (Electron/web: VS Code, Slack, Chrome, Claude) is
+    /// NOT a mismatch; per `ImplicitSelectionGate`'s doctrine it fails OPEN, because a
+    /// stricter AX check is exactly as blind there and would defeat the feature where
+    /// it's needed most.
+    /// - Returns: whether an edit was applied.
+    private func runVoiceEdit(intent: any CommandIntent, target: DictationEntry, mode: InsertionMode) async -> Bool {
+        // `.type`-learned apps can't be edited by the paste-based backward primitives
+        // (`replaceBackward`/`deleteBackward` are paste-mode only). Rather than a
+        // partial select+retype that risks corrupting the field, treat a non-paste app
+        // as "can't safely edit" and insert literally. (Paste is the default; only apps
+        // that failed a paste and self-healed to `.type` land here — rare.)
+        guard mode == .paste else { return false }
+
+        // Best-effort end-of-field check (fails OPEN when unreadable).
+        if !focusedFieldStillEndsWith(target.text) { return false }
+
+        let original = target.text
+        let originalCount = original.count
+
+        switch intent {
+        case let scratch as ScratchThatIntent:
+            _ = scratch // carries `original`; we use `target.text` (identical) directly
+            let outcome = TextInjector.deleteBackward(graphemeCount: originalCount, mode: mode)
+            guard case .inserted = outcome else { return false }
+            // The scratched text is no longer on screen and no longer in history.
+            self.history.delete(target)
+            // A scratch consumes the edit target: a second "scratch that" must not
+            // re-fire against a now-deleted entry.
+            if self.lastInsertedDictationID == target.id { self.lastInsertedDictationID = nil }
+            self.hud.showLearned("Scratched".loc) { [weak self] in
+                guard let self else { return }
+                // Undo: re-insert the original at the caret (B2 paste path) and restore
+                // the history entry so the two agree again. A fresh entry (new id) is
+                // the honest record — it's a re-insertion, not the resurrection of the
+                // exact prior row — and it becomes the new edit target.
+                _ = TextInjector.insert(original, mode: mode)
+                let restored = self.history.add(
+                    original, wordCount: WordCounter.count(original), durationSec: 0,
+                    appName: target.appName, appCategory: target.appCategory, bundleID: target.bundleID
+                )
+                self.lastInsertedDictationID = restored?.id
+                self.hud.showReverted()
+            }
+            return true
+
+        case let replace as ReplaceWordIntent:
+            guard let edited = replace.editedText, edited != original else { return false }
+            let outcome = TextInjector.replaceBackward(
+                graphemeCount: originalCount, with: edited, mode: mode
+            )
+            guard case .inserted = outcome else { return false }
+            // History now reflects what's on screen, so a follow-up "replace…" composes
+            // on the edited text. No stats/graph re-ingestion — an edit isn't a new
+            // dictation (see `HistoryStore.updateText`).
+            self.history.updateText(id: target.id, newText: edited)
+            let editedCount = edited.count
+            let message = String(
+                format: "Replaced “%@” with “%@”".loc,
+                replace.find, replace.replacement
+            )
+            self.hud.showLearned(message) { [weak self] in
+                guard let self else { return }
+                // Undo: swap the edited span back to the original via the same
+                // backward-select-and-paste primitive, and restore the history text.
+                _ = TextInjector.replaceBackward(
+                    graphemeCount: editedCount, with: original, mode: mode
+                )
+                self.history.updateText(id: target.id, newText: original)
+                self.hud.showReverted()
+            }
+            return true
+
+        default:
+            return false
+        }
+    }
+
+    /// Best-effort: whether the focused field's text still ends with `expected` (the
+    /// text we just inserted), tolerating the smart-quote/dash reformatting apps apply.
+    /// Returns `true` (proceed) when the field is UNREADABLE — Electron/web apps expose
+    /// no AX value, and per `ImplicitSelectionGate` doctrine we fail OPEN there rather
+    /// than block the feature in exactly the apps that need it. Only a readable field
+    /// whose visible tail no longer matches returns `false` (skip the edit).
+    private func focusedFieldStillEndsWith(_ expected: String) -> Bool {
+        guard let (_, value) = AXFieldReader.focusedElementValue() else {
+            return true // unreadable → fail open
+        }
+        let haystack = AXFieldReader.normalizeForMatch(value).trimmingCharacters(in: .whitespacesAndNewlines)
+        let needle = AXFieldReader.normalizeForMatch(expected).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return true }
+        // Prefer an exact tail match (the common case: our text is the last thing
+        // typed), but accept containment too — some fields append a trailing newline or
+        // the app moved the caret without altering our run. A field that doesn't
+        // contain our text at all is a genuine mismatch: skip.
+        return haystack.hasSuffix(needle) || haystack.contains(needle)
     }
 
     /// The one-time offer to learn from Claude Code prompts. Reuses the command-preview
