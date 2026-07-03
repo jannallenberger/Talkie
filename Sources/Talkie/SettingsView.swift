@@ -74,6 +74,7 @@ final class MainWindowController {
         stats: StatsStore,
         appUsage: AppUsageStore,
         activity: ActivityStore,
+        wordFreq: WordFrequencyStore,
         projectIndex: ProjectIndexStore,
         contextSummary: ContextSummaryStore,
         meetingRecorder: MeetingRecorder,
@@ -95,6 +96,7 @@ final class MainWindowController {
             stats: stats,
             appUsage: appUsage,
             activity: activity,
+            wordFreq: wordFreq,
             projectIndex: projectIndex,
             contextSummary: contextSummary,
             meetingRecorder: meetingRecorder,
@@ -145,6 +147,7 @@ struct MainView: View {
     @ObservedObject var stats: StatsStore
     @ObservedObject var appUsage: AppUsageStore
     @ObservedObject var activity: ActivityStore
+    @ObservedObject var wordFreq: WordFrequencyStore
     @ObservedObject var projectIndex: ProjectIndexStore
     @ObservedObject var contextSummary: ContextSummaryStore
     @ObservedObject var meetingRecorder: MeetingRecorder
@@ -193,7 +196,7 @@ struct MainView: View {
         case .memory:
             MemoryView(contextGraph: contextGraph, history: history,
                        searchEngine: searchEngine, meetingStore: meetingStore,
-                       contextSummary: contextSummary)
+                       wordFreq: wordFreq, contextSummary: contextSummary)
         case .commands:
             CommandsView(settings: settings, macros: macros,
                          commandRouter: commandRouter, hud: hud,

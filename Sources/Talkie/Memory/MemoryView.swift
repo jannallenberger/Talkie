@@ -14,6 +14,10 @@ struct MemoryView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var searchEngine: SearchEngine
     let meetingStore: MeetingStore
+    /// L4: kept in step with the visible history — deleting a dictation decrements
+    /// its word/phrase counts, and "Clear everything" wipes the store, so the
+    /// lifetime vocabulary never outlives the history it was built from.
+    @ObservedObject var wordFreq: WordFrequencyStore
     /// Cleared on every delete so `context_summary.json` can't keep quoting text you
     /// just deleted. Defaulted so previews/tests that don't wire it still compile.
     var contextSummary: ContextSummaryStore? = nil
@@ -78,6 +82,7 @@ struct MemoryView: View {
     private func deleteDictation(_ entry: DictationEntry) {
         history.delete(entry)
         contextGraph.purge(source: .dictation, sourceID: entry.id.uuidString)
+        wordFreq.purge(text: entry.text)
         contextSummary?.clearSummary()
     }
 
@@ -87,6 +92,7 @@ struct MemoryView: View {
     private func clearEverything() {
         history.clearAll()
         contextGraph.purge(source: .dictation, sourceID: nil)
+        wordFreq.clearAll()
         contextSummary?.clearSummary()
     }
 
