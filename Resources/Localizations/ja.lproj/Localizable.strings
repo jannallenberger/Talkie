@@ -421,3 +421,8 @@
 "Fix the spelling of %@ for next time." = "次回のために %@ のつづりを修正します。";
 "Added “%@” to dictionary" = "“%@” を辞書に追加しました";
 "Already learning “%@”" = "“%@” はすでに学習中です";
+
+// H4 — live permission polling + one-click relaunch
+"Relaunch now" = "今すぐ再起動";
+"Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "入力監視は許可されていますが、キーを認識するには Talkie の再起動が必要です。";
+"Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "入力監視は有効ですが、キーを認識するには Talkie を一度再起動してください。";
