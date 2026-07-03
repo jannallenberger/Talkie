@@ -505,7 +505,8 @@ private struct MCPConnectorCard: View {
     }
 
     private let toolNames = ["list_meetings", "get_meeting", "get_brief",
-                             "list_commitments", "lookup_entity", "search"]
+                             "list_commitments", "lookup_entity", "search",
+                             "get_recent_context", "graph_query"]
 
     @State private var copiedConfig = false
     @State private var copiedCommand = false
