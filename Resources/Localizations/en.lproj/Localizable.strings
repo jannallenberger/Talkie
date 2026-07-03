@@ -359,3 +359,11 @@
 "Signature: %@" = "Signature: %@";
 "Version: %@" = "Version: %@";
 "Taken: %@" = "Taken: %@";
+
+# I3 — true delete (purge + best-effort shred) confirmations
+"Delete" = "Delete";
+"Clear everything" = "Clear everything";
+"Clear your dictation history?" = "Clear your dictation history?";
+"Delete this meeting?" = "Delete this meeting?";
+"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.";
+"Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.";

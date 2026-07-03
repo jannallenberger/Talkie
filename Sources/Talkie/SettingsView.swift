@@ -192,7 +192,8 @@ struct MainView: View {
             DictionarySettings(dictionary: dictionary, nicheVocab: nicheVocab)
         case .memory:
             MemoryView(contextGraph: contextGraph, history: history,
-                       searchEngine: searchEngine, meetingStore: meetingStore)
+                       searchEngine: searchEngine, meetingStore: meetingStore,
+                       contextSummary: contextSummary)
         case .commands:
             CommandsView(settings: settings, macros: macros,
                          commandRouter: commandRouter, hud: hud,

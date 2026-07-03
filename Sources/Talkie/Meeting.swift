@@ -340,8 +340,13 @@ final class MeetingStore: ObservableObject {
 
     func delete(_ meeting: Meeting) {
         meetings.removeAll { $0.id == meeting.id }
+        // A meeting persists no audio — the `.md` transcript IS the recording, so
+        // overwrite-then-delete it (best effort, see FileShredder) rather than a plain
+        // unlink that leaves the transcript bytes intact-but-unlinked on disk. The
+        // graph provenance sourced from this meeting is purged at the caller
+        // (MeetingsView) so this store stays single-purpose.
         let url = meetingsDirectoryURL.appendingPathComponent(meeting.fileName)
-        try? FileManager.default.removeItem(at: url)
+        FileShredder.shred(url)
         save()
     }
 
