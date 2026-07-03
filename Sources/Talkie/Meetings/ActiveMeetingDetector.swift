@@ -170,8 +170,6 @@ actor ActiveMeetingDetector: MeetingContextProvider {
         var enabled: Bool
         /// Known meeting apps (bundle id → name + tier).
         var allowlist: [MeetingApp]
-        /// Offer even for an unknown (non-allowlisted) mic-hot app. Noisy; default off.
-        var offerForAnyMicApp: Bool
         /// Bundle ids the user muted (via repeated dismissals); never offered.
         var muted: Set<String> = []
         /// How often to scan. Cheap metadata reads, so 1.5 s is comfortable.
@@ -189,8 +187,8 @@ actor ActiveMeetingDetector: MeetingContextProvider {
     /// Bundle ids → friendly name + tier, derived from `config.allowlist`.
     private var allowlist: [String: MeetingApp]
     private var state = DetectorState()
-    /// Per-app dismissal tallies driving browser-tier auto-mute. Ephemeral (resets
-    /// on relaunch — acceptable, and honest).
+    /// Per-app dismissal tallies driving auto-mute for browser-tier and unknown
+    /// (non-allowlisted) apps. Ephemeral (resets on relaunch — acceptable, and honest).
     private var dismissalCounts: [String: Int] = [:]
     private var loop: Task<Void, Never>?
     private var onDetect: (@Sendable (MeetingSignal) -> Void)?
@@ -231,8 +229,8 @@ actor ActiveMeetingDetector: MeetingContextProvider {
     /// Begin the poll loop. `onDetect` fires (once per meeting session) when a new
     /// meeting crosses the start threshold; the caller hops it to the MainActor and
     /// applies the dictation/recording suppression checks before showing the banner.
-    /// `onMute` fires when an app crosses the browser-tier dismissal threshold, so
-    /// the caller can persist the mute.
+    /// `onMute` fires when an app crosses the dismissal threshold (browser-tier or
+    /// unknown, non-allowlisted apps), so the caller can persist the mute.
     func start(onDetect: @escaping @Sendable (MeetingSignal) -> Void,
                onMute: @escaping @Sendable (String) -> Void) {
         self.onDetect = onDetect
@@ -274,8 +272,7 @@ actor ActiveMeetingDetector: MeetingContextProvider {
     /// One poll tick: scan, decide, maybe fire. Returns the interval to wait next.
     private func pollOnce() -> Duration {
         let active = AudioProcessScanner.processesCapturingInput(excludingPID: selfPID)
-        let candidate = Self.bestCandidate(active, allowlist: allowlist,
-                                           offerForAnyMicApp: config.offerForAnyMicApp)
+        let candidate = Self.bestCandidate(active, allowlist: allowlist)
         let now = Date().timeIntervalSince1970
         let (newState, offer) = Self.decide(state: state, candidate: candidate, now: now, config: config)
         state = newState
@@ -288,14 +285,22 @@ actor ActiveMeetingDetector: MeetingContextProvider {
 
     /// Record that the current session was dismissed so it never re-offers. When
     /// `mute` is set (an explicit Dismiss tap, not a soft auto-hide), tally it and —
-    /// for browser-tier apps — mute the app after the threshold.
+    /// for browser-tier and unknown, non-allowlisted apps — mute the app after the
+    /// threshold. Dedicated meeting apps never auto-mute.
     func markSessionDismissed(_ bundleID: String?, mute: Bool) {
         state.dismissed = true
         guard mute, let id = bundleID else { return }
         dismissalCounts[id, default: 0] += 1
-        // Meeting apps almost always mean a recordable call, so they never auto-mute;
-        // browsers (a weaker signal) mute after 2 dismissals.
-        let threshold = (allowlist[id]?.tier == .browser) ? 2 : Int.max
+        // Explicit dedicated meeting apps almost always mean a recordable call, so
+        // they never auto-mute. Everything weaker mutes after 2 dismissals: browsers
+        // (a call *may* have started) AND unknown, non-allowlisted apps. That cap is
+        // what makes always-offering-for-unknown-apps safe — two dismissals silence a
+        // noisy app for good. (The consent banner still gates every actual recording.)
+        let threshold: Int
+        switch allowlist[id]?.tier {
+        case .meetingApp: threshold = Int.max
+        case .browser, nil: threshold = 2
+        }
         if dismissalCounts[id, default: 0] >= threshold, !config.muted.contains(id) {
             config.muted.insert(id)
             onMute?(id)
@@ -306,11 +311,12 @@ actor ActiveMeetingDetector: MeetingContextProvider {
 
     /// One-shot probe: is a meeting likely happening right now? Reports any mic-hot
     /// app (so 04/05 can read a low-confidence signal); the *offer* gate lives in the
-    /// poll loop, not here.
+    /// poll loop, not here. `bestCandidate` now returns any mic-hot app regardless of
+    /// the allowlist, so this probe is unchanged — it always reported unknown apps too.
     func detectActiveMeeting() async -> MeetingSignal? {
         guard Self.isSupported else { return nil }
         let active = AudioProcessScanner.processesCapturingInput(excludingPID: selfPID)
-        guard let c = Self.bestCandidate(active, allowlist: allowlist, offerForAnyMicApp: true) else { return nil }
+        guard let c = Self.bestCandidate(active, allowlist: allowlist) else { return nil }
         return MeetingSignal(confidence: c.confidence, appBundleID: c.bundleID,
                              appName: c.appName, tier: c.tier,
                              startedAtUnix: Date().timeIntervalSince1970)
@@ -341,14 +347,15 @@ actor ActiveMeetingDetector: MeetingContextProvider {
         var lastSeenUnix: Double?
     }
 
-    /// Pick the highest-confidence mic-hot process and decide whether it's
-    /// offer-worthy. Allowlisted apps (meeting/browser) always qualify; an unknown
-    /// mic-hot app qualifies only when `offerForAnyMicApp` is set. Returns nil when
-    /// nothing offer-worthy is on the mic. (`max` keeps the strongest, so "Zoom +
-    /// Chrome both on the mic" names Zoom.)
+    /// Pick the highest-confidence mic-hot process. Every mic-hot process is now
+    /// offer-worthy: allowlisted apps (meeting/browser) at their tier confidence, and
+    /// unknown, non-allowlisted apps at the low `micHotOnly` floor. (The old opt-in
+    /// "offer for any mic app" gate is gone — adaptive two-dismissal muting in
+    /// `markSessionDismissed` caps the resulting noise instead.) Returns nil only when
+    /// nothing is on the mic. (`max` keeps the strongest, so "Zoom + Chrome both on the
+    /// mic" names Zoom.)
     static func bestCandidate(_ active: [ActiveInputProcess],
-                              allowlist: [String: MeetingApp],
-                              offerForAnyMicApp: Bool) -> DetectionCandidate? {
+                              allowlist: [String: MeetingApp]) -> DetectionCandidate? {
         guard !active.isEmpty else { return nil }
         let ranked = active.map { proc -> DetectionCandidate in
             let app = proc.bundleID.flatMap { allowlist[$0] }
@@ -361,9 +368,7 @@ actor ActiveMeetingDetector: MeetingContextProvider {
             return DetectionCandidate(bundleID: proc.bundleID, appName: app?.displayName,
                                       tier: app?.tier, confidence: confidence)
         }
-        guard let best = ranked.max(by: { $0.confidence < $1.confidence }) else { return nil }
-        if best.tier == nil, !offerForAnyMicApp { return nil }
-        return best
+        return ranked.max(by: { $0.confidence < $1.confidence })
     }
 
     /// Evolve the session/debounce state by one poll and decide whether to fire an

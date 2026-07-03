@@ -24,6 +24,20 @@ banner — Talkie offers to record but **never** records silently. It is wired a
 first `MeetingContextProvider` implementation so the calendar feature (04) and the
 recorder (01) consume it through one seam.
 
+> **Correction (H9, 2026-07-03):** the `offerForAnyMicApp` / `offerMeetingForAnyMicApp`
+> opt-in toggle described throughout this doc (§§ config, Settings, edge cases, tests)
+> has been **deleted end-to-end**. Unknown, non-allowlisted mic-hot apps are now
+> **always** offer-worthy (the old default-OFF gate is gone). This is kept safe by
+> **extending the repeated-dismissal mute** (§ "Repeated-dismissal mute"): the
+> two-dismissal auto-mute now covers browser-tier **and** unknown (nil-tier) apps;
+> only explicit dedicated meeting apps are never auto-muted. The consent banner still
+> gates every actual recording (never-silent contract, unchanged). Separately, the
+> bundle-id `TextField` this doc's Settings section assumed was already replaced by an
+> installed-apps picker sheet (`MeetingAppPickerSheet`, browse-installed-apps + Finder
+> fallback) in a prior merge — so H9's "friendly picker" acceptance was already met by
+> a richer mechanism than the running-apps `Menu` originally specced; no "running apps
+> only" footer was added because the picker lists installed apps, not just running ones.
+
 ---
 
 ## 2. Why it matters

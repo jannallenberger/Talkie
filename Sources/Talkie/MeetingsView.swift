@@ -347,18 +347,14 @@ struct MeetingsView: View {
 
     @ViewBuilder
     private var detectionCard: some View {
-        SettingsCard(header: "Auto-detect") {
+        SettingsCard(
+            header: "Auto-detect",
+            footer: "When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced).".loc
+        ) {
             SettingsToggleRow(
                 title: "Detect meetings & offer to record".loc,
                 subtitle: "When a call app starts using your mic, Talkie offers to record. It never records on its own.".loc,
                 isOn: $settings.autoDetectMeetings)
-            if settings.autoDetectMeetings {
-                SettingsDivider()
-                SettingsToggleRow(
-                    title: "Offer for any mic app".loc,
-                    subtitle: "Also offer when an app that isn’t in your list starts recording. Noisier.".loc,
-                    isOn: $settings.offerMeetingForAnyMicApp)
-            }
         }
 
         SettingsCard(header: "Live pill") {

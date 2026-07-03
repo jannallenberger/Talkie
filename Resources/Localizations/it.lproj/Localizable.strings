@@ -550,3 +550,4 @@
 "%d chars" = "%d caratteri";
 "%.0f ms" = "%.0f ms";
 "%.1f s" = "%.1f s";
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Quando una qualsiasi app inizia a usare il microfono, Talkie propone di registrare — non registra mai da solo. Ignora due volte la proposta di un’app e Talkie smette di proporla per quell’app (le tue app di riunione dedicate non vengono mai silenziate)."
