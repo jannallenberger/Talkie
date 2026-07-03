@@ -127,6 +127,9 @@ struct FileImportResult: Sendable {
     var transcript: String
     /// Audio length in seconds, measured from the source file (before resample).
     var durationSec: Double
+    /// Per-segment audio-clock timings (single speaker) for the imported meeting's
+    /// `Meeting.segments`. Nil when there was nothing timed to persist.
+    var segments: [MeetingSegment]? = nil
 }
 
 // MARK: - Importer seam
@@ -204,7 +207,12 @@ actor FileImportEngine: FileImporting {
         let log = TurnLog(startedAt: Date())
         let session: (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation)
         do {
-            session = try await engine.beginSession(segmentHandler: { segment in log.add(.me, segment) })
+            // Timed handler: the recognizer's audio-clock span drives both the turn's
+            // time and `Meeting.segments`, so an imported file's segments are as real
+            // as a live recording's (the whole file is one "Me" speaker).
+            session = try await engine.beginSession(timedSegmentHandler: { seg in
+                log.add(.me, seg.text, at: seg.start, end: seg.end)
+            })
         } catch {
             throw FileImportError.speechUnavailable
         }
@@ -223,10 +231,12 @@ actor FileImportEngine: FileImporting {
         session.continuation.finish()
         _ = await engine.finishSessionDetailed()
 
-        let transcript = MeetingTranscriptRenderer.render(log.snapshot())
+        let snapshot = log.snapshot()
+        let transcript = MeetingTranscriptRenderer.render(snapshot)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !transcript.isEmpty else { throw FileImportError.emptyTranscript }
-        return FileImportResult(transcript: transcript, durationSec: duration)
+        let segments = MeetingTranscriptRenderer.segments(from: snapshot)
+        return FileImportResult(transcript: transcript, durationSec: duration, segments: segments)
     }
 
     /// Multilingual path: fan the decoded chunks into `MultiLangStreamTranscriber`'s
@@ -260,13 +270,16 @@ actor FileImportEngine: FileImporting {
         let spans = await multi.finish(anchorLocale: primaryLocale)
 
         // Rebuild a turn log from the language-routed spans, one timed turn per span, so
-        // mid-file language switches survive into the rendered transcript.
+        // mid-file language switches survive into the rendered transcript AND the
+        // persisted per-segment timings.
         let log = TurnLog(startedAt: Date())
-        log.replace(.me, withTimedTurns: spans.map { (elapsed: $0.start, text: $0.text) })
-        let transcript = MeetingTranscriptRenderer.render(log.snapshot())
+        log.replace(.me, withTimedTurns: spans.map { (elapsed: $0.start, text: $0.text, end: $0.end) })
+        let snapshot = log.snapshot()
+        let transcript = MeetingTranscriptRenderer.render(snapshot)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !transcript.isEmpty else { throw FileImportError.emptyTranscript }
-        return FileImportResult(transcript: transcript, durationSec: duration)
+        let segments = MeetingTranscriptRenderer.segments(from: snapshot)
+        return FileImportResult(transcript: transcript, durationSec: duration, segments: segments)
     }
 
     // MARK: Incremental decode
@@ -732,9 +745,11 @@ final class FileImportCoordinator: ObservableObject {
         let summary = await summarize(result.transcript)
         guard generation == self.generation, !Task.isCancelled else { return }
 
-        // Build the Meeting via the existing MeetingStore construction API (Meeting.swift
-        // is read-only this pass). Title from the filename (extension stripped);
-        // startUnix from the file's content-creation date, falling back to now.
+        // Build the Meeting. Title from the filename (extension stripped); startUnix
+        // from the file's content-creation date, falling back to now. `segments`
+        // carries the imported file's per-segment audio-clock timings (D2); the
+        // segment speaker label is the internal "Me" stream tag (a solo import),
+        // while `participants` stays the user-facing "Imported".
         let id = UUID()
         let start = Self.contentCreationDate(of: item.url) ?? Date()
         let meeting = Meeting(
@@ -746,7 +761,8 @@ final class FileImportCoordinator: ObservableObject {
             summary: summary,
             participants: ["Imported"],
             source: "talkie (imported: \(item.url.lastPathComponent))",
-            fileName: MeetingStore.fileName(for: start, id: id)
+            fileName: MeetingStore.fileName(for: start, id: id),
+            segments: result.segments
         )
         let countBefore = meetingStore.meetings.count
         meetingStore.add(meeting)

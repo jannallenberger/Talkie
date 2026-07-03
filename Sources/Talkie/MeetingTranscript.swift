@@ -17,6 +17,18 @@ final class TurnLog: @unchecked Sendable {
         let elapsed: TimeInterval
         let speaker: MeetingSpeaker
         let text: String
+        /// Audio-clock end of this turn (seconds), when the source carried a real
+        /// span (the timed segment/import path). Nil for a wall-clock-stamped turn,
+        /// whose duration is unknown. Used only to build `Meeting.segments`; the
+        /// rendered transcript is unaffected.
+        let endSec: TimeInterval?
+
+        init(elapsed: TimeInterval, speaker: MeetingSpeaker, text: String, endSec: TimeInterval? = nil) {
+            self.elapsed = elapsed
+            self.speaker = speaker
+            self.text = text
+            self.endSec = endSec
+        }
     }
 
     private let lock = NSLock()
@@ -31,6 +43,11 @@ final class TurnLog: @unchecked Sendable {
 
     /// Stamp a finalized segment with the time it arrived and record it. Drops
     /// punctuation-only artifacts so they don't render as "Okay, , , , ,".
+    ///
+    /// This uses **wall-clock arrival** time, which lags the true audio time by the
+    /// finalization delay. Prefer the `at:end:` overload when the recognizer gives
+    /// an audio-clock span — but a `TurnLog` must never mix the two clocks (that
+    /// would corrupt cross-stream interleaving), so a single recording sticks to one.
     func add(_ speaker: MeetingSpeaker, _ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -38,6 +55,21 @@ final class TurnLog: @unchecked Sendable {
         guard !depunctuated.isEmpty else { return }
         let elapsed = Date().timeIntervalSince(startedAt)
         lock.withLock { turns.append(Turn(elapsed: elapsed, speaker: speaker, text: trimmed)) }
+    }
+
+    /// Record a finalized segment stamped with its **audio-clock** span (seconds
+    /// from session start ≈ recording start), instead of wall-clock arrival. Same
+    /// punctuation-only drop as `add`. Used by the single-locale meeting streams and
+    /// file import so `Meeting.segments` carries real per-segment timings, and so
+    /// the interleaving is on the audio clock rather than lagged by finalization.
+    func add(_ speaker: MeetingSpeaker, _ text: String, at start: TimeInterval, end: TimeInterval) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let depunctuated = trimmed.components(separatedBy: Self.punctuationAndSpace).joined()
+        guard !depunctuated.isEmpty else { return }
+        let s = max(0, start)
+        let e = max(s, end)
+        lock.withLock { turns.append(Turn(elapsed: s, speaker: speaker, text: trimmed, endSec: e)) }
     }
 
     func snapshot() -> [Turn] {
@@ -67,15 +99,17 @@ final class TurnLog: @unchecked Sendable {
     }
 
     /// Replace a speaker's turns with language-routed spans from the multilingual
-    /// merge — each span becomes a timed turn (`elapsed` is the span's audio start),
-    /// so per-language segments AND cross-stream interleaving both survive.
-    func replace(_ speaker: MeetingSpeaker, withTimedTurns newTurns: [(elapsed: TimeInterval, text: String)]) {
+    /// merge — each span becomes a timed turn (`elapsed` is the span's audio start,
+    /// `end` its audio end), so per-language segments, `Meeting.segments` timings,
+    /// AND cross-stream interleaving all survive.
+    func replace(_ speaker: MeetingSpeaker, withTimedTurns newTurns: [(elapsed: TimeInterval, text: String, end: TimeInterval)]) {
         lock.withLock {
             turns.removeAll { $0.speaker == speaker }
             for t in newTurns {
                 let trimmed = t.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
-                    turns.append(Turn(elapsed: max(0, t.elapsed), speaker: speaker, text: trimmed))
+                    let s = max(0, t.elapsed)
+                    turns.append(Turn(elapsed: s, speaker: speaker, text: trimmed, endSec: max(s, t.end)))
                 }
             }
         }
@@ -118,6 +152,37 @@ enum MeetingTranscriptRenderer {
 
         let lines = blocks.map { "[\(timecode($0.elapsed))] \($0.speaker.rawValue): \($0.text)" }
         return lines.joined(separator: "\n")
+    }
+
+    /// Build the persisted `[MeetingSegment]` from a turn-log snapshot: one segment
+    /// per turn, in time order, with **finite, monotonically non-decreasing** start
+    /// and end (the D2 acceptance guarantee). Each turn's `end` is its own audio-clock
+    /// `endSec` when the source carried one, else the next turn's start, else its own
+    /// start (a zero-length cue) — clamped so `end ≥ start` and starts never go
+    /// backwards even if two streams' clocks interleave with a small skew. Returns nil
+    /// when there is nothing timed to persist, so callers store `segments = nil` rather
+    /// than an empty array (keeping the "no segments" and "pre-D2" cases identical).
+    static func segments(from turns: [TurnLog.Turn]) -> [MeetingSegment]? {
+        let sorted = turns.sorted { $0.elapsed < $1.elapsed }
+        guard !sorted.isEmpty else { return nil }
+        var out: [MeetingSegment] = []
+        out.reserveCapacity(sorted.count)
+        var lastStart = 0.0
+        for (i, turn) in sorted.enumerated() {
+            // Clamp start to finite and non-decreasing (skew between the two per-stream
+            // audio clocks can otherwise put a later turn a hair before an earlier one).
+            var start = turn.elapsed.isFinite ? max(0, turn.elapsed) : lastStart
+            start = max(start, lastStart)
+            lastStart = start
+            // Prefer the turn's real audio end; otherwise bound it by the next turn's
+            // start; otherwise it's a zero-length cue (we don't invent a duration).
+            let nextStart = i + 1 < sorted.count ? sorted[i + 1].elapsed : nil
+            var end = turn.endSec ?? nextStart ?? start
+            if !end.isFinite { end = start }
+            end = max(end, start)
+            out.append(MeetingSegment(speaker: turn.speaker.rawValue, start: start, end: end, text: turn.text))
+        }
+        return out
     }
 
     /// `mm:ss` (or `h:mm:ss` past an hour) for a relative offset.

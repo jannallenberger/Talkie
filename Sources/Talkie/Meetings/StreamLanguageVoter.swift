@@ -23,10 +23,13 @@ enum StreamLanguageVoter {
     }
 
     /// A resolved run of the merged transcript: a stretch of one language's words.
+    /// `start`/`end` are the audio-clock span (seconds) of the run's first and last
+    /// words, so callers can persist per-segment timings (`Meeting.segments`).
     struct Span: Equatable, Sendable {
         var localeID: String
         var text: String
         var start: Double
+        var end: Double
     }
 
     /// Time-grid resolution (seconds) for the per-slice language vote.
@@ -50,7 +53,7 @@ enum StreamLanguageVoter {
         let t1 = valid.map(\.end).max() ?? 0
         guard t1 > t0, frame > 0 else {
             if let best = valid.max(by: { $0.confidence < $1.confidence }) {
-                return [Span(localeID: best.localeID, text: best.text, start: best.start)]
+                return [Span(localeID: best.localeID, text: best.text, start: best.start, end: best.end)]
             }
             return []
         }
@@ -99,14 +102,16 @@ enum StreamLanguageVoter {
             }
             .sorted { $0.start < $1.start }
 
-        // 4. Coalesce consecutive same-language words into spans.
+        // 4. Coalesce consecutive same-language words into spans, extending each
+        //    span's `end` to its last word so the persisted segment covers the run.
         var spans: [Span] = []
         for w in kept {
             if var last = spans.last, code(last.localeID) == code(w.localeID) {
                 last.text = joined(last.text, w.text)
+                last.end = max(last.end, w.end)
                 spans[spans.count - 1] = last
             } else {
-                spans.append(Span(localeID: w.localeID, text: w.text, start: w.start))
+                spans.append(Span(localeID: w.localeID, text: w.text, start: w.start, end: w.end))
             }
         }
         return spans
