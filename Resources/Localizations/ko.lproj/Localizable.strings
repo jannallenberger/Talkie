@@ -335,6 +335,8 @@
 "Hold, speak, release — or tap twice to go hands-free" = "누르고, 말하고, 놓기 — 또는 두 번 눌러 핸즈프리로";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "키를 누른 채 쓰고 싶은 내용을 말하고 놓으면 — Talkie가 입력 중인 곳에 텍스트를 넣어 줍니다. 급하신가요? 키를 두 번 눌러 녹음을 핸즈프리로 고정하고, 한 번 눌러 멈추세요.";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "핸즈프리로 듣는 중입니다. 녹음이 고정되었습니다 — 키를 한 번 누르면 멈춥니다.";
+"still listening — say something or it'll wrap up" = "계속 듣고 있어요 — 말하지 않으면 곧 종료돼요";
+"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "계속 듣고 있어요 — 조용해서 곧 녹음을 멈춰요. 계속하려면 말해 주세요.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "키를 누른 채 말하거나, 두 번 눌러 핸즈프리 녹음을 고정하세요.";
 "Click here, then hold %@ and speak…" = "여기를 클릭한 다음 %@ 를 누른 채 말하세요…";
 

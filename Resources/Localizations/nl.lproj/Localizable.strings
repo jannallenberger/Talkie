@@ -335,6 +335,8 @@
 "Hold, speak, release — or tap twice to go hands-free" = "Ingedrukt houden, praten, loslaten — of tik tweemaal voor handsfree";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Houd je toets ingedrukt, zeg wat je wilt schrijven en laat los — Talkie plaatst de tekst waar je aan het typen bent. Haast? Tik tweemaal op de toets om de opname handsfree te vergrendelen en één keer om te stoppen.";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "Luistert, handsfree. De opname is vergrendeld — tik één keer op je toets om te stoppen.";
+"still listening — say something or it'll wrap up" = "nog aan het luisteren — zeg iets of het stopt";
+"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "Nog aan het luisteren — het is stil, dus de opname stopt binnenkort. Zeg iets om door te gaan.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "Houd je toets ingedrukt om te praten, of tik er tweemaal op om handsfree opnemen te vergrendelen.";
 "Click here, then hold %@ and speak…" = "Klik hier, houd dan %@ ingedrukt en spreek…";
 

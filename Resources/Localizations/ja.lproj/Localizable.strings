@@ -335,6 +335,8 @@
 "Hold, speak, release — or tap twice to go hands-free" = "押して、話して、離す — または2回タップでハンズフリー";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "キーを押しながら書きたいことを話し、離すだけ — Talkie が入力中の場所にテキストを挿入します。急いでいるときは、キーを2回タップして録音をハンズフリーで固定し、1回タップで停止します。";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "ハンズフリーで聞き取り中です。録音は固定されています。キーを1回タップすると停止します。";
+"still listening — say something or it'll wrap up" = "まだ聞いています — 話さないと終了します";
+"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "まだ聞いています — 静かなので、まもなく録音を停止します。続けるには話してください。";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "キーを押し続けて話すか、2回タップしてハンズフリー録音を固定します。";
 "Click here, then hold %@ and speak…" = "ここをクリックし、%@ を押しながら話してください…";
 

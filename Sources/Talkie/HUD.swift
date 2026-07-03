@@ -122,6 +122,22 @@ final class HUDModel: ObservableObject {
     /// over the ring's animation identity.
     @Published var launchOfferTick: Int = 0
 
+    /// True while a hands-free-locked session (B4) is in its silence auto-stop
+    /// countdown (B5). It does NOT change `phase` — the pill stays in `.listening` —
+    /// it just overlays the depleting `CountdownRing` and swaps the lock caption for a
+    /// "still listening — say something or it'll wrap up" line, so the impending
+    /// auto-stop is visible and one word (or a level spike) cancels it. Reset on
+    /// cancel and on every session end.
+    @Published var silenceCountingDown: Bool = false
+    /// Bumped each time the silence countdown (re)starts so the ring restarts from full
+    /// even if a cancel→re-arm happens back to back. Its own tick so it never fights the
+    /// learned/launch rings over animation identity.
+    @Published var silenceCountdownTick: Int = 0
+    /// How long the silence countdown ring takes to deplete — set by the watchdog when
+    /// it arms (the pure core's `countdownDuration`), so the ring's drain matches the
+    /// actual auto-stop deadline rather than a hardcoded guess.
+    @Published var silenceCountdownDuration: TimeInterval = 3
+
     /// System accessibility display preferences, mirrored so the SwiftUI pill can
     /// react to them. `highContrast` drives a fuller-opacity, brighter, ringed pill
     /// with slightly larger type; `reduceTransparency` drops the translucent chip
@@ -317,6 +333,7 @@ final class HUDController {
         cancelHide()
         resetLevels()
         model.handsFreeLocked = false   // fresh session starts un-locked
+        model.silenceCountingDown = false   // and never inherits a stale auto-stop countdown
         model.phase = .arming
         model.text = ""
         model.volatileText = ""
@@ -665,6 +682,28 @@ final class HUDController {
         model.handsFreeLocked = locked
     }
 
+    /// B5: begin the visible, cancelable auto-stop countdown on the LISTENING pill
+    /// (the coral ring drains over `remaining`, and the tail swaps to "still listening
+    /// — say something or it'll wrap up"). Called by the hub's `SilenceWatchdogDriver`
+    /// only for a hands-free-locked session that's gone quiet. It does NOT change the
+    /// phase — the pill is still `.listening` — so a cancel just clears the flag and the
+    /// plain locked pill returns. Bumps the ring's tick so a re-arm restarts it full.
+    func showSilenceCountdown(remaining: TimeInterval) {
+        model.silenceCountdownDuration = remaining
+        model.silenceCountdownTick &+= 1
+        model.silenceCountingDown = true
+        // Announce it: a hands-free VoiceOver user who can't see the ring must still
+        // hear that recording is about to stop and that a word keeps it going.
+        announce("Still listening — it's quiet, so recording will stop soon. Say something to keep going.".loc)
+    }
+
+    /// B5: the user spoke again (level spike or new partial) during the countdown —
+    /// abandon it and restore the plain locked pill. Purely presentational; the hub's
+    /// watchdog owns the timing.
+    func cancelSilenceCountdown() {
+        model.silenceCountingDown = false
+    }
+
     /// Show the one-time gesture-teaching pill (after a lone quick tap that captured
     /// nothing). Non-interactive; announces itself and auto-hides. The caller gates
     /// how often this appears (see `GestureHint`).
@@ -777,6 +816,7 @@ final class HUDController {
             guard !Task.isCancelled else { return }
             self.panel?.ignoresMouseEvents = true
             self.model.handsFreeLocked = false   // never carry a lock glyph into the next session
+            self.model.silenceCountingDown = false   // nor a stale auto-stop countdown
             self.model.phase = .hidden
             self.panel?.orderOut(nil)
             self.hideTask = nil
@@ -984,6 +1024,13 @@ private struct HUDView: View {
                     // over its (longer) window — a wordless "this dismisses itself".
                     CountdownRing(duration: HUDController.launchOfferDuration)
                         .id(model.launchOfferTick)
+                } else if model.silenceCountingDown {
+                    // B5: a hands-free-locked session that's gone quiet drains the same
+                    // coral ring over the auto-stop window — the visible, cancelable
+                    // countdown. Not phase-gated (the pill stays `.listening`); keyed by
+                    // `silenceCountdownTick` so a cancel→re-arm restarts it from full.
+                    CountdownRing(duration: model.silenceCountdownDuration)
+                        .id(model.silenceCountdownTick)
                 }
             }
             .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
@@ -1050,27 +1097,45 @@ private struct HUDView: View {
                 // change how Talkie polishes this dictation without leaving the
                 // record. Hidden entirely when no switcher is wired (today's pill).
                 CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
-                // C1: the live tail of what Talkie is hearing. The finalized head
-                // reads firmly; the volatile tail is dimmer and firms up as it
-                // commits. One truncating line, capped so the pill can't outgrow the
-                // panel — the HEAD truncates (…) so the newest words stay visible even
-                // for a long unbroken German compound. Empty text renders nothing, so
-                // the bare pill (dot + waveform + switcher) is exactly today's.
-                liveTail
+                if model.silenceCountingDown {
+                    // B5: while the hands-free auto-stop countdown runs, the tail says so
+                    // in plain words — a gentle nudge that one word (or reaching the key)
+                    // keeps it going. Takes the tail slot so the pill doesn't also carry
+                    // the transcript tail during the wrap-up moment.
+                    Text("still listening — say something or it'll wrap up")
+                        .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
+                        .foregroundStyle(ink(0.72))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .transition(.blurReplace)
+                } else {
+                    // C1: the live tail of what Talkie is hearing. The finalized head
+                    // reads firmly; the volatile tail is dimmer and firms up as it
+                    // commits. One truncating line, capped so the pill can't outgrow the
+                    // panel — the HEAD truncates (…) so the newest words stay visible even
+                    // for a long unbroken German compound. Empty text renders nothing, so
+                    // the bare pill (dot + waveform + switcher) is exactly today's.
+                    liveTail
+                }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.handsFreeLocked)
+            .animation(.easeInOut(duration: 0.2), value: model.silenceCountingDown)
             .transition(.blurReplace)
             // The dot + waveform are one status glyph to VoiceOver: state it plainly
             // rather than exposing a decorative waveform. The cleanup switcher stays
             // a separate, labeled control (its own element inside this group). When
             // locked, say so — a hands-free VoiceOver user must hear that releasing
-            // the key won't stop it (a single tap will).
+            // the key won't stop it (a single tap will). During the auto-stop countdown
+            // say THAT — a hands-free user must hear it's about to wrap up and that a
+            // word keeps it going.
             .accessibilityElement(children: .contain)
             .accessibilityLabel(
-                model.handsFreeLocked
-                    ? "Listening, hands-free. Recording is locked — tap your key once to stop.".loc
-                    : (recording ? "Listening. Talkie is recording your voice.".loc
-                                 : "Getting ready to listen.".loc)
+                model.silenceCountingDown
+                    ? "Still listening — it's quiet, so recording will stop soon. Say something to keep going.".loc
+                    : (model.handsFreeLocked
+                        ? "Listening, hands-free. Recording is locked — tap your key once to stop.".loc
+                        : (recording ? "Listening. Talkie is recording your voice.".loc
+                                     : "Getting ready to listen.".loc))
             )
         case .processing:
             HStack(spacing: 7) {

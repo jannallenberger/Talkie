@@ -335,6 +335,8 @@
 "Hold, speak, release — or tap twice to go hands-free" = "Segure, fale, solte — ou toque duas vezes para mãos livres";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Segure sua tecla, diga o que quer escrever e solte — o Talkie coloca o texto onde você está digitando. Com pressa? Toque na tecla duas vezes para travar a gravação em mãos livres e uma vez para parar.";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "Ouvindo, em mãos livres. A gravação está travada — toque na tecla uma vez para parar.";
+"still listening — say something or it'll wrap up" = "ainda ouvindo — diga algo ou vai encerrar";
+"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "Ainda ouvindo — está em silêncio, então a gravação vai parar em breve. Diga algo para continuar.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "Segure sua tecla para falar ou toque duas vezes para travar a gravação em mãos livres.";
 "Click here, then hold %@ and speak…" = "Clique aqui, segure %@ e fale…";
 
