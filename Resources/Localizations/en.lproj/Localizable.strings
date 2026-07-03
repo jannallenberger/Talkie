@@ -335,6 +335,8 @@
 "Hold, speak, release — or tap twice to go hands-free" = "Hold, speak, release — or tap twice to go hands-free";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop.";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "Listening, hands-free. Recording is locked — tap your key once to stop.";
+"still listening — say something or it'll wrap up" = "still listening — say something or it'll wrap up";
+"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "Still listening — it's quiet, so recording will stop soon. Say something to keep going.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "Hold your key to talk, or tap it twice to lock hands-free recording.";
 "Click here, then hold %@ and speak…" = "Click here, then hold %@ and speak…";
 
