@@ -13,6 +13,13 @@ enum SpeedBenchmark {
 
 // MARK: - Dashboard
 
+/// A Dashboard navigation route. Currently just the milestones ("Plumage")
+/// subpage — a `navigationDestination` value so Plumage is a pushed subpage of
+/// the Dashboard, not an eighth sidebar tab.
+enum MilestoneRoute: Hashable {
+    case plumage
+}
+
 struct DashboardView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var stats: StatsStore
@@ -20,7 +27,17 @@ struct DashboardView: View {
     @ObservedObject var activity: ActivityStore
     @ObservedObject var appUsage: AppUsageStore
     @ObservedObject var scratchpad: ScratchpadStore
+    /// L5-a: lifetime word/phrase frequency, threaded through to the Plumage
+    /// subpage's "words you say most" card.
+    @ObservedObject var wordFreq: WordFrequencyStore
     @ObservedObject var router: SettingsRouter
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The highest milestone tier the user has already been congratulated for.
+    /// Persisted so the crossing banner fires ONCE per tier, never on relaunch.
+    /// A raw threshold value (0 = none celebrated yet); we compare tiers by index.
+    @AppStorage("milestoneCelebratedThreshold") private var celebratedThreshold = 0
 
     // Adaptive columns reflow with the window width — no fixed widths to overflow.
     // 220 lets the three metric cards sit 3-up at the default width and fall to
@@ -33,6 +50,14 @@ struct DashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.section) {
                     header
+
+                    if let banner = pendingCelebration {
+                        MilestoneCelebrationBanner(
+                            tierIndex: banner,
+                            reduceMotion: reduceMotion,
+                            onDismiss: { celebratedThreshold = MilestoneLadder.thresholds[banner] }
+                        )
+                    }
 
                     ScratchpadCard(scratchpad: scratchpad)
 
@@ -52,6 +77,7 @@ struct DashboardView: View {
                     LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
                         UsageCard(appUsage: appUsage).frame(maxHeight: .infinity, alignment: .top)
                         StreakCard(activity: activity).frame(maxHeight: .infinity, alignment: .top)
+                        MilestoneEntryCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                     }
                 }
                 .padding(28)
@@ -59,7 +85,26 @@ struct DashboardView: View {
             }
             .background(LiveBackground(mood: .ambient))
             .scrollContentBackground(.hidden)
+            .navigationDestination(for: MilestoneRoute.self) { route in
+                switch route {
+                case .plumage:
+                    MilestonesView(stats: stats, activity: activity, wordFreq: wordFreq)
+                }
+            }
         }
+    }
+
+    /// The tier to celebrate right now, or nil. We celebrate whenever the tier the
+    /// user's CURRENT total sits on is higher than the highest tier we've already
+    /// congratulated them for. Comparing by tier index means a total that leapt
+    /// several rungs shows one banner for the highest — and once dismissed (which
+    /// writes that rung's threshold), it won't fire again. Below the first rung, or
+    /// once caught up, this is nil.
+    private var pendingCelebration: Int? {
+        guard let reached = MilestoneLadder.tier(for: stats.totalWords) else { return nil }
+        let celebratedTier = MilestoneLadder.tier(for: celebratedThreshold) // nil if 0
+        if let celebratedTier, celebratedTier >= reached { return nil }
+        return reached
     }
 
     private var header: some View {
@@ -99,6 +144,135 @@ private struct Wordmark: View {
             Text("Talkie")
                 .font(.talkieDisplay(20))
                 .foregroundStyle(Theme.ink)
+        }
+    }
+}
+
+// MARK: - Milestone entry card (→ Plumage subpage)
+
+/// The dashboard's doorway to the Plumage milestones page: current tier name, a
+/// mini progress bar toward the next rung, and a chevron. A `NavigationLink`
+/// carrying `MilestoneRoute.plumage`, resolved by the Dashboard's
+/// `navigationDestination`.
+private struct MilestoneEntryCard: View {
+    @ObservedObject var stats: StatsStore
+
+    private var tierName: String {
+        guard let tier = MilestoneLadder.tier(for: stats.totalWords),
+              let copy = MilestoneCopy.tier(tier) else {
+            return "First Feathers".loc // the rung they're working toward
+        }
+        return copy.name
+    }
+
+    var body: some View {
+        NavigationLink(value: MilestoneRoute.plumage) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Eyebrow(text: "Milestones")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.inkTertiary)
+                }
+                HStack(spacing: 9) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.featherCoral)
+                    Text(tierName)
+                        .font(.talkieHeading(17, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+
+                if let next = MilestoneLadder.next(after: stats.totalWords) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Theme.surfaceSunken)
+                            Capsule().fill(Theme.featherCoral)
+                                .frame(width: max(6, geo.size.width * next.progress))
+                        }
+                    }
+                    .frame(height: 7)
+                    Text(String(format: "%1$@ / %2$@ words".loc,
+                                stats.totalWords.formatted(), next.threshold.formatted()))
+                        .font(.talkieHeading(12, weight: .medium))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .monospacedDigit()
+                } else {
+                    Text("Top of the ladder — see your plumage".loc)
+                        .font(.talkieHeading(12, weight: .medium))
+                        .foregroundStyle(Theme.inkSecondary)
+                }
+            }
+            .talkieCard(fill: true)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Crossing celebration banner
+
+/// A dismissible banner shown when the user's total has just cleared a new
+/// milestone rung. Names the rung's word count and its equivalence, links into
+/// Plumage, and its × writes the rung so it shows once per tier. Any entrance
+/// animation is gated on `reduceMotion`.
+private struct MilestoneCelebrationBanner: View {
+    let tierIndex: Int
+    let reduceMotion: Bool
+    let onDismiss: () -> Void
+
+    @State private var appeared = false
+
+    private var threshold: Int { MilestoneLadder.thresholds[tierIndex] }
+    private var equivalence: String { MilestoneCopy.tier(tierIndex)?.equivalence ?? "" }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Theme.featherGold)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(format: "You crossed %@ words".loc, threshold.formatted()))
+                    .font(.talkieHeading(15, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                if !equivalence.isEmpty {
+                    Text(equivalence)
+                        .font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                NavigationLink(value: MilestoneRoute.plumage) {
+                    Text("See your milestones".loc)
+                        .font(.talkieHeading(12, weight: .semibold))
+                        .foregroundStyle(Theme.featherCoral)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 1)
+            }
+
+            Spacer(minLength: 8)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+        }
+        .talkieCard()
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .strokeBorder(Theme.featherGold.opacity(0.4), lineWidth: 1)
+        )
+        .opacity(appeared || reduceMotion ? 1 : 0)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 0.35)) { appeared = true }
         }
     }
 }

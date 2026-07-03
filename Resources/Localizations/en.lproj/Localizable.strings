@@ -436,3 +436,46 @@
 "Delete this line" = "Delete this line";
 " · saved to your Scratchpad" = " · saved to your Scratchpad";
 "Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.";
+
+// L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
+"Plumage" = "Plumage";
+"Milestones" = "Milestones";
+"Just getting started" = "Just getting started";
+"%1$@ words spoken · %2$@ of talking" = "%1$@ words spoken · %2$@ of talking";
+"The ladder" = "The ladder";
+"Next milestone" = "Next milestone";
+"%1$@ / %2$@ words" = "%1$@ / %2$@ words";
+"You’ve reached the top of the ladder. Every word from here is legend." = "You’ve reached the top of the ladder. Every word from here is legend.";
+"≈ %@ of talking at your pace to go" = "≈ %@ of talking at your pace to go";
+"Personal bests" = "Personal bests";
+"Fastest pace" = "Fastest pace";
+"%d wpm" = "%d wpm";
+"Longest streak" = "Longest streak";
+"%d days" = "%d days";
+"You’re here" = "You’re here";
+"Words you say most" = "Words you say most";
+"Keep dictating — the words and phrases you reach for most will show up here." = "Keep dictating — the words and phrases you reach for most will show up here.";
+"Phrases you reach for" = "Phrases you reach for";
+"Top of the ladder — see your plumage" = "Top of the ladder — see your plumage";
+"You crossed %@ words" = "You crossed %@ words";
+"See your milestones" = "See your milestones";
+// Tier names
+"First Feathers" = "First Feathers";
+"Fledgling" = "Fledgling";
+"Finding Your Voice" = "Finding Your Voice";
+"Full Plumage" = "Full Plumage";
+"Storyteller" = "Storyteller";
+"Silver Tongue" = "Silver Tongue";
+"Golden Voice" = "Golden Voice";
+"Legendary" = "Legendary";
+"Mythical" = "Mythical";
+// Tier equivalences (playful ≈ senses of scale — never precise claims)
+"≈ 5 TED talks, or 37× the Gettysburg Address" = "≈ 5 TED talks, or 37× the Gettysburg Address";
+"≈ Alice’s Adventures in Wonderland (~27,000 words)" = "≈ Alice’s Adventures in Wonderland (~27,000 words)";
+"≈ The Great Gatsby (~47,000) — a whole NaNoWriMo novel" = "≈ The Great Gatsby (~47,000) — a whole NaNoWriMo novel";
+"≈ To Kill a Mockingbird (~100,000)" = "≈ To Kill a Mockingbird (~100,000)";
+"≈ Moby-Dick (~209,000) with Gatsby stacked on top" = "≈ Moby-Dick (~209,000) with Gatsby stacked on top";
+"≈ closing in on War and Peace (~560,000)" = "≈ closing in on War and Peace (~560,000)";
+"≈ the King James Bible (~783,000)" = "≈ the King James Bible (~783,000)";
+"≈ the entire Harry Potter saga (~1.08 million words)" = "≈ the entire Harry Potter saga (~1.08 million words)";
+"≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)";

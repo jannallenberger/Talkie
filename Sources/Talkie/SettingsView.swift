@@ -191,7 +191,7 @@ struct MainView: View {
         case .dashboard:
             DashboardView(settings: settings, stats: stats, history: history,
                           activity: activity, appUsage: appUsage,
-                          scratchpad: scratchpad, router: router)
+                          scratchpad: scratchpad, wordFreq: wordFreq, router: router)
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore, settings: settings)
         case .dictionary:
