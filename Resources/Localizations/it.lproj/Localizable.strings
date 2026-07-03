@@ -250,9 +250,15 @@
 
 /* D1 — drop-to-transcribe file import */
 "Import" = "Importa";
-"Import audio…" = "Importa audio…";
-"…or drop an audio or video file onto this tab." = "…oppure trascina un file audio o video su questa scheda.";
-"Drop audio or video to transcribe" = "Trascina audio o video da trascrivere";
+"…or drop audio, video, or a folder onto this tab." = "…oppure trascina audio, video o una cartella su questa scheda.";
+"Drop audio, video, or a folder to transcribe" = "Trascina audio, video o una cartella da trascrivere";
 "That file isn’t audio or video" = "Quel file non è audio né video";
 "Waiting for dictation to finish…" = "In attesa che la dettatura finisca…";
-"Choose audio or video files to transcribe into meetings." = "Scegli file audio o video da trascrivere in riunioni.";
+"Choose audio or video files — or a folder of them — to transcribe into meetings." = "Scegli file audio o video — o una cartella — da trascrivere in riunioni.";
+
+/* D5 — batch folder transcription queue */
+"%d of %d" = "%d di %d";
+"Dismiss" = "Ignora";
+"%d imported" = "%d importati";
+"%d skipped: %@" = "%d ignorati: %@";
+"your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "il tuo elenco riunioni conserva le %d più recenti, quindi gli import più vecchi sono usciti dall’elenco (le loro note restano sul disco).";

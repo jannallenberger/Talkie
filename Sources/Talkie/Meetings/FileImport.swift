@@ -69,6 +69,51 @@ enum ImportableMedia {
     /// Filter a dropped/opened batch to just the files we can transcribe. Pure so the
     /// drop target can be unit-tested without touching the filesystem.
     static func supported(in urls: [URL]) -> [URL] { urls.filter(isSupported) }
+
+    /// Is `url` a directory? Best-effort resource-value probe; false for a plain file or
+    /// anything unreadable. Used to route a dropped folder into a shallow enumeration.
+    static func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+    }
+
+    /// The supported media files directly inside `folder` — a **shallow** walk (no
+    /// recursion, per D5's out-of-scope note), skipping hidden files (dotfiles and the
+    /// Finder's hidden flag), sorted by name so the batch processes in a stable, obvious
+    /// order. Returns `[]` for an unreadable or empty folder rather than throwing — a
+    /// folder with nothing to import is a no-op, not an error.
+    static func mediaFiles(inFolderAt folder: URL) -> [URL] {
+        let keys: [URLResourceKey] = [.isRegularFileKey]
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+        )) ?? []
+        return contents
+            .filter { isSupported($0) }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
+
+    /// Expand a dropped/picked batch into a flat, ordered list of importable files:
+    /// folders are shallow-enumerated (sorted by name), loose files kept in the order
+    /// given, and duplicate paths collapsed (dropping the same file twice, or a file that
+    /// also lives in a dropped folder, imports it once). Pure enough to unit-test with a
+    /// real temp directory; the filesystem touch is confined to reading directory listings.
+    static func expand(_ urls: [URL]) -> [URL] {
+        var out: [URL] = []
+        var seen: Set<String> = []
+        func take(_ u: URL) {
+            let key = u.standardizedFileURL.path
+            if seen.insert(key).inserted { out.append(u) }
+        }
+        for url in urls {
+            if isDirectory(url) {
+                for file in mediaFiles(inFolderAt: url) { take(file) }
+            } else if isSupported(url) {
+                take(url)
+            }
+        }
+        return out
+    }
 }
 
 // MARK: - Result
@@ -84,12 +129,28 @@ struct FileImportResult: Sendable {
     var durationSec: Double
 }
 
+// MARK: - Importer seam
+
+/// The one operation the coordinator needs from an importer: turn a file into a finished
+/// `FileImportResult`. Extracted as a protocol so the batch-queue logic (ordering, the
+/// generation token, per-file failure collection, the duplicate guard, cancellation)
+/// can be unit-tested with a fake that never touches Speech / Core Audio — the real
+/// `FileImportEngine` needs the on-device model and is out of scope for pure tests.
+protocol FileImporting: Sendable {
+    func importFile(
+        url: URL,
+        primaryLocale: String,
+        localeIDs: [String],
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws -> FileImportResult
+}
+
 // MARK: - Engine
 
 /// Decodes + transcribes one file. An `actor` so the decode loop — genuinely CPU-heavy
 /// — runs off the main actor, and the non-`Sendable` `AVAudioFile`/`AVAssetReader`
 /// stay confined to its isolation (never crossing an isolation boundary).
-actor FileImportEngine {
+actor FileImportEngine: FileImporting {
     /// ~1 second of audio per decode step at the analyzer's sample rate, so we feed the
     /// recognizer incrementally (like live audio) instead of buffering the whole file.
     /// A frame count is derived from the actual analyzer format at decode time.
@@ -365,9 +426,18 @@ actor FileImportEngine {
 
 // MARK: - Coordinator
 
-/// Drives imports for the Meetings tab: one file at a time, off the main actor, with
-/// live progress and hard model-exclusivity. `@MainActor` because it owns `@Published`
-/// UI state and calls the main-actor `MeetingStore`/`ContextGraphStore`.
+/// Drives imports for the Meetings tab: a FIFO batch queue that works through dropped
+/// files (and shallow-enumerated dropped folders) one at a time, off the main actor, with
+/// live "N of M" progress, cancellation, and hard model-exclusivity. `@MainActor` because
+/// it owns `@Published` UI state and calls the main-actor `MeetingStore`/`ContextGraphStore`.
+///
+/// Concurrency shape copied from `ProjectIndexStore.rescan` (VibeCoding.swift): a
+/// monotonic **generation token** lets a Cancel (or a fresh batch) supersede the in-flight
+/// run so a late callback can't mutate state for a batch the user already abandoned, plus a
+/// **retained `runTask`** that gets `cancel()`ed so the decode/recognize loop actually stops
+/// between chunks. One analyzer set at a time — sequential is a hard requirement from D1's
+/// model-exclusivity notes (an import spins up 1–4 extra analyzers; two at once would
+/// contend), and parallel transcription is explicitly out of scope for D5.
 @MainActor
 final class FileImportCoordinator: ObservableObject {
     /// One in-flight or queued import, surfaced to the progress row.
@@ -379,19 +449,33 @@ final class FileImportCoordinator: ObservableObject {
 
     /// The file currently being imported (nil when idle).
     @Published private(set) var active: Item?
-    /// 0…1 progress of `active` (fraction of audio transcribed).
+    /// 0…1 progress of `active` (fraction of that file's audio transcribed).
     @Published private(set) var progress: Double = 0
-    /// Files waiting because a dictation/recording is live, or another import is running.
+    /// Files waiting because a dictation/recording is live, or the current file is running.
     @Published private(set) var queued: [Item] = []
     /// The most recent user-facing error (import failures are never silent).
     @Published private(set) var lastError: String?
+    /// A one-shot completion summary for the finished batch ("11 imported, 1 skipped: …"),
+    /// shown once at the end. Nil while a batch runs or after the user dismisses it.
+    @Published private(set) var lastCompletion: String?
     /// True while an import is deferred waiting for a live dictation/recording to end.
     @Published private(set) var waitingForSession = false
 
-    private let engine = FileImportEngine()
+    /// How many files this batch has already finished (imported OR skipped). Drives the
+    /// "3 of 12" row together with `batchTotal`.
+    @Published private(set) var batchDone = 0
+    /// Total files in the current batch (files enqueued while a batch is already running
+    /// grow this — they join the same batch).
+    @Published private(set) var batchTotal = 0
+
+    private let importer: FileImporting
     private let meetingStore: MeetingStore
     private let contextGraph: ContextGraphStore
-    private let summarizer = MeetingSummarizer()
+    /// On-device summarization of a finished transcript, injected so the queue logic can be
+    /// unit-tested without the Foundation Models model (which is machine-dependent and
+    /// slow). Defaults to the real `MeetingSummarizer`; returns "" when the model isn't
+    /// available, exactly as before.
+    private let summarize: @Sendable (String) async -> String
 
     /// The user's spoken-language config + live-session probes, injected from AppDelegate
     /// (mirrors how `MeetingRecorder` is wired). Imports must not run while any of these
@@ -402,7 +486,25 @@ final class FileImportCoordinator: ObservableObject {
     private let isProcessing: () -> Bool
     private let isRecording: () -> Bool
 
+    /// The in-flight per-file work. Retained so `cancel()` can stop the decode loop now
+    /// (the generation token alone only *ignores* a stale result; the walk would keep
+    /// churning), exactly like `ProjectIndexStore.scanTask`.
     private var runTask: Task<Void, Never>?
+    /// Bumped on every `cancel()` (and when a drained queue resets the batch). A per-file
+    /// run captures the value at its start and re-checks after each `await`; a mismatch
+    /// means "this batch was cancelled/superseded — discard, don't persist, don't advance".
+    private var generation = 0
+
+    /// Names of files skipped this batch, with the reason, collected and shown once at the
+    /// end rather than interrupting the run per-file (D5: per-file failures never abort the
+    /// whole queue). `(fileName, reason)`.
+    private var skipped: [(name: String, reason: String)] = []
+    /// How many files this batch imported successfully — for the completion summary.
+    private var importedCount = 0
+    /// Set when the retention cap evicted an older meeting from the index during this batch
+    /// (importing a big archive past `MeetingStore.maxRetainedMeetings`), so the completion
+    /// message can note it once — the `.md` files survive; only the index is capped.
+    private var evictionOccurred = false
 
     init(
         meetingStore: MeetingStore,
@@ -411,7 +513,9 @@ final class FileImportCoordinator: ObservableObject {
         spokenLanguages: @escaping () -> [String],
         isDictating: @escaping () -> Bool,
         isProcessing: @escaping () -> Bool,
-        isRecording: @escaping () -> Bool
+        isRecording: @escaping () -> Bool,
+        importer: FileImporting = FileImportEngine(),
+        summarize: (@Sendable (String) async -> String)? = nil
     ) {
         self.meetingStore = meetingStore
         self.contextGraph = contextGraph
@@ -420,6 +524,12 @@ final class FileImportCoordinator: ObservableObject {
         self.isDictating = isDictating
         self.isProcessing = isProcessing
         self.isRecording = isRecording
+        self.importer = importer
+        // Default: the real on-device summarizer (map-reduce is in-core now, so imports get
+        // full summaries). A fresh actor per call matches the recorder's usage.
+        self.summarize = summarize ?? { transcript in
+            await MeetingSummarizer().summarize(transcript) ?? ""
+        }
     }
 
     var isImporting: Bool { active != nil }
@@ -428,39 +538,70 @@ final class FileImportCoordinator: ObservableObject {
     /// flight — imports defer rather than compete for the speech model / analyzers.
     private var sessionBusy: Bool { isDictating() || isProcessing() || isRecording() }
 
-    /// Queue one or more files (unsupported files are dropped by the caller). Starts the
+    /// Queue one or more dropped/picked entries. Folders are shallow-enumerated (sorted by
+    /// name); loose files keep their order; duplicates within the drop collapse. Files
+    /// added while a batch is running join that batch (its "of M" total grows). Starts the
     /// pump if idle; otherwise they wait their turn.
     func enqueue(_ urls: [URL]) {
-        let items = ImportableMedia.supported(in: urls).map { Item(url: $0) }
+        let items = ImportableMedia.expand(urls).map { Item(url: $0) }
         guard !items.isEmpty else { return }
         lastError = nil
+        lastCompletion = nil
+        // Starting fresh (nothing active/queued): reset the batch counters + collectors.
+        if active == nil, queued.isEmpty {
+            batchDone = 0
+            batchTotal = 0
+            skipped.removeAll()
+            importedCount = 0
+            evictionOccurred = false
+        }
         queued.append(contentsOf: items)
+        batchTotal += items.count
         pump()
     }
 
-    /// Cancel the active import (leaves no partial Meeting — nothing is persisted until
-    /// the transcript is complete) and clear the queue.
+    /// Cancel the batch: supersede the in-flight run (generation bump), stop its decode
+    /// loop (`runTask.cancel()`), and clear the queue. Already-completed meetings are kept;
+    /// the file that was mid-transcription discards its partial work — nothing is persisted
+    /// until a file's transcript is complete, so a cancelled file leaves no Meeting.
     func cancel() {
+        generation += 1
         runTask?.cancel()
         runTask = nil
         queued.removeAll()
         active = nil
         progress = 0
         waitingForSession = false
+        batchDone = 0
+        batchTotal = 0
+        skipped.removeAll()
+        importedCount = 0
+        evictionOccurred = false
     }
 
-    /// Start the next queued import if nothing is running. If a session is live, mark
-    /// "waiting" and retry shortly — imports never interleave with a live session.
+    /// Dismiss the completion summary (the user has read "11 imported, 1 skipped: …").
+    func dismissCompletion() { lastCompletion = nil }
+
+    /// Start the next queued file if nothing is running. If a session is live, mark
+    /// "waiting" and retry shortly — imports never interleave with a live session (D1's
+    /// exclusivity). When the queue drains, publish the batch's completion summary.
     private func pump() {
-        guard runTask == nil, active == nil, !queued.isEmpty else { return }
+        guard runTask == nil, active == nil else { return }
+        guard !queued.isEmpty else {
+            finishBatchIfNeeded()
+            return
+        }
 
         if sessionBusy {
             waitingForSession = true
             // Re-check off a short delay rather than subscribing to three probes: the
-            // wait is user-visible ("waiting for dictation to finish") and cheap.
+            // wait is user-visible ("waiting for dictation to finish") and cheap. Tag the
+            // retry with the current generation so a Cancel during the wait is a no-op.
+            let generationAtWait = generation
             runTask = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(500))
                 guard let self, !Task.isCancelled else { return }
+                guard generationAtWait == self.generation else { return }
                 self.runTask = nil
                 self.pump()
             }
@@ -473,25 +614,96 @@ final class FileImportCoordinator: ObservableObject {
         progress = 0
         let primary = primaryLocale()
         let langs = spokenLanguages()
+        let generationAtStart = generation
 
         runTask = Task { [weak self] in
-            await self?.run(item: item, primaryLocale: primary, localeIDs: langs)
+            await self?.run(item: item, primaryLocale: primary, localeIDs: langs,
+                            generation: generationAtStart)
         }
     }
 
-    /// Run one import end to end, then persist + ingest on the main actor and advance the
-    /// queue. On failure surfaces a friendly error and moves on (never wedges the queue).
-    private func run(item: Item, primaryLocale: String, localeIDs: [String]) async {
-        defer {
+    /// Publish the once-at-end completion summary when a batch finished with more than one
+    /// file, or with any skips — a single clean import doesn't need a banner (its Meeting
+    /// simply appears). Called when the queue drains with nothing active.
+    private func finishBatchIfNeeded() {
+        guard batchTotal > 0 else { return }
+        let total = batchTotal
+        let imported = importedCount
+        let skips = skipped
+        // Reset the batch so a subsequent drop starts a fresh count, but keep the summary
+        // string we're about to publish.
+        batchDone = 0
+        batchTotal = 0
+        importedCount = 0
+        let evicted = evictionOccurred
+        skipped.removeAll()
+        evictionOccurred = false
+
+        // A lone successful file: no banner (avoid nagging for the common single import).
+        if total == 1, skips.isEmpty { return }
+
+        lastCompletion = Self.completionMessage(
+            imported: imported, skipped: skips, evicted: evicted)
+    }
+
+    /// Build the human completion line: "11 imported, 1 skipped: foo.mp3", appending a
+    /// one-line eviction note when the retention cap trimmed the index. Second person,
+    /// honest, no invented metrics — just what happened.
+    static func completionMessage(
+        imported: Int,
+        skipped: [(name: String, reason: String)],
+        evicted: Bool
+    ) -> String {
+        var parts: [String] = []
+        parts.append(String(format: "%d imported".loc, imported))
+        if !skipped.isEmpty {
+            let names = skipped.map(\.name).joined(separator: ", ")
+            parts.append(String(format: "%d skipped: %@".loc, skipped.count, names))
+        }
+        var message = parts.joined(separator: ", ")
+        if evicted {
+            message += " — " + String(
+                format: "your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk).".loc,
+                MeetingStore.maxRetainedMeetings)
+        }
+        return message
+    }
+
+    /// Run one file end to end, then persist + ingest on the main actor and advance the
+    /// queue. On failure it records the skip and moves on (a per-file failure never aborts
+    /// the batch). Every early return still advances `batchDone` + pumps (unless the batch
+    /// was cancelled), so the "N of M" count and the queue never wedge.
+    private func run(item: Item, primaryLocale: String, localeIDs: [String], generation: Int) async {
+        var advanced = false
+        // Advance the queue exactly once for this file. Cancellation (generation bump)
+        // suppresses the advance so a superseded run leaves the reset state untouched.
+        func advance() {
+            guard !advanced else { return }
+            advanced = true
+            guard generation == self.generation else { return }
+            batchDone += 1
             runTask = nil
             active = nil
             progress = 0
             pump()
         }
+        defer { advance() }
+
+        // Best-effort duplicate guard: skip when an existing meeting's `source` already
+        // embeds this filename. D1's format is `talkie (imported: <filename>)`, which ends
+        // with a paren, so we match the whole "(imported: <name>)" fragment as a substring
+        // (documented best-effort — no new persistence, survives across launches via the
+        // stored `source`). Same-name files from different folders collide; acceptable for
+        // a guard whose only cost is a skip the user is told about.
+        let dupeMarker = "(imported: \(item.fileName))"
+        if meetingStore.meetings.contains(where: { $0.source.contains(dupeMarker) }) {
+            skipped.append((name: item.fileName, reason: "already imported"))
+            return
+        }
 
         let result: FileImportResult
         do {
-            result = try await engine.importFile(
+            result = try await importer.importFile(
                 url: item.url,
                 primaryLocale: primaryLocale,
                 localeIDs: localeIDs,
@@ -500,21 +712,25 @@ final class FileImportCoordinator: ObservableObject {
                 }
             )
         } catch is CancellationError {
-            return // cancelled → nothing persisted
+            return // cancelled → nothing persisted, advance suppressed by generation check
         } catch let error as FileImportError {
             if case .cancelled = error { return }
-            lastError = error.errorDescription
+            // Collect the per-file failure; surface it in the batch summary, not a modal.
+            skipped.append((name: item.fileName, reason: error.errorDescription ?? "failed"))
+            if batchTotal <= 1 { lastError = error.errorDescription } // lone file: show inline too
             return
         } catch {
-            lastError = error.localizedDescription
+            skipped.append((name: item.fileName, reason: error.localizedDescription))
+            if batchTotal <= 1 { lastError = error.localizedDescription }
             return
         }
 
-        if Task.isCancelled { return }
+        guard generation == self.generation, !Task.isCancelled else { return }
 
-        // Summarize on-device (map-reduce is in-core now, so imports get full summaries).
-        let summary = await summarizer.summarize(result.transcript) ?? ""
-        if Task.isCancelled { return }
+        // Summarize on-device via the injected summarizer (real model in production, a fake
+        // in queue tests).
+        let summary = await summarize(result.transcript)
+        guard generation == self.generation, !Task.isCancelled else { return }
 
         // Build the Meeting via the existing MeetingStore construction API (Meeting.swift
         // is read-only this pass). Title from the filename (extension stripped);
@@ -532,7 +748,12 @@ final class FileImportCoordinator: ObservableObject {
             source: "talkie (imported: \(item.url.lastPathComponent))",
             fileName: MeetingStore.fileName(for: start, id: id)
         )
+        let countBefore = meetingStore.meetings.count
         meetingStore.add(meeting)
+        importedCount += 1
+        // The store caps the index at maxRetainedMeetings; if adding didn't grow the count,
+        // an older meeting was evicted from the index (its .md survives) — note it once.
+        if meetingStore.meetings.count <= countBefore { evictionOccurred = true }
 
         // Graph ingest exactly like MeetingRecorder.stop: candidates from the transcript,
         // tagged with meeting provenance, so imported meetings show up in recall/search.
