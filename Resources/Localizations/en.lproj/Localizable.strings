@@ -565,3 +565,4 @@
 "Continue" = "Continue";
 "Start dictating" = "Start dictating";
 "Talkie is busy right now — try again in a moment." = "Talkie is busy right now — try again in a moment.";
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced).";

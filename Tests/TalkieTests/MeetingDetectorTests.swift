@@ -2,16 +2,22 @@ import XCTest
 @testable import Talkie
 
 /// Pure-logic tests for the meeting-detection state machine — the debounce/session
-/// behavior of `ActiveMeetingDetector.decide` and the offer-worthiness gate in
-/// `bestCandidate`, exercised without any Core Audio I/O.
+/// behavior of `ActiveMeetingDetector.decide`, the candidate selection in
+/// `bestCandidate`, and the adaptive auto-mute in `markSessionDismissed` — exercised
+/// without any Core Audio I/O.
 final class MeetingDetectorTests: XCTestCase {
     private typealias Detector = ActiveMeetingDetector
     private typealias State = ActiveMeetingDetector.DetectorState
     private typealias Candidate = ActiveMeetingDetector.DetectionCandidate
 
-    private let cfg = Detector.Config(enabled: true, allowlist: [], offerForAnyMicApp: false)
+    private let cfg = Detector.Config(enabled: true, allowlist: [])
     private let zoom = Candidate(bundleID: "us.zoom.xos", appName: "Zoom", tier: .meetingApp, confidence: 0.85)
     private let teams = Candidate(bundleID: "com.microsoft.teams2", appName: "Teams", tier: .meetingApp, confidence: 0.85)
+
+    private static let allow: [String: MeetingApp] = [
+        "us.zoom.xos": MeetingApp(bundleID: "us.zoom.xos", displayName: "Zoom", tier: .meetingApp),
+        "com.google.Chrome": MeetingApp(bundleID: "com.google.Chrome", displayName: "Chrome", tier: .browser),
+    ]
 
     // MARK: decide — start / offered-once
 
@@ -70,36 +76,120 @@ final class MeetingDetectorTests: XCTestCase {
     }
 
     func testMutedAppNeverOffers() {
-        let muted = Detector.Config(enabled: true, allowlist: [], offerForAnyMicApp: false,
-                                    muted: ["us.zoom.xos"])
+        let muted = Detector.Config(enabled: true, allowlist: [], muted: ["us.zoom.xos"])
         var s = State()
         (s, _) = Detector.decide(state: s, candidate: zoom, now: 100, config: muted)
         let (_, offer) = Detector.decide(state: s, candidate: zoom, now: 101.5, config: muted)
         XCTAssertNil(offer)
     }
 
-    // MARK: bestCandidate — offer-worthiness gate
+    // MARK: bestCandidate — selection + unknown apps always eligible
 
-    func testBestCandidatePrefersStrongerSignalAndGatesUnknown() {
-        let allow: [String: MeetingApp] = [
-            "us.zoom.xos": MeetingApp(bundleID: "us.zoom.xos", displayName: "Zoom", tier: .meetingApp),
-            "com.google.Chrome": MeetingApp(bundleID: "com.google.Chrome", displayName: "Chrome", tier: .browser),
-        ]
-
-        XCTAssertNil(Detector.bestCandidate([], allowlist: allow, offerForAnyMicApp: false))
+    func testBestCandidatePrefersStrongerSignal() {
+        XCTAssertNil(Detector.bestCandidate([], allowlist: Self.allow),
+                     "nothing on the mic → no candidate")
 
         // Zoom + Chrome both mic-hot → the stronger (meeting app) wins.
         let both = [ActiveInputProcess(pid: 1, bundleID: "com.google.Chrome"),
                     ActiveInputProcess(pid: 2, bundleID: "us.zoom.xos")]
-        XCTAssertEqual(Detector.bestCandidate(both, allowlist: allow, offerForAnyMicApp: false)?.bundleID,
+        XCTAssertEqual(Detector.bestCandidate(both, allowlist: Self.allow)?.bundleID,
                        "us.zoom.xos")
-
-        // An unknown app is not offer-worthy unless explicitly opted in.
-        let unknown = [ActiveInputProcess(pid: 9, bundleID: "com.unknown.app")]
-        XCTAssertNil(Detector.bestCandidate(unknown, allowlist: allow, offerForAnyMicApp: false))
-        let optedIn = Detector.bestCandidate(unknown, allowlist: allow, offerForAnyMicApp: true)
-        XCTAssertNotNil(optedIn)
-        XCTAssertNil(optedIn?.tier)
-        XCTAssertEqual(optedIn?.confidence, Detector.Confidence.micHotOnly)
     }
+
+    /// The behavior change at the heart of H9: an unknown, non-allowlisted mic-hot app
+    /// is now offer-worthy by default (previously gated behind the deleted
+    /// "offer for any mic app" toggle). It reports at the low `micHotOnly` floor with a
+    /// nil tier.
+    func testUnknownAppIsOfferWorthyByDefault() {
+        let unknown = [ActiveInputProcess(pid: 9, bundleID: "com.unknown.app")]
+        let candidate = Detector.bestCandidate(unknown, allowlist: Self.allow)
+        XCTAssertNotNil(candidate, "an unknown mic-hot app now always qualifies")
+        XCTAssertNil(candidate?.tier, "an unknown app has no tier")
+        XCTAssertEqual(candidate?.confidence, Detector.Confidence.micHotOnly,
+                       "an unknown app reports at the mic-hot-only confidence floor")
+        XCTAssertEqual(candidate?.bundleID, "com.unknown.app")
+    }
+
+    // MARK: markSessionDismissed — adaptive auto-mute (exercises the actor)
+
+    /// Two explicit dismissals of an *unknown* app mute it for good — the cap that
+    /// makes always-offering-for-unknown-apps safe. `onMute` fires exactly once, on
+    /// the second dismissal.
+    func testUnknownAppMutesAfterTwoDismissals() async {
+        let detector = Detector(config: Detector.Config(enabled: false, allowlist: []))
+        let muted = MuteRecorder()
+        await detector.start(onDetect: { _ in }, onMute: { muted.record($0) })
+
+        await detector.markSessionDismissed("com.unknown.app", mute: true)
+        var count = muted.count
+        XCTAssertEqual(count, 0, "one dismissal must not mute an unknown app")
+
+        await detector.markSessionDismissed("com.unknown.app", mute: true)
+        count = muted.count
+        XCTAssertEqual(count, 1, "the second dismissal mutes the unknown app")
+        let ids = muted.ids
+        XCTAssertEqual(ids, ["com.unknown.app"])
+
+        // A third dismissal must not re-fire the mute (it's already muted).
+        await detector.markSessionDismissed("com.unknown.app", mute: true)
+        count = muted.count
+        XCTAssertEqual(count, 1, "an already-muted app must not re-fire onMute")
+    }
+
+    /// Browser-tier behavior is unchanged: still muted after two dismissals.
+    func testBrowserAppMutesAfterTwoDismissals() async {
+        let detector = Detector(config: Detector.Config(enabled: false, allowlist: MeetingApp.builtInAllowlist))
+        let muted = MuteRecorder()
+        await detector.start(onDetect: { _ in }, onMute: { muted.record($0) })
+
+        await detector.markSessionDismissed("com.google.Chrome", mute: true)
+        var count = muted.count
+        XCTAssertEqual(count, 0, "one dismissal must not mute a browser")
+
+        await detector.markSessionDismissed("com.google.Chrome", mute: true)
+        count = muted.count
+        XCTAssertEqual(count, 1, "the second dismissal mutes the browser")
+        let ids = muted.ids
+        XCTAssertEqual(ids, ["com.google.Chrome"])
+    }
+
+    /// An explicit dedicated meeting app is NEVER auto-muted, no matter how many times
+    /// it's dismissed — a mic-hot there almost always means a recordable call.
+    func testMeetingAppNeverAutoMutes() async {
+        let detector = Detector(config: Detector.Config(enabled: false, allowlist: MeetingApp.builtInAllowlist))
+        let muted = MuteRecorder()
+        await detector.start(onDetect: { _ in }, onMute: { muted.record($0) })
+
+        for _ in 0..<5 {
+            await detector.markSessionDismissed("us.zoom.xos", mute: true)
+        }
+        let count = muted.count
+        XCTAssertEqual(count, 0, "a dedicated meeting app must never auto-mute")
+    }
+
+    /// A soft auto-hide (`mute: false`) never counts toward the mute threshold, even
+    /// for an unknown app.
+    func testSoftDismissDoesNotMute() async {
+        let detector = Detector(config: Detector.Config(enabled: false, allowlist: []))
+        let muted = MuteRecorder()
+        await detector.start(onDetect: { _ in }, onMute: { muted.record($0) })
+
+        await detector.markSessionDismissed("com.unknown.app", mute: false)
+        await detector.markSessionDismissed("com.unknown.app", mute: false)
+        let count = muted.count
+        XCTAssertEqual(count, 0, "soft auto-hides never mute an app")
+    }
+}
+
+/// Collects the bundle ids passed to a detector's `onMute` callback. The callback is
+/// a *synchronous* `@Sendable (String) -> Void` fired from the detector actor, so this
+/// can't be an actor (no `await` inside the callback). It follows the house
+/// `@unchecked Sendable` + `NSLock` pattern instead: every access is guarded by the
+/// lock, which is why the unchecked annotation is accurate.
+private final class MuteRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+    var ids: [String] { lock.withLock { storage } }
+    var count: Int { lock.withLock { storage.count } }
+    func record(_ id: String) { lock.withLock { storage.append(id) } }
 }

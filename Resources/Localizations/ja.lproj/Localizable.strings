@@ -563,3 +563,4 @@
 "Continue" = "続ける";
 "Start dictating" = "ディクテーションを開始";
 "Talkie is busy right now — try again in a moment." = "Talkie は現在処理中です — 少し待ってからもう一度お試しください。";
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "どのアプリでもマイクを使い始めると、Talkie が録音を提案します。ひとりでに録音することはありません。あるアプリの提案を 2 回却下すると、そのアプリには提案しなくなります（専用の会議アプリが無音化されることはありません）。"

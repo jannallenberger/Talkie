@@ -759,7 +759,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ActiveMeetingDetector.Config(
             enabled: settings.autoDetectMeetings,
             allowlist: settings.meetingAllowlist,
-            offerForAnyMicApp: settings.offerMeetingForAnyMicApp,
             muted: Set(settings.mutedMeetingApps)
         )
     }

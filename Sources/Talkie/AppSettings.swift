@@ -233,11 +233,6 @@ final class AppSettings: ObservableObject {
     @Published var autoDetectMeetings: Bool {
         didSet { defaults.set(autoDetectMeetings, forKey: Keys.autoDetectMeetings); notifyChanged() }
     }
-    /// Offer to record even when an *unknown* (non-allowlisted) app is on the mic.
-    /// Noisier; off by default.
-    @Published var offerMeetingForAnyMicApp: Bool {
-        didSet { defaults.set(offerMeetingForAnyMicApp, forKey: Keys.offerMeetingForAnyMicApp); notifyChanged() }
-    }
     /// Show the live meeting pill under the notch while a recording is in progress.
     @Published var showMeetingPill: Bool {
         didSet { defaults.set(showMeetingPill, forKey: Keys.showMeetingPill); notifyChanged() }
@@ -427,7 +422,6 @@ final class AppSettings: ObservableObject {
             Keys.implicitCommandTarget: true,
             Keys.meetingLanguageMode: "auto",
             Keys.autoDetectMeetings: true,
-            Keys.offerMeetingForAnyMicApp: false,
             Keys.showMeetingPill: true,
             Keys.meetingLiveTopic: true,
             Keys.pasteLastShortcutEnabled: true,
@@ -485,7 +479,6 @@ final class AppSettings: ObservableObject {
         implicitCommandTarget = d.bool(forKey: Keys.implicitCommandTarget)
         meetingLanguageMode = d.string(forKey: Keys.meetingLanguageMode) ?? "auto"
         autoDetectMeetings = d.bool(forKey: Keys.autoDetectMeetings)
-        offerMeetingForAnyMicApp = d.bool(forKey: Keys.offerMeetingForAnyMicApp)
         showMeetingPill = d.bool(forKey: Keys.showMeetingPill)
         meetingLiveTopic = d.bool(forKey: Keys.meetingLiveTopic)
         meetingAllowlist = AppSettings.decodeAllowlist(d.data(forKey: Keys.meetingAllowlist))
@@ -613,7 +606,6 @@ final class AppSettings: ObservableObject {
         static let cleanupLevel = "cleanupLevel"
         static let meetingLanguageMode = "meetingLanguageMode"
         static let autoDetectMeetings = "autoDetectMeetings"
-        static let offerMeetingForAnyMicApp = "offerMeetingForAnyMicApp"
         static let showMeetingPill = "showMeetingPill"
         static let meetingLiveTopic = "meetingLiveTopic"
         static let meetingAllowlist = "meetingAllowlist"
