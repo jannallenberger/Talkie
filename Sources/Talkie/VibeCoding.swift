@@ -26,6 +26,25 @@ struct ProjectRootIndex: Codable {
         self.docTerms = docTerms
         self.filePaths = filePaths
     }
+
+    /// Lowercased basename → path RELATIVE to `root` (G10), derived from the absolute
+    /// `filePaths` this bucket already stores. In a terminal we want to insert the
+    /// repo-relative path the shell + Claude Code actually consume (`Sources/Views/
+    /// ExerciseLibrary.tsx`), not the bare basename. We DON'T persist a second map: the
+    /// absolute paths are already here per-root, and the root is the bucket's own key,
+    /// so the relative form is a cheap pure derivation (see `SpokenFileMatcher.relativePath`,
+    /// which standardizes both sides so a `/private/var…` file path still strips against a
+    /// `/var…` root key on macOS). A file that somehow isn't under `root` is dropped, so
+    /// the caller falls back to the basename for it — never an absolute or wrong path.
+    func relativeFilePaths(root: URL) -> [String: String] {
+        var out: [String: String] = [:]
+        for (key, absolute) in filePaths {
+            if let rel = SpokenFileMatcher.relativePath(ofAbsolute: absolute, underRoot: root) {
+                out[key] = rel
+            }
+        }
+        return out
+    }
 }
 
 /// Persisted snapshot of a scanned project: which folders, when, and the files
@@ -165,6 +184,29 @@ struct ProjectIndexData: Codable {
         }
         return out
     }
+
+    /// First-folder-wins merged basename → ROOT-RELATIVE path (G10) — feeds the merged
+    /// fallback snapshot's `pathMap` so a terminal still gets repo-relative paths even
+    /// when we couldn't resolve which checkout you're in (the scoped `snapshot(for:)`
+    /// path is preferred). Unlike `mergedFilePaths`, this must strip each file against ITS
+    /// OWN root, so we walk the per-root buckets (in `folderPaths` order — first folder
+    /// wins a colliding basename, same rule as everywhere else) and derive each root's
+    /// relative map. The legacy merged bucket is deliberately EXCLUDED here: its absolute
+    /// paths carry no per-root structure to strip against, so a pre-A10 file simply
+    /// contributes no relative paths until the one-shot migration rescan repopulates the
+    /// per-root map — the caller then falls back to the bare basename, never a wrong path.
+    var mergedRelativeFilePaths: [String: String] {
+        var out: [String: String] = [:]
+        func admit(root: String, bucket: ProjectRootIndex) {
+            let rel = bucket.relativeFilePaths(root: URL(fileURLWithPath: root))
+            for (k, v) in rel where out[k] == nil { out[k] = v }
+        }
+        for path in folderPaths {
+            if let bucket = roots[path] { admit(root: path, bucket: bucket) }
+        }
+        for (path, bucket) in roots where !folderPaths.contains(path) { admit(root: path, bucket: bucket) }
+        return out
+    }
 }
 
 /// A single chosen project root, for display in the Vibe Coding pane.
@@ -191,6 +233,14 @@ struct ProjectIndexSnapshot: Sendable {
     /// 4-letter floor, so folding it into the corrector's term set can only rescue a
     /// close-sounding misrecognition, never force a rare spelling onto a common word.
     var correctorTerms: [String] = []
+    /// Canonical basename → repo-relative path (G10). Keyed by the SAME canonical
+    /// filename `keyMap`'s values hold, so at a match the formatter can swap the bare
+    /// basename for `Sources/Views/ExerciseLibrary.tsx` when `preferPaths` is on (a
+    /// terminal). Empty for a basename we couldn't place under its root (or a legacy
+    /// pre-A10 index before its migration rescan), in which case the formatter keeps the
+    /// basename — so paths are strictly an ENRICHMENT, never a way to emit a wrong string.
+    /// Derived, never fed to the recognizer as a bias phrase (`biasPhrases` is unchanged).
+    var pathMap: [String: String] = [:]
 
     static let empty = ProjectIndexSnapshot(keyMap: [:], maxKeyTokens: 0, biasPhrases: [], correctorTerms: [])
     /// `isEmpty` gates the spoken-filename matcher only, so it keys off `keyMap`
@@ -240,6 +290,19 @@ final class ProjectIndexStore: ObservableObject {
         self.fileURL = fileURL ?? AppPaths.supportDirectory().appendingPathComponent("project_index.json")
         load()
         rebuildSnapshot()
+        // G10 migration: a legacy pre-A10 `project_index.json` stored a flat merged
+        // `filePaths` with NO per-root structure, so we can't derive repo-relative paths
+        // from it — `mergedRelativeFilePaths` skips the legacy blob by design. If we loaded
+        // such a file (folders pinned, but the per-root `roots` map is empty), kick off ONE
+        // rescan to repopulate the per-root buckets; once it lands, `rebuildSnapshot` picks
+        // up the relative paths and `legacyMerged` is cleared (see `rescan`). Until then the
+        // snapshot we just built still snaps basenames from the legacy blob — paths are the
+        // only thing missing, never matching itself, so nothing regresses mid-migration.
+        // This reuses A10's existing `rescan` (no second migration path); a new-shape file
+        // already has per-root buckets and needs no rescan (relative paths derive on load).
+        if data.roots.isEmpty, !data.folderPaths.isEmpty {
+            Task { await rescan() }
+        }
     }
 
     /// The chosen project roots, in the order they were added.
@@ -381,8 +444,12 @@ final class ProjectIndexStore: ObservableObject {
     /// global `snapshot` — never a wrong-repo scope.
     func snapshot(for root: URL) -> ProjectIndexSnapshot? {
         guard let bucket = data.roots[root.standardizedFileURL.path] else { return nil }
+        // G10: derive this root's basename→relative-path map so a terminal target can
+        // insert the repo-relative path. Scoped to THIS checkout, so the relative paths are
+        // unambiguous (no cross-root first-wins needed here).
         return SpokenFileMatcher.buildSnapshot(files: bucket.files, symbols: bucket.symbols,
-                                               docTerms: bucket.docTerms)
+                                               docTerms: bucket.docTerms,
+                                               filePaths: bucket.relativeFilePaths(root: root))
     }
 
     /// Index a detected-but-unpinned root in the background (A10 index-on-first-sight), so a
@@ -440,8 +507,12 @@ final class ProjectIndexStore: ObservableObject {
     }
 
     private func rebuildSnapshot() {
+        // G10: the merged fallback snapshot also carries repo-relative paths (first-folder-
+        // wins across roots, each file stripped against its own root), so a terminal still
+        // gets paths when we couldn't resolve which checkout you're in.
         snapshot = SpokenFileMatcher.buildSnapshot(files: data.mergedFiles, symbols: data.mergedSymbols,
-                                                   docTerms: data.mergedDocTerms)
+                                                   docTerms: data.mergedDocTerms,
+                                                   filePaths: data.mergedRelativeFilePaths)
     }
 
     private func load() {
@@ -712,11 +783,20 @@ enum SpokenFileMatcher {
     ]
 
     /// Build the off-main snapshot once, when the index changes.
+    ///
+    /// `filePaths` (G10) is an OPTIONAL lowercased-basename → repo-relative-path map. When
+    /// present, each matchable file's canonical basename is paired with its relative path
+    /// in `pathMap`, so a terminal target can insert `Sources/Views/ExerciseLibrary.tsx`
+    /// instead of the bare name. It never affects `keyMap`, `biasPhrases`, or matching —
+    /// paths are purely a downstream emit choice — so callers that don't have (or don't
+    /// want) paths simply omit it and behavior is exactly as before.
     static func buildSnapshot(files: [String], symbols: [String],
-                             docTerms: [String] = []) -> ProjectIndexSnapshot {
+                             docTerms: [String] = [],
+                             filePaths: [String: String] = [:]) -> ProjectIndexSnapshot {
         var keyMap: [String: String] = [:]
         var maxTokens = 0
         var bias = Set<String>()
+        var pathMap: [String: String] = [:]
 
         for file in files {
             for key in spokenKeys(for: file) {
@@ -727,6 +807,10 @@ enum SpokenFileMatcher {
                 maxTokens = max(maxTokens, tokenCount)
             }
             bias.insert(file)
+            // G10: pair this file's canonical basename with its repo-relative path (keyed
+            // on the lowercased basename the scanner stored). Missing ⇒ no pathMap entry,
+            // so the formatter keeps the basename for it.
+            if let rel = filePaths[file.lowercased()] { pathMap[file] = rel }
             // The "spaced" human reading also helps the recognizer.
             let spaced = splitWords(URL(fileURLWithPath: file).deletingPathExtension().lastPathComponent)
                 .joined(separator: " ")
@@ -738,7 +822,8 @@ enum SpokenFileMatcher {
             keyMap: keyMap,
             maxKeyTokens: maxTokens,
             biasPhrases: Array(bias.prefix(250)),
-            correctorTerms: correctorTerms(from: docTerms)
+            correctorTerms: correctorTerms(from: docTerms),
+            pathMap: pathMap
         )
     }
 
@@ -778,7 +863,15 @@ enum SpokenFileMatcher {
 
     /// Apply the snapshot to a transcript. Returns the rewritten text and the
     /// number of filenames substituted.
-    static func format(_ text: String, snapshot: ProjectIndexSnapshot) -> (String, Int) {
+    ///
+    /// `preferPaths` (G10) makes a match emit the file's REPO-RELATIVE path
+    /// (`Sources/Views/ExerciseLibrary.tsx`) instead of the bare basename — what a shell
+    /// and Claude Code actually want. Callers pass `true` only for a terminal target; an
+    /// editor keeps getting the basename (`false`, the default). The emitted string still
+    /// carries any trailing punctuation, and a file with no path entry falls back to the
+    /// basename, so a non-match round-trips byte-identically under `preferPaths` too.
+    static func format(_ text: String, snapshot: ProjectIndexSnapshot,
+                       preferPaths: Bool = false) -> (String, Int) {
         guard !snapshot.isEmpty, !text.isEmpty else { return (text, 0) }
 
         // Tokenize, splitting "library.tsx" → library · dot · tsx so a literal
@@ -826,7 +919,11 @@ enum SpokenFileMatcher {
                 guard !windowNorm.isEmpty, let canonical = snapshot.keyMap[windowNorm] else { continue }
                 // Carry trailing punctuation from the last original token.
                 let trailing = tokens[i + n - 1].original.filter { ",;:!?\"')".contains($0) }
-                out.append(canonical + trailing)
+                // G10: in a terminal, emit the repo-relative path when we have one for this
+                // basename; otherwise (editor, or a basename with no path) keep the basename.
+                // Trailing punctuation carries either way.
+                let emitted = preferPaths ? (snapshot.pathMap[canonical] ?? canonical) : canonical
+                out.append(emitted + trailing)
                 replacements += 1
                 i += n
                 matched = true
@@ -903,6 +1000,30 @@ enum SpokenFileMatcher {
     private static func normalizeToken(_ token: String) -> String {
         let stripped = token.trimmingCharacters(in: CharacterSet(charactersIn: ",.;:!?\"'()[]{}"))
         return stripped.lowercased()
+    }
+
+    /// The path of `absolute` RELATIVE to `root` (G10), or nil when `absolute` isn't under
+    /// `root`. PURE + POSIX (`/`-separated) — the relative path is what we insert into a
+    /// terminal, and shells/Claude Code use forward slashes.
+    ///
+    /// We standardize BOTH sides before comparing because the two come from different
+    /// sources and can disagree on the `/private` prefix on macOS: the scanner stores the
+    /// enumerator's `url.path` (which resolves a temp dir to `/private/var/…`) while a root
+    /// key is `standardizedFileURL.path` (`/var/…`). Standardizing both collapses that so
+    /// the prefix strip succeeds; on ordinary (non-temp) paths standardizing is a no-op and
+    /// this is exact. We require a `/` boundary after the root so `/a/b` never matches a
+    /// sibling `/a/bc`, and return nil (not the absolute path) for anything outside the
+    /// root — the caller then keeps the basename rather than leaking an absolute path.
+    static func relativePath(ofAbsolute absolute: String, underRoot root: URL) -> String? {
+        guard !absolute.isEmpty else { return nil }
+        let fileStd = URL(fileURLWithPath: absolute).standardizedFileURL.path
+        let rootStd = root.standardizedFileURL.path
+        guard !rootStd.isEmpty else { return nil }
+        // Root itself is not a file under root; require a strict descendant.
+        let prefix = rootStd.hasSuffix("/") ? rootStd : rootStd + "/"
+        guard fileStd.hasPrefix(prefix) else { return nil }
+        let rel = String(fileStd.dropFirst(prefix.count))
+        return rel.isEmpty ? nil : rel
     }
 }
 
