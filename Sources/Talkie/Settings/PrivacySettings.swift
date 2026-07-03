@@ -1,4 +1,4 @@
-import Security
+import AppKit
 import SwiftUI
 
 /// "Privacy" — the honest, verifiable statement that nothing leaves your Mac,
@@ -21,6 +21,8 @@ struct PrivacySection: View {
     @State private var appVersion: String? = nil
     /// Set true while the "Copy proof card" button flashes its confirmation.
     @State private var copiedProof = false
+    /// Set true while the "Copy diagnostic report" button flashes its confirmation.
+    @State private var copiedReport = false
 
     /// Bridges the scalar `historyRetentionDays` setting to the typed picker.
     private var retention: Binding<HistoryRetention> {
@@ -134,7 +136,10 @@ struct PrivacySection: View {
             }
 
             // How to verify it yourself.
-            SettingsCard(header: "Verify it yourself") {
+            SettingsCard(
+                header: "Verify it yourself",
+                footer: "Or copy the whole picture at once — the diagnostic report gathers your entitlements, live sockets, FileVault status, permissions and data locations into pasteable text. It's the same thing you get from the command line: Talkie doctor." // talkie:no-network(self-inspection)
+            ) {
                 VerifyRow(number: "1", title: "Read the permissions",
                           command: "codesign -d --entitlements - /Applications/Talkie.app")
                 SettingsDivider()
@@ -143,6 +148,37 @@ struct PrivacySection: View {
                 SettingsDivider()
                 VerifyRow(number: "3", title: "Watch the wire",
                           command: "nettop -p $(pgrep Talkie)")
+                SettingsDivider()
+                // One-tap markdown receipt of the whole verify-yourself story, with
+                // real in-app TCC states (includeTCC: true). Mirrors the proof-card
+                // button's transient "Copied" flash.
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Copy diagnostic report".loc)
+                            .font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                        Text("A pasteable markdown receipt you can drop into a GitHub issue.".loc)
+                            .font(.talkieHeading(12, weight: .regular))
+                            .foregroundStyle(Theme.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    Button {
+                        let report = DoctorReport.generate(includeTCC: true)
+                        let pb = NSPasteboard.general
+                        pb.clearContents()
+                        pb.setString(report, forType: .string)
+                        copiedReport = true
+                        Task { try? await Task.sleep(for: .seconds(1.4)); copiedReport = false }
+                    } label: {
+                        Label(copiedReport ? "Copied".loc : "Copy diagnostic report".loc,
+                              systemImage: copiedReport ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.coral)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
             }
 
             SettingsCard(header: "Where your data lives") {
@@ -179,54 +215,25 @@ struct PrivacySection: View {
     /// Read the entitlement keys — plus the code-signature hash (cdhash) and the
     /// app version — from this process's own code signature.
     ///
-    /// The cdhash and version feed the shareable proof card (I5). We ask for both
-    /// `kSecCSRequirementInformation` (→ the entitlements dictionary) and
-    /// `kSecCSSigningInformation` (→ `kSecCodeInfoUnique`, the cdhash) in one read
-    /// so the pane and the card describe the exact same binary. On an ad-hoc or
-    /// un-signed build these come back absent; we leave them `nil` and the UI
-    /// degrades honestly rather than inventing a value.
+    /// The SecCode logic itself now lives in `EntitlementInspector` (I6), so this
+    /// pane and the `talkie doctor` CLI describe the exact same binary through one
+    /// code path. We map the inspector's `Capability` values onto this view's local
+    /// `Entitlement` type (which the rows bind to) — the read is identical to
+    /// before, just factored out. The cdhash and version feed the shareable proof
+    /// card (I5). On an ad-hoc / un-signed build the inspector returns an empty
+    /// list and a `nil` cdhash, and the UI degrades honestly rather than inventing
+    /// a value.
     private func loadEntitlements() {
         // Version is independent of the signature — read it unconditionally so the
         // proof card can show it even on an un-signed build.
         appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
 
-        let known: [(key: String, label: String)] = [
-            ("com.apple.security.device.audio-input", "Microphone capture"),
-            ("com.apple.security.network.client", "Outbound network"),
-            ("com.apple.security.network.server", "Inbound network"),
-            ("com.apple.security.app-sandbox", "App Sandbox"),
-        ]
-
-        var code: SecCode?
-        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return }
-        var staticCode: SecStaticCode?
-        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return }
-
-        let flags = SecCSFlags(rawValue: kSecCSRequirementInformation | kSecCSSigningInformation)
-        var info: CFDictionary?
-        guard SecCodeCopySigningInformation(staticCode, flags, &info) == errSecSuccess,
-              let dict = info as? [String: Any] else { return }
-
-        // cdhash: kSecCodeInfoUnique is a CFData of the code-directory hash. Render
-        // it as a lowercase hex string, the same form `codesign -dvvv` prints.
-        if let unique = dict[kSecCodeInfoUnique as String] as? Data {
-            cdhash = unique.map { String(format: "%02x", $0) }.joined()
+        cdhash = EntitlementInspector.cdhashHex
+        let caps = EntitlementInspector.capabilities()
+        entitlements = caps.map {
+            Entitlement(key: $0.key, label: $0.label, isNetwork: $0.isNetwork)
         }
-
-        guard let ents = dict["entitlements-dict"] as? [String: Any] else { return }
-
-        var found: [Entitlement] = []
-        var network = false
-        for entry in known {
-            let present = (ents[entry.key] as? Bool) == true
-            if present {
-                found.append(Entitlement(key: entry.key, label: entry.label,
-                                         isNetwork: entry.key.contains("network")))
-                if entry.key.contains("network") { network = true }
-            }
-        }
-        entitlements = found
-        hasNetwork = network
+        hasNetwork = caps.contains { $0.isNetwork }
     }
 
     /// Assemble the current, real proof-card data from live state: the

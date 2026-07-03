@@ -329,6 +329,8 @@
 "Share the proof" = "分享证明";
 "Copy proof card" = "复制证明卡";
 "A shareable receipt that nothing leaves this Mac." = "一份可分享的凭证，证明没有任何内容离开这台 Mac。";
+"Copy diagnostic report" = "复制诊断报告";
+"A pasteable markdown receipt you can drop into a GitHub issue." = "一份可粘贴的 Markdown 凭证，可放入 GitHub issue。";
 "Open network sockets right now:" = "当前打开的网络套接字：";
 "Couldn’t read this process’s sockets on this build." = "在此版本中无法读取该进程的套接字。";
 "An internet socket is open — that’s unexpected for the on-device core." = "有一个互联网套接字处于打开状态——这对设备端核心来说是意外的。";

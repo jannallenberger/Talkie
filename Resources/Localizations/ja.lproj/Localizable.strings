@@ -329,6 +329,8 @@
 "Share the proof" = "証拠を共有";
 "Copy proof card" = "証明カードをコピー";
 "A shareable receipt that nothing leaves this Mac." = "この Mac から何も出ていかないことを示す共有可能な証明です。";
+"Copy diagnostic report" = "診断レポートをコピー";
+"A pasteable markdown receipt you can drop into a GitHub issue." = "GitHub の Issue に貼り付けられる Markdown 形式のレシートです。";
 "Open network sockets right now:" = "現在開いているネットワークソケット:";
 "Couldn’t read this process’s sockets on this build." = "このビルドではこのプロセスのソケットを読み取れませんでした。";
 "An internet socket is open — that’s unexpected for the on-device core." = "インターネットソケットが開いています。オンデバイスのコアでは想定外です。";
