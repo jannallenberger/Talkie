@@ -319,3 +319,8 @@
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "Listening, hands-free. Recording is locked — tap your key once to stop.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "Hold your key to talk, or tap it twice to lock hands-free recording.";
 "Click here, then hold %@ and speak…" = "Click here, then hold %@ and speak…";
+
+// MARK: - Secure-input culprit (B3)
+"Password field — tap to copy" = "Password field — tap to copy";
+"%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy.";
+"another app" = "another app";

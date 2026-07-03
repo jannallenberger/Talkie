@@ -319,3 +319,8 @@
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "핸즈프리로 듣는 중입니다. 녹음이 고정되었습니다 — 키를 한 번 누르면 멈춥니다.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "키를 누른 채 말하거나, 두 번 눌러 핸즈프리 녹음을 고정하세요.";
 "Click here, then hold %@ and speak…" = "여기를 클릭한 다음 %@ 를 누른 채 말하세요…";
+
+// MARK: - Secure-input culprit (B3)
+"Password field — tap to copy" = "암호 입력란 — 탭하여 복사";
+"%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@이(가) 보안 입력을 점유하고 있어요. 해당 앱으로 전환해 암호 요청을 닫아 주세요. 탭하여 복사.";
+"another app" = "다른 앱";

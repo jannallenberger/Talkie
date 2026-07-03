@@ -39,7 +39,7 @@ enum TextInjector {
         // Secure-input fields (passwords) reject synthetic events — never force it.
         if IsSecureEventInputEnabled() {
             copyToClipboard(text)
-            return .leftOnClipboard(reason: "Password field — tap to copy")
+            return .leftOnClipboard(reason: secureInputReason())
         }
 
         // Synthetic ⌘V needs Accessibility (post-event) trust. The hotkey only
@@ -91,7 +91,7 @@ enum TextInjector {
         guard mode == .paste, graphemeCount > 0, !text.isEmpty else { return .empty }
         if IsSecureEventInputEnabled() {
             copyToClipboard(text)
-            return .leftOnClipboard(reason: "Password field — tap to copy")
+            return .leftOnClipboard(reason: secureInputReason())
         }
         guard ensureTrusted(prompt: false) else {
             copyToClipboard(text)
@@ -157,6 +157,38 @@ enum TextInjector {
             return true
         }
         return false
+    }
+
+    // MARK: Secure-input diagnosis
+
+    /// Build the "couldn't paste — text is on the clipboard" reason shown by the HUD
+    /// when secure keyboard entry is on. Secure input is system-wide, and the culprit
+    /// is frequently NOT the focused field — it's a password manager whose lock
+    /// screen is still up, or Terminal's "Secure Keyboard Entry" left toggled on. So
+    /// we name the holding app when we can resolve it, and only fall back to the old
+    /// generic "Password field" guess when we genuinely can't tell who holds it.
+    ///
+    /// The lookup is a pure diagnostic read (see `SecureInputCulprit`); it never
+    /// blocks or delays insertion beyond a microsecond IOKit read on this already-
+    /// failed path, and it reads no keystrokes or field contents.
+    private static func secureInputReason() -> String {
+        guard let culprit = SecureInputCulprit.current() else {
+            // Nobody resolvable — keep today's honest, generic guess.
+            return "Password field — tap to copy".loc
+        }
+        // If the holder is the app you're actually in, a focused password field is
+        // the likely story: the short, familiar message is right.
+        let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        if culprit.pid == frontPID {
+            return "Password field — tap to copy".loc
+        }
+        // The holder is some OTHER app (the stuck-state case). Name it so you know
+        // exactly what to dismiss — a 1Password lock screen, Terminal's Secure
+        // Keyboard Entry, etc. — instead of hunting blind.
+        return String(
+            format: "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy.".loc,
+            culprit.name
+        )
     }
 
     // MARK: Clipboard paste

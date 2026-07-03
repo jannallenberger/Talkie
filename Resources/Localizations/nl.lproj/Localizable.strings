@@ -319,3 +319,8 @@
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "Luistert, handsfree. De opname is vergrendeld — tik één keer op je toets om te stoppen.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "Houd je toets ingedrukt om te praten, of tik er tweemaal op om handsfree opnemen te vergrendelen.";
 "Click here, then hold %@ and speak…" = "Klik hier, houd dan %@ ingedrukt en spreek…";
+
+// MARK: - Secure-input culprit (B3)
+"Password field — tap to copy" = "Wachtwoordveld — tik om te kopiëren";
+"%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ houdt beveiligde invoer vast — schakel ernaartoe en sluit de wachtwoordvraag. Tik om te kopiëren.";
+"another app" = "een andere app";
