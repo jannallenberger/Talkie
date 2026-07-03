@@ -120,6 +120,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// (A9). Consumed once, after a successful insertion, to show the one-tap "Index
     /// 〈Repo〉 filenames?" offer. `nil` when there's nothing to offer.
     private var pendingVibeOfferRoot: URL?
+    /// A11 — identifiers mined from the source file you're LOOKING AT this session
+    /// (resolved from the editor's window title against the project index, read + mined
+    /// off-main at `beginDictation`). Unioned into the niche corrector's term set at
+    /// `endDictation`, ranked above repo terms so the file on screen wins the budget.
+    /// Empty when vibe coding is off, the title had no indexed filename, or the mine
+    /// didn't finish before the key was released — a silent degrade to A3 behavior.
+    /// Guarded by the `activeFileTermsGeneration` token so a slow mine from a previous
+    /// session can never land its terms into a later one.
+    private var sessionActiveFileTerms: [String] = []
+    /// Bumped every `beginDictation`; the off-main mine captures its value and only
+    /// publishes its result if the token still matches — otherwise the session it was
+    /// mining for is already over, so the terms are dropped.
+    private var activeFileTermsGeneration = 0
+    /// Retained so a new session can cancel a still-running mine from the previous one
+    /// (utility-QoS, off-main). Cancelling stops it churning after it's been superseded.
+    private var activeFileMineTask: Task<Void, Never>?
 
     // MARK: Meeting auto-detect + live pill
 
@@ -741,6 +757,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pendingVibeOfferRoot = root
         }
 
+        // A11 — mine the identifiers of the file you're LOOKING AT. When vibe coding is
+        // on and the editor's window title resolves to a file we've indexed, read that
+        // file and pull its guard-safe identifiers so the corrector can rescue a spoken
+        // symbol this session ("exercise filter" → `exerciseFilter`). The resolution (a
+        // lookup in the already-consented project index) happens here on the main actor;
+        // the READ + parse happen off-main at utility QoS so they can't delay arming. If
+        // the mine isn't done by the time you release the key, `endDictation` simply skips
+        // it — arming latency is never on the critical path. Privacy: `resolveIndexedFilePath`
+        // only ever returns a file inside a folder the user picked for Vibe Coding.
+        activeFileTermsGeneration += 1
+        let mineGeneration = activeFileTermsGeneration
+        sessionActiveFileTerms = []
+        activeFileMineTask?.cancel()
+        activeFileMineTask = nil
+        if settings.vibeCoding,
+           let filePath = projectIndex.resolveIndexedFilePath(forWindowTitle: captured.windowTitle) {
+            activeFileMineTask = Task.detached(priority: .utility) { [weak self] in
+                let terms = await FileIdentifierCache.shared.terms(forPath: filePath)
+                if Task.isCancelled || terms.isEmpty { return }
+                await MainActor.run {
+                    guard let self, self.activeFileTermsGeneration == mineGeneration else { return }
+                    self.sessionActiveFileTerms = terms
+                }
+            }
+        }
+
         // Resolve the per-app rules for this app once, here on the main actor
         // (global → per-category → per-app merge, falling back to `settings.*`
         // for every unset field). Snapshotted so a mid-session profile edit
@@ -1002,14 +1044,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
         let vibeSnapshot = currentVibeSnapshot
+        // A11: identifiers of the file you're looking at, mined off-main since begin.
+        // Snapshotted here on the main actor (a plain `[String]`, Sendable) so it can
+        // ride into the processing Task. Empty when the mine didn't resolve/finish.
+        let activeFileTerms = sessionActiveFileTerms
+        // A11: when vibe coding is on, fold in the identifiers of the FILE ON SCREEN
+        // ahead of the repo-wide terms — the symbol you're staring at is the one you're
+        // most likely to speak, so it earns higher priority under the shared cap. Each
+        // term already cleared A11's safety gates (4-letter floor, false-boost guard,
+        // phonetic-common guard, and the leading-common-word gate) plus the ≤2-spoken-word
+        // rescue window, so it can only rescue a close-sounding miss, never rewrite clean
+        // prose (proven by the A11 false-positive corpus gate). Provenance order
+        // end-to-end: dictionary > graduated niche > active-file > repo.
+        if vibeOn {
+            var seen = Set(nicheTerms.map { $0.lowercased() })
+            for term in activeFileTerms where nicheTerms.count < 300 {
+                if seen.insert(term.lowercased()).inserted { nicheTerms.append(term) }
+            }
+        }
         // A3: when vibe coding is on, also let THIS project's mined jargon (its
         // CLAUDE.md / README / docs + git branch & commit words) be rescued by the
-        // niche corrector. Appended LAST — after the curated Dictionary and the
-        // self-learned niche terms — so the provenance order is authoritative-first
-        // (dictionary), proven-usage-second (niche), repo-context-last; and it shares
-        // A1's global 300-term corrector cap so one repo's docs can't crowd out the
-        // terms you've actually confirmed. Each repo term already cleared the
-        // false-boost guard + 4-letter floor when the snapshot was built.
+        // niche corrector. Appended LAST — after the curated Dictionary, the
+        // self-learned niche terms, and the active-file identifiers — so the provenance
+        // order is authoritative-first (dictionary), proven-usage-second (niche),
+        // active-file-third (A11), repo-context-last; and it shares A1's global 300-term
+        // corrector cap so one repo's docs can't crowd out the terms you've actually
+        // confirmed. Each repo term already cleared the false-boost guard + 4-letter
+        // floor when the snapshot was built.
         if vibeOn {
             var seen = Set(nicheTerms.map { $0.lowercased() })
             for term in vibeSnapshot.correctorTerms where nicheTerms.count < 300 {
