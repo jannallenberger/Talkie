@@ -33,6 +33,11 @@ struct MemoryView: View {
     /// Cleared on every delete so `context_summary.json` can't keep quoting text you
     /// just deleted. Defaulted so previews/tests that don't wire it still compile.
     var contextSummary: ContextSummaryStore? = nil
+    /// L5-b: the invented job title is derived from your vocabulary + app usage, so
+    /// "Clear everything" wipes its cache alongside the word-frequency store — a
+    /// coinage can't outlive the inputs it was made from. Defaulted so previews/tests
+    /// that don't wire it still compile.
+    var jobTitle: JobTitleStore? = nil
 
     @State private var query = ""
     /// Drives the "Clear everything" confirmation — clearing history also erases what
@@ -109,6 +114,9 @@ struct MemoryView: View {
         history.clearAll()
         contextGraph.purge(source: .dictation, sourceID: nil)
         wordFreq.clearAll()
+        // L5-b: the invented job title is derived from the vocabulary/usage being
+        // cleared, so drop its cache too — right beside the word-freq wipe it tracks.
+        jobTitle?.clearCache()
         scratchpad.purgeAllDictationSourced()
         // L2-b (LOG-ONLY): drop every dictation-sourced AI-auto-add preview record —
         // it's derived from the dictation history being cleared.

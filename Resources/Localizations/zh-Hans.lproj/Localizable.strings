@@ -500,6 +500,29 @@
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ 整套《哈利·波特》（约 108 万词）";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ 两套《哈利·波特》；或目前的《冰与火之歌》（约 170 万）";
 
+// L5-b — Invented job title (on-device, playful label — never a real profession)
+"Your invented title" = "你的专属称号";
+"Regenerate" = "重新生成";
+"Coining your title…" = "正在为你拟定称号…";
+"A playful label, not a real job — invented on your Mac from where your words go. It never leaves this device." = "这是一个好玩的标签，不是真正的职业——在你的 Mac 上，根据你的话语流向拟定，绝不离开这台设备。";
+// Fallback titles + sentences, one per app category (used when Apple Intelligence is off)
+"Vibe-Coding Conductor" = "氛围编程指挥家";
+"You don't type code so much as talk it into being." = "与其说你在敲代码，不如说你把它说成了现实。";
+"Deep-Web Wayfarer" = "深网领航者";
+"You think out loud across a hundred open tabs and somehow find the thread." = "你在上百个标签页之间自言自语，却总能找到那条线索。";
+"Inbox Diplomat" = "收件箱外交官";
+"You turn a morning of messages into replies that actually sound like you." = "你把一早上的消息，变成真正像你会说的回复。";
+"Conversation Keeper" = "对话守护者";
+"Your words live in the back-and-forth — quick, warm, always in motion." = "你的话语活在你来我往之间——轻快、温暖，始终在流动。";
+"Longform Thinker" = "长文思考者";
+"You dictate your way to clarity, one paragraph at a time." = "你一段一段地口述，一路说向清晰。";
+"Command-Line Whisperer" = "命令行低语者";
+"You speak to the machine directly, and it listens." = "你直接对机器说话，而它在倾听。";
+"Idea Sketcher" = "创意速写手";
+"You narrate what you see before it exists on the canvas." = "在画布上成形之前，你先用话语把它描绘出来。";
+"Word Wanderer" = "字里行间的漫游者";
+"Your voice goes everywhere your work does — a little of everything." = "你的声音去往你工作所到的每一处——每样都沾一点。";
+
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "已运行快捷指令“%@”";
 "Scratched" = "已删除";

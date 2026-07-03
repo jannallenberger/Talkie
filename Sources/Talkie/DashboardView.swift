@@ -37,6 +37,10 @@ struct DashboardView: View {
     /// L5-a: lifetime word/phrase frequency, threaded through to the Plumage
     /// subpage's "words you say most" card.
     @ObservedObject var wordFreq: WordFrequencyStore
+    /// L5-b: the on-device invented job title, threaded through to the Plumage
+    /// subpage's title card (owned by AppDelegate so its cache + generation state
+    /// survive navigating away and back).
+    @ObservedObject var jobTitle: JobTitleStore
     /// L3a/L3b: rolling per-dictation latency, powering the Dictation Speed card
     /// and its detail page.
     @ObservedObject var latency: LatencyStore
@@ -102,7 +106,8 @@ struct DashboardView: View {
             .navigationDestination(for: MilestoneRoute.self) { route in
                 switch route {
                 case .plumage:
-                    MilestonesView(stats: stats, activity: activity, wordFreq: wordFreq)
+                    MilestonesView(stats: stats, activity: activity, wordFreq: wordFreq,
+                                   appUsage: appUsage, jobTitle: jobTitle)
                 }
             }
             .navigationDestination(for: SpeedRoute.self) { route in

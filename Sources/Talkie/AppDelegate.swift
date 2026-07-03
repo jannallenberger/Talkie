@@ -18,6 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// L4: running word/phrase frequency, accumulated at record time (transcripts
     /// are pruned after 7 days, so "most used" can't be recomputed from history).
     let wordFreq = WordFrequencyStore()
+    /// L5-b: the on-device *invented* job title for the Milestones page. Owned here
+    /// (not by the view) so its cache and generation state survive navigation. Its
+    /// inputs are content-derived (vocabulary + app usage), so it joins the
+    /// true-delete cascade — `MemoryView`'s "Clear everything" wipes `job_title.json`.
+    let jobTitle = JobTitleStore()
     /// L3a: rolling per-dictation software-latency record (last 50, numeric only —
     /// no transcript text). Populated from the post-release `ProcessingTrace`; the
     /// UI is L3b, so nothing consumes it in a view yet — it just accumulates.
@@ -2707,6 +2712,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appUsage: appUsage,
                 activity: activity,
                 wordFreq: wordFreq,
+                jobTitle: jobTitle,
                 latency: latency,
                 systemPressure: systemPressure,
                 scratchpad: scratchpad,

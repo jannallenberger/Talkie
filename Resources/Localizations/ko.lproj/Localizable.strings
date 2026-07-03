@@ -500,6 +500,29 @@
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ 해리 포터 전편 (~108만 단어)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ 해리 포터 전편의 두 배; 지금까지의 얼음과 불의 노래 (~170만)";
 
+// L5-b — Invented job title (on-device, playful label — never a real profession)
+"Your invented title" = "당신에게 붙여진 별칭";
+"Regenerate" = "다시 만들기";
+"Coining your title…" = "별칭을 지어내는 중…";
+"A playful label, not a real job — invented on your Mac from where your words go. It never leaves this device." = "진짜 직업이 아니라 장난스러운 이름표예요. 당신의 말이 어디로 가는지를 바탕으로 Mac에서 만들어지며, 이 기기를 절대 떠나지 않아요.";
+// Fallback titles + sentences, one per app category (used when Apple Intelligence is off)
+"Vibe-Coding Conductor" = "바이브 코딩 지휘자";
+"You don't type code so much as talk it into being." = "코드를 치기보다 말해서 존재하게 만드는 사람.";
+"Deep-Web Wayfarer" = "딥웹 길잡이";
+"You think out loud across a hundred open tabs and somehow find the thread." = "백 개의 탭을 열어 두고 소리 내어 생각하면서도 결국 실마리를 찾는 사람.";
+"Inbox Diplomat" = "받은편지함 외교관";
+"You turn a morning of messages into replies that actually sound like you." = "메시지로 가득한 아침을, 정말 당신다운 답장으로 바꾸는 사람.";
+"Conversation Keeper" = "대화의 지킴이";
+"Your words live in the back-and-forth — quick, warm, always in motion." = "당신의 말은 주고받는 흐름 속에 살아 있어요 — 빠르고, 따뜻하고, 늘 움직이며.";
+"Longform Thinker" = "장문의 사색가";
+"You dictate your way to clarity, one paragraph at a time." = "한 문단씩, 받아쓰며 명료함으로 나아가는 사람.";
+"Command-Line Whisperer" = "명령줄의 속삭이는 이";
+"You speak to the machine directly, and it listens." = "기계에게 직접 말을 걸면, 기계가 귀 기울여요.";
+"Idea Sketcher" = "아이디어 스케치가";
+"You narrate what you see before it exists on the canvas." = "캔버스에 존재하기 전의 장면을 말로 그려내는 사람.";
+"Word Wanderer" = "말의 방랑자";
+"Your voice goes everywhere your work does — a little of everything." = "당신의 목소리는 당신의 일이 가는 곳이면 어디든 — 조금씩, 모든 곳에.";
+
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "단축어 “%@”을(를) 실행했습니다";
 "Scratched" = "취소함";
