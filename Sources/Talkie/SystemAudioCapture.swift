@@ -100,6 +100,13 @@ final class SystemAudioCapture: @unchecked Sendable {
     private var bufferAudio = false
     private var bufferSeconds: Double = 600
     private var onLevel: (@Sendable (Float) -> Void)?
+    /// Optional passive tap on the CONVERTED far-end PCM (D9 keep-audio tee), fired for
+    /// every non-empty converted buffer alongside `captured?.append`. Retained like the
+    /// other session params so a watchdog rebuild re-installs it against the same writer.
+    /// Passive by contract: it never blocks the RT IOProc (the writer copies + hops to
+    /// its own serial queue) and never alters what's yielded, so transcription is
+    /// unchanged whether it's set or nil.
+    private var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
 
     // MARK: Tap-health counters (written on the RT thread, read on main)
     //
@@ -146,7 +153,8 @@ final class SystemAudioCapture: @unchecked Sendable {
         continuation: AsyncStream<AnalyzerInput>.Continuation,
         bufferAudio: Bool = false,
         bufferSeconds: Double = 600,
-        onLevel: (@Sendable (Float) -> Void)? = nil
+        onLevel: (@Sendable (Float) -> Void)? = nil,
+        onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? = nil
     ) throws {
         guard !isRunning else { return }
 
@@ -157,6 +165,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         self.bufferAudio = bufferAudio
         self.bufferSeconds = bufferSeconds
         self.onLevel = onLevel
+        self.onBuffer = onBuffer
 
         // Fresh meeting: reset the watchdog's per-meeting bookkeeping (rebuild cap,
         // last-rebuild time) and the RT health counters. A rebuild (below) does NOT
@@ -256,6 +265,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         captureStartHostTime = DispatchTime.now().uptimeNanoseconds
 
         let onLevel = self.onLevel
+        let onBuffer = self.onBuffer
         let floor = Self.silenceFloor
 
         // 6. Install the I/O proc. It fires on a realtime thread with the tap's PCM.
@@ -280,6 +290,9 @@ final class SystemAudioCapture: @unchecked Sendable {
             guard let converted = Self.convert(buffer: wrapped, using: converter, to: targetFormat),
                   converted.frameLength > 0 else { return }
             capture?.append(converted)
+            // Passive keep-audio tee (D9): same buffer to the writer, which copies + hops
+            // to its own serial queue — never blocking this RT IOProc or altering output.
+            onBuffer?(converted)
             continuation.yield(AnalyzerInput(buffer: converted))
         }
         guard procStatus == noErr, let procID = newProcID else {
@@ -442,6 +455,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         targetFormat = nil
         continuation = nil
         onLevel = nil
+        onBuffer = nil
         captureStartHostTime = 0
     }
 

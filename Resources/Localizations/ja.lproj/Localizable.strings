@@ -575,3 +575,9 @@
 // MARK: - Keep-audio meetings + click-to-play (D9)
 "Play from here" = "ここから再生";
 "That audio couldn’t be played — the file may be missing or incomplete." = "この音声を再生できませんでした。ファイルが見つからないか、不完全な可能性があります。";
+
+// MARK: - Keep-audio toggle (D9)
+"Audio" = "オーディオ";
+"Keep audio with meeting notes" = "会議メモと一緒に音声を保存";
+"Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "各録音の音声を保存し、文字起こしの任意の行をクリックしてその瞬間を再生できるようにします。";
+"Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "デフォルトはオフ。保存した音声はノートの隣の ~/Talkie Meetings/ に残り、Mac の外に出ることはなく、会議とともに削除されます。通話の各方向につき1時間あたり約30 MB。ディクテーションの音声は保存されません。";

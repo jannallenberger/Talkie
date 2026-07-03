@@ -577,3 +577,9 @@
 // MARK: - Keep-audio meetings + click-to-play (D9)
 "Play from here" = "Play from here";
 "That audio couldn’t be played — the file may be missing or incomplete." = "That audio couldn’t be played — the file may be missing or incomplete.";
+
+// MARK: - Keep-audio toggle (D9)
+"Audio" = "Audio";
+"Keep audio with meeting notes" = "Keep audio with meeting notes";
+"Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.";
+"Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept.";

@@ -49,6 +49,7 @@ struct MeetingsView: View {
                 languageModeRow
                 if recorder.isRecording { notesCard }
                 folderRow
+                keepAudioCard
                 watchedInboxCard
                 detectionCard
 
@@ -269,6 +270,24 @@ struct MeetingsView: View {
             }
             .buttonStyle(.link)
             .font(.system(size: 12))
+        }
+    }
+
+    /// Keep-audio toggle (D9). Default OFF — retaining raw call audio is a genuine
+    /// privacy + disk decision, so the subtitle says the cost in plain words and the
+    /// choice is snapshotted at recording start (flipping it mid-call doesn't change a
+    /// recording already underway). When on, each recording writes per-stream `.m4a`
+    /// files beside its note, and clicking a transcript line plays that exact moment.
+    @ViewBuilder
+    private var keepAudioCard: some View {
+        SettingsCard(
+            header: "Audio",
+            footer: "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept.".loc
+        ) {
+            SettingsToggleRow(
+                title: "Keep audio with meeting notes".loc,
+                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
+                isOn: $settings.keepMeetingAudio)
         }
     }
 
