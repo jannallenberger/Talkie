@@ -46,6 +46,11 @@ enum HUDPhase: Equatable {
     // "Index" chip (turn the feature on + index this repo) and a "Not now" chip
     // (decline this root forever). Auto-dismisses; ignoring it just means "not now".
     case offerVibe(repo: String)
+    // The low-confidence review chip (A12): the recognizer was visibly unsure about
+    // 1–2 jargon-like words — surface them with a "Fix" chip that teaches the
+    // dictionary for next time. NEVER edits the already-inserted text. Auto-dismisses;
+    // ignoring it records nothing.
+    case reviewLowConfidence(words: [String])
     case error(String)
 }
 
@@ -81,6 +86,10 @@ final class HUDModel: ObservableObject {
     var onVibeAccept: () -> Void = {}
     /// Invoked when the user taps "Not now" on the Vibe Coding offer (A9).
     var onVibeDecline: () -> Void = {}
+    /// Invoked with the heard word the user chose to fix from the low-confidence
+    /// review chip (A12). The controller opens the correction popover; the hub's
+    /// closure teaches the dictionary when the popover commits.
+    var onReviewFix: (String) -> Void = { _ in }
     /// How long the learned-correction ping stays up; the countdown ring depletes
     /// over exactly this window before the pill collapses.
     static let learnedDuration: TimeInterval = 5
@@ -160,6 +169,12 @@ final class HUDController {
     private let model = HUDModel()
     private var panel: NSPanel?
     private var hideTask: Task<Void, Never>?
+    /// The low-confidence correction popover (A12) — a small, focusable panel with a
+    /// prefilled text field. Unlike the notch pill (a deliberately non-activating
+    /// panel that must never steal focus), this one IS key: a text field can only
+    /// receive keystrokes in a key window, and it appears solely on an explicit tap
+    /// on "Fix", so momentarily taking focus is expected and reversible (Escape).
+    private var correctionPanel: NSPanel?
 
     /// True while an *interactive or lingering* pill occupies the notch — a command
     /// preview, a learned-correction ping, the copy-prompt, another Vibe offer, or an
@@ -169,7 +184,7 @@ final class HUDController {
     /// short delay for those.
     var isPresentingInteractivePill: Bool {
         switch model.phase {
-        case .commandPreview, .learned, .copyPrompt, .offerVibe, .error:
+        case .commandPreview, .learned, .copyPrompt, .offerVibe, .reviewLowConfidence, .error:
             return true
         default:
             return false
@@ -471,6 +486,36 @@ final class HUDController {
         hide(after: HUDController.vibeOfferDuration)
     }
 
+    /// How long the low-confidence review chip stays up before auto-dismissing.
+    /// A little longer than a learned ping because it's an invitation to act (tap
+    /// to fix), but still bounded — ignoring it must record nothing and get out of
+    /// the way, since a chip the user didn't want is pure interruption.
+    static let reviewDuration: TimeInterval = 4
+
+    /// The low-confidence review chip (A12): the recognizer was visibly unsure about
+    /// `words` (1–2 jargon-like terms). Surface them with a "Fix" chip that, on tap,
+    /// opens a tiny correction popover teaching the dictionary for NEXT time — it
+    /// NEVER edits the text already inserted. Mouse events are enabled so "Fix" is
+    /// tappable; auto-dismisses after `reviewDuration` and records nothing if ignored.
+    /// Single-phase queue: the hub only calls this when no learned/copy/command pill
+    /// is showing, so it never stacks. `onFix` is the hub's closure (opens the
+    /// popover + teaches the dictionary on commit).
+    func showReviewChip(words: [String], onFix: @escaping (String) -> Void) {
+        guard !words.isEmpty else { return }
+        cancelHide()
+        let panel = ensurePanel()
+        model.onReviewFix = onFix
+        panel.ignoresMouseEvents = false   // let the user tap Fix
+        model.phase = .reviewLowConfidence(words: Array(words.prefix(2)))
+        reposition()
+        panel.orderFrontRegardless()
+        // The chip auto-dismisses and its panel may never take focus, so spell it out
+        // for a VoiceOver user: which words were unsure and that Fix teaches them.
+        let list = words.prefix(2).joined(separator: ", ")
+        announce(String(format: "Not sure about %@. Activate Fix to correct the spelling for next time.".loc, list))
+        hide(after: HUDController.reviewDuration)
+    }
+
     /// Brief "Reverted" confirmation after an Undo — mirrors `.copied`.
     func showReverted() {
         cancelHide()
@@ -554,6 +599,82 @@ final class HUDController {
         hide(after: 2.6)
     }
 
+    /// Present the A12 correction popover for one heard word: a tiny focusable panel
+    /// with a text field prefilled with `heardWord`. On commit it calls `onCommit`
+    /// with the corrected spelling; the hub then teaches the dictionary + records the
+    /// niche confirmation. The popover NEVER touches the already-inserted text — it's
+    /// purely "fix it for next time." Dismissing (Escape / Cancel / clicking away)
+    /// records nothing. Pins just under the notch, like the pill, so the correction
+    /// happens where the user's attention already is.
+    func presentCorrectionPopover(heardWord: String, onCommit: @escaping (String) -> Void) {
+        // Dismiss the chip immediately — the popover supersedes it.
+        cancelHide()
+        model.phase = .hidden
+        panel?.orderOut(nil)
+
+        // Tear down any prior popover so a rapid second Fix can't leak a window.
+        correctionPanel?.orderOut(nil)
+        correctionPanel = nil
+
+        let dismiss: @MainActor () -> Void = { [weak self] in
+            guard let self else { return }
+            self.correctionPanel?.orderOut(nil)
+            self.correctionPanel = nil
+        }
+        let view = CorrectionPopover(
+            heardWord: heardWord,
+            onSave: { corrected in
+                let fixed = corrected.trimmingCharacters(in: .whitespacesAndNewlines)
+                dismiss()
+                // Only teach when the user actually changed the spelling to something
+                // non-empty — saving the heard word unchanged is a no-op, not a rule.
+                if !fixed.isEmpty, fixed.lowercased() != heardWord.lowercased() {
+                    onCommit(fixed)
+                }
+            },
+            onCancel: { dismiss() }
+        )
+
+        let hosting = NSHostingView(rootView: view)
+        let size = NSSize(width: 320, height: 96)
+        // A titled panel (NOT non-activating): the text field can only take
+        // keystrokes in a key window, so this one is allowed to activate — the whole
+        // point, and expected because it only appears on an explicit "Fix" tap.
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.isMovableByWindowBackground = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.contentView = hosting
+        self.correctionPanel = panel
+
+        // Pin under the notch, centered — same anchor as the pill.
+        if let screen = preferredScreen() {
+            let full = screen.frame
+            let visible = screen.visibleFrame
+            let x = full.midX - size.width / 2
+            let topChrome = full.maxY - visible.maxY
+            let notch = screen.safeAreaInsets.top
+            let chrome = topChrome > 0 ? topChrome : max(notch, NSStatusBar.system.thickness)
+            let y = (full.maxY - chrome - 8) - size.height
+            panel.setFrameOrigin(NSPoint(x: x, y: y))
+        }
+        // Bring the app forward so the field can take keys, then focus the panel.
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
     func hide(after delay: TimeInterval = 0.25) {
         hideTask?.cancel()
         hideTask = Task { @MainActor in
@@ -565,6 +686,60 @@ final class HUDController {
             self.panel?.orderOut(nil)
             self.hideTask = nil
         }
+    }
+}
+
+/// The A12 correction popover body: a compact card with a prefilled text field and
+/// Save / Cancel. Committing on Return or Save hands the corrected spelling up; the
+/// copy makes the promise explicit — this fixes it for NEXT time, it does not touch
+/// the text already inserted. Honest, second-person, no invented metrics.
+private struct CorrectionPopover: View {
+    let heardWord: String
+    let onSave: (String) -> Void
+    let onCancel: () -> Void
+
+    @State private var text: String
+    @FocusState private var fieldFocused: Bool
+
+    init(heardWord: String, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.heardWord = heardWord
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _text = State(initialValue: heardWord)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(String(format: "Heard \u{201c}%@\u{201d} — fix it for next time".loc, heardWord))
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(Theme.inkSecondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                TextField("Correct spelling".loc, text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 13))
+                    .focused($fieldFocused)
+                    .onSubmit { onSave(text) }
+                Button("Cancel".loc) { onCancel() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save".loc) { onSave(text) }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .fill(Theme.surface)
+                .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
+        )
+        .frame(width: 320)
+        .onAppear { fieldFocused = true }
+        // The whole popover is a labeled correction affordance for VoiceOver.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(format: "Fix the spelling of %@ for next time.".loc, heardWord))
     }
 }
 
@@ -959,6 +1134,34 @@ private struct HUDView: View {
                 CommandChip(title: "Not now", prominent: false,
                             fill: chipFill(0.13), ink: ink(0.72),
                             hint: "Dismisses the offer for this project.".loc) { model.onVibeDecline() }
+            }
+            .transition(.blurReplace)
+            .accessibilityElement(children: .contain)
+        case .reviewLowConfidence(let words):
+            // Low-confidence review chip (A12): the recognizer was visibly unsure
+            // about `words` (1–2 jargon-like terms). Same visual family as the
+            // learned/command pills — a question-mark glyph, the unsure term(s), and
+            // one "Fix" chip that opens the correction popover. It NEVER edits the
+            // text already inserted; the copy is about NEXT time. `onReviewFix` gets
+            // the first (primary) unsure word to prefill the popover.
+            let primary = words.first ?? ""
+            HStack(spacing: 8) {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.coral)
+                    .accessibilityHidden(true)
+                Text(words.count > 1
+                     ? String(format: "Not sure about %@".loc, words.prefix(2).joined(separator: ", "))
+                     : String(format: "Not sure about \u{201c}%@\u{201d}".loc, primary))
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.92))
+                    .lineLimit(1)
+                    .frame(maxWidth: 260, alignment: .leading)
+                CommandChip(title: "Fix", prominent: true,
+                            fill: chipFill(0.18), ink: ink(0.72),
+                            hint: "Opens a small box to correct the spelling for next time.".loc) {
+                    model.onReviewFix(primary)
+                }
             }
             .transition(.blurReplace)
             .accessibilityElement(children: .contain)

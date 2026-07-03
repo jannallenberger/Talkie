@@ -1131,7 +1131,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var trace = ProcessingTrace()
             // Dictation inserts text; it never builds a Meeting, so the per-segment
             // audio-clock timings (used by meetings/imports) are intentionally dropped.
-            let (raw, segments, _) = await engine.finishSessionDetailed()
+            // `wordConfidences` (A12) rides back on the same finalize with no extra
+            // pass — the low-confidence review chip below reads it; everything else
+            // ignores it, so it costs the latency path nothing.
+            let (raw, segments, _, wordConfidences) = await engine.finishSessionDetailed()
             trace.stage("finalize")
 
             var finalRaw = raw
@@ -1519,6 +1522,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
 
+            // A12 — low-confidence review gate (pure). Decide, from the per-word
+            // confidences the recognizer already produced, whether it was visibly
+            // unsure about a small number of jargon-like words. Suppress any word the
+            // niche corrector already fixed this session (`nicheFixTargets`) — the
+            // correction path already did its job. This is a pure array read; the
+            // chip itself is only surfaced on the `.inserted` path below, queued
+            // behind any learned/copy pill. Nothing here changes the transcript or
+            // the insertion, so stop-to-paste latency is untouched.
+            let reviewFlagged = ConfidenceGate.evaluate(
+                wordConfidences: wordConfidences,
+                alreadyFixed: nicheFixTargets
+            ).flaggedWords
+
             let outcome: TextInjector.Outcome
             if let opt = optimistic {
                 // The interim raw text is already on screen — swap it for the
@@ -1618,6 +1634,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // so it never collides with them; a no-op when there's nothing to
                 // offer or the throttle/decline gates say no.
                 self.maybeOfferVibeIndexing()
+                // A12 — if the recognizer was visibly unsure about a word or two,
+                // offer the tap-to-fix review chip. Queued behind everything else on
+                // the single-phase HUD: it waits out the brief insert/learn pings,
+                // then shows ONLY if nothing interactive is on screen (a learned pill,
+                // copy prompt, command preview, or the Vibe offer above all suppress
+                // it) — a nagging chip is worse than none. Works with no AX at all:
+                // it's driven purely by the confidence numbers, so it fires the same
+                // when dictating into Claude/Electron where the edit-watcher is blind.
+                self.maybeOfferLowConfidenceReview(reviewFlagged)
             case .leftOnClipboard(let reason):
                 Feedback.notPasted()
                 // Couldn't paste — the text is on the clipboard; offer a tap to
@@ -1741,6 +1766,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.hud.hide()
                 }
             )
+        }
+    }
+
+    // MARK: A12 — low-confidence review chip (learning inside Talkie's own UI)
+
+    /// Offer the tap-to-fix review chip for the words the recognizer was visibly
+    /// unsure about (`flagged`, already gated + capped by `ConfidenceGate`). This is
+    /// the in-app learning path that works with NO Accessibility dependence: it's
+    /// driven purely by the confidence numbers, so it fires identically when
+    /// dictating into Claude/Electron where the edit-watcher is blind.
+    ///
+    /// Single-phase HUD queue: like the A9 Vibe offer, let the brief insert/learn
+    /// pings settle first, then show ONLY if nothing interactive is on the notch
+    /// (a learned pill, copy prompt, command preview, or a Vibe offer all suppress
+    /// it) and no new capture has started. A nagging chip is worse than none, so
+    /// every gate here fails safe toward NOT showing it. Ignoring the chip records
+    /// nothing; tapping Fix opens the correction popover.
+    private func maybeOfferLowConfidenceReview(_ flagged: [String]) {
+        guard !flagged.isEmpty else { return }
+        Task { @MainActor in
+            // Let the insert/learn pings breathe (the learned pill fires from the
+            // edit-watcher up to a few seconds out) before claiming the notch.
+            try? await Task.sleep(for: .seconds(1.8))
+            guard !self.isDictating, !self.isProcessing,
+                  !self.hud.isPresentingInteractivePill else { return }
+            self.hud.showReviewChip(words: flagged) { [weak self] heardWord in
+                guard let self else { return }
+                // Tapping Fix opens the correction popover prefilled with the heard
+                // word. On commit we teach the dictionary (so a close-miss is fixed
+                // next time) AND record the confirmation against the niche store —
+                // the same pair the edit-watcher's `applyLearnedCorrection` records,
+                // reused here so the two learning paths stay consistent.
+                self.hud.presentCorrectionPopover(heardWord: heardWord) { [weak self] fixed in
+                    guard let self else { return }
+                    self.learnFromReviewChip(heardWord: heardWord, fixed: fixed)
+                }
+            }
+        }
+    }
+
+    /// Commit one review-chip correction: add the learned dictionary rule
+    /// (`heardWord` → `fixed`) and, when a new rule was actually added, record the
+    /// niche confirmation for `fixed` — mirroring `applyLearnedCorrection` (which
+    /// the AX/Claude paths use) so all three in-app learning routes agree. Pings a
+    /// brief confirmation. NEVER edits the text already inserted — this is purely
+    /// "learned for next time." Records nothing on an empty/no-op fix (the popover
+    /// already guards that).
+    private func learnFromReviewChip(heardWord: String, fixed: String) {
+        guard self.dictionary.addLearnedReplacement(from: heardWord, to: fixed) else {
+            // Already known (or a no-op) — still confirm to the user without a
+            // duplicate rule or a second niche signal.
+            self.hud.showLearned(String(format: "Already learning \u{201c}%@\u{201d}".loc, fixed)) { [weak self] in
+                self?.hud.hide()
+            }
+            return
+        }
+        // The user explicitly typed `fixed` over what Talkie heard — the strongest
+        // evidence it's real jargon. Graduate the niche term (live post-A1).
+        self.nicheVocab.recordUserConfirmed(
+            fixed,
+            provenance: Provenance(source: .dictation, sourceID: nil,
+                                   dateUnix: Date().timeIntervalSince1970,
+                                   snippet: nil)
+        )
+        // Ping with an Undo that reverses both the rule and the niche signal —
+        // same undo contract as the edit-watcher's learned ping.
+        self.hud.showLearned(String(format: "Added \u{201c}%@\u{201d} to dictionary".loc, fixed)) { [weak self] in
+            guard let self else { return }
+            self.dictionary.removeLearnedReplacement(from: heardWord, to: fixed)
+            self.nicheVocab.recordRejection(fixed)
+            self.hud.showReverted()
         }
     }
 
