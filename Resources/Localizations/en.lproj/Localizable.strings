@@ -498,3 +498,14 @@
 "≈ the King James Bible (~783,000)" = "≈ the King James Bible (~783,000)";
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ the entire Harry Potter saga (~1.08 million words)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)";
+
+/* Watched inbox folder (D6) */
+"Watch a folder" = "Watch a folder";
+"Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection." = "Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection.";
+"Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection." = "Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection.";
+"Watched folder" = "Watched folder";
+"No folder — this feature is off" = "No folder — this feature is off";
+"Choose…" = "Choose…";
+"Change…" = "Change…";
+"Stop watching" = "Stop watching";
+"That folder isn’t reachable right now — nothing will be watched until it’s back." = "That folder isn’t reachable right now — nothing will be watched until it’s back.";

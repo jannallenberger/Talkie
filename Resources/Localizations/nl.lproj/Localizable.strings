@@ -496,3 +496,14 @@
 "≈ the King James Bible (~783,000)" = "≈ de King James-Bijbel (~783.000)";
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ de hele Harry Potter-saga (~1,08 miljoen woorden)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ twee keer de Harry Potter-saga; Het Lied van IJs en Vuur tot nu toe (~1,7 miljoen)";
+
+/* Watched inbox folder (D6) */
+"Watch a folder" = "Een map bewaken";
+"Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection." = "Uit. Kies een map en elk audio- of videobestand dat erin belandt — een via AirDrop verstuurde spraakmemo, een iCloud-opname — wordt op je Mac naar een notitie getranscribeerd en daarna verplaatst naar een submap “Transcribed” erin. Talkie leest alleen lokale bestanden en opent nooit een verbinding.";
+"Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection." = "Bestanden die hier belanden, worden op het apparaat getranscribeerd en naar “Transcribed” verplaatst. Talkie bewaakt alleen deze map (niet de submappen), leest uitsluitend lokale bestanden en opent nooit een verbinding.";
+"Watched folder" = "Bewaakte map";
+"No folder — this feature is off" = "Geen map — deze functie staat uit";
+"Choose…" = "Kiezen…";
+"Change…" = "Wijzigen…";
+"Stop watching" = "Stoppen met bewaken";
+"That folder isn’t reachable right now — nothing will be watched until it’s back." = "Die map is nu niet bereikbaar — er wordt niets bewaakt totdat hij weer terug is.";
