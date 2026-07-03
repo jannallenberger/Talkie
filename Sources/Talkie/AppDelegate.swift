@@ -1334,6 +1334,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             var finalText = processed.text
 
+            // Structural dictation commands: a free-standing "new line"/"new
+            // paragraph" (EN) or "neue Zeile"/"neuer Absatz" (DE) becomes a real
+            // break in the inserted text. Deterministic + always-on, a sibling of
+            // NumberNormalizer above. It runs AFTER the dictionary TextProcessor.apply
+            // ON PURPOSE: a user dictionary rule that targets "new line" runs first
+            // and consumes the phrase, so a custom mapping still wins — that's the
+            // escape hatch. Running structural ahead of the dictionary would break it.
+            finalText = StructuralCommands.apply(finalText, languageCode: cleanupLangCode)
+
             // Vibe coding: snap spoken filenames to the real files in your project
             // ("exercise library dot tsx" → "ExerciseLibrary.tsx").
             var fileFixes = 0
