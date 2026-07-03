@@ -319,3 +319,8 @@
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "In ascolto, a mani libere. La registrazione è bloccata: tocca il tasto una volta per fermarla.";
 "Hold your key to talk, or tap it twice to lock hands-free recording." = "Tieni premuto il tasto per parlare, oppure toccalo due volte per bloccare la registrazione a mani libere.";
 "Click here, then hold %@ and speak…" = "Fai clic qui, poi tieni premuto %@ e parla…";
+
+// MARK: - Secure-input culprit (B3)
+"Password field — tap to copy" = "Campo password — tocca per copiare";
+"%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ sta trattenendo l’input sicuro — passa a quell’app e chiudi la richiesta della password. Tocca per copiare.";
+"another app" = "un’altra app";
