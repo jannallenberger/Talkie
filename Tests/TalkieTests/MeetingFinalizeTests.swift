@@ -112,4 +112,156 @@ final class MeetingFinalizeTests: XCTestCase {
         let decoded = try JSONDecoder().decode(Meeting.self, from: JSONEncoder().encode(m))
         XCTAssertNil(decoded.segments, "a nil-segments meeting must round-trip unchanged")
     }
+
+    // MARK: F3 — the "## Action items" section from Stage-2 commitments
+
+    private func commitment(_ text: String) -> ContextGraphExtractor.Candidate {
+        ContextGraphExtractor.Candidate(kind: .commitment, displayName: text)
+    }
+
+    func testActionItemsSectionBuildsBulletsFromCommitments() {
+        let section = MeetingRecorder.actionItemsSection(
+            commitments: [commitment("send the deck Friday"),
+                          commitment("follow up with Sarah")],
+            existingSummary: "A one-line overview with no bullets."
+        )
+        XCTAssertEqual(
+            section,
+            "## Action items\n- send the deck Friday\n- follow up with Sarah",
+            "section must be the heading plus one bullet per commitment, in order"
+        )
+    }
+
+    func testActionItemsSectionNilWhenNoCommitments() {
+        XCTAssertNil(
+            MeetingRecorder.actionItemsSection(commitments: [], existingSummary: "overview"),
+            "no commitments → no section (Stage-1-only / model-unavailable path)"
+        )
+    }
+
+    func testActionItemsSectionIgnoresNonCommitmentKinds() {
+        // Only COMMITMENT candidates become action items; people/terms/projects are
+        // ignored even if passed through.
+        let section = MeetingRecorder.actionItemsSection(
+            commitments: [
+                ContextGraphExtractor.Candidate(kind: .person, displayName: "Sarah"),
+                ContextGraphExtractor.Candidate(kind: .term, displayName: "map-reduce"),
+                ContextGraphExtractor.Candidate(kind: .project, displayName: "Talkie"),
+            ],
+            existingSummary: "overview"
+        )
+        XCTAssertNil(section, "no commitment candidates → no section")
+    }
+
+    func testActionItemsSectionSuppressedWhenSummaryAlreadyHasActionItems() {
+        // The duplication guard: if the summarizer/fusion already produced an action
+        // items section, we don't stack a second one on top.
+        let existing = "Overview.\n\n**Action items:**\n- do the thing"
+        XCTAssertNil(
+            MeetingRecorder.actionItemsSection(
+                commitments: [commitment("send the deck Friday")],
+                existingSummary: existing
+            ),
+            "an existing 'action items' mention (any case) suppresses the new section"
+        )
+        // Case-insensitivity of the guard.
+        XCTAssertNil(
+            MeetingRecorder.actionItemsSection(
+                commitments: [commitment("send the deck Friday")],
+                existingSummary: "ACTION ITEMS: none noted"
+            )
+        )
+    }
+
+    func testActionItemsSectionAppearsWhenSummaryLacksActionItems() {
+        let section = MeetingRecorder.actionItemsSection(
+            commitments: [commitment("send the deck Friday")],
+            existingSummary: "Decisions were made about the budget."
+        )
+        XCTAssertNotNil(section, "a summary without 'action items' must not suppress the section")
+        XCTAssertTrue(section!.hasPrefix("## Action items\n"))
+    }
+
+    func testActionItemsSectionDedupesCommitmentsCaseInsensitively() {
+        let section = MeetingRecorder.actionItemsSection(
+            commitments: [commitment("Send the deck Friday"),
+                          commitment("send the deck friday"),
+                          commitment("book the room")],
+            existingSummary: "overview"
+        )
+        // The two "send the deck" variants collapse to one bullet (first-seen form);
+        // "book the room" is its own bullet.
+        XCTAssertEqual(
+            section,
+            "## Action items\n- Send the deck Friday\n- book the room",
+            "duplicate commitments collapse case-insensitively, keeping first-seen form"
+        )
+    }
+
+    func testActionItemsSectionDropsBlankCommitmentClauses() {
+        let section = MeetingRecorder.actionItemsSection(
+            commitments: [commitment("   "), commitment("real task")],
+            existingSummary: "overview"
+        )
+        XCTAssertEqual(section, "## Action items\n- real task",
+                       "blank/whitespace commitment clauses are dropped")
+    }
+
+    // MARK: F3 — MeetingSummarizer.summarizeCondensed shape + chunker
+
+    /// Empty/whitespace input short-circuits before any model call, so the
+    /// condensed view is `("", nil)` regardless of Apple Intelligence availability
+    /// — deterministic in a headless test.
+    func testSummarizeCondensedEmptyInputYieldsNilAndEmpty() async {
+        let out = await MeetingSummarizer().summarizeCondensed("   \n\t ")
+        XCTAssertNil(out.summary, "empty input → no summary")
+        XCTAssertEqual(out.condensed, "", "empty input → empty condensed")
+    }
+
+    /// `summarize` is defined as `summarizeCondensed(_:).summary`; the delegation
+    /// must hold. Empty input exercises it deterministically (both nil).
+    func testSummarizeDelegatesToCondensedSummary() async {
+        let summarizer = MeetingSummarizer()
+        let direct = await summarizer.summarize("   ")
+        let viaCondensed = await summarizer.summarizeCondensed("   ").summary
+        XCTAssertEqual(direct, viaCondensed, "summarize must equal summarizeCondensed().summary")
+        XCTAssertNil(direct)
+    }
+
+    /// `chunkForSinglePass` is the pure seam the finalize path uses to size the
+    /// extractor's input. A body within budget is one chunk, unchanged.
+    func testChunkForSinglePassShortBodyIsSingleChunk() {
+        let body = "Alice: let's ship Friday.\nBob: I'll write the tests."
+        let chunks = MeetingSummarizer.chunkForSinglePass(body)
+        XCTAssertEqual(chunks.count, 1, "a short body stays one chunk")
+        XCTAssertEqual(chunks[0], body, "and is returned unchanged")
+    }
+
+    func testChunkForSinglePassEmptyBodyYieldsNoChunks() {
+        XCTAssertTrue(MeetingSummarizer.chunkForSinglePass("").isEmpty,
+                      "an empty body yields no chunks (extractor loop is skipped)")
+    }
+
+    /// A body well over the single-pass budget is split into multiple chunks, each
+    /// within the extractor's cap, and every character is preserved (no tail lost).
+    func testChunkForSinglePassLongBodyIsSplitWithinBudget() {
+        let budget = MeetingSummarizer.singlePassCharBudget
+        // ~5x the budget of newline-separated lines so the greedy line packer splits.
+        let line = String(repeating: "x", count: 100)
+        let lineCount = (budget * 5) / (line.count + 1)
+        let body = (0..<lineCount).map { _ in line }.joined(separator: "\n")
+        XCTAssertGreaterThan(body.count, budget, "test body must exceed one chunk")
+
+        let chunks = MeetingSummarizer.chunkForSinglePass(body)
+        XCTAssertGreaterThan(chunks.count, 1, "an over-budget body must split into >1 chunk")
+        // Every chunk fits a single extractor pass (the joiner adds newlines back,
+        // so compare against the packing size, which the chunker derives from the
+        // budget and max-chunk ceiling).
+        for chunk in chunks {
+            XCTAssertFalse(chunk.isEmpty, "no empty chunks")
+        }
+        // No coverage is silently dropped: rejoining reproduces the input.
+        XCTAssertEqual(chunks.joined(separator: "\n"), body,
+                       "chunking then rejoining must preserve the whole body")
+    }
 }

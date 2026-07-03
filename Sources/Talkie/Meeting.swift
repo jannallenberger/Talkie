@@ -107,18 +107,36 @@ actor MeetingSummarizer {
     """
 
     func summarize(_ transcript: String) async -> String? {
+        await summarizeCondensed(transcript).summary
+    }
+
+    /// Summarize AND hand back a `condensed` view of the transcript that a
+    /// downstream single-pass consumer (the Stage-2 `GraphLLMExtractor`, which
+    /// caps its input at 4000 chars) can read without re-doing the map phase:
+    ///
+    /// - Transcript ≤ `chunkChars` → `condensed` is the trimmed transcript itself.
+    /// - Longer transcript → `condensed` is the joined map partials (the same
+    ///   terse per-excerpt facts the reduce step consumes, already compressed to
+    ///   ≤ `chunkChars`), so material past the first excerpt still reaches the
+    ///   extractor instead of being truncated away.
+    ///
+    /// `condensed` is `""` only when there is nothing to summarize (unavailable
+    /// model or empty input) — the same case where `summary` is `nil` — so the
+    /// caller runs the extractor exactly when a summary was attempted.
+    func summarizeCondensed(_ transcript: String) async -> (summary: String?, condensed: String) {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard CleanupEngine.isAvailable, !trimmed.isEmpty else { return nil }
+        guard CleanupEngine.isAvailable, !trimmed.isEmpty else { return (nil, "") }
 
         // Short transcript: one direct pass. Falls through to the chunked
         // path below (rather than giving up) if this still overflows — rare,
-        // but possible for unusually token-dense text.
+        // but possible for unusually token-dense text. The transcript itself is
+        // already within the extractor's budget, so it IS the condensed view.
         if trimmed.count <= Self.chunkChars,
            let direct = await respond(
                instructions: Self.reduceInstructions,
                prompt: "Transcript:\n\n\(trimmed)\n\nWrite the summary."
            ) {
-            return direct
+            return (direct, trimmed)
         }
 
         var combined = await mapAll(trimmed)
@@ -132,7 +150,8 @@ actor MeetingSummarizer {
         }
         // Guarantee the final call's input is within the size that's tested
         // safe, rather than risk the whole map phase's work being silently
-        // discarded by one last context-window overflow.
+        // discarded by one last context-window overflow. The same bounded
+        // `combined` is what we hand back as `condensed`.
         if combined.count > Self.chunkChars {
             combined = String(combined.prefix(Self.chunkChars))
         }
@@ -140,7 +159,10 @@ actor MeetingSummarizer {
         if result == nil {
             Self.log.error("summarize: gave up after full map-reduce pass over \(trimmed.count) chars")
         }
-        return result
+        // Even if the final reduce failed, `combined` still holds the map
+        // partials — hand them to the extractor so a failed overview doesn't
+        // also starve the graph.
+        return (result, combined)
     }
 
     /// Reduce `notes` into the final summary. Character count alone doesn't
@@ -255,6 +277,22 @@ actor MeetingSummarizer {
         }
         if !current.isEmpty { chunks.append(current) }
         return chunks
+    }
+
+    /// The single-pass input budget (chars), exposed so a downstream consumer
+    /// (the Stage-2 graph extractor) can size its own chunks to match the size
+    /// this summarizer already treats as context-window-safe.
+    nonisolated static var singlePassCharBudget: Int { chunkChars }
+
+    /// Split a body into ≤`singlePassCharBudget`-char pieces for a downstream
+    /// single-pass consumer, reusing the SAME greedy line-packing chunker the map
+    /// phase uses. `nonisolated` + pure so callers off the actor (the recorder's
+    /// finalize) can chunk `condensed` for `GraphLLMExtractor` without an actor
+    /// hop. A body already within budget returns a single chunk unchanged; an
+    /// empty body returns `[]`.
+    nonisolated static func chunkForSinglePass(_ text: String) -> [String] {
+        guard !text.isEmpty else { return [] }
+        return chunk(text, maxChars: chunkChars, maxChunks: maxChunks)
     }
 
     /// A split point near the middle of `text`, preferring a nearby newline

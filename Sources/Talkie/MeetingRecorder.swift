@@ -424,8 +424,42 @@ final class MeetingRecorder: ObservableObject {
         } else {
             fused = nil
         }
-        let transcriptSummary = await summarizer.summarize(clean) ?? ""
-        let summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
+        // Summarize AND get back a condensed view (transcript when short, else the
+        // map partials) sized for the Stage-2 extractor's 4000-char cap.
+        let (transcriptSummaryOpt, condensed) = await summarizer.summarizeCondensed(clean)
+        let transcriptSummary = transcriptSummaryOpt ?? ""
+        var summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
+
+        // Stage-2 LLM extraction: pull real people / projects / commitments out of
+        // the meeting so the graph, the Brief, and `list_commitments` have data
+        // worth querying — layered on top of the Stage-1 heuristics below. Runs the
+        // extractor over each ≤4000-char chunk of `condensed` (already within budget
+        // for short meetings; the joined map partials for long ones), then dedupes
+        // by (kind, lowercased name). When Apple Intelligence is unavailable the
+        // extractor returns [] for every chunk → no section, Stage-1-only ingest →
+        // finalize output is byte-identical to today. ALL of these awaits happen
+        // BEFORE store.add so the store.add→partial-removal block stays await-free
+        // (crash-atomic), per plan 01's finalize ordering.
+        var graphCandidates: [ContextGraphExtractor.Candidate] = []
+        if contextGraph != nil, OnDeviceLLM.isAvailable {
+            let extractor = GraphLLMExtractor(summarizer: PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.1)))
+            var seenGraph = Set<String>()
+            for chunk in MeetingSummarizer.chunkForSinglePass(condensed) {
+                for candidate in await extractor.extract(from: chunk) {
+                    let key = "\(candidate.kind.rawValue)|\(candidate.displayName.lowercased())"
+                    if seenGraph.insert(key).inserted { graphCandidates.append(candidate) }
+                }
+            }
+        }
+
+        // Append an "## Action items" section built from the extracted commitments,
+        // but only when there's ≥1 AND the summary doesn't already list action items
+        // (the summarizer/fusion prompts emit their own best-effort bullets).
+        if let section = Self.actionItemsSection(
+            commitments: graphCandidates, existingSummary: summary
+        ) {
+            summary = summary.isEmpty ? section : summary + "\n\n" + section
+        }
 
         let id = UUID()
         let meeting = Meeting(
@@ -448,7 +482,11 @@ final class MeetingRecorder: ObservableObject {
         if let partialURL { try? FileManager.default.removeItem(at: partialURL) }
         partialURL = nil
 
-        // Feed the context graph: calendar attendees as people + transcript entities.
+        // Feed the context graph: calendar attendees as people + Stage-1 heuristic
+        // entities + the Stage-2 LLM candidates extracted above. `ingest` upserts
+        // with dedupe, so overlaps between the stages collapse. Stays await-free
+        // (single `@MainActor` `ingest` call) — the extraction awaits already ran
+        // before store.add.
         if let graph = contextGraph {
             let provenance = Provenance(source: .meeting, sourceID: meeting.id.uuidString,
                                         dateUnix: start.timeIntervalSince1970, snippet: nil)
@@ -456,6 +494,7 @@ final class MeetingRecorder: ObservableObject {
                 ContextGraphExtractor.Candidate(kind: .person, displayName: $0)
             }
             candidates += ContextGraphExtractor.candidates(from: clean)
+            candidates += graphCandidates
             graph.ingest(candidates, provenance: provenance)
         }
 
@@ -487,6 +526,44 @@ final class MeetingRecorder: ObservableObject {
         ]
         if !summary.isEmpty { parts.append(summary) }
         return parts.joined(separator: "\n\n")
+    }
+
+    /// Compose the "## Action items" note section from Stage-2 commitment
+    /// candidates. Pure (no actor state) so it's unit-testable, mirroring
+    /// `composeSummary`. Returns the section markdown, or `nil` — no empty
+    /// heading — when it must not be appended:
+    /// - No commitment candidates → `nil` (Stage-1-only / model-unavailable path).
+    /// - `existingSummary` already contains "action items" (case-insensitively)
+    ///   → `nil`, the duplication guard: the `MeetingSummarizer` /
+    ///   `MeetingNotesFusion` prompts already ask for best-effort action-item
+    ///   bullets, so we don't stack a second heading on top of theirs.
+    ///
+    /// Candidates are de-duplicated case-insensitively (preserving first-seen
+    /// order and surface form) so a repeated commitment yields one bullet.
+    nonisolated static func actionItemsSection(
+        commitments: [ContextGraphExtractor.Candidate],
+        existingSummary: String
+    ) -> String? {
+        // Only COMMITMENT candidates become action items; ignore any other kind
+        // the caller may pass through.
+        let clauses = commitments
+            .filter { $0.kind == .commitment }
+            .map { $0.displayName.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !clauses.isEmpty else { return nil }
+
+        // Duplication guard: don't add our heading if the summary already speaks
+        // of action items (the summarizer/fusion prompts emit their own).
+        guard !existingSummary.lowercased().contains("action items") else { return nil }
+
+        var seen = Set<String>()
+        var unique: [String] = []
+        for clause in clauses where seen.insert(clause.lowercased()).inserted {
+            unique.append(clause)
+        }
+
+        let bullets = unique.map { "- \($0)" }.joined(separator: "\n")
+        return "## Action items\n\(bullets)"
     }
 
     /// Decide, by AUDIO self-consistency, whether one stream's speech was actually
