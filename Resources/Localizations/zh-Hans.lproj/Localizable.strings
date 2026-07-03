@@ -283,3 +283,8 @@
 "Get Last Dictation" = "获取最近一次听写";
 "Return the text of your most recent dictation." = "返回你最近一次听写的文本。";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie 尚未运行。请打开 Talkie 后重试。";
+/* D3 — timestamped exports menu */
+"Subtitles (.srt)" = "字幕 (.srt)";
+"Subtitles (.vtt)" = "字幕 (.vtt)";
+"Spreadsheet (.csv)" = "电子表格 (.csv)";
+"Data (.json)" = "数据 (.json)";

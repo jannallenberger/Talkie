@@ -283,3 +283,8 @@
 "Get Last Dictation" = "최근 받아쓰기 가져오기";
 "Return the text of your most recent dictation." = "가장 최근 받아쓰기의 텍스트를 반환합니다.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie가 실행 중이 아닙니다. Talkie를 연 다음 다시 시도하세요.";
+/* D3 — timestamped exports menu */
+"Subtitles (.srt)" = "자막 (.srt)";
+"Subtitles (.vtt)" = "자막 (.vtt)";
+"Spreadsheet (.csv)" = "스프레드시트 (.csv)";
+"Data (.json)" = "데이터 (.json)";

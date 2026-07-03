@@ -283,3 +283,8 @@
 "Get Last Dictation" = "Laatste dictaat ophalen";
 "Return the text of your most recent dictation." = "Geeft de tekst van je meest recente dictaat terug.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie is niet actief. Open Talkie en probeer het opnieuw.";
+/* D3 — timestamped exports menu */
+"Subtitles (.srt)" = "Ondertitels (.srt)";
+"Subtitles (.vtt)" = "Ondertitels (.vtt)";
+"Spreadsheet (.csv)" = "Spreadsheet (.csv)";
+"Data (.json)" = "Gegevens (.json)";

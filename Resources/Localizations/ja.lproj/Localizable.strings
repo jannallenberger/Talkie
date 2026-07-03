@@ -283,3 +283,8 @@
 "Get Last Dictation" = "直近の口述を取得";
 "Return the text of your most recent dictation." = "直近の口述のテキストを返します。";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie が起動していません。Talkie を開いてからもう一度お試しください。";
+/* D3 — timestamped exports menu */
+"Subtitles (.srt)" = "字幕 (.srt)";
+"Subtitles (.vtt)" = "字幕 (.vtt)";
+"Spreadsheet (.csv)" = "スプレッドシート (.csv)";
+"Data (.json)" = "データ (.json)";

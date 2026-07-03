@@ -283,3 +283,8 @@
 "Get Last Dictation" = "Letztes Diktat abrufen";
 "Return the text of your most recent dictation." = "Gibt den Text deines jüngsten Diktats zurück.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie läuft nicht. Öffne Talkie und versuche es erneut.";
+/* D3 — timestamped exports menu */
+"Subtitles (.srt)" = "Untertitel (.srt)";
+"Subtitles (.vtt)" = "Untertitel (.vtt)";
+"Spreadsheet (.csv)" = "Tabelle (.csv)";
+"Data (.json)" = "Daten (.json)";
