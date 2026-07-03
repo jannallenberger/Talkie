@@ -257,6 +257,109 @@ enum SemanticSelfTest {
             check("stamp: changed store file forces a rebuild", builds == 2)
         }
 
+        // --- L10: streak mirror (the risky mirror — assert against a fixture) ----
+        // currentStreak MUST match ActivityStore.currentStreak, INCLUDING the
+        // today-may-be-empty rule: an empty today does not break a streak that ran
+        // through yesterday. We pin `now` and build keys with the SAME calendar the
+        // mirror uses, so the assertions are deterministic regardless of the wall
+        // clock or the CI machine's locale.
+        let cal = TalkieStore.activityCalendar
+        // A fixed "now" — noon on a known date, start-of-day computed via the mirror
+        // calendar so key math lines up.
+        let fixedNow = TalkieStore.activityDate(fromKey: "2026-07-04", calendar: cal)!
+            .addingTimeInterval(12 * 3600)
+        func key(_ daysAgo: Int) -> String {
+            let d = cal.date(byAdding: .day, value: -daysAgo, to: cal.startOfDay(for: fixedNow))!
+            return TalkieStore.activityKey(for: d, calendar: cal)
+        }
+        func active(_ offsets: [Int]) -> [String: TalkieStore.DayStat] {
+            Dictionary(uniqueKeysWithValues: offsets.map { (key($0), TalkieStore.DayStat(words: 10, dictations: 1)) })
+        }
+
+        // today + yesterday + day-before → streak 3.
+        check("streak: today+yesterday+2days-ago → 3",
+              TalkieStore.currentStreak(days: active([0, 1, 2]), now: fixedNow, calendar: cal) == 3)
+        // today EMPTY but yesterday+before active → streak survives (== 2). This is
+        // THE mirror rule (ActivityStore.swift:71-75).
+        check("streak: empty today does not break yesterday's run (→ 2)",
+              TalkieStore.currentStreak(days: active([1, 2]), now: fixedNow, calendar: cal) == 2)
+        // today empty AND yesterday empty → 0 (the run is genuinely broken).
+        check("streak: empty today AND empty yesterday → 0",
+              TalkieStore.currentStreak(days: active([2, 3]), now: fixedNow, calendar: cal) == 0)
+        // A gap breaks it: today+yesterday active, then a skipped day → 2.
+        check("streak: a mid gap stops the count",
+              TalkieStore.currentStreak(days: active([0, 1, 3, 4]), now: fixedNow, calendar: cal) == 2)
+        // Empty dictionary → 0, not a crash.
+        check("streak: empty activity → 0",
+              TalkieStore.currentStreak(days: [:], now: fixedNow, calendar: cal) == 0)
+        // A day present but with zero dictations doesn't count (dictations, not words).
+        check("streak: a zero-dictation day is inactive",
+              TalkieStore.currentStreak(days: [key(0): TalkieStore.DayStat(words: 5, dictations: 0)],
+                                        now: fixedNow, calendar: cal) == 0)
+
+        // longestStreak: the longest consecutive run anywhere in the map.
+        check("longest: two runs, picks the longer (0,1,2 vs 5,6 → 3)",
+              TalkieStore.longestStreak(days: active([0, 1, 2, 5, 6]), calendar: cal) == 3)
+        check("longest: empty activity → 0",
+              TalkieStore.longestStreak(days: [:], calendar: cal) == 0)
+        check("longest: a single active day → 1",
+              TalkieStore.longestStreak(days: active([3]), calendar: cal) == 1)
+
+        // --- L10: new read-tool output shapes (friendly-degrade + real content) --
+        // These run against whatever is on THIS machine's stores; we only assert the
+        // shape invariants that must hold regardless of contents: non-empty output,
+        // and the honest lifetime/label headers when data is present. A store that's
+        // absent must yield friendly text, never a crash (the `decode<T>` tolerance).
+        let store = TalkieStore()
+
+        // get_stats: never empty; when it has data it's lifetime-labelled and carries
+        // a streak line. When empty it says so. Either way: no crash, non-empty.
+        let statsOut = store.getStats()
+        check("get_stats: non-empty output", !statsOut.isEmpty)
+        check("get_stats: labelled honestly (lifetime header OR empty notice)",
+              statsOut.contains("lifetime totals") || statsOut.contains("No dictation stats"))
+        check("get_stats: reports a streak when it has data",
+              statsOut.contains("No dictation stats") || statsOut.contains("Current streak"))
+
+        // get_dictionary: non-empty; either the counts header or an empty notice.
+        let dictOut = store.getDictionary()
+        check("get_dictionary: non-empty output", !dictOut.isEmpty)
+        check("get_dictionary: header names it a dictionary or says empty",
+              dictOut.contains("Talkie dictionary") || dictOut.contains("empty") || dictOut.contains("No dictionary"))
+
+        // list_dictations: non-empty for any args; a nonsense app filter degrades to
+        // the honest "recent window" line rather than crashing or lying.
+        let listOut = store.listDictations(limit: 5, app: nil, since: nil)
+        check("list_dictations: non-empty output", !listOut.isEmpty)
+        let listFiltered = store.listDictations(limit: 5, app: "no-such-app-\(UUID().uuidString)", since: nil)
+        check("list_dictations: unmatched app filter degrades honestly",
+              listFiltered.contains("No dictation history") || listFiltered.contains("recent window") || listFiltered.hasPrefix("•"))
+        // A malformed `since` is ignored (parseDay returns nil), not a crash.
+        _ = store.listDictations(limit: 5, app: nil, since: "not-a-date")
+        check("list_dictations: malformed since does not crash", true)
+
+        // read_scratchpad: non-empty; either the header or the empty notice.
+        let padOut = store.readScratchpad()
+        check("read_scratchpad: non-empty output", !padOut.isEmpty)
+        check("read_scratchpad: header or empty notice",
+              padOut.contains("Talkie scratchpad") || padOut.contains("empty"))
+
+        // Fixture-level scratchpad rendering: done-state is marked and tasks/notes are
+        // partitioned. Decode a synthetic array through the same Codable mirror to
+        // prove the field contract (text/isTask/done) drives the output.
+        let padJSON = """
+        [
+          {"id":"\(UUID().uuidString)","text":"buy milk","isTask":true,"done":false,"createdUnix":0,"sourceDictationID":null,"addedByAI":false},
+          {"id":"\(UUID().uuidString)","text":"ship L10","isTask":true,"done":true,"createdUnix":0,"sourceDictationID":null,"addedByAI":false},
+          {"id":"\(UUID().uuidString)","text":"a plain note","isTask":false,"done":false,"createdUnix":0,"sourceDictationID":null,"addedByAI":false}
+        ]
+        """
+        let padLines = (try? JSONDecoder().decode([TalkieStore.ScratchpadLine].self,
+                                                  from: Data(padJSON.utf8))) ?? []
+        check("scratchpad mirror: decodes the flat array shape", padLines.count == 3)
+        check("scratchpad mirror: done + task + note fields survive decode",
+              padLines[0].isTask && !padLines[0].done && padLines[1].done && !padLines[2].isTask)
+
         print(failures == 0 ? "\nOK — all semantic-core checks passed."
                             : "\n\(failures) semantic-core check(s) FAILED.")
         exit(failures == 0 ? 0 : 1)

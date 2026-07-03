@@ -628,3 +628,8 @@
 "Meeting recording and transcription settings will live here." = "Instellingen voor vergaderopname en transcriptie komen hier.";
 "The on-device, zero-network proof will live here." = "Het lokale bewijs zonder netwerk komt hier.";
 "This settings page is coming soon." = "Deze instellingenpagina komt binnenkort.";
+
+/* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
+"What Claude can do" = "Wat Claude kan doen";
+"asks first" = "vraagt eerst";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie levert een kleine lokale server zodat Claude je vergaderingen, briefing, toezeggingen, context, statistieken, je woordenboek en notities kan lezen — op het apparaat, er verlaat niets je Mac. Claude kan ook woordenboekvermeldingen voorstellen — elk wacht op je bevestiging met één tik en een Ongedaan maken. Meegeleverd met de app: geen aparte download of build.";
