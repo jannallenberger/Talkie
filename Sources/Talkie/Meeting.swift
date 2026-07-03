@@ -16,6 +16,38 @@ struct MeetingSegment: Codable, Hashable, Sendable {
     var text: String
 }
 
+/// One topic boundary in a meeting: a short section-heading label and the
+/// audio-clock offset (seconds from recording start) at which it was *accepted*
+/// by the live subtopic engine. The timestamp is honestly the accept time, which
+/// lags the true topic shift by the engine's confidence + hysteresis window
+/// (~24s+ by design) — it is not backdated to guess where the shift "really"
+/// began. Built only from live recordings; never inferred for imported files or
+/// retrofitted onto old meetings. Lives only in the index JSON (like `segments`),
+/// so the rendered transcript stays byte-identical without it.
+struct Chapter: Codable, Hashable, Sendable {
+    /// The accepted topic label (original casing), e.g. "Budget review".
+    var title: String
+    /// Seconds from the recording's start at which this topic was accepted.
+    var start: Double
+}
+
+extension Meeting {
+    /// Render the "## Chapters" note section — `[mm:ss] Topic` bullets sorted by
+    /// time — or `""` when there is nothing to show. A meeting must have shifted
+    /// topics at least once (≥ 2 chapters) to earn the section: a single chapter is
+    /// noise, so it is omitted (matching the pill, which shows one steady topic).
+    /// Pure and `nonisolated static` so it's unit-testable and reused by
+    /// `MeetingStore.writeMarkdown`. Timecodes reuse `MeetingTranscriptRenderer`.
+    static func chaptersMarkdown(_ chapters: [Chapter]?) -> String {
+        guard let chapters, chapters.count >= 2 else { return "" }
+        let bullets = chapters
+            .sorted { $0.start < $1.start }
+            .map { "- [\(MeetingTranscriptRenderer.timecode($0.start))] \($0.title)" }
+            .joined(separator: "\n")
+        return "## Chapters\n\n\(bullets)"
+    }
+}
+
 /// One recorded meeting: when, how long, the transcript, and an on-device summary.
 struct Meeting: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
@@ -36,16 +68,21 @@ struct Meeting: Codable, Identifiable, Hashable {
     /// transcript. Evicted with the meeting by the 200-entry retention cap, so this
     /// never grows `meetings.json` unboundedly.
     var segments: [MeetingSegment]? = nil
+    /// Topic boundaries derived from the live subtopic engine (D8), in accept order.
+    /// Nil for notes saved before D8, for imported files, and for recordings where
+    /// the live-topic engine was off or never accepted a topic. Evicted with the
+    /// meeting like `segments`, so it never grows `meetings.json` unboundedly.
+    var chapters: [Chapter]? = nil
 
     var date: Date { Date(timeIntervalSince1970: startUnix) }
 }
 
 extension Meeting {
     /// Custom decode so notes saved before Phase 2 (no `participants` / `source`
-    /// keys) and before D2 (no `segments` key) still load — every added field uses
-    /// `decodeIfPresent`, so old JSON decodes unchanged and an older app build simply
-    /// ignores the newer key. Declared in an extension so the memberwise initializer
-    /// is still synthesized for callers.
+    /// keys), before D2 (no `segments` key), and before D8 (no `chapters` key) still
+    /// load — every added field uses `decodeIfPresent`, so old JSON decodes unchanged
+    /// and an older app build simply ignores the newer key. Declared in an extension
+    /// so the memberwise initializer is still synthesized for callers.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -58,6 +95,7 @@ extension Meeting {
         source = try c.decodeIfPresent(String.self, forKey: .source) ?? "talkie (mic-only)"
         fileName = try c.decode(String.self, forKey: .fileName)
         segments = try c.decodeIfPresent([MeetingSegment].self, forKey: .segments)
+        chapters = try c.decodeIfPresent([Chapter].self, forKey: .chapters)
     }
 }
 
@@ -390,11 +428,17 @@ final class MeetingStore: ObservableObject {
         // handed off to a detached task and never touches @MainActor state.
         let minutes = Int((m.durationSec / 60).rounded())
         let summary = m.summary.isEmpty ? "_(no summary)_" : m.summary
+        // Insert a "## Chapters" section between Summary and Transcript, but only when
+        // the meeting actually shifted topics (≥2 chapters) — a lone chapter is noise.
+        let chaptersSection = Meeting.chaptersMarkdown(m.chapters)
+        let body = chaptersSection.isEmpty
+            ? "## Summary\n\n\(summary)\n\n## Transcript\n\n\(m.transcript)"
+            : "## Summary\n\n\(summary)\n\n\(chaptersSection)\n\n## Transcript\n\n\(m.transcript)"
         let note = ExportableNote(
             kind: .meeting,
             title: m.title,
             date: m.date,
-            bodyMarkdown: "## Summary\n\n\(summary)\n\n## Transcript\n\n\(m.transcript)",
+            bodyMarkdown: body,
             frontMatter: [
                 "duration_min": "\(minutes)",
                 "participants": "[\(m.participants.joined(separator: ", "))]",

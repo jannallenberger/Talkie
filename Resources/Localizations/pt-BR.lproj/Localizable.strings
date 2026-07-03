@@ -313,6 +313,7 @@
 "Subtitles (.vtt)" = "Legendas (.vtt)";
 "Spreadsheet (.csv)" = "Planilha (.csv)";
 "Data (.json)" = "Dados (.json)";
+"Chapters (.txt)" = "Capítulos (.txt)";
 
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "Salvo em %@";

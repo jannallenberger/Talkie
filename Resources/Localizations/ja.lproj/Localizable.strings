@@ -313,6 +313,7 @@
 "Subtitles (.vtt)" = "字幕 (.vtt)";
 "Spreadsheet (.csv)" = "スプレッドシート (.csv)";
 "Data (.json)" = "データ (.json)";
+"Chapters (.txt)" = "チャプター (.txt)";
 
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "%@ に保存しました";

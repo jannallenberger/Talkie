@@ -590,7 +590,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// start the detector poll loop. Detection itself is a passive Core Audio
     /// metadata read — no TCC prompt — so it can run from launch.
     private func setupMeetingDetection() {
-        subtopicEngine = MeetingSubtopicEngine(model: subtopicModel)
+        // D8: on each accepted topic shift, record a chapter stamped with the
+        // recorder's LIVE elapsed time. The engine fires `onAccepted` off its actor;
+        // we hop to the main actor to read `elapsed` and append to the recorder's
+        // `pendingChapters` (both main-actor state), which `stop()` folds into the
+        // saved meeting. The timestamp is honestly the accept time — it lags the true
+        // topic shift by the engine's hysteresis window, and is labeled as such, not
+        // backdated. Guarded on an active recording so a stray late accept can't
+        // append after stop.
+        subtopicEngine = MeetingSubtopicEngine(model: subtopicModel) { [weak self] topic in
+            Task { @MainActor in
+                guard let self, self.meetingRecorder.isRecording else { return }
+                self.meetingRecorder.pendingChapters.append(
+                    Chapter(title: topic, start: self.meetingRecorder.elapsed)
+                )
+            }
+        }
         meetingPill.attach(recorder: meetingRecorder, subtopic: subtopicModel)
 
         // Feed finalized transcript segments to the subtopic engine (gated by setting).
@@ -657,11 +672,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func onRecordingStarted() {
         consentBanner.hide()   // banner handoff — the pill takes over
-        guard settings.showMeetingPill else { return }
-        meetingPill.show()
+        // Start fresh: drop any chapters a prior recording left behind (D8). The
+        // recorder also clears this in start(); doing it here too means an accept
+        // that somehow races the very start of a recording can't inherit stale state.
+        meetingRecorder.pendingChapters = []
+        // D8 pill-guard decision: the subtopic engine is started OUTSIDE the
+        // `showMeetingPill` guard, gated only on `meetingLiveTopic`. Chapters are a
+        // notes/export artifact, not a HUD one — a user who computes live topics
+        // (`meetingLiveTopic` on) but hides the pill (a presentation preference) still
+        // gets chapters in the saved note. The pill's own visibility below is
+        // unchanged, so pill behavior is bit-identical to before this change.
         if settings.meetingLiveTopic {
             Task { await subtopicEngine.start() }
         }
+        guard settings.showMeetingPill else { return }
+        meetingPill.show()
     }
 
     private func onRecordingStopped() {
