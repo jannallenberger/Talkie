@@ -6,10 +6,11 @@
 import Foundation
 
 /// Which subcommand the user invoked. `transcribe <file>` batch-transcribes an
-/// audio file; `last` prints recent dictation history. `none` covers a bare or
-/// unrecognized invocation (we print usage).
+/// audio file; `dictate` records the mic to stdout; `last` prints recent dictation
+/// history. `none` covers a bare or unrecognized invocation (we print usage).
 enum Verb {
     case transcribe
+    case dictate
     case last
     case help
     case none
@@ -42,6 +43,7 @@ struct CLIArguments {
 
     USAGE:
       talkie transcribe <file> [--md | --srt | --vtt | --json] [--locale <id>]
+      talkie dictate [--locale <id>]
       talkie last [-n <count>]
 
     COMMANDS:
@@ -50,9 +52,25 @@ struct CLIArguments {
                           Default: plain transcript to stdout. Progress + errors
                           go to stderr, so `talkie transcribe x.m4a > out.txt` is
                           clean. MacWhisper-Pro-style batch transcription, free.
+      dictate             Record from the mic until you press Enter, then print the
+                          raw transcript to stdout. Voice as a shell primitive:
+                            git commit -m "$(talkie dictate)"
+                          Progress + errors go to stderr, so command substitution
+                          captures only the words. Ctrl-C also finalizes (prints
+                          whatever was captured). Raw recognizer output — no cleanup,
+                          no styles, no history write; that all stays in the app.
+                          NOTE: macOS attributes the microphone permission prompt to
+                          your TERMINAL app (iTerm/Terminal/VS Code), not to `talkie`
+                          — grant Microphone to the terminal in System Settings if
+                          it's denied.
       last [-n <count>]   Print your most recent dictation(s) from Talkie's local
                           history (~/Library/Application Support/Talkie/history.json),
                           newest first — exactly the text the History tab shows.
+
+    DICTATE OPTIONS:
+      --locale <id>       BCP-47 locale for recognition (default: en-US). A fresh
+                          locale may trigger a one-time on-device model download
+                          (progress on stderr).
 
     TRANSCRIBE OPTIONS:
       --md                Markdown: a titled block per timed segment.
@@ -82,6 +100,7 @@ struct CLIArguments {
         var i = 1
         switch argv[1] {
         case "transcribe": out.verb = .transcribe; i = 2
+        case "dictate": out.verb = .dictate; i = 2
         case "last": out.verb = .last; i = 2
         case "-h", "--help": out.verb = .help; out.showHelp = true; return out
         default:

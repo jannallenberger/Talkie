@@ -2,7 +2,7 @@
 // talkie — the local, on-device speech CLI (work package G4)
 // =============================================================================
 //
-// Two verbs, both 100% on-device (Apple SpeechAnalyzer / SpeechTranscriber,
+// Three verbs, all 100% on-device (Apple SpeechAnalyzer / SpeechTranscriber,
 // macOS 26+, Apple Silicon), no network, no third-party dependencies:
 //
 //   talkie transcribe <file> [--md|--srt|--vtt|--json] [--locale <id>]
@@ -13,6 +13,15 @@
 //       Plain text is the default; --srt/--vtt/--json/--md render timed cues from
 //       the recognizer's own segment ranges. The transcript goes to STDOUT and
 //       progress/errors to STDERR, so `talkie transcribe x.m4a > out.txt` is clean.
+//
+//   talkie dictate [--locale <id>]                                    (package G5)
+//       Voice as a shell primitive: records the mic until Enter and prints the raw
+//       transcript to STDOUT, so `git commit -m "$(talkie dictate)"` just works.
+//       Uses the same FileTranscriber via a NEW live-stream path (transcribeLive)
+//       fed by a minimal AVAudioEngine tap in DictateCommand.swift. Live progress
+//       goes to STDERR (command substitution captures only the final line). Raw
+//       recognizer output — no cleanup, no injection, no history write. The mic
+//       permission prompt is attributed to your TERMINAL, not to `talkie`.
 //
 //   talkie last [-n <count>]
 //       Prints your most recent dictation(s) from Talkie's local history
@@ -60,6 +69,9 @@ case .last:
 
 case .transcribe:
     await runTranscribe(args)
+
+case .dictate:
+    await runDictate(args)
 }
 
 // MARK: - `talkie last`

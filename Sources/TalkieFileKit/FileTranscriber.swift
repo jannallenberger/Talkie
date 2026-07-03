@@ -17,9 +17,18 @@
 // path surfaces per-final-result `(text, CMTimeRange)` for the CLI's SRT/VTT/JSON
 // cue rendering; the bench keeps using the text-only path and never pays for it.
 //
+// Work package G5 adds a THIRD, additive path — `transcribeLive(bufferStream:…)` —
+// that consumes an open-ended `AsyncStream<AVAudioPCMBuffer>` from a live mic tap
+// (`talkie dictate`) instead of a finite file, emitting partial-hypothesis
+// progress as it goes and finalizing when the caller ends the stream. The file
+// and bench callers are untouched by it.
+//
 // Differences from the live engine, all in service of file transcription:
-//   • Input is a file (decoded + resampled by AudioFileLoader), fed as a finite
-//     stream, then finalized — there is no microphone, no live HUD updates.
+//   • The file paths take a file (decoded + resampled by AudioFileLoader), fed as
+//     a finite stream, then finalized — no microphone, no live HUD updates. The
+//     `transcribeLive` path DOES take mic buffers, but stays a primitive: it emits
+//     raw progress text and a raw final transcript, with no HUD, no injection, and
+//     no history write (the CLI never touches the app's history.json).
 //   • Raw recognition only: no cleanup, no dictionary rules. (contextualStrings
 //     biasing is available but off by default, matching the bench's clean measure.)
 
@@ -220,6 +229,86 @@ public actor FileTranscriber {
         let joined = segments.map(\.text).reduce("") { Self.append($0, $1) }
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (joined, segments)
+    }
+
+    /// Transcribe a LIVE, open-ended stream of already-converted buffers (the mic
+    /// path used by `talkie dictate`), rather than a finite file. Additive: the
+    /// file/bench callers are untouched.
+    ///
+    /// The caller (DictateCommand) owns an `AVAudioEngine` tap that converts each
+    /// mic buffer to `preferredAudioFormat()` and yields it into `bufferStream`.
+    /// Recording ends when the caller finishes that stream (Enter / SIGINT); this
+    /// method then finalizes the analyzer and returns the committed transcript.
+    ///
+    /// Unlike `transcribe`, this consumes results as they arrive so partial
+    /// hypotheses can drive progress. `onProgress` is called on each result with
+    /// the current best text (committed finals + the volatile tail) — DictateCommand
+    /// prints that to STDERR so command substitution captures only the final stdout
+    /// line. The result-handling mirrors the live engine
+    /// (`TranscriptionEngine`): `.isFinal` results append to the committed transcript
+    /// and clear the volatile tail; non-final results become the volatile tail.
+    ///
+    /// Raw recognition only — no cleanup, no dictionary rules — matching the CLI's
+    /// "voice as a primitive" contract (smart cleanup stays in the app).
+    public func transcribeLive(
+        bufferStream: AsyncStream<AVAudioPCMBuffer>,
+        contextualStrings: [String] = [],
+        onProgress: (@Sendable (String) -> Void)? = nil
+    ) async throws -> String {
+        guard SpeechTranscriber.isAvailable else { throw FileTranscriberError.unavailable }
+
+        let loc = try await locale()
+        let transcriber = makeTranscriber(locale: loc)
+        try await ensureModelInstalled(for: transcriber)
+
+        let (inputStream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+
+        if !contextualStrings.isEmpty {
+            let ctx = AnalysisContext()
+            ctx.contextualStrings = [.general: contextualStrings]
+            try await analyzer.setContext(ctx)
+        }
+
+        // Single-owner reader: accumulates committed finals and tracks the volatile
+        // tail so progress reflects the same "committed + volatile" view the app's
+        // HUD shows. We read `collected` only after the task joins, so there is no
+        // concurrent access (Swift 6 clean).
+        let reader = Task { () -> String in
+            var committed = ""
+            do {
+                for try await result in transcriber.results {
+                    let piece = String(result.text.characters)
+                    if result.isFinal {
+                        committed = Self.append(committed, piece)
+                        onProgress?(committed.trimmingCharacters(in: .whitespacesAndNewlines))
+                    } else {
+                        // Volatile hypothesis: show committed + the live tail, but do
+                        // not commit it — a later final result supersedes it.
+                        let tail = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let preview = tail.isEmpty ? committed : Self.append(committed, tail)
+                        onProgress?(preview.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                }
+            } catch {
+                // Whatever committed so far is still returned; the caller handles the
+                // empty case.
+            }
+            return committed
+        }
+
+        try await analyzer.start(inputSequence: inputStream)
+
+        // Pump the live mic buffers into the analyzer until the caller finishes the
+        // stream (Enter / SIGINT). This await returns when `bufferStream` ends.
+        for await buffer in bufferStream {
+            continuation.yield(AnalyzerInput(buffer: buffer))
+        }
+        continuation.finish()
+
+        try await analyzer.finalizeAndFinishThroughEndOfInput()
+        let collected = await reader.value
+        return collected.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Config mirrored from TranscriptionEngine
