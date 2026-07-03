@@ -104,5 +104,58 @@
             </array>
         </dict>
     </array>
+    <!-- macOS Services (D7). Two right-click / Services-menu actions handled by
+         ServicesProvider.swift (NSApp.servicesProvider), registered at launch with
+         NSUpdateDynamicServices(). NSMessage is the selector's BASE name — AppKit
+         appends `:userData:error:`, so `transcribeFiles` → transcribeFiles:userData:error:
+         and `cleanupText` → cleanupText:userData:error:. NSRequiredContext is empty so
+         both are offered everywhere. These appear in other apps' Services menus once
+         LaunchServices re-registers the bundle (scripts/run.sh runs `lsregister -f`;
+         a logout or `killall pboard` may be needed once on a dev machine). -->
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Transcribe with Talkie</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>transcribeFiles</string>
+            <key>NSPortName</key>
+            <string>Talkie</string>
+            <!-- File action: operate on audio + video files selected in Finder. -->
+            <key>NSSendFileTypes</key>
+            <array>
+                <string>public.audio</string>
+                <string>public.movie</string>
+            </array>
+            <key>NSRequiredContext</key>
+            <dict/>
+        </dict>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Clean up with Talkie</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>cleanupText</string>
+            <key>NSPortName</key>
+            <string>Talkie</string>
+            <!-- Text action: read the selected string, return the cleaned string so
+                 the host app replaces the selection in place. -->
+            <key>NSSendTypes</key>
+            <array>
+                <string>NSStringPboardType</string>
+            </array>
+            <key>NSReturnTypes</key>
+            <array>
+                <string>NSStringPboardType</string>
+            </array>
+            <key>NSRequiredContext</key>
+            <dict/>
+        </dict>
+    </array>
 </dict>
 </plist>
