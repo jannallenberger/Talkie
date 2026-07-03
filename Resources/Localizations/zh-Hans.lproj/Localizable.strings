@@ -256,3 +256,16 @@
 "That file isn’t audio or video" = "该文件不是音频或视频";
 "Waiting for dictation to finish…" = "正在等待听写完成…";
 "Choose audio or video files to transcribe into meetings." = "选择要转录为会议的音频或视频文件。";
+
+/* I2 — configurable history retention */
+"Your history" = "你的历史记录";
+"Keep dictation history" = "保留听写历史记录";
+"Older dictations are deleted from this Mac after this long." = "超过此时长的较早听写将从此 Mac 中删除。";
+"History is capped at the 2,000 most recent dictations regardless of age." = "无论时长如何，历史记录最多保留最近的 2,000 条听写。";
+"1 day" = "1 天";
+"7 days" = "7 天";
+"30 days" = "30 天";
+"90 days" = "90 天";
+"Forever" = "永久保留";
+"You're keeping 1 dictation right now." = "你当前保留了 1 条听写。";
+"You're keeping %d dictations right now." = "你当前保留了 %d 条听写。";

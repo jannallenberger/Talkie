@@ -116,6 +116,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// history, meetings, or context graph change — so entries added after launch are
     /// searchable without a relaunch.
     private var searchIndexObservation: Set<AnyCancellable> = []
+    /// Mirrors the user's history-retention choice into `HistoryStore` so shrinking
+    /// the window re-prunes live (no relaunch). The store already read the persisted
+    /// value at init, so this only handles later changes.
+    private var retentionObservation: AnyCancellable?
 
     // MARK: App lifecycle
 
@@ -221,6 +225,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &searchIndexObservation)
         }
+
+        // Mirror later history-retention changes into the store so shrinking the
+        // window re-prunes without a relaunch. `.dropFirst()` skips the value
+        // Combine replays on subscribe — the store already applied the persisted
+        // retention at init, so reapplying it here would be a redundant prune+save.
+        retentionObservation = settings.$historyRetentionDays
+            .dropFirst()
+            .sink { [weak self] days in self?.history.updateRetention(days: days) }
 
         // Open the main window on launch — onboarding/permissions are handled
         // inside the window now; just land on the Dashboard.

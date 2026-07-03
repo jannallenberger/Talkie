@@ -202,7 +202,7 @@ struct MainView: View {
         case .general:
             SettingsHome(settings: settings, permissions: permissions,
                          profiles: profiles, contextGraph: contextGraph,
-                         router: router, onRetryHotKey: onRetryHotKey)
+                         history: history, router: router, onRetryHotKey: onRetryHotKey)
         }
     }
 }
@@ -278,6 +278,7 @@ private struct SettingsHome: View {
     @ObservedObject var permissions: PermissionsModel
     @ObservedObject var profiles: AppProfileStore
     @ObservedObject var contextGraph: ContextGraphStore
+    @ObservedObject var history: HistoryStore
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Void
 
@@ -306,7 +307,8 @@ private struct SettingsHome: View {
                     ExportDestinationsSettings()
                 }
                 section("Privacy & Permissions") {
-                    PrivacyAndPermissionsSettings(permissions: permissions, onRetryHotKey: onRetryHotKey)
+                    PrivacyAndPermissionsSettings(settings: settings, permissions: permissions,
+                                                  history: history, onRetryHotKey: onRetryHotKey)
                 }
                 section("Developer") {
                     DeveloperSettings(settings: settings)
@@ -1678,13 +1680,15 @@ extension Notification.Name {
 /// followed by the verifiable proof that nothing leaves your Mac. Replaces the
 /// two formerly separate Permissions and Privacy panes with one.
 private struct PrivacyAndPermissionsSettings: View {
+    @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
+    @ObservedObject var history: HistoryStore
     let onRetryHotKey: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             PermissionsSection(permissions: permissions, onRetryHotKey: onRetryHotKey)
-            PrivacySection()
+            PrivacySection(settings: settings, history: history)
         }
     }
 }

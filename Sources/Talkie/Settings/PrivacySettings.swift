@@ -10,8 +10,31 @@ import SwiftUI
 /// Card-only section (no `SubPage`); composed into the merged Privacy &
 /// Permissions page alongside the permission rows.
 struct PrivacySection: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var history: HistoryStore
     @State private var entitlements: [Entitlement] = []
     @State private var hasNetwork = false
+
+    /// Bridges the scalar `historyRetentionDays` setting to the typed picker.
+    private var retention: Binding<HistoryRetention> {
+        Binding(
+            get: { HistoryRetention.from(days: settings.historyRetentionDays) },
+            set: { settings.historyRetentionDays = $0.rawValue }
+        )
+    }
+
+    /// The "Your history" card footer: the live retained-dictation count plus the
+    /// always-true cap. Uses `%d`-format `.loc` strings (the codebase's plural
+    /// idiom — no `.stringsdict`), with a singular form for exactly one entry so
+    /// it never reads "1 dictations".
+    private var historyFooter: String {
+        let count = history.entries.count
+        let cap = "History is capped at the 2,000 most recent dictations regardless of age.".loc
+        let kept = count == 1
+            ? "You're keeping 1 dictation right now.".loc
+            : String(format: "You're keeping %d dictations right now.".loc, count)
+        return kept + " " + cap
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -81,6 +104,28 @@ struct PrivacySection: View {
                 BulletRow(text: "~/Library/Application Support/Talkie — settings and history.")
                 SettingsDivider(leadingInset: 0)
                 BulletRow(text: "~/Talkie Meetings — your recordings and transcripts, in plain folders you own.")
+            }
+
+            // How long history is kept — a threat-model choice, so it's your call,
+            // not a silent default. Replaces the old hardcoded 7-day window. The
+            // header localizes via `Eyebrow`→`.loc`; the footer/title/subtitle go
+            // through `SettingsCard`/`SettingsRow`'s plain-`String` `Text`, which
+            // does NOT auto-localize, so they're routed through `.loc` explicitly.
+            // The footer states the live count (from `history`) plus the honest,
+            // always-true cap — so the number the user sees matches what's on disk.
+            SettingsCard(
+                header: "Your history",
+                footer: historyFooter
+            ) {
+                SettingsRow(
+                    title: "Keep dictation history".loc,
+                    subtitle: "Older dictations are deleted from this Mac after this long.".loc
+                ) {
+                    Picker("", selection: retention) {
+                        ForEach(HistoryRetention.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
+                }
             }
         }
         .onAppear(perform: loadEntitlements)

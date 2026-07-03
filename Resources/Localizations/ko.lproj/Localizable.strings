@@ -256,3 +256,16 @@
 "That file isn’t audio or video" = "오디오나 비디오 파일이 아닙니다";
 "Waiting for dictation to finish…" = "받아쓰기가 끝나기를 기다리는 중…";
 "Choose audio or video files to transcribe into meetings." = "회의로 받아쓸 오디오나 비디오 파일을 선택하세요.";
+
+/* I2 — configurable history retention */
+"Your history" = "기록";
+"Keep dictation history" = "받아쓰기 기록 보관";
+"Older dictations are deleted from this Mac after this long." = "이 기간이 지난 오래된 받아쓰기는 이 Mac에서 삭제됩니다.";
+"History is capped at the 2,000 most recent dictations regardless of age." = "기록은 기간과 관계없이 최근 받아쓰기 2,000개로 제한됩니다.";
+"1 day" = "1일";
+"7 days" = "7일";
+"30 days" = "30일";
+"90 days" = "90일";
+"Forever" = "계속 보관";
+"You're keeping 1 dictation right now." = "현재 받아쓰기 1개를 보관하고 있습니다.";
+"You're keeping %d dictations right now." = "현재 받아쓰기 %d개를 보관하고 있습니다.";

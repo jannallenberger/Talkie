@@ -56,13 +56,24 @@ actor HistoryFileWriter {
     }
 }
 
-/// Persisted log of recent dictations (auto-pruned to the last 7 days). Newest first.
+/// Persisted log of recent dictations. Newest first, auto-pruned to the user's
+/// chosen retention window (`historyRetentionDays`, default 7 days; "forever"
+/// keeps everything). A separate hard `cap` bounds the file regardless of age.
 @MainActor
 final class HistoryStore: ObservableObject {
     @Published private(set) var entries: [DictationEntry] = []
 
     private let fileURL: URL
-    private let retention: TimeInterval = 7 * 24 * 60 * 60 // 7 days
+    /// How long a dictation is kept before pruning. Driven by
+    /// `AppSettings.historyRetentionDays`; `0` days means "forever"
+    /// (`.infinity`, so `prune` never drops anything). Not a `let` anymore
+    /// because the user can change retention live (`updateRetention(days:)`),
+    /// which re-prunes immediately — see `SettingsView`'s "Your history" card.
+    private var retentionSeconds: TimeInterval
+    /// Days used only for the honest window `wordsLast7Days` reports — always a
+    /// fixed 7 days regardless of retention, so the dashboard's "Last 7 days"
+    /// stat stays correct even when the user keeps history for 30/90 days.
+    private let dashboardWindow: TimeInterval = 7 * 24 * 60 * 60 // 7 days
     private let cap = 2000
 
     /// Off-main JSON encode + atomic write. Callers are unchanged: `save()` still
@@ -74,11 +85,46 @@ final class HistoryStore: ObservableObject {
     /// Monotonic save token; the writer drops any write older than the newest.
     private var saveGeneration = 0
 
-    init() {
-        let url = AppPaths.supportDirectory().appendingPathComponent("history.json")
+    /// `retentionDays` defaults to the value `AppSettings` already registered
+    /// (7 for untouched installs; `0` = forever) so the store reads the user's
+    /// real choice BEFORE `load()` runs its first prune — otherwise a "Forever"
+    /// user would silently lose >7-day-old dictations on every launch. Tests pass
+    /// an explicit value to construct hermetically without touching UserDefaults.
+    /// Ordering guarantee: `AppSettings()` is built before `HistoryStore()` at the
+    /// composition root (AppDelegate), so this default read sees the registered
+    /// default even on a first run — keep that order.
+    ///
+    /// `directory` defaults to the real support dir; tests pass a temp dir so they
+    /// neither read the developer's real `history.json` (non-deterministic) nor let
+    /// the debounced `save()` clobber it. Mirrors `HistoryFileWriter(fileURL:)`.
+    init(retentionDays: Int = HistoryStore.storedRetentionDays(),
+         directory: URL? = nil) {
+        let url = (directory ?? AppPaths.supportDirectory()).appendingPathComponent("history.json")
         fileURL = url
         writer = HistoryFileWriter(fileURL: url)
+        retentionSeconds = HistoryStore.seconds(forRetentionDays: retentionDays)
         load()
+    }
+
+    /// The persisted retention choice (in days), read straight from the same
+    /// `UserDefaults` key `AppSettings` registers. `0` means "forever".
+    static func storedRetentionDays() -> Int {
+        UserDefaults.standard.integer(forKey: "historyRetentionDays")
+    }
+
+    /// Convert a retention-days setting to a cutoff window. `0` (or negative,
+    /// defensively) → `.infinity` so `prune` keeps everything.
+    static func seconds(forRetentionDays days: Int) -> TimeInterval {
+        days <= 0 ? .infinity : TimeInterval(days) * 24 * 60 * 60
+    }
+
+    /// Apply a new retention window (in days; `0` = forever) and re-prune + save
+    /// immediately, so shrinking retention takes effect without a relaunch. Wired
+    /// from `AppSettings.$historyRetentionDays` at the composition root.
+    func updateRetention(days: Int) {
+        retentionSeconds = HistoryStore.seconds(forRetentionDays: days)
+        prune()
+        save()
     }
 
     /// `id` defaults to a fresh UUID (existing call sites are unaffected) but can be
@@ -132,14 +178,24 @@ final class HistoryStore: ObservableObject {
         entries.map(\.text).joined(separator: "\n\n")
     }
 
-    /// Words logged in the retained window (≈ last 7 days).
-    var wordsLast7Days: Int {
-        entries.reduce(0) { $0 + $1.wordCount }
+    /// Words logged in the trailing 7 days. Filters on an explicit 7-day cutoff
+    /// rather than summing every retained entry, so the dashboard's "Last 7 days"
+    /// stat stays honest at any retention setting (30/90 days / forever). Kept as
+    /// a computed property so the DashboardView call site is unchanged; the
+    /// testable core lives in `wordsInLast7Days(now:)`.
+    var wordsLast7Days: Int { wordsInLast7Days(now: Date()) }
+
+    /// Testable core of `wordsLast7Days` with an injectable `now`.
+    func wordsInLast7Days(now: Date) -> Int {
+        let cutoff = now.timeIntervalSince1970 - dashboardWindow
+        return entries.reduce(0) { $0 + ($1.timestampUnix >= cutoff ? $1.wordCount : 0) }
     }
 
-    /// Drop anything older than the retention window.
+    /// Drop anything older than the retention window. With forever-retention
+    /// (`retentionSeconds == .infinity`) the cutoff is `-.infinity`, so nothing
+    /// is ever pruned.
     private func prune(now: Date = Date()) {
-        let cutoff = now.timeIntervalSince1970 - retention
+        let cutoff = now.timeIntervalSince1970 - retentionSeconds
         entries.removeAll { $0.timestampUnix < cutoff }
     }
 
