@@ -283,6 +283,16 @@
 "Get Last Dictation" = "直近の口述を取得";
 "Return the text of your most recent dictation." = "直近の口述のテキストを返します。";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie が起動していません。Talkie を開いてからもう一度お試しください。";
+/* G7 — App Intents: Search Memory / Meeting toggle + kind labels */
+"Search Memory" = "メモリを検索";
+"Search what you've said, your meetings, and what Talkie has learned from them." = "あなたが話したこと、会議、そして Talkie がそこから学んだことを検索します。";
+"Toggle Meeting Recording" = "会議の録音を切り替え";
+"Start recording a meeting, or stop and save the notes for the one in progress." = "会議の録音を開始するか、進行中のものを停止してノートを保存します。";
+"Couldn’t start a meeting — Talkie may be busy dictating, or microphone or speech access isn’t available." = "会議を開始できませんでした — Talkie が口述中であるか、マイクまたは音声認識へのアクセスが利用できない可能性があります。";
+"No matches" = "一致なし";
+"Dictation" = "口述";
+"Meeting" = "会議";
+"Note" = "ノート";
 /* D3 — timestamped exports menu */
 "Subtitles (.srt)" = "字幕 (.srt)";
 "Subtitles (.vtt)" = "字幕 (.vtt)";

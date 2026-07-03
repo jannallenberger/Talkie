@@ -283,6 +283,16 @@
 "Get Last Dictation" = "Laatste dictaat ophalen";
 "Return the text of your most recent dictation." = "Geeft de tekst van je meest recente dictaat terug.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie is niet actief. Open Talkie en probeer het opnieuw.";
+/* G7 — App Intents: Search Memory / Meeting toggle + kind labels */
+"Search Memory" = "Geheugen doorzoeken";
+"Search what you've said, your meetings, and what Talkie has learned from them." = "Doorzoek wat je hebt gezegd, je vergaderingen en wat Talkie daaruit heeft geleerd.";
+"Toggle Meeting Recording" = "Vergaderopname in-/uitschakelen";
+"Start recording a meeting, or stop and save the notes for the one in progress." = "Start het opnemen van een vergadering, of stop en bewaar de notities van de lopende.";
+"Couldn’t start a meeting — Talkie may be busy dictating, or microphone or speech access isn’t available." = "Kan geen vergadering starten — Talkie is mogelijk aan het dicteren, of er is geen toegang tot de microfoon of spraakherkenning.";
+"No matches" = "Geen resultaten";
+"Dictation" = "Dictaat";
+"Meeting" = "Vergadering";
+"Note" = "Notitie";
 /* D3 — timestamped exports menu */
 "Subtitles (.srt)" = "Ondertitels (.srt)";
 "Subtitles (.vtt)" = "Ondertitels (.vtt)";

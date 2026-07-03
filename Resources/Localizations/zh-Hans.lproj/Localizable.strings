@@ -283,6 +283,16 @@
 "Get Last Dictation" = "获取最近一次听写";
 "Return the text of your most recent dictation." = "返回你最近一次听写的文本。";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie 尚未运行。请打开 Talkie 后重试。";
+/* G7 — App Intents: Search Memory / Meeting toggle + kind labels */
+"Search Memory" = "搜索记忆";
+"Search what you've said, your meetings, and what Talkie has learned from them." = "搜索你说过的内容、你的会议，以及 Talkie 从中学到的内容。";
+"Toggle Meeting Recording" = "开关会议录制";
+"Start recording a meeting, or stop and save the notes for the one in progress." = "开始录制会议，或停止并保存正在进行的会议笔记。";
+"Couldn’t start a meeting — Talkie may be busy dictating, or microphone or speech access isn’t available." = "无法开始会议 — Talkie 可能正在听写，或者无法访问麦克风或语音识别。";
+"No matches" = "无匹配项";
+"Dictation" = "听写";
+"Meeting" = "会议";
+"Note" = "笔记";
 /* D3 — timestamped exports menu */
 "Subtitles (.srt)" = "字幕 (.srt)";
 "Subtitles (.vtt)" = "字幕 (.vtt)";
