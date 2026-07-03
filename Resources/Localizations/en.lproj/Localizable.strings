@@ -506,3 +506,13 @@
 "After saving" = "After saving";
 "After saving a meeting note, run" = "After saving a meeting note, run";
 "Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network.";
+/* Watched inbox folder (D6) */
+"Watch a folder" = "Watch a folder";
+"Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection." = "Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection.";
+"Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection." = "Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection.";
+"Watched folder" = "Watched folder";
+"No folder — this feature is off" = "No folder — this feature is off";
+"Choose…" = "Choose…";
+"Change…" = "Change…";
+"Stop watching" = "Stop watching";
+"That folder isn’t reachable right now — nothing will be watched until it’s back." = "That folder isn’t reachable right now — nothing will be watched until it’s back.";

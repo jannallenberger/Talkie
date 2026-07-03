@@ -504,3 +504,13 @@
 "After saving" = "Dopo il salvataggio";
 "After saving a meeting note, run" = "Dopo aver salvato una nota della riunione, esegui";
 "Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "Esegue uno dei tuoi comandi rapidi di macOS quando una nota della riunione finisce di essere salvata, passandogli il file della nota. Resta sul tuo Mac — nessuna rete.";
+/* Watched inbox folder (D6) */
+"Watch a folder" = "Controlla una cartella";
+"Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection." = "Disattivato. Scegli una cartella e qualsiasi file audio o video che vi arriva — un promemoria vocale inviato con AirDrop, una registrazione iCloud — viene trascritto in una nota sul tuo Mac e poi spostato in una sottocartella “Transcribed” al suo interno. Talkie legge solo file locali e non apre mai una connessione.";
+"Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection." = "I file che arrivano qui vengono trascritti sul dispositivo e spostati in “Transcribed”. Talkie controlla solo questa cartella (non le sue sottocartelle), legge esclusivamente file locali e non apre mai una connessione.";
+"Watched folder" = "Cartella controllata";
+"No folder — this feature is off" = "Nessuna cartella — questa funzione è disattivata";
+"Choose…" = "Scegli…";
+"Change…" = "Cambia…";
+"Stop watching" = "Interrompi il controllo";
+"That folder isn’t reachable right now — nothing will be watched until it’s back." = "Quella cartella non è raggiungibile in questo momento — non verrà controllato nulla finché non torna disponibile.";
