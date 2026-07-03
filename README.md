@@ -5,8 +5,9 @@ Hold a key, talk, release; Talkie transcribes locally and pastes the text into
 whatever app you're using. No subscription, no cloud, no account. Your voice
 never leaves your Mac.
 
-Built natively against macOS 26's `SpeechAnalyzer` / `SpeechTranscriber` engine
-(Apple's newest on-device model — ~55% faster than Whisper Large V3).
+Built natively on Apple's newest on-device model (macOS 26's `SpeechAnalyzer` /
+`SpeechTranscriber` engine) — see [BENCHMARKS.md](BENCHMARKS.md) for measured
+accuracy and speed on real hardware.
 
 ---
 
@@ -171,6 +172,17 @@ per-device).
 > may re-ask for permissions after a rebuild. To avoid that, sign with your
 > stable *Apple Development* cert instead:
 > `export TALKIE_SIGN_ID="Apple Development: Your Name (TEAMID)"` before `run.sh`.
+
+## Benchmarks
+
+Every speed and accuracy number Talkie publishes comes from a real `talkie-bench`
+run on named hardware — measured, never inherited. See [BENCHMARKS.md](BENCHMARKS.md)
+for the method, the honesty rules, and the results table. Reproduce it yourself:
+
+```bash
+swift build -c release
+.build/release/talkie-bench --corpus ./LibriSpeech/test-clean --markdown
+```
 
 ## How it works (architecture)
 

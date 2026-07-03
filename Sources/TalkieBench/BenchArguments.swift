@@ -12,6 +12,11 @@ struct BenchArguments {
     var quiet: Bool = false
     var showHelp: Bool = false
     var selfTest: Bool = false
+    /// When set, print ONE pipe-delimited Markdown table row (the whole-run
+    /// summary) to stdout after the human table, ready to paste into BENCHMARKS.md.
+    /// The row's numbers come from the same aggregation the table prints, so they
+    /// cannot drift. No value — a bare `--markdown` flag.
+    var markdown: Bool = false
     /// A file of newline-separated bias phrases. When set, the harness runs the
     /// **bias comparison** (gate zero): each clip is transcribed twice — bias off
     /// vs on — and the WER delta is reported, instead of the standard timing run.
@@ -54,6 +59,10 @@ struct BenchArguments {
                         as --bias). Appends a per-term recall table (reference
                         occurrences vs normalized hypothesis hits, recall %) after
                         any run — live transcription OR --hypotheses.
+      --markdown        After the human table, print ONE pipe-delimited Markdown
+                        row summarising the run (date, machine, macOS, locale,
+                        corpus, WER, CER, RTFx, median/p90 latency) for pasting
+                        into BENCHMARKS.md. Same numbers as the table.
       --quiet           Print only the final summary table.
       --selftest        Run the built-in WER-scorer correctness checks and exit
                         (no corpus, model, or Python needed).
@@ -107,6 +116,8 @@ struct BenchArguments {
                 if let v = nextValue(arg) {
                     out.termsFile = URL(fileURLWithPath: v, relativeTo: cwd).standardizedFileURL
                 }
+            case "--markdown":
+                out.markdown = true
             case "--quiet":
                 out.quiet = true
             case "--selftest":
