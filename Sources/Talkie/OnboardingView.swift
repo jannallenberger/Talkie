@@ -129,7 +129,7 @@ struct OnboardingView: View {
                 .fixedSize(horizontal: false, vertical: true)
             // One row, evenly spaced, never wraps: keycap → speak → typed.
             HStack(spacing: 10) {
-                Keycap(text: settings.activationKey.displayName)
+                Keycap(text: settings.activationKey.displayName, symbol: settings.activationKey.symbolName)
                 stepArrow
                 HStack(spacing: 6) {
                     ClayIcon(name: "IconMic", size: 18)
@@ -319,14 +319,23 @@ private struct PrivacyChip: View {
 
 private struct Keycap: View {
     let text: String
+    /// Optional SF Symbol shown before the label — a mouse glyph for the mouse
+    /// side-button triggers, since there's no ⌥/⌃-style character for them.
+    var symbol: String? = nil
     var body: some View {
-        Text(text)
-            .font(.talkieHeading(13, weight: .semibold))
-            .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.surfaceSunken))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.hairline))
+        HStack(spacing: 5) {
+            if let symbol {
+                Image(systemName: symbol)
+                    .font(.talkieHeading(12, weight: .semibold))
+            }
+            Text(text)
+        }
+        .font(.talkieHeading(13, weight: .semibold))
+        .foregroundStyle(Theme.ink)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.surfaceSunken))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.hairline))
     }
 }
 

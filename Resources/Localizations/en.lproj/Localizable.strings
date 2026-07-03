@@ -123,6 +123,8 @@
 "Right ⌥ Option" = "Right ⌥ Option";
 "Left ⌥ Option" = "Left ⌥ Option";
 "Right ⌃ Control" = "Right ⌃ Control";
+"Mouse Button 4 (side)" = "Mouse Button 4 (side)";
+"Mouse Button 5 (side)" = "Mouse Button 5 (side)";
 "Paste (fast)" = "Paste (fast)";
 "Type character-by-character" = "Type character-by-character";
 "None" = "None";
@@ -324,6 +326,7 @@
 "Hold %@ to talk · tap twice to lock" = "Hold %@ to talk · tap twice to lock";
 "Hold to talk · tap twice to lock" = "Hold to talk · tap twice to lock";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.";
+"The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software).";
 "Hold, speak, release — or tap twice to go hands-free" = "Hold, speak, release — or tap twice to go hands-free";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop.";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "Listening, hands-free. Recording is locked — tap your key once to stop.";

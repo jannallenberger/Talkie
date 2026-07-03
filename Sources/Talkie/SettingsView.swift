@@ -868,12 +868,20 @@ private struct ActivationSettings: View {
                 header: "Activation",
                 // One gesture family for everyone — no mode to choose. Spell it out
                 // once here so the picker's removal doesn't leave the behavior a
-                // mystery.
-                footer: "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.".loc
+                // mystery. When a mouse side button is bound we append an honest note
+                // that the tap is listen-only, so the button still does its normal job
+                // in the front app.
+                footer: activationFooter
             ) {
                 SettingsRow(title: "Dictation key") {
                     Picker("", selection: $settings.activationKey) {
-                        ForEach(ActivationKey.allCases) { Text($0.displayName).tag($0) }
+                        ForEach(ActivationKey.allCases) { key in
+                            if let symbol = key.symbolName {
+                                Label(key.displayName, systemImage: symbol).tag(key)
+                            } else {
+                                Text(key.displayName).tag(key)
+                            }
+                        }
                     }
                     .labelsHidden().fixedSize()
                 }
@@ -903,6 +911,18 @@ private struct ActivationSettings: View {
                 )
             }
         }
+    }
+
+    /// The Activation card's footer. Always explains the gesture family; when the
+    /// bound trigger is a mouse side button it also states, honestly, that the tap
+    /// is listen-only — the button keeps doing its normal job in the front app, and
+    /// it must reach macOS as a real button (vendor drivers that remap it to a
+    /// keystroke are out of Talkie's hands).
+    private var activationFooter: String {
+        let base = "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.".loc
+        guard settings.activationKey.isMouseButton else { return base }
+        let note = "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software).".loc
+        return base + "\n\n" + note
     }
 }
 

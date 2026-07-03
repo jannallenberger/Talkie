@@ -8,6 +8,12 @@ enum ActivationKey: String, CaseIterable, Codable, Identifiable {
     case rightControl
     // NOTE: Fn/Globe was removed — macOS reserves it for "Change Input Source"
     // (language switch), so it can't be cleanly used as a hold-to-talk key.
+    // Alternative HID triggers: a mouse's two side buttons (button 4/5). Anything
+    // that reaches macOS as one of these physical buttons — many foot pedals and
+    // accessibility switches do — can drive the same gesture family (B7). These
+    // are NOT modifiers, so they take the mouse-event path in `HotKeyMonitor`.
+    case mouseButton4
+    case mouseButton5
 
     var id: String { rawValue }
 
@@ -16,7 +22,27 @@ enum ActivationKey: String, CaseIterable, Codable, Identifiable {
         case .rightOption: return "Right ⌥ Option".loc
         case .leftOption: return "Left ⌥ Option".loc
         case .rightControl: return "Right ⌃ Control".loc
+        case .mouseButton4: return "Mouse Button 4 (side)".loc
+        case .mouseButton5: return "Mouse Button 5 (side)".loc
         }
+    }
+
+    /// True when this trigger is a mouse side button rather than a keyboard
+    /// modifier — the two use disjoint event paths in `HotKeyMonitor` (a keyboard
+    /// key ignores mouse events and a mouse button ignores `flagsChanged`).
+    var isMouseButton: Bool {
+        switch self {
+        case .mouseButton4, .mouseButton5: return true
+        case .rightOption, .leftOption, .rightControl: return false
+        }
+    }
+
+    /// SF Symbol used to render this trigger as a glyph in the picker row and the
+    /// onboarding keycap. `nil` for keyboard modifiers (their `displayName` already
+    /// carries the ⌥/⌃ glyph); the mouse buttons get a mouse symbol since there's
+    /// no single character for "side button".
+    var symbolName: String? {
+        isMouseButton ? "computermouse" : nil
     }
 }
 
@@ -42,6 +68,10 @@ extension ActivationKey {
         case .rightControl:
             // Activation uses Control → pair Command with Option instead.
             return PasteShortcut(secondary: .option, display: "⌥⌘V")
+        case .mouseButton4, .mouseButton5:
+            // A mouse side button isn't a keyboard modifier, so no keyboard chord
+            // can collide with it — default to ⌃⌘V (Control is the tidier pairing).
+            return PasteShortcut(secondary: .control, display: "⌃⌘V")
         }
     }
 }

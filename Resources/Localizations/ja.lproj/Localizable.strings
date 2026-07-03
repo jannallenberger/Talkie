@@ -123,6 +123,8 @@
 "Right ⌥ Option" = "右 ⌥ Option";
 "Left ⌥ Option" = "左 ⌥ Option";
 "Right ⌃ Control" = "右 ⌃ Control";
+"Mouse Button 4 (side)" = "マウスボタン4（サイド）";
+"Mouse Button 5 (side)" = "マウスボタン5（サイド）";
 "Paste (fast)" = "ペースト（高速）";
 "Type character-by-character" = "1文字ずつ入力";
 "None" = "なし";
@@ -324,6 +326,7 @@
 "Hold %@ to talk · tap twice to lock" = "%@ を押し続けて話す・2回タップで固定";
 "Hold to talk · tap twice to lock" = "押し続けて話す・2回タップで固定";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "キーを押しながら話し、離すと挿入されます。2回タップするとハンズフリーで固定され、何も押さなくても録音が続きます。もう一度タップすると停止して挿入します。";
+"The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "サイドボタンは使用中のアプリで通常どおり機能します。Talkie はそれを聞き取るだけで、ボタンは実際のボタンとして macOS に届く必要があります（一部のマウスは独自のソフトウェアでボタンを再割り当てします）。";
 "Hold, speak, release — or tap twice to go hands-free" = "押して、話して、離す — または2回タップでハンズフリー";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "キーを押しながら書きたいことを話し、離すだけ — Talkie が入力中の場所にテキストを挿入します。急いでいるときは、キーを2回タップして録音をハンズフリーで固定し、1回タップで停止します。";
 "Listening, hands-free. Recording is locked — tap your key once to stop." = "ハンズフリーで聞き取り中です。録音は固定されています。キーを1回タップすると停止します。";
