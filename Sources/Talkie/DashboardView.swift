@@ -178,6 +178,13 @@ private struct BriefDetailView: View {
     @ObservedObject var summary: ContextSummaryStore
     @ObservedObject var history: HistoryStore
 
+    /// Which "Save to notes" state the button is showing. Idle → the save action;
+    /// saving → a spinner; saved/failed → a brief inline confirmation that reverts
+    /// to idle. Purely local UI feedback (the dashboard has no HUD pill), mirroring
+    /// the honest, low-key confirmations used elsewhere.
+    private enum SaveState: Equatable { case idle, saving, saved(String), failed }
+    @State private var saveState: SaveState = .idle
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -191,6 +198,13 @@ private struct BriefDetailView: View {
                             .foregroundStyle(Theme.inkSecondary)
                     }
                     Spacer()
+                    // "Save to notes" writes the brief to the export destination as
+                    // {date}-brief.md — one file per day (a re-save overwrites). Only
+                    // meaningful once a brief exists; hidden until then so the header
+                    // isn't cluttered on the empty state.
+                    if !summary.summary.isEmpty {
+                        saveButton
+                    }
                     Button {
                         Task { await summary.refresh(from: history) }
                     } label: {
@@ -210,6 +224,58 @@ private struct BriefDetailView: View {
         }
         .background(Theme.canvas)
         .navigationTitle("")
+    }
+
+    /// The "Save to notes" control, reflecting `saveState`. Kept plain (a
+    /// `Label`/text button, no invented styling) so it sits beside "Regenerate"
+    /// consistently.
+    @ViewBuilder
+    private var saveButton: some View {
+        switch saveState {
+        case .idle:
+            Button { saveBrief() } label: { Label("Save to notes", systemImage: "square.and.arrow.down") }
+        case .saving:
+            ProgressView().controlSize(.small)
+        case .saved(let where_):
+            Label(where_, systemImage: "checkmark")
+                .font(.talkieHeading(12, weight: .medium))
+                .foregroundStyle(Theme.positive)
+        case .failed:
+            Button { saveBrief() } label: {
+                Label("Couldn't save — retry", systemImage: "exclamationmark.triangle")
+            }
+            .foregroundStyle(.orange)
+        }
+    }
+
+    /// Compose the brief note (pure) and write it through the resolved export
+    /// destination on a detached task, with the same never-throw fallback the
+    /// meeting/dictation writers use (resolved destination → default Talkie folder
+    /// on throw). Reflects the outcome in `saveState`; the "saved" confirmation
+    /// reverts to idle after a moment so a second same-day save is easy.
+    private func saveBrief() {
+        let text = summary.summary
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        saveState = .saving
+        let note = NoteComposers.briefNote(summary: text, date: summary.generatedAt ?? Date())
+        let destination = ExportPreferences.shared.resolvedDestination()
+        let savedMessage = String(format: "Saved to %@".loc, destination.displayName)
+        Task {
+            var ok = true
+            do {
+                _ = try await destination.write(note)
+            } catch {
+                do { _ = try await TalkieFolderDestination().write(note) }
+                catch { ok = false }
+            }
+            await MainActor.run {
+                saveState = ok ? .saved(savedMessage) : .failed
+            }
+            if ok {
+                try? await Task.sleep(for: .seconds(2.4))
+                await MainActor.run { if case .saved = saveState { saveState = .idle } }
+            }
+        }
     }
 
     private var subtitle: String {

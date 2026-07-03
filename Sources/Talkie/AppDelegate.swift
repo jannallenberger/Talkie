@@ -1094,6 +1094,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            // "Note this …" — file this dictation as a durable Markdown note in the
+            // export destination instead of typing it into the frontmost app (D4).
+            // Anchored to the utterance START (`triggerMatch` only fires on a
+            // leading "note this"/"note that"), and gated on `optimistic == nil`
+            // EXACTLY like the command branch below: with optimistic insertion on,
+            // the interim text is already pasted into the target before we get here,
+            // so intercepting would strand it — let those degrade to normal
+            // dictation. The common (non-matching) path pays only one lowercased
+            // `hasPrefix` check and adds no awaits, so normal stop-to-paste latency
+            // is unchanged. A bare "note this" files the PREVIOUS dictation:
+            // `history.add` for THIS utterance runs further below, so
+            // `history.entries.first` here is still the prior entry.
+            if optimistic == nil, let match = NoteComposers.triggerMatch(for: finalText) {
+                let noteBody: String?
+                switch match {
+                case .body(let body):
+                    noteBody = body
+                case .previous:
+                    // Bare trigger — export the previous dictation's text, if any.
+                    noteBody = self.history.entries.first?.text
+                }
+                self.isProcessing = false
+                guard let body = noteBody,
+                      !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    // Bare "note this" with no prior dictation to file — tell the
+                    // user rather than silently typing "note this" into their doc.
+                    self.hud.showError("Nothing to note yet — dictate something first.")
+                    return
+                }
+                // Build the neutral note (pure) and resolve the destination on the
+                // main actor (reads @Published prefs), then hand the blocking disk
+                // write to a detached task with the same never-throw fallback the
+                // meeting writer uses (Meeting.swift): the resolved destination,
+                // then a second write to the default Talkie folder if it throws —
+                // a note is never lost. Nothing is EVER injected into the target
+                // app for this utterance.
+                let note = NoteComposers.dictationNote(
+                    text: body, target: target, date: Date(),
+                    graph: self.contextGraph.snapshot()
+                )
+                let destination = ExportPreferences.shared.resolvedDestination()
+                let savedMessage = String(format: "Saved to %@".loc, destination.displayName)
+                Task.detached {
+                    do {
+                        _ = try await destination.write(note)
+                    } catch {
+                        do {
+                            _ = try await TalkieFolderDestination().write(note)
+                        } catch {
+                            await MainActor.run { self.hud.showError("Couldn't save that note.") }
+                            return
+                        }
+                    }
+                    await MainActor.run { self.hud.showSaved(savedMessage) }
+                }
+                return
+            }
+
             // Voice command mode (the on-device copilot): a leading-imperative over
             // a selection ("make this a list", "translate to German"), a
             // whole-utterance macro, or — behind `crossSurfaceCommandsEnabled`,

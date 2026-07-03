@@ -282,3 +282,232 @@ final class ExportRoutingTests: XCTestCase {
                       "the related entity should still appear, just unlinked")
     }
 }
+
+// MARK: - D4: NoteComposers (note-this dictation + Brief) — pure logic
+
+/// D4 closes the export gap: a "note this …" dictation and Today's Brief become
+/// durable Markdown notes. `NoteComposers` is the pure producer (the dictation/brief
+/// analogue of `MeetingStore.writeMarkdown`), so it's exhaustively unit-testable
+/// with no Core Audio, model, or disk — matching the offline-core invariant. These
+/// cover the risky bits the maker can't verify headless: trigger parsing (incl.
+/// "Note this,"), title derivation, and entity-link matching.
+final class NoteComposersTests: XCTestCase {
+
+    // MARK: Trigger parsing
+
+    func testTriggerBodyStripsPrefix() {
+        XCTAssertEqual(NoteComposers.triggerMatch(for: "note this remember to rotate the API keys"),
+                       .body("remember to rotate the API keys"),
+                       "a 'note this <x>' utterance must strip the trigger and keep the remainder as the body")
+    }
+
+    func testTriggerIsCaseInsensitive() {
+        XCTAssertEqual(NoteComposers.triggerMatch(for: "Note This Buy Milk"),
+                       .body("Buy Milk"),
+                       "the trigger match is case-insensitive but the body keeps its original casing")
+    }
+
+    func testTriggerNoteThatAlsoWorks() {
+        XCTAssertEqual(NoteComposers.triggerMatch(for: "note that the build is green"),
+                       .body("the build is green"),
+                       "'note that' is an accepted trigger alongside 'note this'")
+    }
+
+    func testTriggerSwallowsTrailingComma() {
+        XCTAssertEqual(NoteComposers.triggerMatch(for: "Note this, remember the keys"),
+                       .body("remember the keys"),
+                       "a single trailing comma right after the trigger is swallowed before the body")
+    }
+
+    func testTriggerSwallowsTrailingColon() {
+        XCTAssertEqual(NoteComposers.triggerMatch(for: "note this: remember the keys"),
+                       .body("remember the keys"),
+                       "a single trailing colon right after the trigger is swallowed before the body")
+    }
+
+    func testBareTriggerReturnsPrevious() {
+        XCTAssertEqual(NoteComposers.triggerMatch(for: "note this"), .previous,
+                       "a bare 'note this' with no remainder means: file the previous dictation")
+        XCTAssertEqual(NoteComposers.triggerMatch(for: "Note this  "), .previous,
+                       "trailing whitespace after a bare trigger still counts as bare")
+        XCTAssertEqual(NoteComposers.triggerMatch(for: "note this,"), .previous,
+                       "a bare trigger with only a trailing comma is still bare")
+    }
+
+    func testNonTriggerReturnsNil() {
+        XCTAssertNil(NoteComposers.triggerMatch(for: "the meeting notes are done"),
+                     "an ordinary sentence is not a note command")
+        XCTAssertNil(NoteComposers.triggerMatch(for: "I want to note this down for later"),
+                     "the trigger is anchored to the START — 'note this' mid-sentence must not fire")
+    }
+
+    func testTriggerRequiresWordBoundary() {
+        XCTAssertNil(NoteComposers.triggerMatch(for: "note thistle care instructions"),
+                     "'note thistle' starts with the trigger letters but is a different word — must not match")
+        XCTAssertNil(NoteComposers.triggerMatch(for: "notethis buy milk"),
+                     "no boundary after 'note' — 'notethis' must not match")
+    }
+
+    func testTriggerToleratesLeadingWhitespace() {
+        XCTAssertEqual(NoteComposers.triggerMatch(for: "  note this buy milk"),
+                       .body("buy milk"),
+                       "leading whitespace before the trigger is tolerated")
+    }
+
+    // MARK: Title derivation
+
+    func testTitleFirstEightWords() {
+        let body = "one two three four five six seven eight nine ten"
+        XCTAssertEqual(NoteComposers.titleWords(from: body, maxWords: 8),
+                       "one two three four five six seven eight",
+                       "the title is the first eight whitespace-separated words")
+    }
+
+    func testTitleShorterThanLimitKeepsAll() {
+        XCTAssertEqual(NoteComposers.titleWords(from: "buy milk", maxWords: 8), "buy milk",
+                       "a short body keeps all its words")
+    }
+
+    func testTitleCollapsesWhitespaceAndNewlines() {
+        XCTAssertEqual(NoteComposers.titleWords(from: "  hello\n\nthere   world  ", maxWords: 8),
+                       "hello there world",
+                       "runs of whitespace/newlines never leak into the one-line title")
+    }
+
+    func testDictationNoteTitleFallsBackWhenEmpty() {
+        let note = NoteComposers.dictationNote(text: "   ", target: .unknown,
+                                               date: Date(timeIntervalSince1970: 1_700_000_000),
+                                               graph: .empty)
+        XCTAssertEqual(note.title, "Note",
+                       "an empty body yields a stable 'Note' title rather than a blank one")
+    }
+
+    // MARK: Entity-link matching
+
+    private func entity(_ kind: EntityKind, _ name: String, aliases: [String] = []) -> Entity {
+        Entity(id: EntityID(kind: kind, key: name.lowercased()),
+               displayName: name, aliases: aliases,
+               firstSeenUnix: 0, lastSeenUnix: 0)
+    }
+
+    func testMentionedEntitiesMatchesByDisplayName() {
+        let graph = ContextGraphSnapshot(entities: [
+            entity(.project, "Coralate"),
+            entity(.person, "Sarah Chen"),
+        ])
+        let links = NoteComposers.mentionedEntities(in: "shipped the Coralate onboarding today", graph: graph)
+        XCTAssertEqual(links, ["Coralate"],
+                       "only entities actually named in the text become links; Sarah isn't mentioned")
+    }
+
+    func testMentionedEntitiesMatchesByAliasButReturnsCanonicalName() {
+        let graph = ContextGraphSnapshot(entities: [
+            entity(.person, "Sarah Chen", aliases: ["Sarah"]),
+        ])
+        let links = NoteComposers.mentionedEntities(in: "quick sync with Sarah about the launch", graph: graph)
+        XCTAssertEqual(links, ["Sarah Chen"],
+                       "an alias match still links to the canonical display name, never the alias")
+    }
+
+    func testMentionedEntitiesRespectsWordBoundaries() {
+        let graph = ContextGraphSnapshot(entities: [ entity(.term, "graph") ])
+        XCTAssertTrue(NoteComposers.mentionedEntities(in: "the graph is live", graph: graph).contains("graph"),
+                      "a whole-word occurrence matches")
+        XCTAssertTrue(NoteComposers.mentionedEntities(in: "rebuild the graph.", graph: graph).contains("graph"),
+                      "trailing punctuation is a boundary — still a match")
+        XCTAssertTrue(NoteComposers.mentionedEntities(in: "graphene batteries", graph: graph).isEmpty,
+                      "'graphene' contains 'graph' but is a different word — no match")
+        XCTAssertTrue(NoteComposers.mentionedEntities(in: "a polygraph test", graph: graph).isEmpty,
+                      "'polygraph' embeds 'graph' with no boundary — no match")
+    }
+
+    func testMentionedEntitiesSkipsCommitments() {
+        let graph = ContextGraphSnapshot(entities: [
+            entity(.commitment, "rotate the keys"),
+            entity(.project, "Talkie"),
+        ])
+        let links = NoteComposers.mentionedEntities(in: "rotate the keys for Talkie", graph: graph)
+        XCTAssertEqual(links, ["Talkie"],
+                       "commitments are action items, not wikilink nodes — only the project links")
+    }
+
+    func testMentionedEntitiesIsCaseInsensitive() {
+        let graph = ContextGraphSnapshot(entities: [ entity(.project, "Coralate") ])
+        let links = NoteComposers.mentionedEntities(in: "the CORALATE demo", graph: graph)
+        XCTAssertEqual(links, ["Coralate"],
+                       "matching is case-insensitive; the canonical spelling is returned")
+    }
+
+    func testMentionedEntitiesDeduplicates() {
+        let graph = ContextGraphSnapshot(entities: [ entity(.project, "Coralate") ])
+        let links = NoteComposers.mentionedEntities(in: "Coralate and Coralate again", graph: graph)
+        XCTAssertEqual(links, ["Coralate"],
+                       "an entity mentioned twice is linked once")
+    }
+
+    // MARK: Note assembly
+
+    func testDictationNoteCarriesAppAndBodyAndLinks() {
+        let graph = ContextGraphSnapshot(entities: [ entity(.person, "Sarah Chen", aliases: ["Sarah"]) ])
+        let target = TargetApp(bundleID: "com.apple.Notes", name: "Notes", category: .other)
+        let note = NoteComposers.dictationNote(
+            text: "ping Sarah about the keys", target: target,
+            date: Date(timeIntervalSince1970: 1_700_000_000), graph: graph)
+        XCTAssertEqual(note.kind, .dictation, "a note-this dictation is kind .dictation")
+        XCTAssertEqual(note.frontMatter["app"], "Notes",
+                       "the frontmost app is recorded as frontMatter[app]")
+        XCTAssertEqual(note.links, ["Sarah Chen"],
+                       "mentioned graph entities become links (canonical spelling)")
+        XCTAssertTrue(note.bodyMarkdown.contains("## Note"),
+                      "the body is a single '## Note' section")
+        XCTAssertTrue(note.bodyMarkdown.contains("ping Sarah about the keys"),
+                      "the body contains the note text verbatim")
+        XCTAssertEqual(note.title, "ping Sarah about the keys",
+                       "the title is the first ~8 words of the body")
+    }
+
+    func testDictationNoteOmitsAppForUnknownTarget() {
+        let note = NoteComposers.dictationNote(
+            text: "remember the keys", target: .unknown,
+            date: Date(timeIntervalSince1970: 1_700_000_000), graph: .empty)
+        XCTAssertNil(note.frontMatter["app"],
+                     "the unknown target contributes no 'app' front-matter (so {app} templates collapse cleanly)")
+    }
+
+    func testDictationNoteFileNameUsesDatetimeNote() {
+        let note = NoteComposers.dictationNote(
+            text: "buy milk", target: .unknown,
+            date: Date(timeIntervalSince1970: 1_700_000_000), graph: .empty)
+        // 1_700_000_000 → 2023-11-14 in whatever the local zone is; assert the
+        // stable, zone-independent suffix rather than the (local) date digits.
+        XCTAssertTrue(note.suggestedFileName.hasSuffix("-note"),
+                      "the dictation filename template is {datetime}-note; got \(note.suggestedFileName)")
+        XCTAssertFalse(note.suggestedFileName.isEmpty, "a filename is always produced")
+    }
+
+    func testBriefNoteFixedDailyFileName() {
+        let note = NoteComposers.briefNote(
+            summary: "## Today\n\n- shipped D4",
+            date: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(note.kind, .brief, "the Brief note is kind .brief")
+        XCTAssertTrue(note.suggestedFileName.hasSuffix("-brief"),
+                      "the Brief filename is {date}-brief (one per day); got \(note.suggestedFileName)")
+        XCTAssertFalse(note.suggestedFileName.contains(":"),
+                       "no time component in the daily brief name, so a re-save overwrites the same file")
+        XCTAssertTrue(note.links.isEmpty, "the Brief is not a per-entity node — no links")
+        XCTAssertTrue(note.bodyMarkdown.contains("shipped D4"), "the Brief body is the summary Markdown")
+    }
+
+    func testBriefNoteSameDayProducesSameFileName() {
+        // Two instants a few minutes apart — trivially the same civil day in any
+        // timezone, so this asserts the intended invariant (no time token in the
+        // brief name → same-day re-save overwrites) without a day-boundary flake.
+        let base = 1_700_000_000.0
+        let earlier = NoteComposers.briefNote(summary: "earlier brief",
+                                              date: Date(timeIntervalSince1970: base))
+        let later = NoteComposers.briefNote(summary: "later brief",
+                                            date: Date(timeIntervalSince1970: base + 600))
+        XCTAssertEqual(earlier.suggestedFileName, later.suggestedFileName,
+                       "two saves the same day resolve to the same file so the later overwrites the earlier")
+    }
+}

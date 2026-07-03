@@ -283,3 +283,10 @@
 "Get Last Dictation" = "최근 받아쓰기 가져오기";
 "Return the text of your most recent dictation." = "가장 최근 받아쓰기의 텍스트를 반환합니다.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie가 실행 중이 아닙니다. Talkie를 연 다음 다시 시도하세요.";
+
+/* D4 — export gap: note-this dictation + save Brief to notes */
+"Saved to %@" = "%@에 저장됨";
+"Nothing to note yet — dictate something first." = "아직 메모할 내용이 없습니다. 먼저 받아쓰기를 하세요.";
+"Couldn't save that note." = "해당 메모를 저장할 수 없습니다.";
+"Save to notes" = "노트에 저장";
+"Couldn't save — retry" = "저장 실패 — 다시 시도";

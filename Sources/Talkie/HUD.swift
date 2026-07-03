@@ -37,6 +37,7 @@ enum HUDPhase: Equatable {
     case commandPreview(text: String, replacing: String?)
     case commandReverted        // brief "Reverted" confirmation (mirrors .copied)
     case learned(String)        // "Added 'X' to dictionary" ping, with an Undo chip
+    case saved(String)          // brief "Saved to <destination>" confirmation (mirrors .copied)
     case error(String)
 }
 
@@ -414,6 +415,24 @@ final class HUDController {
         hide(after: 0.9)
     }
 
+    /// A note was written to the export destination (a "note this …" dictation, or
+    /// Today's Brief saved from the dashboard) — a brief, non-interactive
+    /// confirmation that mirrors `.copied`. `message` is the full localized line
+    /// ("Saved to Talkie Meetings folder") the caller composed, so this method
+    /// stays destination-agnostic. Nothing to tap; auto-hides.
+    func showSaved(_ message: String) {
+        cancelHide()
+        let panel = ensurePanel()
+        panel.ignoresMouseEvents = true   // nothing to tap here
+        model.phase = .saved(message)
+        reposition()
+        panel.orderFrontRegardless()
+        // Announce it: the pill is transient and non-focusable, so a VoiceOver user
+        // would otherwise never hear that (and where) their note was saved.
+        announce(message)
+        hide(after: 1.8)
+    }
+
     // MARK: - Cleanup-style switcher (feature 14)
 
     /// Wire the capture pill's cleanup switcher to the live settings/profile. The
@@ -742,6 +761,25 @@ private struct HUDView: View {
             .transition(.blurReplace)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Reverted.".loc)
+        case .saved(let message):
+            // A note reached the export destination — a brief, non-interactive
+            // confirmation (mirrors `.copied`). A checkmark + the "Saved to …" line
+            // the hub composed, so the pill stays destination-agnostic. The message
+            // is the full sentence, shown verbatim.
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.positive)
+                    .accessibilityHidden(true)
+                Text(message)
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.85))
+                    .lineLimit(1)
+                    .frame(maxWidth: 300, alignment: .leading)
+            }
+            .transition(.blurReplace)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(message)
         case .learned(let message):
             // Talkie auto-added a dictionary correction — a brief, tappable ping.
             // One chip: Undo (remove the rule). Auto-dismisses; ignoring it keeps it.

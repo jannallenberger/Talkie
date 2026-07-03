@@ -283,3 +283,10 @@
 "Get Last Dictation" = "Ottieni l’ultima dettatura";
 "Return the text of your most recent dictation." = "Restituisce il testo della tua dettatura più recente.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie non è in esecuzione. Apri Talkie e riprova.";
+
+/* D4 — export gap: note-this dictation + save Brief to notes */
+"Saved to %@" = "Salvato in %@";
+"Nothing to note yet — dictate something first." = "Ancora niente da annotare: detta prima qualcosa.";
+"Couldn't save that note." = "Impossibile salvare questa nota.";
+"Save to notes" = "Salva nelle note";
+"Couldn't save — retry" = "Salvataggio non riuscito: riprova";

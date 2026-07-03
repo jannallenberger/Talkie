@@ -283,3 +283,10 @@
 "Get Last Dictation" = "直近の口述を取得";
 "Return the text of your most recent dictation." = "直近の口述のテキストを返します。";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie が起動していません。Talkie を開いてからもう一度お試しください。";
+
+/* D4 — export gap: note-this dictation + save Brief to notes */
+"Saved to %@" = "%@ に保存しました";
+"Nothing to note yet — dictate something first." = "まだメモするものがありません。まず何か話してください。";
+"Couldn't save that note." = "そのメモを保存できませんでした。";
+"Save to notes" = "ノートに保存";
+"Couldn't save — retry" = "保存できませんでした — 再試行";

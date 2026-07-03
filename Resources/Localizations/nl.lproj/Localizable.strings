@@ -283,3 +283,10 @@
 "Get Last Dictation" = "Laatste dictaat ophalen";
 "Return the text of your most recent dictation." = "Geeft de tekst van je meest recente dictaat terug.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie is niet actief. Open Talkie en probeer het opnieuw.";
+
+/* D4 — export gap: note-this dictation + save Brief to notes */
+"Saved to %@" = "Opgeslagen in %@";
+"Nothing to note yet — dictate something first." = "Nog niets om te noteren — dicteer eerst iets.";
+"Couldn't save that note." = "Kon die notitie niet opslaan.";
+"Save to notes" = "Opslaan in notities";
+"Couldn't save — retry" = "Opslaan mislukt — opnieuw";

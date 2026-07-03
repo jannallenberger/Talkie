@@ -283,3 +283,10 @@
 "Get Last Dictation" = "获取最近一次听写";
 "Return the text of your most recent dictation." = "返回你最近一次听写的文本。";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie 尚未运行。请打开 Talkie 后重试。";
+
+/* D4 — export gap: note-this dictation + save Brief to notes */
+"Saved to %@" = "已保存到 %@";
+"Nothing to note yet — dictate something first." = "还没有可记录的内容——请先口述一些内容。";
+"Couldn't save that note." = "无法保存该笔记。";
+"Save to notes" = "保存到笔记";
+"Couldn't save — retry" = "保存失败——重试";
