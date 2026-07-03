@@ -22,6 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// no transcript text). Populated from the post-release `ProcessingTrace`; the
     /// UI is L3b, so nothing consumes it in a view yet — it just accumulates.
     let latency = LatencyStore()
+    /// L3b: session-scoped memory-pressure observer. Started at launch; read by the
+    /// Dictation Speed detail page's environment diagnostics (a row appears only
+    /// after the OS has actually signalled pressure this session). Stores nothing.
+    let systemPressure = SystemPressure()
     /// L2-a: the dashboard Scratchpad (notes + tasks). Also the rescue sink for
     /// transcripts that couldn't be pasted — see the `.leftOnClipboard` branch, where
     /// a NON-secure-input failure appends the transcript here instead of leaving it
@@ -190,6 +194,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("Talkie: applicationDidFinishLaunching")
         // Regular Dock app: shows in the Dock with a real window (not menu-bar-only).
         NSApp.setActivationPolicy(.regular)
+
+        // L3b: begin watching for memory-pressure events so the speed diagnostics can
+        // surface a row only if the OS actually reports pressure this session.
+        systemPressure.start()
 
         Feedback.enabled = settings.playSounds
         currentLocaleID = settings.spokenLanguages.first ?? settings.localeIdentifier
@@ -2091,6 +2099,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appUsage: appUsage,
                 activity: activity,
                 wordFreq: wordFreq,
+                latency: latency,
+                systemPressure: systemPressure,
                 scratchpad: scratchpad,
                 projectIndex: projectIndex,
                 contextSummary: contextSummary,

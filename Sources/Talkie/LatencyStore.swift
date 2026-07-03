@@ -139,6 +139,104 @@ final class LatencyStore: ObservableObject {
         save()
     }
 
+    // MARK: Reads (L3b — pure aggregates over the stored array)
+
+    /// The per-stage medians of a set of records, in milliseconds. Each stage is
+    /// medianed INDEPENDENTLY over the same sample set (so a stage that's usually
+    /// zero — re-transcription — reports ~0 without dragging the others). Returned
+    /// as a small value so the waterfall can lay them out proportionally.
+    struct StageMedians: Equatable {
+        var finalizeMs: Double
+        var reTxMs: Double
+        var cleanupMs: Double
+        var insertMs: Double
+
+        /// The four stages summed — the width the waterfall bars tile.
+        var sumMs: Double { finalizeMs + reTxMs + cleanupMs + insertMs }
+
+        static let zero = StageMedians(finalizeMs: 0, reTxMs: 0, cleanupMs: 0, insertMs: 0)
+
+        /// A stage duration's share of the total, clamped to [0, 1] — the fraction
+        /// of the bar width the waterfall paints for that stage. A zero (or missing)
+        /// total yields 0 for every stage rather than dividing by zero. Pure, so the
+        /// waterfall's proportion math is unit-testable without any view.
+        static func proportion(ms: Double, total: Double) -> Double {
+            guard total > 0 else { return 0 }
+            return min(1, max(0, ms / total))
+        }
+    }
+
+    /// Median end-to-end `totalMs` over the retained records, optionally dropping
+    /// cold-start and/or optimistic samples first. Returns nil when nothing is left
+    /// to median (no data, or every sample was excluded) so the caller can show an
+    /// honest empty state rather than a fabricated 0.
+    ///
+    /// The speed card calls this with BOTH exclusions on: a cold start (first
+    /// dictation after launch — pays the model load) and an optimistic insertion
+    /// (raw text dropped before cleanup finished, so `totalMs` isn't the felt
+    /// latency) are both unrepresentative of steady-state speed and would skew the
+    /// grade. They're surfaced separately on the detail page instead.
+    func medianTotalMs(excludingColdStart: Bool = false,
+                       excludingOptimistic: Bool = false) -> Double? {
+        Self.median(sampled(excludingColdStart: excludingColdStart,
+                            excludingOptimistic: excludingOptimistic).map(\.totalMs))
+    }
+
+    /// Per-stage medians over the retained records, with the same optional
+    /// exclusions as `medianTotalMs`. `.zero` when no sample survives the filter.
+    func stageMedians(excludingColdStart: Bool = false,
+                      excludingOptimistic: Bool = false) -> StageMedians {
+        let rows = sampled(excludingColdStart: excludingColdStart,
+                           excludingOptimistic: excludingOptimistic)
+        guard !rows.isEmpty else { return .zero }
+        return StageMedians(
+            finalizeMs: Self.median(rows.map(\.finalizeMs)) ?? 0,
+            reTxMs:     Self.median(rows.map(\.reTxMs)) ?? 0,
+            cleanupMs:  Self.median(rows.map(\.cleanupMs)) ?? 0,
+            insertMs:   Self.median(rows.map(\.insertMs)) ?? 0
+        )
+    }
+
+    /// The most recent `count` records, newest FIRST (the store holds them
+    /// newest-last, so this reverses a suffix). For the detail page's recent list.
+    func recentSamples(_ count: Int) -> [Record] {
+        Array(records.suffix(count).reversed())
+    }
+
+    /// The number of steady-state samples the grade is computed over — the count
+    /// left after both exclusions. Drives the honest "median of your last N" line.
+    var steadyStateSampleCount: Int {
+        sampled(excludingColdStart: true, excludingOptimistic: true).count
+    }
+
+    /// The single cold-start sample, if this session recorded one and it's still in
+    /// the rolling window. Shown as its own labeled row, never mixed into the median.
+    var coldStartSample: Record? {
+        records.last(where: { $0.coldStart })
+    }
+
+    /// The retained records after the requested exclusions, newest-last order kept.
+    private func sampled(excludingColdStart: Bool,
+                         excludingOptimistic: Bool) -> [Record] {
+        records.filter { r in
+            if excludingColdStart, r.coldStart { return false }
+            if excludingOptimistic, r.optimistic { return false }
+            return true
+        }
+    }
+
+    /// The median of a set of values, or nil when empty. Even counts average the
+    /// two middle samples. A pure helper — no I/O, safe to unit-test directly.
+    static func median(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        let sorted = values.sorted()
+        let mid = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return (sorted[mid - 1] + sorted[mid]) / 2
+        }
+        return sorted[mid]
+    }
+
     // MARK: Persistence
 
     private func load() {

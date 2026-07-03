@@ -165,6 +165,37 @@ No copy is made anywhere else, and nothing is uploaded.
 
 ---
 
+## One on-demand system read: the "why it might be slow" page
+
+Talkie's dashboard has a Dictation Speed card that opens a small diagnostics page
+explaining why a dictation might feel slow. Almost everything there is your own
+latency data (kept as plain numbers, on your Mac). One row is different and worth
+calling out explicitly.
+
+**When — and only when — macOS reports memory pressure during your session**, that
+page shows a short list of the regular apps currently using the most memory, so
+you can see what's competing for RAM. To build that list Talkie reads each running
+app's current memory footprint from the kernel on demand (via `proc_pid_rusage`,
+the same phys-footprint Activity Monitor shows), at the moment the page renders.
+
+This read is deliberately narrow and disclosed:
+
+- It happens **only** while the OS has actually signalled memory pressure this
+  session — never on a healthy Mac, and never in the background.
+- It is computed **on demand at render and immediately discarded** — nothing is
+  stored, cached, logged, or written to disk, and nothing leaves your Mac.
+- It reads only a **memory number and the app's name** for your own regular
+  (Dock) apps. It does not read those apps' contents, and it never uses
+  `task_for_pid`/`task_info` on other processes.
+- It is **information, not a promise**. Talkie tells you which apps are using the
+  most memory; it does **not** claim that closing them will speed Talkie up, and
+  it never will — that would be an unverifiable causal claim about your Mac.
+
+The exact on-screen wording of the disclosure is: *"These apps are using the most
+memory right now. Read on demand, never stored, never leaves this Mac."*
+
+---
+
 ## Verify it yourself — the 60-second checklist
 
 1. **Read the permissions:** `codesign -d --entitlements - /Applications/Talkie.app`

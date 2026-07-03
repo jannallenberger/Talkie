@@ -20,6 +20,13 @@ enum MilestoneRoute: Hashable {
     case plumage
 }
 
+/// L3b — the Dictation Speed detail ("why it might be slow") subpage route. Its
+/// own enum + `navigationDestination`, mirroring `MilestoneRoute`, so the Speed
+/// card pushes a detail page rather than opening a new tab.
+enum SpeedRoute: Hashable {
+    case detail
+}
+
 struct DashboardView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var stats: StatsStore
@@ -30,6 +37,12 @@ struct DashboardView: View {
     /// L5-a: lifetime word/phrase frequency, threaded through to the Plumage
     /// subpage's "words you say most" card.
     @ObservedObject var wordFreq: WordFrequencyStore
+    /// L3a/L3b: rolling per-dictation latency, powering the Dictation Speed card
+    /// and its detail page.
+    @ObservedObject var latency: LatencyStore
+    /// L3b: session-scoped memory-pressure observer, read by the speed detail
+    /// page's environment diagnostics.
+    @ObservedObject var pressure: SystemPressure
     @ObservedObject var router: SettingsRouter
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -70,6 +83,7 @@ struct DashboardView: View {
                     // to the same height as its tallest row neighbor.
                     LazyVGrid(columns: metricCols, alignment: .leading, spacing: Theme.Space.gridGap) {
                         GaugeCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
+                        SpeedCard(latency: latency).frame(maxHeight: .infinity, alignment: .top)
                         FixesCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                         WordsCard(stats: stats, history: history).frame(maxHeight: .infinity, alignment: .top)
                     }
@@ -89,6 +103,12 @@ struct DashboardView: View {
                 switch route {
                 case .plumage:
                     MilestonesView(stats: stats, activity: activity, wordFreq: wordFreq)
+                }
+            }
+            .navigationDestination(for: SpeedRoute.self) { route in
+                switch route {
+                case .detail:
+                    SpeedDetailView(latency: latency, pressure: pressure)
                 }
             }
         }
