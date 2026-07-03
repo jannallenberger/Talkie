@@ -220,6 +220,13 @@ let outcome = await BenchRunner.run(items: items,
 // Print the results table + the honesty footer.
 print(ResultsTable.render(outcome, corpus: corpus, locale: args.locale))
 
+// --markdown: emit one pipe-delimited Markdown row for BENCHMARKS.md. Its numbers
+// are drawn from the same aggregation the table just printed, so the row and the
+// table cannot disagree. Nothing is printed if no files were measured.
+if args.markdown, let mdRow = ResultsTable.markdownRow(outcome: outcome, corpus: corpus, locale: args.locale) {
+    print(mdRow)
+}
+
 // Per-term recall over the live transcripts, if --terms was supplied. Scored on
 // the same measured rows the WER above used, so the two numbers can't disagree.
 if !terms.isEmpty {
