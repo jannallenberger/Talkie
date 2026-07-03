@@ -14,6 +14,13 @@ struct PrivacySection: View {
     @ObservedObject var history: HistoryStore
     @State private var entitlements: [Entitlement] = []
     @State private var hasNetwork = false
+    /// The running build's code-signature hash (cdhash), read once from the
+    /// signature alongside the entitlements; `nil` on an ad-hoc / un-signed build.
+    @State private var cdhash: String? = nil
+    /// The marketing version, read from `Bundle.main` for the proof card.
+    @State private var appVersion: String? = nil
+    /// Set true while the "Copy proof card" button flashes its confirmation.
+    @State private var copiedProof = false
 
     /// Bridges the scalar `historyRetentionDays` setting to the typed picker.
     private var retention: Binding<HistoryRetention> {
@@ -88,6 +95,44 @@ struct PrivacySection: View {
                 }
             }
 
+            // Live open-socket readout — the claim you can watch tick, not copy we
+            // typed. Refreshes every 2s ONLY while this pane is on screen (the
+            // TimelineView lives in a subview that's torn down when you navigate
+            // away, so there's no background timer). See SocketReadoutCard.
+            SocketReadoutCard()                                                                // talkie:no-network(self-inspection)
+
+            // One-click shareable proof: renders entitlements + socket count +
+            // cdhash + version into a branded PNG on the clipboard.
+            SettingsCard(
+                header: "Share the proof",
+                footer: "Copies a branded image — entitlements, the live socket count, this build’s signature hash and version — you can paste into a chat or a doc. Every value is read from this Mac right now, nothing is typed in." // talkie:no-network(self-inspection)
+            ) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Copy proof card".loc)
+                            .font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                        Text("A shareable receipt that nothing leaves this Mac.".loc)
+                            .font(.talkieHeading(12, weight: .regular))
+                            .foregroundStyle(Theme.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    Button {
+                        ProofCardExporter.copy(makeProofCardData())
+                        copiedProof = true
+                        Task { try? await Task.sleep(for: .seconds(1.4)); copiedProof = false }
+                    } label: {
+                        Label(copiedProof ? "Copied".loc : "Copy proof card".loc,
+                              systemImage: copiedProof ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+            }
+
             // How to verify it yourself.
             SettingsCard(header: "Verify it yourself") {
                 VerifyRow(number: "1", title: "Read the permissions",
@@ -131,8 +176,20 @@ struct PrivacySection: View {
         .onAppear(perform: loadEntitlements)
     }
 
-    /// Read the entitlement keys from this process's own code signature.
+    /// Read the entitlement keys — plus the code-signature hash (cdhash) and the
+    /// app version — from this process's own code signature.
+    ///
+    /// The cdhash and version feed the shareable proof card (I5). We ask for both
+    /// `kSecCSRequirementInformation` (→ the entitlements dictionary) and
+    /// `kSecCSSigningInformation` (→ `kSecCodeInfoUnique`, the cdhash) in one read
+    /// so the pane and the card describe the exact same binary. On an ad-hoc or
+    /// un-signed build these come back absent; we leave them `nil` and the UI
+    /// degrades honestly rather than inventing a value.
     private func loadEntitlements() {
+        // Version is independent of the signature — read it unconditionally so the
+        // proof card can show it even on an un-signed build.
+        appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+
         let known: [(key: String, label: String)] = [
             ("com.apple.security.device.audio-input", "Microphone capture"),
             ("com.apple.security.network.client", "Outbound network"),
@@ -145,10 +202,18 @@ struct PrivacySection: View {
         var staticCode: SecStaticCode?
         guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return }
 
+        let flags = SecCSFlags(rawValue: kSecCSRequirementInformation | kSecCSSigningInformation)
         var info: CFDictionary?
-        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSRequirementInformation), &info) == errSecSuccess,
-              let dict = info as? [String: Any],
-              let ents = dict["entitlements-dict"] as? [String: Any] else { return }
+        guard SecCodeCopySigningInformation(staticCode, flags, &info) == errSecSuccess,
+              let dict = info as? [String: Any] else { return }
+
+        // cdhash: kSecCodeInfoUnique is a CFData of the code-directory hash. Render
+        // it as a lowercase hex string, the same form `codesign -dvvv` prints.
+        if let unique = dict[kSecCodeInfoUnique as String] as? Data {
+            cdhash = unique.map { String(format: "%02x", $0) }.joined()
+        }
+
+        guard let ents = dict["entitlements-dict"] as? [String: Any] else { return }
 
         var found: [Entitlement] = []
         var network = false
@@ -162,6 +227,106 @@ struct PrivacySection: View {
         }
         entitlements = found
         hasNetwork = network
+    }
+
+    /// Assemble the current, real proof-card data from live state: the
+    /// entitlements read from the signature, the live socket count, the cdhash,
+    /// the version, and now. Called at click time so the values are fresh.
+    private func makeProofCardData() -> ProofCardData {
+        let snap = SocketAudit.snapshot()                                                      // talkie:no-network(self-inspection)
+        return ProofCardData(
+            entitlements: entitlements.map {
+                ProofCardData.Entitlement(label: $0.label, key: $0.key, isNetwork: $0.isNetwork)
+            },
+            hasNetwork: hasNetwork,
+            internetSockets: snap.isAvailable ? snap.internetSockets : nil,                    // talkie:no-network(self-inspection)
+            cdhash: cdhash,
+            version: appVersion,
+            takenAt: Date()
+        )
+    }
+}
+
+/// The live "open network sockets right now: 0" card. Isolated into its own view
+/// for one reason: the `TimelineView(.periodic(from:by: 2))` that drives the 2s
+/// refresh only exists while this view is in the hierarchy. When you leave the
+/// Privacy pane the view is torn down and the timeline stops — so the audit runs
+/// exactly while you're looking at it and never as a background timer (an I5
+/// acceptance criterion). Each tick re-reads `SocketAudit.snapshot()`, which is a
+/// cheap own-pid fd walk.
+///
+/// The honest footer names the one thing that could otherwise confuse the number:
+/// speech-model downloads happen in Apple's system daemons, in a *different*
+/// process, so they can never show up in Talkie's own socket count — the zero
+/// here is Talkie's, and it stays zero even mid-download.
+private struct SocketReadoutCard: View {                                                       // talkie:no-network(self-inspection)
+    var body: some View {
+        SettingsCard(
+            header: "Open network sockets",                                                    // talkie:no-network(self-inspection)
+            footer: "Counted live from this app’s own file descriptors, refreshed while you’re on this page. Speech-model downloads run in Apple’s system services, not inside Talkie, so they never appear here."
+        ) {
+            // `.periodic` fires immediately then every 2s; the closure re-samples
+            // per tick. TimelineView owns the cadence, so no Timer/Task leaks.
+            TimelineView(.periodic(from: .now, by: 2)) { _ in
+                SocketReadoutRow(snapshot: SocketAudit.snapshot())                             // talkie:no-network(self-inspection)
+            }
+        }
+    }
+}
+
+/// One rendered readout line for a given snapshot. Green seal + "0" in the
+/// expected case; `Theme.danger` with the count if any internet socket is ever
+/// open; an honest "couldn't read" if the audit itself failed.
+private struct SocketReadoutRow: View {                                                        // talkie:no-network(self-inspection)
+    let snapshot: SocketAudit.Snapshot                                                         // talkie:no-network(self-inspection)
+
+    private var isClean: Bool { snapshot.isAvailable && snapshot.internetSockets == 0 }        // talkie:no-network(self-inspection)
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: iconName)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(tone)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text("Open network sockets right now:".loc)                                // talkie:no-network(self-inspection)
+                        .font(.talkieHeading(14, weight: .medium))
+                        .foregroundStyle(Theme.ink)
+                    Text(countText)
+                        .font(.talkieHeading(14, weight: .bold))
+                        .foregroundStyle(tone)
+                }
+                if !snapshot.isAvailable {
+                    Text("Couldn’t read this process’s sockets on this build.".loc)            // talkie:no-network(self-inspection)
+                        .font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkTertiary)
+                } else if !isClean {
+                    Text("An internet socket is open — that’s unexpected for the on-device core.".loc) // talkie:no-network(self-inspection)
+                        .font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.danger)
+                }
+            }
+            Spacer(minLength: 8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+
+    private var iconName: String {
+        guard snapshot.isAvailable else { return "questionmark.circle.fill" }
+        return isClean ? "checkmark.seal.fill" : "exclamationmark.octagon.fill"
+    }
+
+    private var tone: Color {
+        guard snapshot.isAvailable else { return Theme.inkTertiary }
+        return isClean ? Theme.positive : Theme.danger
+    }
+
+    /// The number itself, or an em dash when the audit couldn't run.
+    private var countText: String {
+        snapshot.isAvailable ? String(snapshot.internetSockets) : "—"                          // talkie:no-network(self-inspection)
     }
 }
 
