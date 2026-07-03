@@ -256,3 +256,16 @@
 "That file isn’t audio or video" = "Dat bestand is geen audio of video";
 "Waiting for dictation to finish…" = "Wachten tot het dicteren klaar is…";
 "Choose audio or video files to transcribe into meetings." = "Kies audio- of videobestanden om te transcriberen naar meetings.";
+
+/* I2 — configurable history retention */
+"Your history" = "Je geschiedenis";
+"Keep dictation history" = "Dicteergeschiedenis bewaren";
+"Older dictations are deleted from this Mac after this long." = "Oudere dictaten worden na deze periode van deze Mac verwijderd.";
+"History is capped at the 2,000 most recent dictations regardless of age." = "De geschiedenis is beperkt tot de 2.000 recentste dictaten, ongeacht hoe oud ze zijn.";
+"1 day" = "1 dag";
+"7 days" = "7 dagen";
+"30 days" = "30 dagen";
+"90 days" = "90 dagen";
+"Forever" = "Voor altijd";
+"You're keeping 1 dictation right now." = "Je bewaart nu 1 dictaat.";
+"You're keeping %d dictations right now." = "Je bewaart nu %d dictaten.";

@@ -256,3 +256,16 @@
 "That file isn’t audio or video" = "Quel file non è audio né video";
 "Waiting for dictation to finish…" = "In attesa che la dettatura finisca…";
 "Choose audio or video files to transcribe into meetings." = "Scegli file audio o video da trascrivere in riunioni.";
+
+/* I2 — configurable history retention */
+"Your history" = "La tua cronologia";
+"Keep dictation history" = "Conserva la cronologia delle dettature";
+"Older dictations are deleted from this Mac after this long." = "Le dettature più vecchie vengono eliminate da questo Mac dopo questo periodo.";
+"History is capped at the 2,000 most recent dictations regardless of age." = "La cronologia è limitata alle 2.000 dettature più recenti, indipendentemente dall’età.";
+"1 day" = "1 giorno";
+"7 days" = "7 giorni";
+"30 days" = "30 giorni";
+"90 days" = "90 giorni";
+"Forever" = "Per sempre";
+"You're keeping 1 dictation right now." = "Al momento conservi 1 dettatura.";
+"You're keeping %d dictations right now." = "Al momento conservi %d dettature.";

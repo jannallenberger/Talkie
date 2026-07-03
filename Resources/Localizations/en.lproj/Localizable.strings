@@ -256,3 +256,16 @@
 "That file isn’t audio or video" = "That file isn’t audio or video";
 "Waiting for dictation to finish…" = "Waiting for dictation to finish…";
 "Choose audio or video files to transcribe into meetings." = "Choose audio or video files to transcribe into meetings.";
+
+/* I2 — configurable history retention */
+"Your history" = "Your history";
+"Keep dictation history" = "Keep dictation history";
+"Older dictations are deleted from this Mac after this long." = "Older dictations are deleted from this Mac after this long.";
+"History is capped at the 2,000 most recent dictations regardless of age." = "History is capped at the 2,000 most recent dictations regardless of age.";
+"1 day" = "1 day";
+"7 days" = "7 days";
+"30 days" = "30 days";
+"90 days" = "90 days";
+"Forever" = "Forever";
+"You're keeping 1 dictation right now." = "You're keeping 1 dictation right now.";
+"You're keeping %d dictations right now." = "You're keeping %d dictations right now.";

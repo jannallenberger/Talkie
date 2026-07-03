@@ -74,6 +74,39 @@ enum InsertionMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// How long dictation history is kept before pruning. Backed by an `Int` days
+/// value in `AppSettings` (`0` = forever) so persistence stays a plain scalar;
+/// this enum only supplies the fixed set of choices the Settings picker offers
+/// and their honest labels. Retention is a threat-model decision (a lawyer wants
+/// it short; a hobbyist may want it all) — no smart default can know which, so
+/// it is a user-chosen control, not a silent hardcoded 7-day window.
+enum HistoryRetention: Int, CaseIterable, Identifiable {
+    case oneDay = 1
+    case sevenDays = 7
+    case thirtyDays = 30
+    case ninetyDays = 90
+    case forever = 0
+
+    var id: Int { rawValue }
+
+    /// Map any stored days value onto the nearest defined option so the picker
+    /// always has a valid selection even if the number was written by a future
+    /// build (falls back to the 7-day default).
+    static func from(days: Int) -> HistoryRetention {
+        HistoryRetention(rawValue: days) ?? .sevenDays
+    }
+
+    var displayName: String {
+        switch self {
+        case .oneDay: return "1 day".loc
+        case .sevenDays: return "7 days".loc
+        case .thirtyDays: return "30 days".loc
+        case .ninetyDays: return "90 days".loc
+        case .forever: return "Forever".loc
+        }
+    }
+}
+
 /// A language Talkie can transcribe / auto-detect. `id` is a locale identifier.
 struct TalkieLanguage: Identifiable, Hashable {
     let id: String
@@ -221,6 +254,14 @@ final class AppSettings: ObservableObject {
     @Published var learnFromEdits: Bool {
         didSet { defaults.set(learnFromEdits, forKey: Keys.learnFromEdits) }
     }
+    /// How many days of dictation history to keep before pruning. `0` = forever.
+    /// Registered default is 7, so untouched installs behave exactly as before.
+    /// A privacy/threat-model choice surfaced as a picker in Settings ▸ Privacy &
+    /// Permissions; `AppDelegate` mirrors changes into `HistoryStore` so shrinking
+    /// it re-prunes live. See `HistoryRetention` for the offered choices.
+    @Published var historyRetentionDays: Int {
+        didSet { defaults.set(historyRetentionDays, forKey: Keys.historyRetentionDays) }
+    }
     /// One-time consent for learning corrections from your Claude Code prompts (the
     /// AX-blind coding/terminal surface). Tri-state on purpose — `"unset"` until the
     /// first time a scan *would* run, then `"granted"` or `"denied"` for good.
@@ -342,6 +383,7 @@ final class AppSettings: ObservableObject {
             Keys.autoCapitalize: true,
             Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
+            Keys.historyRetentionDays: 7,
             Keys.claudeTranscriptLearning: "unset",
             Keys.optimisticInsertion: true,
             Keys.crossSurfaceCommandsEnabled: false,
@@ -385,6 +427,7 @@ final class AppSettings: ObservableObject {
         autoCapitalize = d.bool(forKey: Keys.autoCapitalize)
         cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
+        historyRetentionDays = d.integer(forKey: Keys.historyRetentionDays)
         claudeTranscriptLearning = d.string(forKey: Keys.claudeTranscriptLearning) ?? "unset"
         optimisticInsertion = d.bool(forKey: Keys.optimisticInsertion)
         crossSurfaceCommandsEnabled = d.bool(forKey: Keys.crossSurfaceCommandsEnabled)
@@ -458,6 +501,7 @@ final class AppSettings: ObservableObject {
         static let autoCapitalize = "autoCapitalize"
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
+        static let historyRetentionDays = "historyRetentionDays"
         static let claudeTranscriptLearning = "claudeTranscriptLearning"
         static let optimisticInsertion = "optimisticInsertion"
         static let crossSurfaceCommandsEnabled = "crossSurfaceCommandsEnabled"
