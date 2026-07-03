@@ -360,7 +360,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     #endif
 
-    /// Clicking the Dock icon (with no window open) reopens the main window.
+    /// Reopening Talkie brings the main window back. This fires for a Dock-icon
+    /// click AND for a Spotlight/Finder launch of an already-running instance —
+    /// crucially it fires even while the app is `.accessory` (Dock-icon hidden after
+    /// a genuine close, H7), which is exactly how the window returns from that state.
+    /// `openSettings` flips the policy back to `.regular` and re-shows the window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { openSettings(tab: .dashboard) }
         return true
@@ -470,6 +474,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
 
+        // H7: after a genuine close the Dock icon is gone, so the window is only
+        // reachable from here — keep "Open Talkie" at the very top, one click away.
+        // (It also restores the Dock icon via `openSettings`.)
+        menu.addItem(withTitle: "Open Talkie".loc, action: #selector(openMain), keyEquivalent: "")
+            .target = self
+        menu.addItem(.separator())
+
         let status = NSMenuItem(title: statusLine(), action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
@@ -505,8 +516,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateStatusUI() {
         guard let menu = statusItem?.menu else { return }
-        if menu.items.indices.contains(0) { menu.items[0].title = statusLine() }
-        if menu.items.indices.contains(1) { menu.items[1].title = hintLine() }
+        // The status + hint lines sit below "Open Talkie" + its separator (H7 added
+        // those two at the top), so they are items 2 and 3, not 0 and 1.
+        if menu.items.indices.contains(2) { menu.items[2].title = statusLine() }
+        if menu.items.indices.contains(3) { menu.items[3].title = hintLine() }
         let symbol = isDictating ? "waveform" : "mic.fill"
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Talkie")
         image?.isTemplate = true
@@ -2068,13 +2081,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Menu actions
 
+    /// Status-menu "Open Talkie" (H7): bring the window back to the dashboard and
+    /// restore the Dock icon. `openSettings` handles the `.regular` flip + focus tick.
+    @objc private func openMain() { openSettings(tab: .dashboard) }
     @objc private func openDictionary() { openSettings(tab: .dictionary) }
     @objc private func openSettingsMenu() { openSettings(tab: .general) }
 
     func openSettings(tab: SettingsTab) {
         permissions.refresh()
         if mainWindow == nil {
-            mainWindow = MainWindowController(
+            let controller = MainWindowController(
                 settings: settings,
                 dictionary: dictionary,
                 permissions: permissions,
@@ -2099,8 +2115,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 hud: hud,
                 onRetryHotKey: { [weak self] in self?.hotKey?.start() ?? false }
             )
+            // H7: a genuine window close drops the Dock icon — Talkie lives on as a
+            // menu-bar item until reopened. The controller only fires this when no
+            // sheet is attached (see `windowWillClose`). We additionally refuse to
+            // vanish while first-run onboarding is on screen (it IS the window's
+            // content until `hasOnboarded`): a mid-flow close must not strip the Dock
+            // icon out from under someone still setting up.
+            controller.onGenuineClose = { [weak self] in
+                guard self?.settings.hasOnboarded == true else { return }
+                NSApp.setActivationPolicy(.accessory)
+            }
+            mainWindow = controller
         }
-        mainWindow?.show(tab: tab)
+        // Showing the window must restore the Dock presence (H7). Flip to `.regular`
+        // FIRST, then order the window front on the NEXT runloop tick: AppKit has a
+        // bug where a window ordered front in the same turn as the policy flip comes
+        // up without key focus. The async hop lets the policy change settle so
+        // `makeKeyAndOrderFront` + `activate` (inside `show`) actually take focus.
+        NSApp.setActivationPolicy(.regular)
+        DispatchQueue.main.async { [weak self] in
+            self?.mainWindow?.show(tab: tab)
+        }
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
