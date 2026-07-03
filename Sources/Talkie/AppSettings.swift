@@ -225,12 +225,6 @@ final class AppSettings: ObservableObject {
     @Published var mutedMeetingApps: [String] {
         didSet { defaults.set(mutedMeetingApps, forKey: Keys.mutedMeetingApps); notifyChanged() }
     }
-    @Published var autoCapitalize: Bool {
-        didSet { defaults.set(autoCapitalize, forKey: Keys.autoCapitalize) }
-    }
-    @Published var cleanupFillers: Bool {
-        didSet { defaults.set(cleanupFillers, forKey: Keys.cleanupFillers) }
-    }
     @Published var learnFromEdits: Bool {
         didSet { defaults.set(learnFromEdits, forKey: Keys.learnFromEdits) }
     }
@@ -283,16 +277,11 @@ final class AppSettings: ObservableObject {
     @Published var pasteLastShortcutEnabled: Bool {
         didSet { defaults.set(pasteLastShortcutEnabled, forKey: Keys.pasteLastShortcutEnabled) }
     }
-    /// On-device LLM cleanup intensity (none / light / medium / high).
-    @Published var cleanupLevel: CleanupLevel {
-        didSet { defaults.set(cleanupLevel.rawValue, forKey: Keys.cleanupLevel) }
-    }
-    /// When on, the cleanup personality adapts to the app you're dictating into
-    /// (Messages → friendly, Mail → professional, code → faithful, …).
-    @Published var appAdaptiveCleanup: Bool {
-        didSet { defaults.set(appAdaptiveCleanup, forKey: Keys.appAdaptiveCleanup) }
-    }
-    /// Per-app-category style overrides (AppCategory.rawValue → CleanupStyle.rawValue).
+    /// Per-app-category cleanup *style* — Talkie's single cleanup model. Maps
+    /// AppCategory.rawValue → CleanupStyle.rawValue; the resolved style is the
+    /// whole story (its own intensity + tone), fed to the pipeline, the per-app
+    /// editor, and the HUD. There is no separate intensity level or adaptive
+    /// master toggle any more (H2).
     @Published var appCleanupStyles: [String: String] {
         didSet { defaults.set(appCleanupStyles, forKey: Keys.appCleanupStyles) }
     }
@@ -358,22 +347,18 @@ final class AppSettings: ObservableObject {
         d.register(defaults: [
             Keys.activationKey: ActivationKey.rightOption.rawValue,
             Keys.localeIdentifier: canonicalLocaleID(Locale.current.identifier),
-            Keys.autoCapitalize: true,
-            Keys.cleanupFillers: true,
             Keys.learnFromEdits: true,
             Keys.historyRetentionDays: 7,
             Keys.claudeTranscriptLearning: "unset",
             Keys.optimisticInsertion: true,
             Keys.crossSurfaceCommandsEnabled: false,
             Keys.implicitCommandTarget: true,
-            Keys.cleanupLevel: CleanupLevel.medium.rawValue,
             Keys.meetingLanguageMode: "auto",
             Keys.autoDetectMeetings: true,
             Keys.offerMeetingForAnyMicApp: false,
             Keys.showMeetingPill: true,
             Keys.meetingLiveTopic: true,
             Keys.pasteLastShortcutEnabled: true,
-            Keys.appAdaptiveCleanup: true,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
             Keys.userName: "",
@@ -410,15 +395,21 @@ final class AppSettings: ObservableObject {
         let finalLanguages = seeded.isEmpty ? ["en-US"] : seeded
         spokenLanguages = finalLanguages
         localeIdentifier = finalLanguages.first ?? "en-US"
-        autoCapitalize = d.bool(forKey: Keys.autoCapitalize)
-        cleanupFillers = d.bool(forKey: Keys.cleanupFillers)
+        // H2 migration: the parallel cleanup *intensity level* and the adaptive
+        // master toggle are gone — the per-category *style* is now Talkie's only
+        // cleanup model. A user who had "Adapt the style to the app" OFF was on the
+        // level path; fold their chosen level into a style and stamp it across every
+        // category once, so their cleanup keeps behaving the way it did (High →
+        // Concise everywhere, Medium → Neutral, Light → Faithful, None → Off). Then
+        // drop both legacy keys so they can't linger. Adaptive-ON users (the default)
+        // already resolved by style, so they migrate to nothing and see no change.
+        AppSettings.migrateLevelToStyleIfNeeded(d)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
         historyRetentionDays = d.integer(forKey: Keys.historyRetentionDays)
         claudeTranscriptLearning = d.string(forKey: Keys.claudeTranscriptLearning) ?? "unset"
         optimisticInsertion = d.bool(forKey: Keys.optimisticInsertion)
         crossSurfaceCommandsEnabled = d.bool(forKey: Keys.crossSurfaceCommandsEnabled)
         implicitCommandTarget = d.bool(forKey: Keys.implicitCommandTarget)
-        cleanupLevel = CleanupLevel(rawValue: d.string(forKey: Keys.cleanupLevel) ?? "") ?? .medium
         meetingLanguageMode = d.string(forKey: Keys.meetingLanguageMode) ?? "auto"
         autoDetectMeetings = d.bool(forKey: Keys.autoDetectMeetings)
         offerMeetingForAnyMicApp = d.bool(forKey: Keys.offerMeetingForAnyMicApp)
@@ -427,7 +418,6 @@ final class AppSettings: ObservableObject {
         meetingAllowlist = AppSettings.decodeAllowlist(d.data(forKey: Keys.meetingAllowlist))
         mutedMeetingApps = d.stringArray(forKey: Keys.mutedMeetingApps) ?? []
         pasteLastShortcutEnabled = d.bool(forKey: Keys.pasteLastShortcutEnabled)
-        appAdaptiveCleanup = d.bool(forKey: Keys.appAdaptiveCleanup)
         appCleanupStyles = (d.dictionary(forKey: Keys.appCleanupStyles) as? [String: String])
             ?? AppSettings.defaultAppCleanupStyles
         contextAwareness = d.bool(forKey: Keys.contextAwareness)
@@ -478,6 +468,45 @@ final class AppSettings: ObservableObject {
             .flatMap(CleanupStyle.init) ?? .neutral
     }
 
+    /// The style a legacy cleanup *intensity level* folds into, now that style is
+    /// the only cleanup model: `none → off`, `light → faithful`, `medium → neutral`,
+    /// `high → concise`. Kept as a pure static so the migration is unit-testable.
+    static func migratedStyle(forLegacyLevel level: String) -> CleanupStyle {
+        switch level {
+        case "none":   return .off
+        case "light":  return .faithful
+        case "medium": return .neutral
+        case "high":   return .concise
+        default:       return .neutral   // matches the old level default (medium)
+        }
+    }
+
+    /// H2 one-time migration (see the call site in `init`). A user who had the
+    /// adaptive master toggle OFF was driven by a single global intensity *level*
+    /// applied to every app; fold that level into the equivalent *style* and stamp
+    /// it across every category so their cleanup keeps behaving the same. Then drop
+    /// all four now-deleted keys so nothing stale lingers in the plist. Idempotent:
+    /// once the legacy keys are gone this does nothing.
+    static func migrateLevelToStyleIfNeeded(_ d: UserDefaults) {
+        // Only stamp categories when the user was actually on the level path
+        // (adaptive OFF). `object(forKey:)` distinguishes "never set" from "false".
+        if d.object(forKey: Keys.appAdaptiveCleanup) != nil, d.bool(forKey: Keys.appAdaptiveCleanup) == false {
+            let level = d.string(forKey: Keys.cleanupLevel) ?? "medium"
+            let style = migratedStyle(forLegacyLevel: level).rawValue
+            var styles = (d.dictionary(forKey: Keys.appCleanupStyles) as? [String: String])
+                ?? AppSettings.defaultAppCleanupStyles
+            for category in AppCategory.allCases { styles[category.rawValue] = style }
+            d.set(styles, forKey: Keys.appCleanupStyles)
+        }
+        // Drop every control this feature deleted (both level-path keys and the two
+        // Basic-cleanup toggles) so they can't resurface. Users who had disabled
+        // capitalization or filler-stripping now get the always-on smart defaults.
+        d.removeObject(forKey: Keys.cleanupLevel)
+        d.removeObject(forKey: Keys.appAdaptiveCleanup)
+        d.removeObject(forKey: Keys.autoCapitalize)
+        d.removeObject(forKey: Keys.cleanupFillers)
+    }
+
     private enum Keys {
         static let activationKey = "activationKey"
         /// Legacy key — the Hold/Toggle Mode picker was removed in B4 (one unified
@@ -489,7 +518,13 @@ final class AppSettings: ObservableObject {
         static let insertionMode = "insertionMode"
         static let localeIdentifier = "localeIdentifier"
         static let spokenLanguages = "spokenLanguages"
+        /// Legacy key — the "Capitalize the first letter" toggle was removed in H2
+        /// (capitalization is now an always-on smart default). Retained only so the
+        /// H2 migration can `removeObject` the stale value from existing installs.
         static let autoCapitalize = "autoCapitalize"
+        /// Legacy key — the "Remove filler words" toggle was removed in H2 (filler
+        /// stripping is now always-on when the AI didn't already do it). Retained only
+        /// so the H2 migration can `removeObject` the stale value.
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
         static let historyRetentionDays = "historyRetentionDays"
@@ -497,6 +532,9 @@ final class AppSettings: ObservableObject {
         static let optimisticInsertion = "optimisticInsertion"
         static let crossSurfaceCommandsEnabled = "crossSurfaceCommandsEnabled"
         static let implicitCommandTarget = "implicitCommandTarget"
+        /// Legacy key — the cleanup *intensity level* was removed in H2 (per-category
+        /// style is the only cleanup model). Retained only so the H2 migration can read
+        /// it to fold the old level into a style, then `removeObject` it.
         static let cleanupLevel = "cleanupLevel"
         static let meetingLanguageMode = "meetingLanguageMode"
         static let autoDetectMeetings = "autoDetectMeetings"
@@ -506,6 +544,10 @@ final class AppSettings: ObservableObject {
         static let meetingAllowlist = "meetingAllowlist"
         static let mutedMeetingApps = "mutedMeetingApps"
         static let pasteLastShortcutEnabled = "pasteLastShortcutEnabled"
+        /// Legacy key — the "Adapt the style to the app" master toggle was removed in
+        /// H2 (per-category style is always the active path). Retained only so the H2
+        /// migration can read it (adaptive OFF → fold the old level into a style) and
+        /// then `removeObject` it.
         static let appAdaptiveCleanup = "appAdaptiveCleanup"
         static let appCleanupStyles = "appCleanupStyles"
         static let contextAwareness = "contextAwareness"

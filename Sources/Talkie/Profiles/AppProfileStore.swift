@@ -23,28 +23,20 @@ final class AppProfileStore: ObservableObject {
 
     // MARK: - Resolution surface (the pipeline calls these; keep stable)
 
-    /// Two-level merge widened to a three-tier merge for cleanup style:
-    /// per-app override → (existing) per-category style → global cleanup level.
-    ///
-    /// `cleanupStyle` falls back to `settings.cleanupStyle(for:)` — the *existing*
-    /// per-category helper — so an existing user with category styles gets
-    /// byte-for-byte identical behaviour; the per-bundle layer is purely additive.
-    /// `appAdaptiveCleanup` decides which of `cleanupStyle`/`cleanupLevel` the
-    /// pipeline actually uses, mirroring the global switch.
+    /// Two-tier merge: per-app override → per-category style. `cleanupStyle` falls
+    /// back to `settings.cleanupStyle(for:)` — the per-category helper that is now
+    /// Talkie's only cleanup model — so a user with no per-app rule gets exactly the
+    /// category style; the per-bundle layer is purely additive.
     func resolve(for app: TargetApp, settings: AppSettings) -> ResolvedProfile {
         let p = app.bundleID.flatMap { profiles[$0] }
         let categoryStyle = settings.cleanupStyle(for: app.category)
         return ResolvedProfile(
-            appAdaptiveCleanup: settings.appAdaptiveCleanup,
             cleanupStyle: p?.cleanupStyle ?? categoryStyle,
-            cleanupLevel: p?.cleanupLevel ?? settings.cleanupLevel,
             // Paste is the universal default now that the global "Insert text by"
             // control is gone (B2). An app only ever resolves to `.type` when it has a
             // per-app override — set by the user, or learned automatically the first
             // time a paste verifiably failed to land there.
             insertionMode: p?.insertionMode ?? .paste,
-            autoCapitalize: p?.autoCapitalize ?? settings.autoCapitalize,
-            removeFillers: p?.removeFillers ?? settings.cleanupFillers,
             bundleID: app.bundleID,
             category: app.category
         )

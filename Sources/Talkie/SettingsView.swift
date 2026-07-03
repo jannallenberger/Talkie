@@ -299,7 +299,7 @@ private struct SettingsHome: View {
                 }
                 section("Per-app & context") {
                     ContextSettings(settings: settings, contextGraph: contextGraph, router: router)
-                    AppProfilesSettings(profiles: profiles, settings: settings)
+                    AppProfilesSettings(profiles: profiles)
                     CalendarSettings()
                 }
                 section("Behavior") {
@@ -917,35 +917,16 @@ private struct CleanupSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SettingsCard(header: "Smart cleanup") {
-                SettingsToggleRow(
-                    title: "Adapt the style to the app",
-                    subtitle: "A personality per app — friendly for Messages, professional for Mail, faithful for code.",
-                    isOn: $settings.appAdaptiveCleanup
-                )
-                if settings.appAdaptiveCleanup {
-                    ForEach(AppCategory.allCases, id: \.self) { category in
-                        SettingsDivider()
-                        SettingsRow(title: category.label) {
-                            Picker("", selection: styleBinding(category)) {
-                                ForEach(CleanupStyle.allCases) { Text($0.displayName).tag($0) }
-                            }
-                            .labelsHidden().fixedSize()
+            SettingsCard(header: "Smart cleanup",
+                         footer: "A style per kind of app — friendly for Messages, professional for Mail, faithful for code and terminals. The style is the whole story: Off inserts exactly what you said, Faithful only fixes slips, and the others rewrite for tone and clarity.") {
+                ForEach(Array(AppCategory.allCases.enumerated()), id: \.element) { index, category in
+                    if index > 0 { SettingsDivider() }
+                    SettingsRow(title: category.label) {
+                        Picker("", selection: styleBinding(category)) {
+                            ForEach(CleanupStyle.allCases) { Text($0.displayName).tag($0) }
                         }
+                        .labelsHidden().fixedSize()
                     }
-                } else {
-                    SettingsDivider(leadingInset: 0)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Picker("", selection: $settings.cleanupLevel) {
-                            ForEach(CleanupLevel.allCases) { Text($0.displayName).tag($0) }
-                        }
-                        .labelsHidden().pickerStyle(.segmented)
-                        Text(settings.cleanupLevel.detail)
-                            .font(.callout).foregroundStyle(Theme.inkSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16).padding(.vertical, 11)
                 }
                 SettingsDivider(leadingInset: 0)
                 if let warning = CleanupEngine.unavailableMessage {
@@ -954,13 +935,6 @@ private struct CleanupSettings: View {
                     SettingsNote(text: "Resolves spoken self-corrections and fixes grammar. Runs entirely on your Mac; nothing leaves the device.",
                                  tone: Theme.inkTertiary)
                 }
-            }
-            SettingsCard(header: "Basic cleanup",
-                         footer: "These apply when Smart cleanup isn't rewriting the text.") {
-                SettingsToggleRow(title: "Capitalize the first letter", isOn: $settings.autoCapitalize)
-                SettingsDivider()
-                SettingsToggleRow(title: "Remove filler words", subtitle: "um, uh, hmm…",
-                                  isOn: $settings.cleanupFillers)
             }
         }
     }

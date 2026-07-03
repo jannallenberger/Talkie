@@ -17,16 +17,11 @@ struct AppProfile: Codable, Identifiable, Sendable, Hashable {
 
     // MARK: Behaviour overrides (nil = inherit)
 
-    /// Overrides the adaptive/per-category cleanup personality for this app.
+    /// Overrides the per-category cleanup *style* for this app — the whole cleanup
+    /// story (its own intensity + tone). `nil` inherits the category style.
     var cleanupStyle: CleanupStyle?
-    /// Overrides the global cleanup intensity (used when "Adapt to the app" is off).
-    var cleanupLevel: CleanupLevel?
     /// Overrides how dictated text is inserted (paste vs. character-by-character).
     var insertionMode: InsertionMode?
-    /// Overrides whether the first letter is auto-capitalized.
-    var autoCapitalize: Bool?
-    /// Overrides whether spoken fillers (um, uh) are stripped.
-    var removeFillers: Bool?
 
     /// Subset of the global dictionary's vocabulary terms to bias toward in this
     /// app (`nil`/empty = all). So terminal dictation isn't biased toward your
@@ -43,20 +38,14 @@ struct AppProfile: Codable, Identifiable, Sendable, Hashable {
         bundleID: String,
         displayName: String,
         cleanupStyle: CleanupStyle? = nil,
-        cleanupLevel: CleanupLevel? = nil,
         insertionMode: InsertionMode? = nil,
-        autoCapitalize: Bool? = nil,
-        removeFillers: Bool? = nil,
         vocabularyFilter: [String]? = nil,
         activeMacroIDs: [String]? = nil
     ) {
         self.bundleID = bundleID
         self.displayName = displayName
         self.cleanupStyle = cleanupStyle
-        self.cleanupLevel = cleanupLevel
         self.insertionMode = insertionMode
-        self.autoCapitalize = autoCapitalize
-        self.removeFillers = removeFillers
         self.vocabularyFilter = vocabularyFilter
         self.activeMacroIDs = activeMacroIDs
     }
@@ -64,30 +53,41 @@ struct AppProfile: Codable, Identifiable, Sendable, Hashable {
     /// True when this profile overrides nothing — the row can be dropped so the
     /// list never accumulates no-op entries.
     var isEmpty: Bool {
-        cleanupStyle == nil && cleanupLevel == nil && insertionMode == nil
-            && autoCapitalize == nil && removeFillers == nil
+        cleanupStyle == nil && insertionMode == nil
             && (vocabularyFilter?.isEmpty ?? true)
             && (activeMacroIDs?.isEmpty ?? true)
     }
 }
 
 /// The fully-resolved, concrete config the dictation pipeline consumes. No
-/// optionals — every field is decided by the global-default → per-category →
-/// per-app merge in `AppProfileStore.resolve(for:settings:)`. Snapshotted once at
-/// `beginDictation` so a mid-session toggle can't skew the in-flight session.
+/// optionals — every field is decided by the per-category → per-app merge in
+/// `AppProfileStore.resolve(for:settings:)`. Snapshotted once at `beginDictation`
+/// so a mid-session toggle can't skew the in-flight session.
+///
+/// Cleanup is now a single model: the resolved `cleanupStyle` is the whole story
+/// (its own intensity + tone). Capitalization and filler-stripping are no longer
+/// per-app fields — they're derived from `cleanupStyle`/`category` at the call
+/// site (a dictated shell command in a faithful terminal/coding app keeps its
+/// lowercase; everything else capitalizes; fillers strip whenever the AI didn't).
 struct ResolvedProfile: Sendable, Equatable {
-    /// Whether the cleanup *personality* (style) path is active. When `true`, the
-    /// pipeline uses `cleanupStyle`; when `false`, it uses `cleanupLevel`.
-    var appAdaptiveCleanup: Bool
-    /// The resolved cleanup personality (meaningful when `appAdaptiveCleanup`).
+    /// The resolved cleanup style — Talkie's sole cleanup instruction source.
     var cleanupStyle: CleanupStyle
-    /// The resolved cleanup intensity (meaningful when `!appAdaptiveCleanup`).
-    var cleanupLevel: CleanupLevel
     var insertionMode: InsertionMode
-    var autoCapitalize: Bool
-    var removeFillers: Bool
     /// The bundle id this profile resolved for (`nil` for helper apps with none).
     var bundleID: String?
-    /// The app's coarse category, kept for downstream display/accounting.
+    /// The app's coarse category, kept for downstream display/accounting and for
+    /// the capitalization rule (terminal/coding + faithful ⇒ no leading capital).
     var category: AppCategory
+
+    /// Whether to auto-capitalize the first letter. A smart, always-on default now
+    /// that the per-app toggle is gone: capitalize everywhere EXCEPT a dictated
+    /// shell command / code line — when the target is a terminal or coding app AND
+    /// the resolved style is `.faithful` (verbatim), forcing a leading capital would
+    /// corrupt `git status` into `Git status`, so leave it lowercase.
+    var autoCapitalize: Bool {
+        if (category == .terminal || category == .coding), cleanupStyle == .faithful {
+            return false
+        }
+        return true
+    }
 }

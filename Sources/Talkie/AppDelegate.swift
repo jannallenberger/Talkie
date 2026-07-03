@@ -93,9 +93,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentLocaleID: String = ""
     /// The app captured at the start of the current dictation (for usage stats).
     private var currentTarget: TargetApp = .unknown
-    /// Cleanup config captured at the START of the session (so a mid-session
-    /// settings toggle can't skew the end-of-session accounting).
-    private var sessionCleanup: (appAdaptive: Bool, style: CleanupStyle, level: CleanupLevel)?
+    /// Cleanup style captured at the START of the session (so a mid-session
+    /// settings change can't skew the end-of-session accounting). `nil` until a
+    /// session begins; `.off` means "insert verbatim". This is the whole cleanup
+    /// config now — style is Talkie's only cleanup model.
+    private var sessionCleanup: CleanupStyle?
     /// The per-app rules resolved for the target app at the START of the session
     /// (global → per-category → per-app merge). Snapshotted once so a mid-session
     /// profile edit can't skew the in-flight session; `Sendable`, so it can ride
@@ -196,24 +198,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Warm the on-device cleanup model once at launch too (best-effort, like
         // the Speech warmUp above) so the VERY first dictation's polish pays no
-        // cold-start either. With adaptive cleanup we don't yet know the target
-        // app, so warm the generic style; beginDictation re-warms with the real
-        // app's style once it's known.
-        prewarmCleanup(style: settings.cleanupStyle(for: .other),
-                       level: settings.cleanupLevel,
-                       appAdaptive: settings.appAdaptiveCleanup)
+        // cold-start either. We don't yet know the target app, so warm the generic
+        // ("other") category style; beginDictation re-warms with the real app's
+        // resolved style once it's known.
+        prewarmCleanup(style: settings.cleanupStyle(for: .other))
 
         // The Brief renders as a projection of the context graph.
         contextSummary.graphProvider = { [weak self] in self?.contextGraph.snapshot() ?? .empty }
 
-        // HUD cleanup-style switcher (feature 14): show + cycle the active level in-pill.
+        // HUD cleanup-style switcher (feature 14): show + cycle the active *style*
+        // in-pill. The label reflects the style actually resolved for the in-flight
+        // session (per-app override or category style), so it matches what gets used
+        // at stop. Cycling advances the session category's style through every case
+        // and persists it (session-scoped switching is H3). When no session is live
+        // (rare — the switcher is a capture-phase control) fall back to the "other"
+        // category so the label is never empty.
         hud.bindCleanupSwitcher(
-            label: { [weak self] in self?.settings.cleanupLevel.displayName },
+            label: { [weak self] in
+                guard let self else { return nil }
+                return self.activeCleanupStyle.displayName
+            },
             cycle: { [weak self] in
                 guard let self else { return }
-                let all = CleanupLevel.allCases
-                if let i = all.firstIndex(of: self.settings.cleanupLevel) {
-                    self.settings.cleanupLevel = all[(i + 1) % all.count]
+                let category = self.sessionProfile?.category ?? .other
+                let current = self.settings.cleanupStyle(for: category)
+                let all = CleanupStyle.allCases
+                if let i = all.firstIndex(of: current) {
+                    self.settings.appCleanupStyles[category.rawValue] = all[(i + 1) % all.count].rawValue
                 }
             }
         )
@@ -622,21 +633,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Dictation session
 
+    /// The cleanup style the HUD switcher shows/cycles: the in-flight session's
+    /// resolved style when a session is live (so the pill matches what gets used at
+    /// stop), else the generic "other" category style.
+    private var activeCleanupStyle: CleanupStyle {
+        sessionProfile?.cleanupStyle ?? settings.cleanupStyle(for: .other)
+    }
+
     /// Kick off a best-effort background warm-up of the on-device cleanup model,
     /// matching the Speech `warmUp` pattern. Skips entirely when the model isn't
-    /// available or cleanup is disabled for the given config, so a cold first
-    /// dictation never pays the model load inline.
-    private func prewarmCleanup(style: CleanupStyle, level: CleanupLevel, appAdaptive: Bool) {
-        guard CleanupEngine.isAvailable else { return }
-        let cleanupEnabled = appAdaptive ? (style != .off) : (level != .none)
-        guard cleanupEnabled else { return }
-        Task {
-            if appAdaptive {
-                await cleanup.prewarm(style: style)
-            } else {
-                await cleanup.prewarm(level: level)
-            }
-        }
+    /// available or the style skips the model (`.off`), so a cold first dictation
+    /// never pays the model load inline.
+    private func prewarmCleanup(style: CleanupStyle) {
+        guard CleanupEngine.isAvailable, style != .off else { return }
+        Task { await cleanup.prewarm(style: style) }
     }
 
     func beginDictation() {
@@ -704,26 +714,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let phrases = Array(Set(bias)).prefix(180).map { $0 }
         let multiLang = settings.spokenLanguages.count > 1
 
-        // Capture the cleanup config at the start so a mid-session settings toggle
+        // Capture the cleanup style at the start so a mid-session settings change
         // can't skew the end-of-session accounting. Cleanup runs ONCE on the WHOLE
         // transcript at stop — so spoken self-corrections that span a pause
         // ("Thursday, no Friday") are resolved with full context — and is chunked
-        // only when the transcript is genuinely long.
-        let appAdaptive = profile.appAdaptiveCleanup
-        let adaptiveStyle = profile.cleanupStyle
-        let cleanupLevel = profile.cleanupLevel
-        sessionCleanup = (appAdaptive: appAdaptive, style: adaptiveStyle, level: cleanupLevel)
+        // only when the transcript is genuinely long. Style is the whole cleanup
+        // config now; `.off` means insert verbatim.
+        let style = profile.cleanupStyle
+        sessionCleanup = style
 
         // Warm the on-device cleanup model the moment recording starts, in
         // parallel with everything else, so the first cleanup at stop-time
         // doesn't pay a cold model load. Mirrors `engine.warmUp` for Speech.
         let cleanupEngine = self.cleanup
-        let cleanupEnabled = appAdaptive ? (adaptiveStyle != .off) : (cleanupLevel != .none)
+        let cleanupEnabled = style != .off
         if cleanupEnabled {
-            Task {
-                if appAdaptive { await cleanupEngine.prewarm(style: adaptiveStyle) }
-                else { await cleanupEngine.prewarm(level: cleanupLevel) }
-            }
+            Task { await cleanupEngine.prewarm(style: style) }
         }
 
         // Stream cleanup of each finalized segment *while you speak*, so the
@@ -736,9 +742,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the right language for it) so the model can't translate it.
         let beginLangCode = LanguageDetector.languageCode(of: currentLocaleID)
         let cleanOne: @Sendable (String) async -> String? = { text in
-            appAdaptive
-                ? await cleanupEngine.clean(text, style: adaptiveStyle, languageCode: beginLangCode)
-                : await cleanupEngine.clean(text, level: cleanupLevel, languageCode: beginLangCode)
+            await cleanupEngine.clean(text, style: style, languageCode: beginLangCode)
         }
         let streaming = (cleanupEnabled && CleanupEngine.isAvailable)
             ? StreamingCleanup(enabled: true, cleanOne: cleanOne)
@@ -914,12 +918,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // The per-app rules resolved at session start (falls back to a fresh
         // resolve if a session somehow ends without a begin-side snapshot). For a
-        // user with no per-app rules, `resolve` mirrors `settings.*` for every
-        // field, so this is byte-identical to the old direct `settings.*` reads.
+        // user with no per-app rules, `resolve` yields the category style + paste,
+        // so this matches what the pipeline read before.
         let resolved = sessionProfile ?? profiles.resolve(for: currentTarget, settings: settings)
         sessionProfile = nil
+        // Capitalization is a smart always-on default derived from the resolved
+        // style/category (terminal/coding + faithful ⇒ no leading capital, so a
+        // dictated shell command keeps its lowercase). Fillers are always stripped
+        // deterministically UNLESS the AI already rewrote the text (handled at the
+        // final `TextProcessor.apply` via `!aiHandledFillers`).
         let autoCap = resolved.autoCapitalize
-        let removeFillers = resolved.removeFillers
+        let removeFillers = true
         let mode = resolved.insertionMode
         let optimisticEnabled = settings.optimisticInsertion
         let spokenLanguages = settings.spokenLanguages
@@ -941,14 +950,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let target = currentTarget
         let selfBundle = AppPaths.bundleIdentifier
-        // Reuse the cleanup config captured at session start, so a mid-session
-        // toggle can't make the stats/filler accounting disagree with what the
+        // Reuse the cleanup style captured at session start, so a mid-session
+        // change can't make the stats/filler accounting disagree with what the
         // assembler actually cleaned.
-        let sessionCfg = sessionCleanup
+        let style = sessionCleanup ?? resolved.cleanupStyle
         sessionCleanup = nil
-        let appAdaptive = sessionCfg?.appAdaptive ?? resolved.appAdaptiveCleanup
-        let adaptiveStyle = sessionCfg?.style ?? resolved.cleanupStyle
-        let cleanupLevel = sessionCfg?.level ?? resolved.cleanupLevel
         // The live per-segment cleanup that ran while you spoke (nil when cleanup
         // is off). Consumed below, or discarded if a language switch re-wrote the
         // whole transcript.
@@ -1016,7 +1022,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // pause with full context; long transcripts split into sentence
             // batches (each within the model's context window).
             let cleanupEngine = self.cleanup
-            let cleanupEnabled = appAdaptive ? (adaptiveStyle != .off) : (cleanupLevel != .none)
+            let cleanupEnabled = style != .off
 
             // Optimistic insertion (experimental, off by default): drop the raw
             // transcript in immediately so there's no visible wait, then swap in
@@ -1069,9 +1075,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } else {
                     streaming?.cancel()
                     let cleanOne: @Sendable (String) async -> String? = { text in
-                        appAdaptive
-                            ? await cleanupEngine.clean(text, style: adaptiveStyle, languageCode: cleanupLangCode)
-                            : await cleanupEngine.clean(text, level: cleanupLevel, languageCode: cleanupLangCode)
+                        await cleanupEngine.clean(text, style: style, languageCode: cleanupLangCode)
                     }
                     if deseamed.count <= Self.wholeCleanupCharLimit {
                         cleaned = (await cleanOne(deseamed)) ?? deseamed
@@ -1117,9 +1121,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             cleaned = NumberNormalizer.normalize(cleaned)
 
             // Apply the dictionary AFTER the LLM so your exact spellings always win.
+            // Strip fillers deterministically unless the AI already rewrote the text
+            // (it removes fillers itself as part of the rewrite; double-stripping
+            // would risk clipping a word the model reflowed).
             let processed = TextProcessor.apply(
                 replacements: replacements,
-                removeFillers: aiHandledFillers ? false : removeFillers,
+                removeFillers: !aiHandledFillers,
                 autoCapitalize: autoCap,
                 to: cleaned
             )

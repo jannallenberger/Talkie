@@ -7,11 +7,11 @@ import SwiftUI
 /// actually customized — exactly what `AppProfileStore` stores.
 ///
 /// Writes go through `AppProfileStore.upsert` / `.remove`. The editor mirrors the
-/// global Cleanup pane's controls so the two read as the same surface, narrowed to
-/// one app. Reuses the shared `SubPage` / `SettingsCard` / `SettingsRow` vocabulary.
+/// global Cleanup pane's controls (cleanup style, insertion, vocabulary) so the two
+/// read as the same surface, narrowed to one app. Reuses the shared `SubPage` /
+/// `SettingsCard` / `SettingsRow` vocabulary.
 struct AppProfilesSettings: View {
     @ObservedObject var profiles: AppProfileStore
-    @ObservedObject var settings: AppSettings
 
     /// The profile being edited in the sheet (nil = sheet closed).
     @State private var editing: AppProfile?
@@ -70,7 +70,6 @@ struct AppProfilesSettings: View {
         .sheet(item: $editing) { profile in
             AppProfileEditor(
                 profile: profile,
-                settings: settings,
                 dictionaryVocab: dictionaryVocab,
                 onSave: { profiles.upsert($0); editing = nil },
                 onCancel: { editing = nil }
@@ -89,7 +88,6 @@ struct AppProfilesSettings: View {
     private func summary(for p: AppProfile) -> String {
         var parts: [String] = []
         if let s = p.cleanupStyle { parts.append(s.displayName) }
-        if let l = p.cleanupLevel { parts.append(l.displayName) }
         if let m = p.insertionMode { parts.append(m == .paste ? "Paste" : "Type") }
         if let filter = p.vocabularyFilter, !filter.isEmpty {
             parts.append("\(filter.count) terms")
@@ -181,14 +179,12 @@ private struct ProfileRow: View {
 /// On save the profile is upserted; an all-Inherit profile is dropped by the store.
 private struct AppProfileEditor: View {
     @State var profile: AppProfile
-    let settings: AppSettings
     let dictionaryVocab: [String]
     let onSave: (AppProfile) -> Void
     let onCancel: () -> Void
 
     // Each override is modeled as an optional binding the picker maps to "Inherit".
     private var cleanupStyle: Binding<CleanupStyle?> { $profile.cleanupStyle }
-    private var cleanupLevel: Binding<CleanupLevel?> { $profile.cleanupLevel }
     private var insertionMode: Binding<InsertionMode?> { $profile.insertionMode }
 
     var body: some View {
@@ -218,26 +214,18 @@ private struct AppProfileEditor: View {
                 VStack(alignment: .leading, spacing: 18) {
                     SettingsCard(
                         header: "Cleanup",
-                        footer: "“Inherit” follows your global Settings. Override either the per-app personality or the intensity, depending on which mode you use globally."
+                        footer: "“Inherit” follows the style for this app's category in Settings. Override it to give just this app its own style."
                     ) {
-                        SettingsRow(title: "Personality") {
+                        SettingsRow(title: "Style") {
                             Picker("", selection: cleanupStyle) {
                                 Text("Inherit").tag(CleanupStyle?.none)
                                 ForEach(CleanupStyle.allCases) { Text($0.displayName).tag(CleanupStyle?.some($0)) }
                             }
                             .labelsHidden().fixedSize()
                         }
-                        SettingsDivider()
-                        SettingsRow(title: "Intensity") {
-                            Picker("", selection: cleanupLevel) {
-                                Text("Inherit").tag(CleanupLevel?.none)
-                                ForEach(CleanupLevel.allCases) { Text($0.displayName).tag(CleanupLevel?.some($0)) }
-                            }
-                            .labelsHidden().fixedSize()
-                        }
                     }
 
-                    SettingsCard(header: "Insertion & basics") {
+                    SettingsCard(header: "Insertion") {
                         // Since B2 removed the global insert-by picker, this per-app
                         // control is BOTH the sole escape hatch and the visible readout
                         // of what Talkie learned: an app shows "Type" here after a paste
@@ -251,14 +239,6 @@ private struct AppProfileEditor: View {
                             }
                             .labelsHidden().fixedSize()
                         }
-                        SettingsDivider()
-                        TriStateRow(title: "Capitalize the first letter",
-                                    value: $profile.autoCapitalize,
-                                    inheritedDefault: settings.autoCapitalize)
-                        SettingsDivider()
-                        TriStateRow(title: "Remove filler words",
-                                    value: $profile.removeFillers,
-                                    inheritedDefault: settings.cleanupFillers)
                     }
 
                     if !dictionaryVocab.isEmpty {
@@ -325,48 +305,5 @@ private struct AppProfileEditor: View {
         var filter = profile.vocabularyFilter ?? []
         if let i = filter.firstIndex(of: term) { filter.remove(at: i) } else { filter.append(term) }
         profile.vocabularyFilter = filter.isEmpty ? nil : filter
-    }
-}
-
-/// A row for a `Bool?` override: Inherit / On / Off as a small segmented control,
-/// labeled with what "Inherit" currently resolves to.
-private struct TriStateRow: View {
-    let title: String
-    @Binding var value: Bool?
-    let inheritedDefault: Bool
-
-    private enum Choice: Hashable { case inherit, on, off }
-
-    private var choice: Binding<Choice> {
-        Binding(
-            get: {
-                switch value {
-                case .none: return .inherit
-                case .some(true): return .on
-                case .some(false): return .off
-                }
-            },
-            set: {
-                switch $0 {
-                case .inherit: value = nil
-                case .on: value = true
-                case .off: value = false
-                }
-            }
-        )
-    }
-
-    var body: some View {
-        SettingsRow(title: title,
-                    subtitle: value == nil ? "Inherits: \(inheritedDefault ? "On" : "Off")" : nil) {
-            Picker("", selection: choice) {
-                Text("Inherit").tag(Choice.inherit)
-                Text("On").tag(Choice.on)
-                Text("Off").tag(Choice.off)
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .fixedSize()
-        }
     }
 }
