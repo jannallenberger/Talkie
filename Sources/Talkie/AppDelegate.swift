@@ -589,7 +589,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await engine.setUpdateHandler { update in
                 Task { @MainActor in
                     guard !update.isComplete else { return }
-                    AppDelegate.sharedHUD?.updateTranscribing(update.combined)
+                    // C1: hand the pill STRUCTURE (committed head + volatile tail), not
+                    // the flattened `combined`, so it can render the still-changing tail
+                    // fainter and let words firm up as they finalize. Display only — the
+                    // transcript itself still flows to the focused app unchanged.
+                    AppDelegate.sharedHUD?.updateTranscribing(finalized: update.finalizedText,
+                                                              volatile: update.volatileText)
                     // H5: when a sealed onboarding try-it is active, also stream the
                     // live transcript into its results field so words appear as you
                     // speak. The HUD pill still updates too (acceptable/good — the
