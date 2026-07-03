@@ -24,6 +24,12 @@ struct MemoryView: View {
     /// typed here (sourceDictationID == nil) survive, matching the "rules you taught
     /// stay" contract.
     @ObservedObject var scratchpad: ScratchpadStore
+    /// L2-b (LOG-ONLY): the AI-auto-add calibration log stores commitment TEXT
+    /// extracted from dictations, so — like the scratchpad's rescued lines — it is
+    /// content-derived and joins true-delete: deleting a dictation purges its records,
+    /// and "Clear everything" drops all dictation-sourced records. Defaulted so
+    /// previews/tests that don't wire it still compile.
+    var autoAddPreviewLog: AutoAddPreviewLog? = nil
     /// Cleared on every delete so `context_summary.json` can't keep quoting text you
     /// just deleted. Defaulted so previews/tests that don't wire it still compile.
     var contextSummary: ContextSummaryStore? = nil
@@ -90,6 +96,9 @@ struct MemoryView: View {
         contextGraph.purge(source: .dictation, sourceID: entry.id.uuidString)
         wordFreq.purge(text: entry.text)
         scratchpad.purge(sourceID: entry.id.uuidString)
+        // L2-b (LOG-ONLY): the AI-auto-add preview log quoted this dictation's
+        // commitments — purge them so a deleted transcript leaves no trace there.
+        autoAddPreviewLog?.purge(sourceID: entry.id.uuidString)
         contextSummary?.clearSummary()
     }
 
@@ -101,6 +110,9 @@ struct MemoryView: View {
         contextGraph.purge(source: .dictation, sourceID: nil)
         wordFreq.clearAll()
         scratchpad.purgeAllDictationSourced()
+        // L2-b (LOG-ONLY): drop every dictation-sourced AI-auto-add preview record —
+        // it's derived from the dictation history being cleared.
+        autoAddPreviewLog?.purgeAllDictationSourced()
         contextSummary?.clearSummary()
         // L13-a: wipe the on-disk sentence-vector sidecar now, so the search cache
         // doesn't keep vectors for text you just cleared until the debounced rebuild

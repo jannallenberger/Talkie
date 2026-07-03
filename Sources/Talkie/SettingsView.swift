@@ -90,6 +90,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         latency: LatencyStore,
         systemPressure: SystemPressure,
         scratchpad: ScratchpadStore,
+        autoAddPreviewLog: AutoAddPreviewLog,
         projectIndex: ProjectIndexStore,
         contextSummary: ContextSummaryStore,
         meetingRecorder: MeetingRecorder,
@@ -115,6 +116,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             latency: latency,
             systemPressure: systemPressure,
             scratchpad: scratchpad,
+            autoAddPreviewLog: autoAddPreviewLog,
             projectIndex: projectIndex,
             contextSummary: contextSummary,
             meetingRecorder: meetingRecorder,
@@ -186,6 +188,10 @@ struct MainView: View {
     @ObservedObject var latency: LatencyStore
     @ObservedObject var systemPressure: SystemPressure
     @ObservedObject var scratchpad: ScratchpadStore
+    /// L2-b (LOG-ONLY): forwarded to `MemoryView` only so its true-delete cascade can
+    /// purge the AI-auto-add calibration log. Not `@ObservedObject` — this log drives
+    /// no UI, so nothing here should redraw when it changes.
+    let autoAddPreviewLog: AutoAddPreviewLog
     @ObservedObject var projectIndex: ProjectIndexStore
     @ObservedObject var contextSummary: ContextSummaryStore
     @ObservedObject var meetingRecorder: MeetingRecorder
@@ -236,6 +242,7 @@ struct MainView: View {
             MemoryView(contextGraph: contextGraph, history: history,
                        searchEngine: searchEngine, meetingStore: meetingStore,
                        wordFreq: wordFreq, scratchpad: scratchpad,
+                       autoAddPreviewLog: autoAddPreviewLog,
                        contextSummary: contextSummary)
         case .commands:
             CommandsView(settings: settings, macros: macros,

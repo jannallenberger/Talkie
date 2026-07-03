@@ -31,6 +31,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// a NON-secure-input failure appends the transcript here instead of leaving it
     /// only on the clipboard to be lost on the next copy.
     let scratchpad = ScratchpadStore()
+    /// L2-b (LOG-ONLY / PREVIEW): a calibration log of what the "added by Chirp"
+    /// auto-add gate WOULD do for each extracted commitment. It writes ONLY to its own
+    /// `scratchpad_ai_preview.json` — never to the Scratchpad, never to the UI — so
+    /// Jann can tune the gate threshold from real logs before the live auto-add lane
+    /// ships. Content-derived, so it joins the true-delete cascade in `MemoryView`.
+    let autoAddPreviewLog = AutoAddPreviewLog()
     let projectIndex = ProjectIndexStore()
     let contextSummary = ContextSummaryStore()
     let meetingStore = MeetingStore()
@@ -200,6 +206,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// profile edit can't skew the in-flight session; `Sendable`, so it can ride
     /// into the `endDictation` processing Task. `nil` between sessions.
     private var sessionProfile: ResolvedProfile?
+    /// L2-b (LOG-ONLY): the frontmost app as `AutoAddGate` needs to see it, captured
+    /// at session start so the end-of-session commitment gate runs against the same
+    /// target the dictation actually went into. `nil` when context awareness is off —
+    /// the gate then fails closed (no suggestion), but the attempt is still logged so
+    /// the fail-closed rate is visible in the calibration data. Sendable, so it rides
+    /// into the `endDictation` processing Task alongside `sessionProfile`.
+    private var sessionFrontApp: AutoAddGate.FrontApp?
     /// Cleans transcript segments live while you speak, so most of the cleanup
     /// is done by the time you release the key. Built per session when cleanup
     /// is enabled; consumed (or discarded) in `endDictation`.
@@ -1119,6 +1132,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         sessionProfile = profile
 
+        // L2-b (LOG-ONLY): snapshot the target as the auto-add gate sees it. When
+        // context awareness is off we pass `nil` (the gate fails closed — no
+        // suggestion — but the end-of-session hook still logs the attempt so the
+        // fail-closed rate shows up in the calibration data). We reuse `captured`,
+        // whose `windowTitle` is already `nil` under that setting, so the agent-CLI
+        // check degrades honestly.
+        sessionFrontApp = settings.contextAwareness
+            ? AutoAddGate.FrontApp(bundleID: captured.target.bundleID,
+                                   category: captured.target.category,
+                                   windowTitle: captured.windowTitle)
+            : nil
+
         // Bias the recognizer with the union of: custom vocabulary (narrowed by
         // this app's vocabulary filter, if any), on-screen names from the target
         // app, and (in vibe mode) your project's filenames.
@@ -1293,6 +1318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // it can't leak into the next dictation (nothing was inserted, so no keep chip).
         sessionCleanup = nil
         sessionStyleOverride = nil
+        sessionFrontApp = nil   // L2-b: drop the gate snapshot too (no ingest on this path).
         Task { await engine.cancelSession() }
         isProcessing = false
         updateStatusUI()
@@ -1333,6 +1359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // inserted, so there is no keep chip to offer.
             sessionCleanup = nil
             sessionStyleOverride = nil
+            sessionFrontApp = nil   // L2-b: drop the gate snapshot too (no ingest on this path).
             hud.hide()
             // H5: a try-it stopped before audio went live (e.g. clicked stop during
             // mic/model setup) — clear the sink and reset the onboarding button.
@@ -1434,6 +1461,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         let target = currentTarget
+        // L2-b (LOG-ONLY): the target as the auto-add gate sees it, snapshotted at
+        // session start (carries the window title for the agent-CLI check, which
+        // `currentTarget` lacks). `nil` when context awareness was off → the gate
+        // fails closed. Rides into the processing Task like `target`.
+        let frontAppForGate = sessionFrontApp
+        sessionFrontApp = nil
         let selfBundle = AppPaths.bundleIdentifier
         // Reuse the cleanup style captured at session start — unless the user cycled
         // the in-pill switcher this dictation, in which case `sessionCleanup` already
@@ -1961,6 +1994,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                            dateUnix: nowUnix,
                                            snippet: String(finalText.prefix(120)))
                 )
+                // L2-b (LOG-ONLY / PREVIEW — writes NOTHING to the Scratchpad). For each
+                // commitment this dictation surfaced, record what the "added by Chirp"
+                // auto-add gate WOULD decide, so Jann can calibrate the threshold from
+                // real logs before the live lane ships. This runs ONLY inside
+                // `!neverStore`, so a Private app (I1) produces zero preview records —
+                // the gate never even sees it. The live-dictation path uses the Stage-1
+                // heuristic extractor (`GraphLLMExtractor` is meeting-only, so `.heuristic`
+                // here); the gate applies its stricter second-person/future check to those.
+                // Records carry `dictationID` so they join the true-delete cascade.
+                let existingScratchpadLines = self.scratchpad.lines.map(\.text)
+                for commitment in ContextGraphExtractor.commitments(in: finalText) {
+                    let decision = AutoAddGate.shouldSuggest(
+                        commitmentText: commitment,
+                        source: .heuristic,
+                        frontApp: frontAppForGate,
+                        existingLines: existingScratchpadLines
+                    )
+                    self.autoAddPreviewLog.record(
+                        commitmentText: commitment,
+                        frontAppBundleID: frontAppForGate?.bundleID,
+                        source: .heuristic,
+                        decision: decision,
+                        sourceDictationID: dictationID.uuidString,
+                        nowUnix: nowUnix
+                    )
+                }
                 // Harvest niche-vocabulary candidates from the same transcript — proper
                 // nouns, identifiers, filenames — as a frequency signal (batched once per
                 // session, per the store's contract). These start as tracked candidates
@@ -2651,6 +2710,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 latency: latency,
                 systemPressure: systemPressure,
                 scratchpad: scratchpad,
+                autoAddPreviewLog: autoAddPreviewLog,
                 projectIndex: projectIndex,
                 contextSummary: contextSummary,
                 meetingRecorder: meetingRecorder,
