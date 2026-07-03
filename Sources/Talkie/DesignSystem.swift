@@ -171,10 +171,10 @@ extension View {
 
     /// Standard Talkie card: borderless — a clean surface lifted by a single
     /// whisper shadow, squircle corner. No outline (v2).
-    func talkieCard(padding: CGFloat = Theme.Space.card) -> some View {
+    func talkieCard(padding: CGFloat = Theme.Space.card, fill: Bool = false) -> some View {
         self
             .padding(padding)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil, alignment: fill ? .topLeading : .leading)
             .talkieSurface()
     }
 }
