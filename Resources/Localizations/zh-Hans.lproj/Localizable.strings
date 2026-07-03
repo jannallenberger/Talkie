@@ -514,3 +514,18 @@
 "Change…" = "更改…";
 "Stop watching" = "停止监视";
 "That folder isn’t reachable right now — nothing will be watched until it’s back." = "该文件夹目前无法访问 — 在它恢复之前不会监视任何内容。";
+
+// MARK: - Speak-first onboarding (H5)
+"Try it — just talk" = "试一试 — 开口说就行";
+"No setup needed — click, speak, see your words." = "无需设置 — 点击、说话，即可看到你的文字。";
+"Your words will appear here." = "你说的话会显示在这里。";
+"Listening… say anything." = "正在聆听……随便说点什么。";
+"Two more permissions" = "还差两项权限";
+"To hear your dictation key and place your text into other apps, Talkie needs these two. Each is used only on this Mac." = "为了识别你的听写按键并将文字输入到其他应用，Talkie 需要这两项权限。两者都只在这台 Mac 上使用。";
+"Granted while you tried it out." = "你试用时已授予。";
+"Microphone access is needed to try it — you can grant it and tap again." = "试用需要麦克风访问权限 — 授予后再次点按即可。";
+"On-device speech isn't available on this Mac." = "这台 Mac 不支持设备端语音识别。";
+"Get started" = "开始";
+"Continue" = "继续";
+"Start dictating" = "开始听写";
+"Talkie is busy right now — try again in a moment." = "Talkie 正忙 — 请稍后再试。";

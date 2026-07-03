@@ -516,3 +516,18 @@
 "Change…" = "Change…";
 "Stop watching" = "Stop watching";
 "That folder isn’t reachable right now — nothing will be watched until it’s back." = "That folder isn’t reachable right now — nothing will be watched until it’s back.";
+
+// MARK: - Speak-first onboarding (H5)
+"Try it — just talk" = "Try it — just talk";
+"No setup needed — click, speak, see your words." = "No setup needed — click, speak, see your words.";
+"Your words will appear here." = "Your words will appear here.";
+"Listening… say anything." = "Listening… say anything.";
+"Two more permissions" = "Two more permissions";
+"To hear your dictation key and place your text into other apps, Talkie needs these two. Each is used only on this Mac." = "To hear your dictation key and place your text into other apps, Talkie needs these two. Each is used only on this Mac.";
+"Granted while you tried it out." = "Granted while you tried it out.";
+"Microphone access is needed to try it — you can grant it and tap again." = "Microphone access is needed to try it — you can grant it and tap again.";
+"On-device speech isn't available on this Mac." = "On-device speech isn't available on this Mac.";
+"Get started" = "Get started";
+"Continue" = "Continue";
+"Start dictating" = "Start dictating";
+"Talkie is busy right now — try again in a moment." = "Talkie is busy right now — try again in a moment.";

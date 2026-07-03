@@ -514,3 +514,18 @@
 "Change…" = "変更…";
 "Stop watching" = "監視を停止";
 "That folder isn’t reachable right now — nothing will be watched until it’s back." = "そのフォルダには今アクセスできません — 戻るまで何も監視されません。";
+
+// MARK: - Speak-first onboarding (H5)
+"Try it — just talk" = "試してみましょう — 話すだけ";
+"No setup needed — click, speak, see your words." = "設定は不要 — クリックして話すと、言葉が現れます。";
+"Your words will appear here." = "ここに話した言葉が表示されます。";
+"Listening… say anything." = "聞いています… 何か話してください。";
+"Two more permissions" = "あと2つの許可";
+"To hear your dictation key and place your text into other apps, Talkie needs these two. Each is used only on this Mac." = "ディクテーションキーを検知し、テキストを他のアプリに入力するため、Talkie にはこの2つが必要です。どちらもこの Mac 上でのみ使われます。";
+"Granted while you tried it out." = "お試し中に許可済みです。";
+"Microphone access is needed to try it — you can grant it and tap again." = "お試しにはマイクへのアクセスが必要です — 許可してもう一度タップしてください。";
+"On-device speech isn't available on this Mac." = "この Mac ではオンデバイスの音声認識を利用できません。";
+"Get started" = "はじめる";
+"Continue" = "続ける";
+"Start dictating" = "ディクテーションを開始";
+"Talkie is busy right now — try again in a moment." = "Talkie は現在処理中です — 少し待ってからもう一度お試しください。";

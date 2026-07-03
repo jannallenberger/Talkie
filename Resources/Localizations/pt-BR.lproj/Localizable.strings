@@ -514,3 +514,18 @@
 "Change…" = "Alterar…";
 "Stop watching" = "Parar de monitorar";
 "That folder isn’t reachable right now — nothing will be watched until it’s back." = "Essa pasta não está acessível agora — nada será monitorado até ela voltar.";
+
+// MARK: - Speak-first onboarding (H5)
+"Try it — just talk" = "Experimente — é só falar";
+"No setup needed — click, speak, see your words." = "Sem configuração — clique, fale e veja suas palavras.";
+"Your words will appear here." = "Suas palavras aparecerão aqui.";
+"Listening… say anything." = "Ouvindo… diga qualquer coisa.";
+"Two more permissions" = "Mais duas permissões";
+"To hear your dictation key and place your text into other apps, Talkie needs these two. Each is used only on this Mac." = "Para ouvir sua tecla de ditado e colocar seu texto em outros apps, o Talkie precisa destas duas. Cada uma é usada apenas neste Mac.";
+"Granted while you tried it out." = "Concedida enquanto você testava.";
+"Microphone access is needed to try it — you can grant it and tap again." = "É preciso acesso ao microfone para testar — conceda e toque novamente.";
+"On-device speech isn't available on this Mac." = "O reconhecimento de voz no dispositivo não está disponível neste Mac.";
+"Get started" = "Começar";
+"Continue" = "Continuar";
+"Start dictating" = "Começar a ditar";
+"Talkie is busy right now — try again in a moment." = "O Talkie está ocupado agora — tente novamente em um instante.";
