@@ -426,3 +426,13 @@
 "Relaunch now" = "Reiniciar ahora";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "La monitorización de entrada está concedida, pero Talkie necesita reiniciarse para oír tu tecla.";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "La monitorización de entrada está activa, pero Talkie necesita un reinicio rápido para oír tu tecla.";
+
+// L2-a — dashboard Scratchpad (notes/tasks + failed-insertion rescue)
+"Scratchpad" = "Bloc de notas";
+"Jot a note or a task here — type “- ” for a checkbox. Anything Talkie can’t paste lands here too, so it’s never lost." = "Anota una nota o tarea aquí — escribe «- » para una casilla. Lo que Talkie no pueda pegar también acaba aquí, así nunca se pierde.";
+"Add a note or task…" = "Añadir una nota o tarea…";
+"Mark as done" = "Marcar como hecha";
+"Mark as not done" = "Marcar como no hecha";
+"Delete this line" = "Eliminar esta línea";
+" · saved to your Scratchpad" = " · guardado en tu Bloc de notas";
+"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Elimina tu historial de dictados y todo lo que la memoria de Talkie extrajo de él. Las reglas del diccionario que enseñaste, y las notas que escribiste en tu Bloc de notas, permanecen. Talkie sobrescribe el archivo antes de eliminarlo. Para protegerte si pierden o incautan tu Mac, mantén FileVault activado.";

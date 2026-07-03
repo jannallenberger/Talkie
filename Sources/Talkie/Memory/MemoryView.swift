@@ -18,6 +18,12 @@ struct MemoryView: View {
     /// its word/phrase counts, and "Clear everything" wipes the store, so the
     /// lifetime vocabulary never outlives the history it was built from.
     @ObservedObject var wordFreq: WordFrequencyStore
+    /// L2-a: transcripts rescued to the Scratchpad (failed insertions) are part of
+    /// the dictation record — deleting a dictation purges the lines it sourced, and
+    /// "Clear everything" drops all dictation-sourced lines. Notes/tasks the user
+    /// typed here (sourceDictationID == nil) survive, matching the "rules you taught
+    /// stay" contract.
+    @ObservedObject var scratchpad: ScratchpadStore
     /// Cleared on every delete so `context_summary.json` can't keep quoting text you
     /// just deleted. Defaulted so previews/tests that don't wire it still compile.
     var contextSummary: ContextSummaryStore? = nil
@@ -69,7 +75,7 @@ struct MemoryView: View {
             Button("Clear everything", role: .destructive) { clearEverything() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.")
+            Text("Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.")
         }
     }
 
@@ -83,6 +89,7 @@ struct MemoryView: View {
         history.delete(entry)
         contextGraph.purge(source: .dictation, sourceID: entry.id.uuidString)
         wordFreq.purge(text: entry.text)
+        scratchpad.purge(sourceID: entry.id.uuidString)
         contextSummary?.clearSummary()
     }
 
@@ -93,6 +100,7 @@ struct MemoryView: View {
         history.clearAll()
         contextGraph.purge(source: .dictation, sourceID: nil)
         wordFreq.clearAll()
+        scratchpad.purgeAllDictationSourced()
         contextSummary?.clearSummary()
     }
 

@@ -14,6 +14,16 @@ enum TextInjector {
         case empty
     }
 
+    /// Whether secure keyboard entry is on right now (a focused password field, a
+    /// password manager's lock screen, Terminal's Secure Keyboard Entry, …). This is
+    /// exactly the condition under which `insert` copies to the clipboard with a
+    /// `secureInputReason()`. Exposed so callers handling `.leftOnClipboard` can
+    /// STRICTLY exclude the secure case (a dictated password must never be persisted
+    /// anywhere) without re-importing Carbon or string-matching the reason — and it's
+    /// authoritative because `.leftOnClipboard` is handled synchronously right after
+    /// `insert` returns, with no await in between to let the state change.
+    static var isSecureInputActive: Bool { IsSecureEventInputEnabled() }
+
     /// Whether the process may post synthetic events. `prompt: true` surfaces the
     /// System Settings → Privacy & Security → Accessibility request once.
     @discardableResult

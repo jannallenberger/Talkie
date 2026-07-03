@@ -18,6 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// L4: running word/phrase frequency, accumulated at record time (transcripts
     /// are pruned after 7 days, so "most used" can't be recomputed from history).
     let wordFreq = WordFrequencyStore()
+    /// L2-a: the dashboard Scratchpad (notes + tasks). Also the rescue sink for
+    /// transcripts that couldn't be pasted — see the `.leftOnClipboard` branch, where
+    /// a NON-secure-input failure appends the transcript here instead of leaving it
+    /// only on the clipboard to be lost on the next copy.
+    let scratchpad = ScratchpadStore()
     let projectIndex = ProjectIndexStore()
     let contextSummary = ContextSummaryStore()
     let meetingStore = MeetingStore()
@@ -1661,8 +1666,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Feedback.notPasted()
                 // Couldn't paste — the text is on the clipboard; offer a tap to
                 // (re)copy it, plus the ⌥⌘V re-paste shortcut once a field is focused.
+                //
+                // L2-a rescue: a transcript left on the clipboard is one keystroke away
+                // from being lost (the next copy overwrites it). So ALSO drop it into
+                // the Scratchpad, tagged with this dictation's id so a later history
+                // delete purges it too, and tell the user via a suffix on the pill.
+                // STRICT exclusion: if secure input is on, this was a password field —
+                // never persist it anywhere; leave it clipboard-only as before.
+                var message = reason
+                if !TextInjector.isSecureInputActive {
+                    self.scratchpad.addLine(finalText, sourceDictationID: dictationID.uuidString)
+                    message = reason + " · saved to your Scratchpad".loc
+                }
                 self.hud.showCopyPrompt(
-                    text: finalText, message: reason,
+                    text: finalText, message: message,
                     shortcut: self.settings.pasteLastShortcutEnabled ? self.pasteLastShortcutDisplay : nil
                 )
             case .empty:
@@ -1908,6 +1925,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appUsage: appUsage,
                 activity: activity,
                 wordFreq: wordFreq,
+                scratchpad: scratchpad,
                 projectIndex: projectIndex,
                 contextSummary: contextSummary,
                 meetingRecorder: meetingRecorder,

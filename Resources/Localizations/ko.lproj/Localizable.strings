@@ -426,3 +426,13 @@
 "Relaunch now" = "지금 다시 시작";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "입력 모니터링은 허용되었지만, 키를 인식하려면 Talkie를 다시 시작해야 합니다.";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "입력 모니터링이 켜져 있지만, 키를 인식하려면 Talkie를 잠깐 다시 시작해야 합니다.";
+
+// L2-a — dashboard Scratchpad (notes/tasks + failed-insertion rescue)
+"Scratchpad" = "스크래치패드";
+"Jot a note or a task here — type “- ” for a checkbox. Anything Talkie can’t paste lands here too, so it’s never lost." = "메모나 할 일을 여기에 적으세요 — “- ”를 입력하면 체크박스가 됩니다. Talkie가 붙여넣지 못한 내용도 여기에 남으므로 사라지지 않습니다.";
+"Add a note or task…" = "메모나 할 일 추가…";
+"Mark as done" = "완료로 표시";
+"Mark as not done" = "미완료로 표시";
+"Delete this line" = "이 줄 삭제";
+" · saved to your Scratchpad" = " · 스크래치패드에 저장됨";
+"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "받아쓰기 기록과 Talkie의 메모리가 거기서 추출한 모든 것을 삭제합니다. 직접 가르친 사전 규칙과 스크래치패드에 작성한 메모는 유지됩니다. Talkie는 삭제하기 전에 파일을 덮어씁니다. Mac을 분실하거나 압수당할 경우를 대비해 FileVault를 켜 두세요.";

@@ -75,6 +75,7 @@ final class MainWindowController {
         appUsage: AppUsageStore,
         activity: ActivityStore,
         wordFreq: WordFrequencyStore,
+        scratchpad: ScratchpadStore,
         projectIndex: ProjectIndexStore,
         contextSummary: ContextSummaryStore,
         meetingRecorder: MeetingRecorder,
@@ -97,6 +98,7 @@ final class MainWindowController {
             appUsage: appUsage,
             activity: activity,
             wordFreq: wordFreq,
+            scratchpad: scratchpad,
             projectIndex: projectIndex,
             contextSummary: contextSummary,
             meetingRecorder: meetingRecorder,
@@ -148,6 +150,7 @@ struct MainView: View {
     @ObservedObject var appUsage: AppUsageStore
     @ObservedObject var activity: ActivityStore
     @ObservedObject var wordFreq: WordFrequencyStore
+    @ObservedObject var scratchpad: ScratchpadStore
     @ObservedObject var projectIndex: ProjectIndexStore
     @ObservedObject var contextSummary: ContextSummaryStore
     @ObservedObject var meetingRecorder: MeetingRecorder
@@ -188,7 +191,7 @@ struct MainView: View {
         case .dashboard:
             DashboardView(settings: settings, stats: stats, history: history,
                           activity: activity, appUsage: appUsage,
-                          contextSummary: contextSummary, router: router)
+                          scratchpad: scratchpad, router: router)
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore, settings: settings)
         case .dictionary:
@@ -196,7 +199,8 @@ struct MainView: View {
         case .memory:
             MemoryView(contextGraph: contextGraph, history: history,
                        searchEngine: searchEngine, meetingStore: meetingStore,
-                       wordFreq: wordFreq, contextSummary: contextSummary)
+                       wordFreq: wordFreq, scratchpad: scratchpad,
+                       contextSummary: contextSummary)
         case .commands:
             CommandsView(settings: settings, macros: macros,
                          commandRouter: commandRouter, hud: hud,

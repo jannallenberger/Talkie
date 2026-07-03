@@ -11,8 +11,6 @@ enum SpeedBenchmark {
     static let worldRecord = 212.0
 }
 
-private enum BriefRoute: Hashable { case detail }
-
 // MARK: - Dashboard
 
 struct DashboardView: View {
@@ -21,7 +19,7 @@ struct DashboardView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var activity: ActivityStore
     @ObservedObject var appUsage: AppUsageStore
-    @ObservedObject var contextSummary: ContextSummaryStore
+    @ObservedObject var scratchpad: ScratchpadStore
     @ObservedObject var router: SettingsRouter
 
     // Adaptive columns reflow with the window width — no fixed widths to overflow.
@@ -36,7 +34,7 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: Theme.Space.section) {
                     header
 
-                    BriefBanner(summary: contextSummary)
+                    ScratchpadCard(scratchpad: scratchpad)
 
                     // Equal-height cards take two cooperating pieces: the outer
                     // `.frame(maxHeight: .infinity, alignment: .top)` top-aligns
@@ -61,9 +59,6 @@ struct DashboardView: View {
             }
             .background(LiveBackground(mood: .ambient))
             .scrollContentBackground(.hidden)
-            .navigationDestination(for: BriefRoute.self) { _ in
-                BriefDetailView(summary: contextSummary, history: history)
-            }
         }
     }
 
@@ -104,217 +99,6 @@ private struct Wordmark: View {
             Text("Talkie")
                 .font(.talkieDisplay(20))
                 .foregroundStyle(Theme.ink)
-        }
-    }
-}
-
-// MARK: - Today's Brief — stylized banner → detail subpage
-
-private struct BriefBanner: View {
-    @ObservedObject var summary: ContextSummaryStore
-
-    var body: some View {
-        NavigationLink(value: BriefRoute.detail) {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles").font(.system(size: 11, weight: .semibold))
-                        Text("TODAY'S BRIEF").font(.talkieEyebrow).tracking(0.8)
-                    }
-                    .foregroundStyle(.white.opacity(0.75))
-                    Text(headline)
-                        .font(.talkieDisplay(22))
-                        .foregroundStyle(.white)
-                    Text(subline)
-                        .font(.talkieHeading(13, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.72))
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 16)
-                // Clay-feather wings as a clean inline accent (generated brand art).
-                if let wings = Brand.image("FeatherWings") {
-                    Image(nsImage: wings)
-                        .resizable().scaledToFit()
-                        .frame(height: 82)
-                        .opacity(0.95)
-                        .accessibilityHidden(true)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.4))
-            }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(bannerBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 10)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var bannerBackground: some View {
-        LinearGradient(
-            colors: [Color(nsColor: NSColor(hex: 0x16181D)), Color(nsColor: NSColor(hex: 0x0B0C0F))],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-    }
-
-    private var headline: String {
-        if !summary.isAvailable { return "Make sense of your day" }
-        return summary.summary.isEmpty ? "Catch up on your day" : "Your day, briefed"
-    }
-
-    private var subline: String {
-        if !summary.isAvailable { return "Turn on Apple Intelligence for an on-device brief." }
-        if summary.summary.isEmpty { return "Generate a private brief of everything you dictated." }
-        if let at = summary.generatedAt {
-            let f = RelativeDateTimeFormatter(); f.unitsStyle = .short
-            return "Updated \(f.localizedString(for: at, relativeTo: Date())) · tap to read"
-        }
-        return "Tap to read your brief"
-    }
-}
-
-/// Full-page brief (pushed from the banner).
-private struct BriefDetailView: View {
-    @ObservedObject var summary: ContextSummaryStore
-    @ObservedObject var history: HistoryStore
-
-    /// Which "Save to notes" state the button is showing. Idle → the save action;
-    /// saving → a spinner; saved/failed → a brief inline confirmation that reverts
-    /// to idle. Purely local UI feedback (the dashboard has no HUD pill), mirroring
-    /// the honest, low-key confirmations used elsewhere.
-    private enum SaveState: Equatable { case idle, saving, saved(String), failed }
-    @State private var saveState: SaveState = .idle
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Today's Brief")
-                            .font(.talkieDisplay(26))
-                            .foregroundStyle(Theme.ink)
-                        Text(subtitle)
-                            .font(.talkieHeading(13, weight: .regular))
-                            .foregroundStyle(Theme.inkSecondary)
-                    }
-                    Spacer()
-                    // "Save to notes" writes the brief to the export destination as
-                    // {date}-brief.md — one file per day (a re-save overwrites). Only
-                    // meaningful once a brief exists; hidden until then so the header
-                    // isn't cluttered on the empty state.
-                    if !summary.summary.isEmpty {
-                        saveButton
-                    }
-                    Button {
-                        Task { await summary.refresh(from: history) }
-                    } label: {
-                        if summary.isGenerating {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("Regenerate", systemImage: "arrow.clockwise")
-                        }
-                    }
-                    .disabled(summary.isGenerating || !summary.isAvailable)
-                }
-
-                content
-            }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(Theme.canvas)
-        .navigationTitle("")
-    }
-
-    /// The "Save to notes" control, reflecting `saveState`. Kept plain (a
-    /// `Label`/text button, no invented styling) so it sits beside "Regenerate"
-    /// consistently.
-    @ViewBuilder
-    private var saveButton: some View {
-        switch saveState {
-        case .idle:
-            Button { saveBrief() } label: { Label("Save to notes", systemImage: "square.and.arrow.down") }
-        case .saving:
-            ProgressView().controlSize(.small)
-        case .saved(let where_):
-            Label(where_, systemImage: "checkmark")
-                .font(.talkieHeading(12, weight: .medium))
-                .foregroundStyle(Theme.positive)
-        case .failed:
-            Button { saveBrief() } label: {
-                Label("Couldn't save — retry", systemImage: "exclamationmark.triangle")
-            }
-            .foregroundStyle(.orange)
-        }
-    }
-
-    /// Compose the brief note (pure) and write it through the resolved export
-    /// destination on a detached task, with the same never-throw fallback the
-    /// meeting/dictation writers use (resolved destination → default Talkie folder
-    /// on throw). Reflects the outcome in `saveState`; the "saved" confirmation
-    /// reverts to idle after a moment so a second same-day save is easy.
-    private func saveBrief() {
-        let text = summary.summary
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        saveState = .saving
-        let note = NoteComposers.briefNote(summary: text, date: summary.generatedAt ?? Date())
-        let destination = ExportPreferences.shared.resolvedDestination()
-        let savedMessage = String(format: "Saved to %@".loc, destination.displayName)
-        Task {
-            var ok = true
-            do {
-                _ = try await destination.write(note)
-            } catch {
-                do { _ = try await TalkieFolderDestination().write(note) }
-                catch { ok = false }
-            }
-            await MainActor.run {
-                saveState = ok ? .saved(savedMessage) : .failed
-            }
-            if ok {
-                try? await Task.sleep(for: .seconds(2.4))
-                await MainActor.run { if case .saved = saveState { saveState = .idle } }
-            }
-        }
-    }
-
-    private var subtitle: String {
-        guard let at = summary.generatedAt, !summary.summary.isEmpty else {
-            return "An on-device summary of what you worked on."
-        }
-        let f = RelativeDateTimeFormatter(); f.unitsStyle = .full
-        return "Generated \(f.localizedString(for: at, relativeTo: Date()))."
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if !summary.isAvailable {
-            EmptyHint(icon: "sparkles",
-                      text: "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to get an on-device brief of your day.")
-        } else if summary.summary.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                EmptyHint(icon: "text.append",
-                          text: history.entries.isEmpty
-                          ? "Dictate through your day, then generate a brief of what you worked on."
-                          : "Generate a brief from your recent dictations.")
-                Button {
-                    Task { await summary.refresh(from: history) }
-                } label: { Label("Generate brief", systemImage: "sparkles") }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
-                    .disabled(history.entries.isEmpty || summary.isGenerating)
-            }
-            .talkieCard()
-        } else {
-            MarkdownText(markdown: summary.summary, bulletColor: Theme.coral)
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.ink)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .talkieCard()
         }
     }
 }
