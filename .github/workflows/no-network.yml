@@ -1,0 +1,122 @@
+# no-network.yml — anti-rot self-test for the zero-network gate (work package I4).
+#
+# WHY THIS EXISTS ALONGSIDE ci.yml (reconciliation note):
+#   J1's ci.yml already RUNS scripts/check-no-network.sh on every push/PR (its
+#   `gates` job), so the live scan of the real tree is covered there and is NOT
+#   duplicated here. What ci.yml does NOT do is prove the gate can still FAIL.
+#   A grep gate that silently degrades into "always exits 0" — a bad refactor, a
+#   swallowed error, a pattern typo — would pass CI forever while enforcing
+#   nothing. This workflow is the smoke detector for that failure mode: it feeds
+#   the script known-bad fixtures and asserts it rejects them, and one known-good
+#   audited exception and asserts it is accepted AND surfaced. It guards the
+#   mechanism, not the tree.
+#
+#   If you ever fold this into ci.yml, keep the four assertions below — they are
+#   the acceptance criteria of I4 expressed as an executable test.
+#
+# Portable by construction: ubuntu-latest, bash + GNU awk/grep only (the script
+# itself is POSIX awk/grep; see the portability note in ci.yml's gates job).
+
+name: No-Network Gate Self-Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: no-network-selftest-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selftest:
+    name: check-no-network.sh cannot rot into always-pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # Baseline: the real tree must PASS. If this fails, the tree has a genuine
+      # violation and that is ci.yml's job to report — but we assert it here too
+      # so a broken script (e.g. one that fails on everything) is distinguishable
+      # from a genuinely dirty tree.
+      - name: Real tree passes
+        run: ./scripts/check-no-network.sh
+
+      # The anti-rot assertions. Each writes ONE throwaway fixture under
+      # Sources/Talkie/, runs the real script, checks the exit code, and deletes
+      # the fixture. The fixture is never committed (the job runs on an ephemeral
+      # checkout), and a trap guarantees cleanup even if an assertion aborts.
+      - name: Gate rejects violations and honours audited exceptions
+        run: |
+          set -euo pipefail
+
+          FIX="Sources/Talkie/__ci_no_network_selftest__.swift"
+          trap 'rm -f "$FIX"' EXIT
+
+          # Runs the gate against the current tree (+ whatever fixture is present)
+          # and returns its exit code without tripping `set -e`.
+          run_gate() {
+            local out rc
+            out="$(./scripts/check-no-network.sh 2>&1)" && rc=0 || rc=$?
+            LAST_OUT="$out"
+            return "$rc"
+          }
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          # ── Assertion 1: an un-annotated https:// literal MUST fail (loophole fix).
+          printf '%s\n' \
+            '// CI self-test fixture — auto-deleted.' \
+            'import Foundation' \
+            'enum __CI_A { static let u = "https://example.com/x" }' > "$FIX"
+          if run_gate; then
+            fail "gate PASSED an un-annotated https:// literal — the URL loophole is open"
+          fi
+          echo "OK: un-annotated https:// literal is rejected"
+
+          # ── Assertion 2: URLSession MUST fail even WITH a marker (hard ban).
+          printf '%s\n' \
+            '// CI self-test fixture — auto-deleted.' \
+            'import Foundation' \
+            'enum __CI_B { static func f() { _ = URLSession.shared // talkie:no-network(browser-handoff)' \
+            '} }' > "$FIX"
+          if run_gate; then
+            fail "gate PASSED URLSession behind a marker — a marker must never excuse a hard API"
+          fi
+          echo "OK: marked URLSession is still rejected"
+
+          # ── Assertion 3: an unknown reason tag MUST fail.
+          printf '%s\n' \
+            '// CI self-test fixture — auto-deleted.' \
+            'import Foundation' \
+            'enum __CI_C { static let u = "https://example.com/x" // talkie:no-network(made-up) }' > "$FIX"
+          if run_gate; then
+            fail "gate PASSED an unknown reason tag — the reason allow-list is not enforced"
+          fi
+          echo "OK: unknown reason tag is rejected"
+
+          # ── Assertion 4: a valid browser-handoff marker MUST pass AND be listed.
+          printf '%s\n' \
+            '// CI self-test fixture — auto-deleted.' \
+            'import Foundation' \
+            'enum __CI_D { static let u = "https://example.com/x" // talkie:no-network(browser-handoff) }' > "$FIX"
+          if ! run_gate; then
+            fail "gate REJECTED a validly-marked browser-handoff URL — audited exceptions are broken"
+          fi
+          if ! printf '%s\n' "$LAST_OUT" | grep -q "audited exception"; then
+            fail "gate PASSED the marked URL but did NOT list it — the loud PASS report is missing"
+          fi
+          if ! printf '%s\n' "$LAST_OUT" | grep -q "__ci_no_network_selftest__.*browser-handoff"; then
+            fail "the audited-exception listing did not print the exception line verbatim"
+          fi
+          echo "OK: validly-marked exception passes and is printed in the PASS report"
+
+          rm -f "$FIX"
+          echo "All four no-network gate self-tests passed."
