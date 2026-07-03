@@ -293,6 +293,18 @@ final class AppSettings: ObservableObject {
     @Published var vibeCoding: Bool {
         didSet { defaults.set(vibeCoding, forKey: Keys.vibeCoding) }
     }
+    /// Project roots the user declined the one-tap "Index 〈Repo〉 filenames?" offer
+    /// for (A9). Sticky per root so a decline is honored forever — we never re-offer
+    /// the same repo. Hidden state only (no settings row); the manual Vibe Coding
+    /// toggle + folder picker remain the visible override.
+    @Published var declinedVibeRoots: [String] {
+        didSet { defaults.set(declinedVibeRoots, forKey: Keys.declinedVibeRoots) }
+    }
+    /// Unix time of the most recent Vibe Coding offer, so we show at most one a day
+    /// and never nag. Hidden state only. `0` means "never offered".
+    @Published var lastVibeOfferUnix: Double {
+        didSet { defaults.set(lastVibeOfferUnix, forKey: Keys.lastVibeOfferUnix) }
+    }
     /// What Talkie calls you (set during onboarding; shown on the dashboard).
     @Published var userName: String {
         didSet { defaults.set(userName, forKey: Keys.userName) }
@@ -342,6 +354,36 @@ final class AppSettings: ObservableObject {
         NotificationCenter.default.post(name: .talkieSettingsChanged, object: nil)
     }
 
+    // MARK: - Vibe Coding in-context offer (A9)
+
+    /// Whether the one-tap "Index 〈Repo〉 filenames?" offer may be shown for `root`
+    /// right now: vibe coding is still off, this exact root was never declined, and
+    /// we haven't already offered today. Pure decision — `now` is injected so the
+    /// throttle is testable. The caller has already resolved `root` to a real git
+    /// working copy via `ProjectRootDetector`.
+    func mayOfferVibeIndexing(forRoot root: String, now: Date = Date()) -> Bool {
+        guard !vibeCoding else { return false }
+        guard !declinedVibeRoots.contains(root) else { return false }
+        // At most one offer per calendar day-ish window (24h), so a burst of coding
+        // dictations can't turn into a pile of pills.
+        if lastVibeOfferUnix > 0,
+           now.timeIntervalSince1970 - lastVibeOfferUnix < 24 * 60 * 60 {
+            return false
+        }
+        return true
+    }
+
+    /// Record that an offer was just shown (starts the once-a-day throttle).
+    func noteVibeOfferShown(now: Date = Date()) {
+        lastVibeOfferUnix = now.timeIntervalSince1970
+    }
+
+    /// Remember that the user declined the offer for `root` — never re-offer it.
+    func declineVibeRoot(_ root: String) {
+        guard !declinedVibeRoots.contains(root) else { return }
+        declinedVibeRoots.append(root)
+    }
+
     init() {
         let d = UserDefaults.standard
         d.register(defaults: [
@@ -361,6 +403,7 @@ final class AppSettings: ObservableObject {
             Keys.pasteLastShortcutEnabled: true,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
+            Keys.lastVibeOfferUnix: 0.0,
             Keys.userName: "",
             Keys.hasOnboarded: false,
             Keys.playSounds: true,
@@ -422,6 +465,8 @@ final class AppSettings: ObservableObject {
             ?? AppSettings.defaultAppCleanupStyles
         contextAwareness = d.bool(forKey: Keys.contextAwareness)
         vibeCoding = d.bool(forKey: Keys.vibeCoding)
+        declinedVibeRoots = d.stringArray(forKey: Keys.declinedVibeRoots) ?? []
+        lastVibeOfferUnix = d.double(forKey: Keys.lastVibeOfferUnix)
         userName = d.string(forKey: Keys.userName) ?? ""
         hasOnboarded = d.bool(forKey: Keys.hasOnboarded)
         playSounds = d.bool(forKey: Keys.playSounds)
@@ -552,6 +597,8 @@ final class AppSettings: ObservableObject {
         static let appCleanupStyles = "appCleanupStyles"
         static let contextAwareness = "contextAwareness"
         static let vibeCoding = "vibeCoding"
+        static let declinedVibeRoots = "declinedVibeRoots"
+        static let lastVibeOfferUnix = "lastVibeOfferUnix"
         static let userName = "userName"
         static let hasOnboarded = "hasOnboarded"
         static let playSounds = "playSounds"

@@ -349,3 +349,13 @@
 "Signature: %@" = "签名：%@";
 "Version: %@" = "版本：%@";
 "Taken: %@" = "生成时间：%@";
+
+/* A9 — Vibe Coding in-context offer */
+"Index %@ filenames?" = "索引 %@ 的文件名？";
+"Index the project %@ so spoken filenames snap to its real files?" = "索引项目 %@，让说出的文件名对应到真实文件？";
+"Turns on Vibe Coding and indexes this project's filenames." = "开启 Vibe Coding 并索引此项目的文件名。";
+"Dismisses the offer for this project." = "关闭此项目的提示。";
+"Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss." = "Talkie 找到了项目 %@。选择“索引”让说出的文件名对应到真实文件，或选择“暂不”关闭。";
+"Indexing %@ — spoken filenames will snap to real files" = "正在索引 %@ — 说出的文件名将对应到真实文件";
+"Index" = "索引";
+"Not now" = "暂不";

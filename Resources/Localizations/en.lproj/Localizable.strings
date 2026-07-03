@@ -349,3 +349,13 @@
 "Signature: %@" = "Signature: %@";
 "Version: %@" = "Version: %@";
 "Taken: %@" = "Taken: %@";
+
+/* A9 — Vibe Coding in-context offer */
+"Index %@ filenames?" = "Index %@ filenames?";
+"Index the project %@ so spoken filenames snap to its real files?" = "Index the project %@ so spoken filenames snap to its real files?";
+"Turns on Vibe Coding and indexes this project's filenames." = "Turns on Vibe Coding and indexes this project's filenames.";
+"Dismisses the offer for this project." = "Dismisses the offer for this project.";
+"Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss." = "Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss.";
+"Indexing %@ — spoken filenames will snap to real files" = "Indexing %@ — spoken filenames will snap to real files";
+"Index" = "Index";
+"Not now" = "Not now";

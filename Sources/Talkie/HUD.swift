@@ -42,6 +42,10 @@ enum HUDPhase: Equatable {
     // spells out the gesture ("Hold to talk · tap twice to lock") instead of just
     // vanishing. Non-interactive; auto-hides.
     case gestureHint
+    // The first-run Vibe Coding offer (A9): the repo name we discovered, with an
+    // "Index" chip (turn the feature on + index this repo) and a "Not now" chip
+    // (decline this root forever). Auto-dismisses; ignoring it just means "not now".
+    case offerVibe(repo: String)
     case error(String)
 }
 
@@ -73,6 +77,10 @@ final class HUDModel: ObservableObject {
     var onCommandUndo: () -> Void = {}
     /// Invoked when the user taps "Undo" on a learned-correction ping.
     var onLearnedUndo: () -> Void = {}
+    /// Invoked when the user taps "Index" on the Vibe Coding offer (A9).
+    var onVibeAccept: () -> Void = {}
+    /// Invoked when the user taps "Not now" on the Vibe Coding offer (A9).
+    var onVibeDecline: () -> Void = {}
     /// How long the learned-correction ping stays up; the countdown ring depletes
     /// over exactly this window before the pill collapses.
     static let learnedDuration: TimeInterval = 5
@@ -152,6 +160,21 @@ final class HUDController {
     private let model = HUDModel()
     private var panel: NSPanel?
     private var hideTask: Task<Void, Never>?
+
+    /// True while an *interactive or lingering* pill occupies the notch — a command
+    /// preview, a learned-correction ping, the copy-prompt, another Vibe offer, or an
+    /// error. Used by the hub to hold back the A9 Vibe offer so it never overwrites a
+    /// pill the user is still reading or acting on (queue phases). The brief,
+    /// self-clearing capture/insert states don't count — the offer waits out its own
+    /// short delay for those.
+    var isPresentingInteractivePill: Bool {
+        switch model.phase {
+        case .commandPreview, .learned, .copyPrompt, .offerVibe, .error:
+            return true
+        default:
+            return false
+        }
+    }
 
     // Compact panel — the transparent canvas the pill floats in. The pill hugs the
     // notch (top-anchored), so the extra height below is transparent headroom: it
@@ -412,6 +435,40 @@ final class HUDController {
         // there) for a VoiceOver user who can't see the transient pill.
         announce(String(format: "%@ Activate Undo to remove it.".loc, message))
         hide(after: HUDModel.learnedDuration)
+    }
+
+    /// How long the Vibe Coding offer stays up. A touch longer than a learned ping
+    /// because it's a question, not a passive confirmation — but still bounded, since
+    /// ignoring it means "not now" (and we never re-offer more than once a day).
+    static let vibeOfferDuration: TimeInterval = 8
+
+    /// The first-run Vibe Coding offer (A9): we discovered a real git repo behind
+    /// the editor/terminal you just dictated into, so offer one tap to index its
+    /// filenames. Mouse events are enabled so both chips are tappable; auto-dismisses
+    /// (ignoring it just means "not now"). `onAccept`/`onDecline` are the hub's
+    /// closures — accept flips on vibe coding + indexes the repo; decline remembers
+    /// this root so it's never offered again. Modeled on `showLearned`.
+    func showVibeOffer(repo: String,
+                       onAccept: @escaping () -> Void,
+                       onDecline: @escaping () -> Void) {
+        cancelHide()
+        let panel = ensurePanel()
+        model.onVibeAccept = { [weak self] in
+            self?.panel?.ignoresMouseEvents = true
+            onAccept()
+        }
+        model.onVibeDecline = { [weak self] in
+            self?.panel?.ignoresMouseEvents = true
+            onDecline()
+        }
+        panel.ignoresMouseEvents = false   // let the user tap Index / Not now
+        model.phase = .offerVibe(repo: repo)
+        reposition()
+        panel.orderFrontRegardless()
+        // The offer auto-dismisses, so spell it out for a VoiceOver user who can't
+        // see the transient pill.
+        announce(String(format: "Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss.".loc, repo))
+        hide(after: HUDController.vibeOfferDuration)
     }
 
     /// Brief "Reverted" confirmation after an Undo — mirrors `.copied`.
@@ -876,6 +933,32 @@ private struct HUDView: View {
                 CommandChip(title: "Undo", prominent: false,
                             fill: chipFill(0.13), ink: ink(0.72),
                             hint: "Removes this learned correction.".loc) { model.onLearnedUndo() }
+            }
+            .transition(.blurReplace)
+            .accessibilityElement(children: .contain)
+        case .offerVibe(let repo):
+            // First-run Vibe Coding offer (A9): we found a real git repo behind the
+            // editor/terminal. One tap to index it. Two chips: Index (turn it on +
+            // index this repo) and Not now (decline this root forever). Same visual
+            // family as the learned/command pills.
+            HStack(spacing: 8) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.coral)
+                    .accessibilityHidden(true)
+                Text(String(format: "Index %@ filenames?".loc, repo))
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.92))
+                    .lineLimit(1)
+                    .frame(maxWidth: 300, alignment: .leading)
+                    .accessibilityLabel(
+                        String(format: "Index the project %@ so spoken filenames snap to its real files?".loc, repo))
+                CommandChip(title: "Index", prominent: true,
+                            fill: chipFill(0.18), ink: ink(0.72),
+                            hint: "Turns on Vibe Coding and indexes this project's filenames.".loc) { model.onVibeAccept() }
+                CommandChip(title: "Not now", prominent: false,
+                            fill: chipFill(0.13), ink: ink(0.72),
+                            hint: "Dismisses the offer for this project.".loc) { model.onVibeDecline() }
             }
             .transition(.blurReplace)
             .accessibilityElement(children: .contain)

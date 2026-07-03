@@ -349,3 +349,13 @@
 "Signature: %@" = "Firma: %@";
 "Version: %@" = "Versione: %@";
 "Taken: %@" = "Acquisita: %@";
+
+/* A9 — Vibe Coding in-context offer */
+"Index %@ filenames?" = "Indicizzare i nomi dei file di %@?";
+"Index the project %@ so spoken filenames snap to its real files?" = "Indicizzare il progetto %@ così i nomi dei file dettati si allineano ai file reali?";
+"Turns on Vibe Coding and indexes this project's filenames." = "Attiva Vibe Coding e indicizza i nomi dei file di questo progetto.";
+"Dismisses the offer for this project." = "Ignora la proposta per questo progetto.";
+"Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss." = "Talkie ha trovato il progetto %@. Attiva «Indicizza» per allineare i nomi dei file dettati ai file reali, oppure «Non ora» per ignorare.";
+"Indexing %@ — spoken filenames will snap to real files" = "Indicizzazione di %@ — i nomi dei file dettati si allineeranno ai file reali";
+"Index" = "Indicizza";
+"Not now" = "Non ora";

@@ -349,3 +349,13 @@
 "Signature: %@" = "서명: %@";
 "Version: %@" = "버전: %@";
 "Taken: %@" = "생성 시각: %@";
+
+/* A9 — Vibe Coding in-context offer */
+"Index %@ filenames?" = "%@의 파일 이름을 인덱싱할까요?";
+"Index the project %@ so spoken filenames snap to its real files?" = "말한 파일 이름이 실제 파일에 맞춰지도록 프로젝트 %@를 인덱싱할까요?";
+"Turns on Vibe Coding and indexes this project's filenames." = "Vibe Coding을 켜고 이 프로젝트의 파일 이름을 인덱싱합니다.";
+"Dismisses the offer for this project." = "이 프로젝트에 대한 제안을 닫습니다.";
+"Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss." = "Talkie가 프로젝트 %@를 찾았습니다. 말한 파일 이름을 실제 파일에 맞추려면 '인덱싱'을, 닫으려면 '나중에'를 선택하세요.";
+"Indexing %@ — spoken filenames will snap to real files" = "%@ 인덱싱 중 — 말한 파일 이름이 실제 파일에 맞춰집니다";
+"Index" = "인덱싱";
+"Not now" = "나중에";

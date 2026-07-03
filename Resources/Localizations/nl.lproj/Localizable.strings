@@ -349,3 +349,13 @@
 "Signature: %@" = "Handtekening: %@";
 "Version: %@" = "Versie: %@";
 "Taken: %@" = "Gemaakt: %@";
+
+/* A9 — Vibe Coding in-context offer */
+"Index %@ filenames?" = "Bestandsnamen van %@ indexeren?";
+"Index the project %@ so spoken filenames snap to its real files?" = "Het project %@ indexeren zodat uitgesproken bestandsnamen op de echte bestanden aansluiten?";
+"Turns on Vibe Coding and indexes this project's filenames." = "Schakelt Vibe Coding in en indexeert de bestandsnamen van dit project.";
+"Dismisses the offer for this project." = "Sluit het aanbod voor dit project.";
+"Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss." = "Talkie vond het project %@. Activeer 'Indexeren' om uitgesproken bestandsnamen op de echte bestanden te laten aansluiten, of 'Niet nu' om te sluiten.";
+"Indexing %@ — spoken filenames will snap to real files" = "%@ wordt geïndexeerd — uitgesproken bestandsnamen sluiten aan op echte bestanden";
+"Index" = "Indexeren";
+"Not now" = "Niet nu";

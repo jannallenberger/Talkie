@@ -115,6 +115,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentStreaming: StreamingCleanup?
     /// The project file index snapshot to apply to the current dictation (vibe coding).
     private var currentVibeSnapshot: ProjectIndexSnapshot = .empty
+    /// A discoverable project root behind the editor/terminal being dictated into,
+    /// stashed at session start when vibe coding is OFF and the root is offer-worthy
+    /// (A9). Consumed once, after a successful insertion, to show the one-tap "Index
+    /// 〈Repo〉 filenames?" offer. `nil` when there's nothing to offer.
+    private var pendingVibeOfferRoot: URL?
 
     // MARK: Meeting auto-detect + live pill
 
@@ -718,6 +723,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         currentTarget = captured.target
         currentVibeSnapshot = settings.vibeCoding ? projectIndex.snapshot : .empty
+
+        // A9 — Vibe Coding turns itself on. When the feature is OFF and you're
+        // dictating into an editor/terminal, try to discover the real git repo behind
+        // the window title; if we find one that's offer-worthy (never declined, not
+        // already offered today), stash it so a successful insertion can surface the
+        // one-tap "Index 〈Repo〉 filenames?" offer. The detector prefers a false
+        // negative over a false positive — a wrong-repo offer would burn trust — and
+        // `windowTitle` is nil unless context awareness is on, so the offer silently
+        // never fires when that setting is off (accepted per the spec).
+        pendingVibeOfferRoot = nil
+        if !settings.vibeCoding,
+           captured.target.category == .coding || captured.target.category == .terminal,
+           let root = ProjectRootDetector.resolveRoot(
+               bundleID: captured.target.bundleID, windowTitle: captured.windowTitle),
+           settings.mayOfferVibeIndexing(forRoot: root.path) {
+            pendingVibeOfferRoot = root
+        }
 
         // Resolve the per-app rules for this app once, here on the main actor
         // (global → per-category → per-app merge, falling back to `settings.*`
@@ -1474,6 +1496,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         )
                     }
                 }
+                // A9 — offer to turn on Vibe Coding for the repo we discovered at
+                // session start (if any). Queued behind the insertion/learning pills
+                // so it never collides with them; a no-op when there's nothing to
+                // offer or the throttle/decline gates say no.
+                self.maybeOfferVibeIndexing()
             case .leftOnClipboard(let reason):
                 Feedback.notPasted()
                 // Couldn't paste — the text is on the clipboard; offer a tap to
@@ -1550,6 +1577,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.hud.hide()
             }
         )
+    }
+
+    // MARK: Vibe Coding in-context offer (A9)
+
+    /// After a successful dictation into an editor/terminal, surface the one-tap
+    /// "Index 〈Repo〉 filenames?" offer for the repo discovered at session start —
+    /// so the flagship dev feature stops being invisible. Consumes the stashed root
+    /// once. Re-checks the gates (state may have changed between begin and now), holds
+    /// back while another pill is up, and lets the brief insert/learn pills settle
+    /// before appearing (queue phases). Accept turns Vibe Coding on and indexes the
+    /// repo; decline remembers this root so it's never offered again.
+    private func maybeOfferVibeIndexing() {
+        guard let root = pendingVibeOfferRoot else { return }
+        pendingVibeOfferRoot = nil
+        let rootPath = root.path
+        // Re-check the throttle/decline/enabled gates on the freshest state.
+        guard settings.mayOfferVibeIndexing(forRoot: rootPath) else { return }
+        // The repo name shown in the pill (the folder's own name, e.g. "Talkie").
+        let repo = root.lastPathComponent
+        guard !repo.isEmpty else { return }
+
+        // Let the insertion pill (and any just-fired learned ping) breathe first, then
+        // offer — but only if nothing interactive is on screen and vibe coding is
+        // still off. If a learned ping is up, we simply don't nag this time (we've not
+        // burned the once-a-day budget, so a later dictation can still offer).
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !self.settings.vibeCoding,
+                  !self.isDictating, !self.isProcessing,
+                  !self.hud.isPresentingInteractivePill,
+                  self.settings.mayOfferVibeIndexing(forRoot: rootPath) else { return }
+            self.settings.noteVibeOfferShown()
+            self.hud.showVibeOffer(
+                repo: repo,
+                onAccept: { [weak self] in
+                    guard let self else { return }
+                    self.settings.vibeCoding = true
+                    self.projectIndex.addFolders([root])
+                    self.hud.showSaved(String(format: "Indexing %@ — spoken filenames will snap to real files".loc, repo))
+                },
+                onDecline: { [weak self] in
+                    guard let self else { return }
+                    // Sticky per root: never offer this repo again.
+                    self.settings.declineVibeRoot(rootPath)
+                    self.hud.hide()
+                }
+            )
+        }
     }
 
     // MARK: Paste last transcript (⌥⌘V)
