@@ -80,6 +80,83 @@ final class AppProfileResolveTests: XCTestCase {
         XCTAssertEqual(other.cleanupStyle, settings.cleanupStyle(for: .terminal))
     }
 
+    // MARK: - neverStore ("Private app", I1)
+
+    /// An app with no profile — and one whose profile leaves `neverStore` unset —
+    /// must resolve to `false`, so the store/learn path is unchanged for everyone who
+    /// hasn't marked an app Private.
+    func testNeverStoreResolvesFalseByDefault() {
+        let store = AppProfileStore()
+        let settings = AppSettings()
+
+        // No profile at all.
+        let noProfile = store.resolve(for: app("com.no.profile", category: .browser), settings: settings)
+        XCTAssertFalse(noProfile.neverStore, "An app with no profile is never Private")
+
+        // A profile that overrides something else but leaves neverStore unset.
+        let bundleID = "com.apple.Terminal"
+        store.upsert(AppProfile(bundleID: bundleID, displayName: "Terminal", insertionMode: .type))
+        let resolved = store.resolve(for: app(bundleID, category: .terminal), settings: settings)
+        XCTAssertFalse(resolved.neverStore, "A profile that doesn't set neverStore resolves to not-Private")
+    }
+
+    /// Marking an app Private (`neverStore: true`) resolves to `true` for that app
+    /// only; a different app is unaffected.
+    func testNeverStoreResolvesTrueWhenSet() {
+        let store = AppProfileStore()
+        let settings = AppSettings()
+        let bundleID = "com.1password.1password"
+        store.upsert(AppProfile(bundleID: bundleID, displayName: "1Password", neverStore: true))
+
+        let resolved = store.resolve(for: app(bundleID, category: .other), settings: settings)
+        XCTAssertTrue(resolved.neverStore, "An app marked Private must resolve neverStore = true")
+
+        let other = store.resolve(for: app("com.other.app", category: .other), settings: settings)
+        XCTAssertFalse(other.neverStore, "neverStore is scoped by bundle id — a different app stays not-Private")
+    }
+
+    /// A profile whose ONLY override is `neverStore` must NOT be treated as empty,
+    /// so `upsert` keeps it instead of dropping it as a no-op row.
+    func testNeverStoreOnlyProfileIsNotEmpty() {
+        let onlyPrivate = AppProfile(bundleID: "com.app", displayName: "App", neverStore: true)
+        XCTAssertFalse(onlyPrivate.isEmpty, "A profile carrying only neverStore=true is a real override")
+
+        // neverStore=false / nil are no-ops and must still read as empty.
+        XCTAssertTrue(AppProfile(bundleID: "com.app", displayName: "App", neverStore: false).isEmpty,
+                      "neverStore=false overrides nothing")
+        XCTAssertTrue(AppProfile(bundleID: "com.app", displayName: "App").isEmpty,
+                      "an unset neverStore overrides nothing")
+
+        // And the store must actually persist a private-only profile (not drop it).
+        let store = AppProfileStore()
+        store.upsert(onlyPrivate)
+        XCTAssertNotNil(store.profile(for: "com.app"), "upsert must keep a private-only profile")
+        store.remove(bundleID: "com.app")
+    }
+
+    /// Back-compat: an `app_profiles.json` written before the `neverStore` field
+    /// existed must decode cleanly (absent ⇒ nil ⇒ resolves false), and a sparse
+    /// profile carrying only `neverStore` must survive a decode without being lost.
+    func testNeverStoreSurvivesSparseDecodeOfOldProfilesJSON() throws {
+        // An "old" profile: no neverStore key at all (pre-I1 file shape).
+        let oldJSON = Data("""
+        { "com.apple.Terminal": { "bundleID": "com.apple.Terminal", "displayName": "Terminal", "insertionMode": "type" } }
+        """.utf8)
+        let oldDecoded = try JSONDecoder().decode([String: AppProfile].self, from: oldJSON)
+        XCTAssertNil(oldDecoded["com.apple.Terminal"]?.neverStore,
+                     "A pre-I1 profile with no neverStore key decodes to nil, not a failure")
+
+        // A sparse profile carrying ONLY neverStore round-trips through decode.
+        let sparseJSON = Data("""
+        { "com.private.app": { "bundleID": "com.private.app", "displayName": "Vault", "neverStore": true } }
+        """.utf8)
+        let sparseDecoded = try JSONDecoder().decode([String: AppProfile].self, from: sparseJSON)
+        let p = try XCTUnwrap(sparseDecoded["com.private.app"], "a neverStore-only profile must decode")
+        XCTAssertEqual(p.neverStore, true, "the neverStore flag survives a sparse decode")
+        XCTAssertFalse(p.isEmpty, "a decoded neverStore-only profile is not empty")
+        XCTAssertNil(p.cleanupStyle, "no other field is invented by the decode")
+    }
+
     // MARK: - biasVocabulary filtering
 
     func testBiasVocabularyAppliesProfileFilter() {

@@ -313,6 +313,7 @@
 "Subtitles (.vtt)" = "Subtítulos (.vtt)";
 "Spreadsheet (.csv)" = "Hoja de cálculo (.csv)";
 "Data (.json)" = "Datos (.json)";
+"Chapters (.txt)" = "Capítulos (.txt)";
 
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "Guardado en %@";
@@ -426,6 +427,24 @@
 "Relaunch now" = "Reiniciar ahora";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "La monitorización de entrada está concedida, pero Talkie necesita reiniciarse para oír tu tecla.";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "La monitorización de entrada está activa, pero Talkie necesita un reinicio rápido para oír tu tecla.";
+/* K8 — Improve Talkie: one-click redacted bug bundle */
+"Improve Talkie" = "Mejorar Talkie";
+"Builds a diagnostic bundle — version, this Mac's setup, your settings, and a redacted tail of the debug log — so a bug report has what it needs. You see the whole thing before anything is copied, and your name, dictionary, history, and dictated words are never included." = "Crea un paquete de diagnóstico —versión, configuración de este Mac, tus ajustes y un fragmento censurado del registro de depuración— para que un informe de errores tenga lo que necesita. Ves todo antes de copiar nada, y tu nombre, diccionario, historial y palabras dictadas nunca se incluyen.";
+"Diagnostic bundle" = "Paquete de diagnóstico";
+"Review it in full, then copy — nothing is copied until you do" = "Revísalo por completo y luego copia: no se copia nada hasta que lo hagas";
+"Review…" = "Revisar…";
+"Report a bug" = "Informar de un error";
+"Opens Talkie's GitHub in your browser to file an issue" = "Abre el GitHub de Talkie en tu navegador para crear una incidencia";
+"Open GitHub" = "Abrir GitHub";
+"This is exactly what will be copied — read it first. Nothing has been copied yet." = "Esto es exactamente lo que se copiará: léelo primero. Aún no se ha copiado nada.";
+"Close" = "Cerrar";
+"Copy" = "Copiar";
+
+// I1 — Private app (neverStore)
+"Private app" = "App privada";
+"Dictation works here, but Talkie keeps no history and learns nothing." = "El dictado funciona aquí, pero Talkie no guarda historial ni aprende nada.";
+"Private" = "Privada";
+"Private app — kept no history, learned nothing." = "App privada: no guardó historial ni aprendió nada.";
 
 // L2-a — dashboard Scratchpad (notes/tasks + failed-insertion rescue)
 "Scratchpad" = "Bloc de notas";

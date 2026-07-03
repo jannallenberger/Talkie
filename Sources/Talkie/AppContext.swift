@@ -44,27 +44,49 @@ enum ContextCapture {
     /// context-awareness setting is off we still capture the target app for the
     /// usage dashboard, but skip mining names to bias the recognizer.
     static func capture(selfBundleID: String, minePhrases: Bool) -> CapturedContext {
-        guard let front = NSWorkspace.shared.frontmostApplication else { return .empty }
+        let (target, pid) = frontTarget(selfBundleID: selfBundleID)
+        guard target.bundleID != nil || target.name != "Unknown" || pid != 0 else { return .empty }
+        // Respect the setting and never mine Talkie's own UI.
+        guard minePhrases, target.bundleID != selfBundleID else {
+            return CapturedContext(target: target, phrases: [], windowTitle: nil, processID: pid)
+        }
+        return mine(target: target, pid: pid)
+    }
 
+    /// The cheap half: read the frontmost app's identity (bundle id, name, category)
+    /// and its process id via `NSWorkspace` — **no Accessibility reads at all**. This
+    /// is deliberately split out from `mine` so a caller can decide *whether* to read
+    /// the focused text (the privacy-sensitive part) only AFTER resolving the app's
+    /// profile. A "Private app" must never have its focused field read, so the
+    /// dictation pipeline calls this first, resolves `neverStore`, and only then calls
+    /// `mine` when storing/learning is actually allowed. Returns `.unknown` + pid 0
+    /// when there's no frontmost app.
+    static func frontTarget(selfBundleID: String) -> (TargetApp, pid_t) {
+        guard let front = NSWorkspace.shared.frontmostApplication else { return (.unknown, 0) }
         let name = front.localizedName ?? "Unknown"
         let bundleID = front.bundleIdentifier
         let category = AppCategory.classify(bundleID: bundleID, name: name)
-        let target = TargetApp(bundleID: bundleID, name: name, category: category)
+        return (TargetApp(bundleID: bundleID, name: name, category: category),
+                front.processIdentifier)
+    }
 
-        // Don't mine Talkie's own UI for context, and respect the setting.
-        if !minePhrases || bundleID == selfBundleID {
-            return CapturedContext(target: target, phrases: [], windowTitle: nil,
-                                   processID: front.processIdentifier)
-        }
-
+    /// The costly half: the Accessibility reads (focused window title + the text
+    /// around the cursor) that turn the target into a bias set of names/identifiers.
+    /// Called ONLY when context awareness is on AND the app is not marked "Private" —
+    /// so for an excluded app the focused field is never read at all (not
+    /// read-and-discarded). The `talkieDebugLog` line makes that observable: its
+    /// presence in the session log means an AX read happened; its ABSENCE for a
+    /// Private app is the verifiable proof that none did.
+    static func mine(target: TargetApp, pid: pid_t) -> CapturedContext {
+        talkieDebugLog("context: mining AX phrases for \(target.name) (pid \(pid))")
         var sources: [String] = []
-        let windowTitle = focusedWindowTitle(pid: front.processIdentifier)
+        let windowTitle = focusedWindowTitle(pid: pid)
         if let windowTitle { sources.append(windowTitle) }
         if let near = focusedText() { sources.append(near) }
 
         let phrases = PhraseMiner.mine(from: sources)
         return CapturedContext(target: target, phrases: phrases, windowTitle: windowTitle,
-                               processID: front.processIdentifier)
+                               processID: pid)
     }
 
     // MARK: Accessibility reads

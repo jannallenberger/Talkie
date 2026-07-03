@@ -34,13 +34,23 @@ struct AppProfile: Codable, Identifiable, Sendable, Hashable {
     /// field — the model carries it now so feature 11 needs no data migration later.
     var activeMacroIDs: [String]?
 
+    /// Marks this app "Private": dictation still types the text, but Talkie stores
+    /// NOTHING and learns NOTHING from it — no history entry, no context-graph
+    /// provenance, no app-usage record, no niche-vocabulary harvest, and no
+    /// learn-from-edits watcher. `nil` (or `false`) inherits the normal behaviour;
+    /// only `true` opts the app out. Kept optional so the field is sparse in
+    /// `app_profiles.json` — a profile with only this set is NOT `isEmpty`, and old
+    /// files that predate it decode cleanly (absent ⇒ off).
+    var neverStore: Bool?
+
     init(
         bundleID: String,
         displayName: String,
         cleanupStyle: CleanupStyle? = nil,
         insertionMode: InsertionMode? = nil,
         vocabularyFilter: [String]? = nil,
-        activeMacroIDs: [String]? = nil
+        activeMacroIDs: [String]? = nil,
+        neverStore: Bool? = nil
     ) {
         self.bundleID = bundleID
         self.displayName = displayName
@@ -48,14 +58,18 @@ struct AppProfile: Codable, Identifiable, Sendable, Hashable {
         self.insertionMode = insertionMode
         self.vocabularyFilter = vocabularyFilter
         self.activeMacroIDs = activeMacroIDs
+        self.neverStore = neverStore
     }
 
     /// True when this profile overrides nothing — the row can be dropped so the
-    /// list never accumulates no-op entries.
+    /// list never accumulates no-op entries. `neverStore` counts as an override
+    /// (only when actually `true`) so a Private-app row survives the drop even when
+    /// the user changed nothing else.
     var isEmpty: Bool {
         cleanupStyle == nil && insertionMode == nil
             && (vocabularyFilter?.isEmpty ?? true)
             && (activeMacroIDs?.isEmpty ?? true)
+            && !(neverStore ?? false)
     }
 }
 
@@ -78,6 +92,13 @@ struct ResolvedProfile: Sendable, Equatable {
     /// The app's coarse category, kept for downstream display/accounting and for
     /// the capitalization rule (terminal/coding + faithful ⇒ no leading capital).
     var category: AppCategory
+
+    /// When true this app is "Private": the session inserts text normally but the
+    /// pipeline persists and learns NOTHING from it (no history/graph/app-usage/niche
+    /// harvest, no learn-from-edits watcher). Aggregate word counts (lifetime stats +
+    /// streak) still increment — they carry no content and no app identity, so the WPM
+    /// dashboard stays honest. Resolved from `AppProfile.neverStore` (absent ⇒ false).
+    var neverStore: Bool = false
 
     /// Whether to auto-capitalize the first letter. A smart, always-on default now
     /// that the per-app toggle is gone: capitalize everywhere EXCEPT a dictated

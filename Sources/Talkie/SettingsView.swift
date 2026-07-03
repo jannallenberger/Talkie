@@ -371,6 +371,8 @@ private struct DeveloperSettings: View {
 
             MCPConnectorCard()
 
+            ImproveTalkieCard(settings: settings)
+
             // Gate-zero check for the niche-vocabulary feature: does on-device
             // contextualStrings biasing actually move recognition? Test it by talking.
             if BiasABProbe.isAvailable {
@@ -547,6 +549,155 @@ private struct MCPConnectorCard: View {
     private func flash(_ flag: Binding<Bool>) {
         flag.wrappedValue = true
         Task { try? await Task.sleep(for: .seconds(1.4)); flag.wrappedValue = false }
+    }
+}
+
+/// "Improve Talkie" — the one-click, preview-before-copy bug bundle (K8). Gathers
+/// version, environment, a whitelisted settings snapshot, permission states, and a
+/// REDACTED tail of the debug log, then shows it to the user IN FULL before
+/// anything touches the clipboard. A second button opens a pre-filled GitHub issue
+/// in the browser (section headers only — the bundle is never put in the URL).
+///
+/// Preview-before-copy is a hard requirement: `BugBundle.gather` runs when the
+/// sheet opens, the full text is shown scrollable + selectable, and ONLY the
+/// sheet's own Copy button writes the pasteboard. Nothing reaches the clipboard
+/// before the user has seen the exact bytes.
+private struct ImproveTalkieCard: View {
+    @ObservedObject var settings: AppSettings
+    /// A private permissions probe just for the bundle. `refresh()` reads live TCC
+    /// state, so a fresh instance reports the same grants as the shared model —
+    /// this keeps the card self-contained (no new init parameter on DeveloperSettings).
+    @StateObject private var permissions = PermissionsModel()
+    @State private var previewing = false
+
+    var body: some View {
+        SettingsCard(
+            header: "Improve Talkie",
+            footer: "Builds a diagnostic bundle — version, this Mac's setup, your settings, and a redacted tail of the debug log — so a bug report has what it needs. You see the whole thing before anything is copied, and your name, dictionary, history, and dictated words are never included."
+        ) {
+            SettingsRow(
+                title: "Diagnostic bundle",
+                subtitle: "Review it in full, then copy — nothing is copied until you do"
+            ) {
+                Button("Review…") { previewing = true }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+            }
+            if Brand.repoURL != nil {
+                SettingsDivider()
+                SettingsRow(
+                    title: "Report a bug",
+                    subtitle: "Opens Talkie's GitHub in your browser to file an issue"
+                ) {
+                    Button {
+                        openIssue()
+                    } label: {
+                        Label("Open GitHub", systemImage: "arrow.up.forward.square")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.coral)
+                }
+            }
+        }
+        .sheet(isPresented: $previewing) {
+            BugBundlePreviewSheet(
+                text: BugBundle.gather(settings: settings, permissions: permissions)
+            ) { previewing = false }
+        }
+    }
+
+    /// Hand a pre-filled "new issue" link to the user's browser. The body carries
+    /// SECTION HEADERS ONLY (an instruction to paste the reviewed bundle), never the
+    /// bundle itself — so no diagnostic content travels in the URL. The base URL
+    /// comes from `Brand.repoURL` (Info.plist), so there is no hard-coded web URL in
+    /// Swift; `NSWorkspace.open` is itself gate-clean (nothing is fetched here).
+    private func openIssue() {
+        guard let base = Brand.repoURL else { return }
+        let body = """
+        Thanks for helping improve Talkie! Please describe what happened, then \
+        paste the diagnostic bundle you reviewed (Settings ▸ Developer ▸ Improve \
+        Talkie ▸ Review…) below.
+
+        ## What happened
+
+        ## What you expected
+
+        ## Diagnostic bundle
+        <!-- paste the reviewed bundle here -->
+        """
+        var comps = URLComponents(string: base + "/issues/new")
+        comps?.queryItems = [
+            URLQueryItem(name: "title", value: "Bug report"),
+            URLQueryItem(name: "body", value: body),
+        ]
+        // Browser handoff only — opened in the user's browser, never fetched in-process
+        // (the base URL lives in Info.plist, so no web URL literal appears in Swift).
+        if let url = comps?.url { NSWorkspace.shared.open(url) }
+    }
+}
+
+/// The preview-before-copy sheet: the FULL bundle text, scrollable and selectable,
+/// with the ONLY control that can write the clipboard. The user reads the exact
+/// bytes here first; `Copy` is the single path to the pasteboard.
+private struct BugBundlePreviewSheet: View {
+    let text: String
+    let onClose: () -> Void
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Diagnostic bundle").font(.talkieHeading(16, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                    Text("This is exactly what will be copied — read it first. Nothing has been copied yet.")
+                        .font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                }
+                Spacer()
+            }
+
+            ScrollView {
+                Text(text)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Theme.ink)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+            .frame(minHeight: 320)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .fill(Theme.surface)
+            )
+
+            HStack(spacing: 10) {
+                Spacer()
+                Button("Close") { onClose() }
+                    .buttonStyle(.bordered)
+                Button {
+                    copyToClipboard()
+                } label: {
+                    Label(copied ? "Copied".loc : "Copy".loc,
+                          systemImage: copied ? "checkmark" : "doc.on.doc")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.coral)
+            }
+        }
+        .padding(20)
+        .frame(width: 560, height: 520)
+        .background(Theme.canvas)
+    }
+
+    /// The one and only write to the pasteboard in this feature — reached only from
+    /// the sheet's Copy button, after the user has seen the full text above.
+    private func copyToClipboard() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        copied = true
+        Task { try? await Task.sleep(for: .seconds(1.4)); copied = false }
     }
 }
 

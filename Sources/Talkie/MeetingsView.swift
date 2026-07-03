@@ -514,6 +514,11 @@ private struct MeetingRow: View {
                             Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
                             Button("Spreadsheet (.csv)") { export(segments, as: .csv) }
                             Button("Data (.json)") { export(segments, as: .json) }
+                            // Chapter list (D8) — offered ONLY when the meeting shifted
+                            // topics (≥2 chapters); a lone/absent topic shows nothing.
+                            if let chapters = meeting.chapters, chapters.count >= 2 {
+                                Button("Chapters (.txt)") { exportChapters(chapters) }
+                            }
                         } label: {
                             Image(systemName: "square.and.arrow.up")
                         }
@@ -709,6 +714,27 @@ private struct MeetingRow: View {
         panel.nameFieldStringValue = "\(exportBaseName).\(format.fileExtension)"
         panel.canCreateDirectories = true
         if let type = UTType(filenameExtension: format.fileExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? Data(contents.utf8).write(to: url, options: .atomic)
+        }
+    }
+
+    /// Export the meeting's chapter list (D8) as a plain `.txt` file in the
+    /// YouTube-description format (`M:SS Topic` per line) — the exact shape that
+    /// becomes clickable chapters when pasted into a video description. Same pure
+    /// render → save-panel → disk-write path as `export`; nothing leaves the machine.
+    /// Only reached from a menu item that already requires ≥2 chapters, and
+    /// `chapterList` re-checks that itself.
+    private func exportChapters(_ chapters: [Chapter]) {
+        let contents = TimedTranscriptExport.chapterList(chapters)
+        let panel = NSSavePanel()
+        panel.title = "Export…".loc
+        panel.nameFieldStringValue = "\(exportBaseName)-chapters.txt"
+        panel.canCreateDirectories = true
+        if let type = UTType(filenameExtension: "txt") {
             panel.allowedContentTypes = [type]
         }
         panel.begin { response in

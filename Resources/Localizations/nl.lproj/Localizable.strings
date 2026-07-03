@@ -313,6 +313,7 @@
 "Subtitles (.vtt)" = "Ondertitels (.vtt)";
 "Spreadsheet (.csv)" = "Spreadsheet (.csv)";
 "Data (.json)" = "Gegevens (.json)";
+"Chapters (.txt)" = "Hoofdstukken (.txt)";
 
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "Opgeslagen in %@";
@@ -426,6 +427,24 @@
 "Relaunch now" = "Nu opnieuw starten";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "Invoercontrole is verleend, maar Talkie moet opnieuw starten om je toets te horen.";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "Invoercontrole staat aan, maar Talkie moet even opnieuw starten om je toets te horen.";
+/* K8 — Improve Talkie: one-click redacted bug bundle */
+"Improve Talkie" = "Talkie verbeteren";
+"Builds a diagnostic bundle — version, this Mac's setup, your settings, and a redacted tail of the debug log — so a bug report has what it needs. You see the whole thing before anything is copied, and your name, dictionary, history, and dictated words are never included." = "Bouwt een diagnosepakket — versie, de configuratie van deze Mac, je instellingen en een geredigeerd staartje van het debuglogboek — zodat een bugmelding heeft wat nodig is. Je ziet het geheel voordat er iets wordt gekopieerd, en je naam, woordenboek, geschiedenis en gedicteerde woorden worden nooit meegestuurd.";
+"Diagnostic bundle" = "Diagnosepakket";
+"Review it in full, then copy — nothing is copied until you do" = "Lees het volledig, kopieer dan — er wordt niets gekopieerd tot je dat doet";
+"Review…" = "Bekijken…";
+"Report a bug" = "Bug melden";
+"Opens Talkie's GitHub in your browser to file an issue" = "Opent Talkie's GitHub in je browser om een issue te maken";
+"Open GitHub" = "GitHub openen";
+"This is exactly what will be copied — read it first. Nothing has been copied yet." = "Dit is precies wat er wordt gekopieerd — lees het eerst. Er is nog niets gekopieerd.";
+"Close" = "Sluiten";
+"Copy" = "Kopiëren";
+
+// I1 — Private app (neverStore)
+"Private app" = "Privé-app";
+"Dictation works here, but Talkie keeps no history and learns nothing." = "Dicteren werkt hier, maar Talkie bewaart geen geschiedenis en leert niets.";
+"Private" = "Privé";
+"Private app — kept no history, learned nothing." = "Privé-app — geen geschiedenis bewaard, niets geleerd.";
 
 // L2-a — dashboard Scratchpad (notes/tasks + failed-insertion rescue)
 "Scratchpad" = "Kladblok";

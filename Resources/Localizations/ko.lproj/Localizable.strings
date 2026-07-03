@@ -313,6 +313,7 @@
 "Subtitles (.vtt)" = "자막 (.vtt)";
 "Spreadsheet (.csv)" = "스프레드시트 (.csv)";
 "Data (.json)" = "데이터 (.json)";
+"Chapters (.txt)" = "챕터 (.txt)";
 
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "%@에 저장됨";
@@ -426,6 +427,24 @@
 "Relaunch now" = "지금 다시 시작";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "입력 모니터링은 허용되었지만, 키를 인식하려면 Talkie를 다시 시작해야 합니다.";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "입력 모니터링이 켜져 있지만, 키를 인식하려면 Talkie를 잠깐 다시 시작해야 합니다.";
+/* K8 — Improve Talkie: one-click redacted bug bundle */
+"Improve Talkie" = "Talkie 개선";
+"Builds a diagnostic bundle — version, this Mac's setup, your settings, and a redacted tail of the debug log — so a bug report has what it needs. You see the whole thing before anything is copied, and your name, dictionary, history, and dictated words are never included." = "버전, 이 Mac의 구성, 설정, 디버그 로그의 편집된 일부를 모아 진단 번들을 만들어 버그 신고에 필요한 정보를 담습니다. 복사되기 전에 전체를 볼 수 있으며, 이름·사전·기록·받아쓴 말은 절대 포함되지 않습니다.";
+"Diagnostic bundle" = "진단 번들";
+"Review it in full, then copy — nothing is copied until you do" = "전체를 확인한 뒤 복사하세요 — 그전에는 아무것도 복사되지 않습니다";
+"Review…" = "검토…";
+"Report a bug" = "버그 신고";
+"Opens Talkie's GitHub in your browser to file an issue" = "브라우저에서 Talkie의 GitHub를 열어 이슈를 등록합니다";
+"Open GitHub" = "GitHub 열기";
+"This is exactly what will be copied — read it first. Nothing has been copied yet." = "이것이 복사될 정확한 내용입니다. 먼저 읽어 보세요. 아직 아무것도 복사되지 않았습니다.";
+"Close" = "닫기";
+"Copy" = "복사";
+
+// I1 — Private app (neverStore)
+"Private app" = "비공개 앱";
+"Dictation works here, but Talkie keeps no history and learns nothing." = "여기서도 받아쓰기는 되지만, Talkie는 기록을 남기지 않고 아무것도 학습하지 않습니다.";
+"Private" = "비공개";
+"Private app — kept no history, learned nothing." = "비공개 앱 — 기록을 남기지 않았고, 아무것도 학습하지 않았습니다.";
 
 // L2-a — dashboard Scratchpad (notes/tasks + failed-insertion rescue)
 "Scratchpad" = "스크래치패드";

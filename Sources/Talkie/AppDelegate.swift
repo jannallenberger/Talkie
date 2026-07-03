@@ -615,7 +615,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// start the detector poll loop. Detection itself is a passive Core Audio
     /// metadata read — no TCC prompt — so it can run from launch.
     private func setupMeetingDetection() {
-        subtopicEngine = MeetingSubtopicEngine(model: subtopicModel)
+        // D8: on each accepted topic shift, record a chapter stamped with the
+        // recorder's LIVE elapsed time. The engine fires `onAccepted` off its actor;
+        // we hop to the main actor to read `elapsed` and append to the recorder's
+        // `pendingChapters` (both main-actor state), which `stop()` folds into the
+        // saved meeting. The timestamp is honestly the accept time — it lags the true
+        // topic shift by the engine's hysteresis window, and is labeled as such, not
+        // backdated. Guarded on an active recording so a stray late accept can't
+        // append after stop.
+        subtopicEngine = MeetingSubtopicEngine(model: subtopicModel) { [weak self] topic in
+            Task { @MainActor in
+                guard let self, self.meetingRecorder.isRecording else { return }
+                self.meetingRecorder.pendingChapters.append(
+                    Chapter(title: topic, start: self.meetingRecorder.elapsed)
+                )
+            }
+        }
         meetingPill.attach(recorder: meetingRecorder, subtopic: subtopicModel)
 
         // Feed finalized transcript segments to the subtopic engine (gated by setting).
@@ -682,11 +697,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func onRecordingStarted() {
         consentBanner.hide()   // banner handoff — the pill takes over
-        guard settings.showMeetingPill else { return }
-        meetingPill.show()
+        // Start fresh: drop any chapters a prior recording left behind (D8). The
+        // recorder also clears this in start(); doing it here too means an accept
+        // that somehow races the very start of a recording can't inherit stale state.
+        meetingRecorder.pendingChapters = []
+        // D8 pill-guard decision: the subtopic engine is started OUTSIDE the
+        // `showMeetingPill` guard, gated only on `meetingLiveTopic`. Chapters are a
+        // notes/export artifact, not a HUD one — a user who computes live topics
+        // (`meetingLiveTopic` on) but hides the pill (a presentation preference) still
+        // gets chapters in the saved note. The pill's own visibility below is
+        // unchanged, so pill behavior is bit-identical to before this change.
         if settings.meetingLiveTopic {
             Task { await subtopicEngine.start() }
         }
+        guard settings.showMeetingPill else { return }
+        meetingPill.show()
     }
 
     private func onRecordingStopped() {
@@ -756,13 +781,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showArming()
         birdBuddy.setActive(true)
 
-        // Context awareness: capture who you're dictating into (always, for the
-        // usage dashboard) and — when enabled — mine names worth spelling right.
-        let captured = ContextCapture.capture(
-            selfBundleID: AppPaths.bundleIdentifier,
-            minePhrases: settings.contextAwareness
-        )
-        currentTarget = captured.target
+        // Context awareness — but read the target FIRST (cheap NSWorkspace, no
+        // Accessibility), resolve its per-app profile, and only THEN mine the focused
+        // window/field for names. That ordering is the "Private app" (I1) privacy
+        // invariant: an app marked `neverStore` must never have its focused text READ
+        // at all — not read-and-discarded — so we gate the AX read on the resolved
+        // profile. When context awareness is off, or the target is Talkie itself, we
+        // also skip mining (the target still feeds the usage dashboard).
+        let selfBundleID = AppPaths.bundleIdentifier
+        let (frontApp, frontPID) = ContextCapture.frontTarget(selfBundleID: selfBundleID)
+        currentTarget = frontApp
+
+        // Resolve the per-app rules for this app once, here on the main actor
+        // (global → per-category → per-app merge, falling back to `settings.*`
+        // for every unset field). Snapshotted so a mid-session profile edit
+        // can't skew the in-flight session; carried into `endDictation` below.
+        var profile = profiles.resolve(for: frontApp, settings: settings)
+
+        // The AX mine happens only when context awareness is on, the app is not
+        // Talkie itself, AND the app is not marked Private. For a Private app the
+        // focused field is never touched — `mine`'s `talkieDebugLog` line is absent
+        // from the session log, which is the observable proof no read occurred.
+        let captured: CapturedContext
+        if settings.contextAwareness, frontApp.bundleID != selfBundleID, !profile.neverStore {
+            captured = ContextCapture.mine(target: frontApp, pid: frontPID)
+        } else {
+            captured = CapturedContext(target: frontApp, phrases: [], windowTitle: nil,
+                                       processID: frontPID)
+        }
 
         // A10 — scope filename snapping + repo terms to the checkout the terminal is
         // actually in. Resolve the project root behind the target: window-title path
@@ -840,12 +886,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-
-        // Resolve the per-app rules for this app once, here on the main actor
-        // (global → per-category → per-app merge, falling back to `settings.*`
-        // for every unset field). Snapshotted so a mid-session profile edit
-        // can't skew the in-flight session; carried into `endDictation` below.
-        var profile = profiles.resolve(for: captured.target, settings: settings)
 
         // G9 — Prompt cleanup with agent-terminal auto-detection. When you're
         // dictating into a terminal that is running a coding agent (Claude Code,
@@ -1098,6 +1138,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let autoCap = resolved.autoCapitalize
         let removeFillers = true
         let mode = resolved.insertionMode
+        // "Private app" (I1): when set, this session inserts text normally but the
+        // pipeline stores and learns NOTHING from it — the completion closure below
+        // skips history/graph/app-usage/niche-harvest and the learn-from-edits watcher.
+        // Aggregate word counts (lifetime stats + streak) still increment because they
+        // carry no content and no app identity, keeping the WPM dashboard honest.
+        let neverStore = resolved.neverStore
         let optimisticEnabled = settings.optimisticInsertion
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
@@ -1229,7 +1275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 var interim = interimProcessed.text
                 if vibeOn, !vibeSnapshot.isEmpty {
-                    interim = SpokenFileMatcher.format(interim, snapshot: vibeSnapshot).0
+                    // G10: a terminal gets the repo-relative path (Sources/Views/File.tsx);
+                    // an editor keeps the bare basename.
+                    interim = SpokenFileMatcher.format(interim, snapshot: vibeSnapshot,
+                                                       preferPaths: target.category == .terminal).0
                 }
                 if !interim.isEmpty, interim.count <= Self.optimisticMaxChars,
                    self.commandRouter.intent(for: interim,
@@ -1237,7 +1286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                               crossSurfaceEnabled: self.settings.crossSurfaceCommandsEnabled) == nil,
                    case .inserted = TextInjector.insert(interim, mode: mode) {
                     optimistic = (interim.count, interim)
-                    self.hud.showInserting(replacedWords: [])
+                    self.hud.showInserting(replacedWords: [], privateSession: neverStore)
                 }
             }
 
@@ -1322,11 +1371,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             var finalText = processed.text
 
+            // Structural dictation commands: a free-standing "new line"/"new
+            // paragraph" (EN) or "neue Zeile"/"neuer Absatz" (DE) becomes a real
+            // break in the inserted text. Deterministic + always-on, a sibling of
+            // NumberNormalizer above. It runs AFTER the dictionary TextProcessor.apply
+            // ON PURPOSE: a user dictionary rule that targets "new line" runs first
+            // and consumes the phrase, so a custom mapping still wins — that's the
+            // escape hatch. Running structural ahead of the dictionary would break it.
+            finalText = StructuralCommands.apply(finalText, languageCode: cleanupLangCode)
+
             // Vibe coding: snap spoken filenames to the real files in your project
             // ("exercise library dot tsx" → "ExerciseLibrary.tsx").
             var fileFixes = 0
             if vibeOn, !vibeSnapshot.isEmpty {
-                let (vibed, hits) = SpokenFileMatcher.format(finalText, snapshot: vibeSnapshot)
+                // G10: in a terminal, insert the repo-relative path (Sources/Views/File.tsx)
+                // that the shell + Claude Code want; an editor keeps the bare basename.
+                let (vibed, hits) = SpokenFileMatcher.format(finalText, snapshot: vibeSnapshot,
+                                                             preferPaths: target.category == .terminal)
                 finalText = vibed
                 fileFixes = hits
             }
@@ -1506,47 +1567,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // pre-fix data accumulate literal duplicate provenance entries.
             let dictationID = UUID()
             let words = WordCounter.count(finalText)
-            self.history.add(
-                finalText, wordCount: words, durationSec: duration,
-                appName: target.name, appCategory: target.category.rawValue,
-                bundleID: target.bundleID,
-                id: dictationID
-            )
+
+            // Aggregate word counts run for EVERY app, Private or not: they carry no
+            // transcript content and no app identity, so the lifetime WPM gauge and
+            // the daily streak stay honest even when the app is marked Private (I1).
             self.stats.record(words: words, durationSec: duration)
             self.stats.recordFixes(
                 dictionary: processed.replacementHits + biasApplied.count + nicheFixes.count + fileFixes,
                 fillers: processed.fillersRemoved,
                 aiWords: aiWordsChanged
             )
-            // Per-day activity (streak + heatmap) and where your words went.
+            // Per-day activity (streak + heatmap) — also a pure aggregate word count.
             self.activity.record(words: words)
-            // L4: fold this dictation into the lifetime word/phrase frequency store.
-            self.wordFreq.record(text: finalText)
-            if target.bundleID != selfBundle {
-                self.appUsage.record(target: target, words: words)
-            }
-            // Feed the on-device context graph from what was just dictated.
-            let nowUnix = Date().timeIntervalSince1970
-            self.contextGraph.ingest(
-                ContextGraphExtractor.candidates(from: finalText),
-                provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
-                                       dateUnix: nowUnix,
-                                       snippet: String(finalText.prefix(120)))
-            )
-            // Harvest niche-vocabulary candidates from the same transcript — proper
-            // nouns, identifiers, filenames — as a frequency signal (batched once per
-            // session, per the store's contract). These start as tracked candidates
-            // and only graduate into the corrector after enough repetition; nothing
-            // here injects on a single sighting. Shares the dictation id so provenance
-            // ("why is this term here?") points back to the exact entry.
-            let harvested = PhraseMiner.mine(from: [finalText])
-            if !harvested.isEmpty {
-                self.nicheVocab.ingest(
-                    harvested,
+
+            // Everything below RECORDS CONTENT or APP IDENTITY, or arms learning from
+            // it — the history entry, the "where your words went" app-usage record, the
+            // context-graph provenance, and the niche-vocabulary harvest. A "Private
+            // app" (I1) stores and learns NOTHING, so we skip all of it: nothing is
+            // written and then discarded — it's simply never recorded.
+            if !neverStore {
+                // L4: this dictation's words/phrases are CONTENT, so the lifetime
+                // word/phrase frequency store is skipped for a Private app too.
+                self.wordFreq.record(text: finalText)
+                self.history.add(
+                    finalText, wordCount: words, durationSec: duration,
+                    appName: target.name, appCategory: target.category.rawValue,
+                    bundleID: target.bundleID,
+                    id: dictationID
+                )
+                if target.bundleID != selfBundle {
+                    self.appUsage.record(target: target, words: words)
+                }
+                // Feed the on-device context graph from what was just dictated.
+                let nowUnix = Date().timeIntervalSince1970
+                self.contextGraph.ingest(
+                    ContextGraphExtractor.candidates(from: finalText),
                     provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
                                            dateUnix: nowUnix,
                                            snippet: String(finalText.prefix(120)))
                 )
+                // Harvest niche-vocabulary candidates from the same transcript — proper
+                // nouns, identifiers, filenames — as a frequency signal (batched once per
+                // session, per the store's contract). These start as tracked candidates
+                // and only graduate into the corrector after enough repetition; nothing
+                // here injects on a single sighting. Shares the dictation id so provenance
+                // ("why is this term here?") points back to the exact entry.
+                let harvested = PhraseMiner.mine(from: [finalText])
+                if !harvested.isEmpty {
+                    self.nicheVocab.ingest(
+                        harvested,
+                        provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
+                                               dateUnix: nowUnix,
+                                               snippet: String(finalText.prefix(120)))
+                    )
+                }
             }
 
             // A12 — low-confidence review gate (pure). Decide, from the per-word
@@ -1611,7 +1685,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch outcome {
             case .inserted:
                 Feedback.done()
-                self.hud.showInserting(replacedWords: replacedWords)
+                self.hud.showInserting(replacedWords: replacedWords, privateSession: neverStore)
                 self.hud.hide(after: replacedWords.isEmpty ? 0.4 : 1.4)
                 // Self-healing insertion (B2): a paste that returned `.inserted` did so
                 // optimistically — the ⌘V may never have landed (some apps swallow it).
@@ -1651,8 +1725,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 // Watch the field for the next few seconds: the instant the user
                 // fixes a word Talkie misrecognized, add it to the dictionary and
-                // ping them with an Undo (WhisperFlow-style live learning).
-                if self.settings.learnFromEdits {
+                // ping them with an Undo (WhisperFlow-style live learning). A
+                // "Private app" (I1) learns nothing, so the watcher (and the Claude
+                // Code transcript scan it schedules) never arms — fixing a word right
+                // after dictating into a Private app adds nothing to the dictionary.
+                if self.settings.learnFromEdits, !neverStore {
                     let fixTargets = nicheFixTargets
                     // Shared per-insertion latch: the AX watcher and the Claude Code
                     // scan run side by side (the scan only matters where the watcher
@@ -1703,7 +1780,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // it) — a nagging chip is worse than none. Works with no AX at all:
                 // it's driven purely by the confidence numbers, so it fires the same
                 // when dictating into Claude/Electron where the edit-watcher is blind.
-                self.maybeOfferLowConfidenceReview(reviewFlagged)
+                // Suppressed for a Private app (I1): tapping "Fix" would teach the
+                // dictionary, and a Private app learns nothing from what you dictate.
+                if !neverStore { self.maybeOfferLowConfidenceReview(reviewFlagged) }
             case .leftOnClipboard(let reason):
                 Feedback.notPasted()
                 // Couldn't paste — the text is on the clipboard; offer a tap to
