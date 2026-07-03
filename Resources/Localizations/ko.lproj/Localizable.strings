@@ -295,3 +295,9 @@
 "Couldn't save that note." = "해당 메모를 저장할 수 없습니다.";
 "Save to notes" = "노트에 저장";
 "Couldn't save — retry" = "저장 실패 — 다시 시도";
+/* A8 — transcript editor learn chips */
+"Edit transcript" = "전사 편집";
+"Fixing a word here also teaches your dictionary." = "여기서 단어를 고치면 사전에도 학습됩니다.";
+"Added “%@” — it’ll be fixed automatically next time." = "“%@” 추가됨 — 다음부터 자동으로 수정됩니다.";
+"Learn “%@”?" = "“%@”를 학습할까요?";
+"was “%@”" = "이전: “%@”";

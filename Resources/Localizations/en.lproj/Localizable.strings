@@ -295,3 +295,9 @@
 "Couldn't save that note." = "Couldn't save that note.";
 "Save to notes" = "Save to notes";
 "Couldn't save — retry" = "Couldn't save — retry";
+/* A8 — transcript editor learn chips */
+"Edit transcript" = "Edit transcript";
+"Fixing a word here also teaches your dictionary." = "Fixing a word here also teaches your dictionary.";
+"Added “%@” — it’ll be fixed automatically next time." = "Added “%@” — it’ll be fixed automatically next time.";
+"Learn “%@”?" = "Learn “%@”?";
+"was “%@”" = "was “%@”";

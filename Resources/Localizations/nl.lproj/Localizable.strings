@@ -295,3 +295,9 @@
 "Couldn't save that note." = "Kon die notitie niet opslaan.";
 "Save to notes" = "Opslaan in notities";
 "Couldn't save — retry" = "Opslaan mislukt — opnieuw";
+/* A8 — transcript editor learn chips */
+"Edit transcript" = "Transcript bewerken";
+"Fixing a word here also teaches your dictionary." = "Een woord hier corrigeren leert ook je woordenboek bij.";
+"Added “%@” — it’ll be fixed automatically next time." = "“%@” toegevoegd — wordt de volgende keer automatisch gecorrigeerd.";
+"Learn “%@”?" = "“%@” leren?";
+"was “%@”" = "was “%@”";

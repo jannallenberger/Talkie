@@ -140,4 +140,71 @@ final class MeetingStoreTests: XCTestCase {
         // Filename-derived date is non-zero (not the epoch fallback).
         XCTAssertGreaterThan(recovered.first?.startUnix ?? 0, 0)
     }
+
+    // MARK: A8 — transcript edit update round-trip
+
+    /// Editing a transcript via `update` replaces the entry in place (same id and
+    /// position) and rewrites the durable `.md` file, so the JSON index AND the note
+    /// on disk both serve the edited text. This is the persistence backbone of the
+    /// transcript editor.
+    func testUpdatePersistsEditedTranscriptToIndexAndMarkdown() throws {
+        let store = makeStore()
+        var m = meeting(title: "Sync", startUnix: 1_700_000_000)
+        m.transcript = "we discussed the cloud MD rollout"
+        m.fileName = MeetingStore.fileName(for: m.date, id: m.id)
+        store.add(m)
+
+        // Sanity: the original text is in both the index and the .md on disk.
+        let mdURL = tmp.appendingPathComponent(m.fileName)
+        let originalMD = try String(contentsOf: mdURL, encoding: .utf8)
+        XCTAssertTrue(originalMD.contains("cloud MD"), "original transcript is in the .md")
+
+        // Edit and persist.
+        var edited = m
+        edited.transcript = "we discussed the claude.md rollout"
+        store.update(edited)
+
+        // The in-memory index now holds the edit, same id, still one entry.
+        XCTAssertEqual(store.meetings.count, 1)
+        XCTAssertEqual(store.meetings.first?.id, m.id, "same meeting, replaced in place")
+        XCTAssertEqual(store.meetings.first?.transcript, "we discussed the claude.md rollout")
+
+        // The .md file was rewritten to match (same filename), and the stale text is gone.
+        let rewrittenMD = try String(contentsOf: mdURL, encoding: .utf8)
+        XCTAssertTrue(rewrittenMD.contains("claude.md"), "edited transcript rewrites the .md")
+        XCTAssertFalse(rewrittenMD.contains("cloud MD"), "stale transcript is replaced, not appended")
+
+        // And it survives a reload from disk (the index is the authority the UI reads).
+        let reloaded = makeStore()
+        XCTAssertEqual(reloaded.meetings.first?.transcript, "we discussed the claude.md rollout",
+                       "the edit is durable across a reload of meetings.json")
+    }
+
+    /// `update` on a meeting that isn't in the store (e.g. evicted by the retention
+    /// cap, or a stale reference) is a graceful no-op — it must not insert a phantom
+    /// entry or throw. The `.md` on disk remains the durable copy for evicted notes.
+    func testUpdateNoOpsOnUnknownMeeting() {
+        let store = makeStore()
+        store.add(meeting(title: "Present", startUnix: 1_700_000_000))
+        XCTAssertEqual(store.meetings.count, 1)
+
+        // A meeting the store has never seen (fresh id).
+        let ghost = meeting(title: "Evicted", startUnix: 1_600_000_000)
+        store.update(ghost)
+
+        XCTAssertEqual(store.meetings.count, 1, "update must not resurrect an unknown meeting")
+        XCTAssertFalse(store.meetings.contains { $0.title == "Evicted" })
+    }
+
+    /// A no-op edit (transcript unchanged) still round-trips safely through `update`
+    /// — same count, same content — matching the view's guard that skips a no-change
+    /// save but must not misbehave if called anyway.
+    func testUpdateWithUnchangedTranscriptKeepsEntry() {
+        let store = makeStore()
+        let m = meeting(title: "Steady", startUnix: 1_700_000_000)
+        store.add(m)
+        store.update(m)
+        XCTAssertEqual(store.meetings.count, 1)
+        XCTAssertEqual(store.meetings.first?.transcript, m.transcript)
+    }
 }

@@ -275,3 +275,122 @@ enum CorrectionExtractor {
         return core.count >= 2 && core.contains(where: { $0.isLetter })
     }
 }
+
+/// Extracts EVERY learnable respelling from a whole-transcript edit — the pure
+/// piece behind A8's "fix a word in the meeting note, teach the dictionary" flow.
+///
+/// `CorrectionExtractor.extract` deliberately peels one common prefix + one common
+/// suffix and then demands the single changed middle be a 1↔N respelling. That's
+/// exactly right for the live field-watcher (one edit at a time) but wrong for a
+/// transcript the user opens and fixes in several places at once: two scattered
+/// fixes ("cloud MD"→"claude.md" near the top, "kubernetis"→"kubernetes" near the
+/// bottom) leave a *middle* spanning everything between them, so `extract`'s shape
+/// guard rejects the pair and learns nothing — the naive "apply and re-extract"
+/// loop never even finds its first correction.
+///
+/// So we segment the edit into contiguous changed token-runs separated by
+/// unchanged context (a token-level LCS alignment; the gaps between matched anchor
+/// tokens are the change blocks), re-attach one unchanged anchor token on each side
+/// so the reused extractor still has a prefix/suffix to peel, and run the UNCHANGED
+/// `CorrectionExtractor.extract` on each block. Each block is a localized 1↔N
+/// substitution or it teaches nothing — so multi-fix edits yield multiple rules
+/// while deletions, rewrites, and prose edits are still rejected by the same
+/// guards. Results are deduped and capped so a huge rewrite can't spew rules.
+enum TranscriptEditCorrections {
+    /// At most this many distinct learn rules from one save — a transcript edit that
+    /// changes more than a handful of regions is a rewrite, not a batch of spelling
+    /// fixes, and shouldn't flood the user with chips.
+    static let maxRegions = 5
+
+    /// Every trustworthy from→to respelling between `before` and `after`, in reading
+    /// order, deduped (case-insensitively on the pair). `inserted` defaults to the
+    /// old text because in a transcript edit Talkie "inserted" the whole original
+    /// transcript — every original word is fair game to correct, unlike the live
+    /// watcher where only the freshly-pasted span was ours.
+    static func extract(before: String, after: String) -> [(from: String, to: String)] {
+        let beforeTokens = tokenize(before)
+        let afterTokens = tokenize(after)
+        guard beforeTokens != afterTokens else { return [] }
+
+        var results: [(from: String, to: String)] = []
+        var seen = Set<String>()
+        for block in changeBlocks(beforeTokens, afterTokens) {
+            // Re-attach one unchanged anchor token on each side (when present) so the
+            // reused extractor can peel a common prefix/suffix and correctly isolate
+            // the changed middle — an anchorless block of two differing single tokens
+            // would otherwise read as a whole-utterance swap.
+            let bLo = block.beforeRange.lowerBound == 0 ? 0 : block.beforeRange.lowerBound - 1
+            let aLo = block.afterRange.lowerBound == 0 ? 0 : block.afterRange.lowerBound - 1
+            let bHi = min(beforeTokens.count, block.beforeRange.upperBound + 1)
+            let aHi = min(afterTokens.count, block.afterRange.upperBound + 1)
+            let beforeRegion = beforeTokens[bLo..<bHi].joined(separator: " ")
+            let afterRegion = afterTokens[aLo..<aHi].joined(separator: " ")
+
+            for c in CorrectionExtractor.extract(
+                before: beforeRegion, after: afterRegion, inserted: beforeRegion
+            ) {
+                let key = c.from.lowercased() + "\u{0}" + c.to.lowercased()
+                guard seen.insert(key).inserted else { continue }
+                results.append(c)
+                if results.count >= maxRegions { return results }
+            }
+        }
+        return results
+    }
+
+    /// A maximal run of changed tokens, as index ranges into each side. Empty ranges
+    /// are allowed (a pure insertion has an empty `beforeRange`); `CorrectionExtractor`
+    /// rejects those, which is what we want.
+    private struct ChangeBlock {
+        var beforeRange: Range<Int>
+        var afterRange: Range<Int>
+    }
+
+    /// Walk a longest-common-subsequence alignment of the two token arrays; the
+    /// spans between consecutive matched (equal) tokens are the change blocks. Pure.
+    private static func changeBlocks(_ before: [String], _ after: [String]) -> [ChangeBlock] {
+        let matches = lcsMatches(before, after)  // aligned (beforeIdx, afterIdx) equal pairs
+        var blocks: [ChangeBlock] = []
+        var b = 0
+        var a = 0
+        for (mb, ma) in matches + [(before.count, after.count)] {
+            if mb > b || ma > a {
+                blocks.append(ChangeBlock(beforeRange: b..<mb, afterRange: a..<ma))
+            }
+            b = mb + 1
+            a = ma + 1
+        }
+        return blocks
+    }
+
+    /// Indices of a longest common subsequence, as aligned `(beforeIdx, afterIdx)`
+    /// pairs. Classic O(n·m) DP + backtrace — transcripts are bounded (retention cap)
+    /// and this only runs on an explicit save, so the quadratic table is fine.
+    private static func lcsMatches(_ a: [String], _ b: [String]) -> [(Int, Int)] {
+        let n = a.count, m = b.count
+        if n == 0 || m == 0 { return [] }
+        var dp = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            for j in stride(from: m - 1, through: 0, by: -1) {
+                dp[i][j] = a[i] == b[j] ? dp[i + 1][j + 1] + 1
+                                        : max(dp[i + 1][j], dp[i][j + 1])
+            }
+        }
+        var pairs: [(Int, Int)] = []
+        var i = 0, j = 0
+        while i < n, j < m {
+            if a[i] == b[j] {
+                pairs.append((i, j)); i += 1; j += 1
+            } else if dp[i + 1][j] >= dp[i][j + 1] {
+                i += 1
+            } else {
+                j += 1
+            }
+        }
+        return pairs
+    }
+
+    private static func tokenize(_ text: String) -> [String] {
+        text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+    }
+}

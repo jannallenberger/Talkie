@@ -295,3 +295,9 @@
 "Couldn't save that note." = "そのメモを保存できませんでした。";
 "Save to notes" = "ノートに保存";
 "Couldn't save — retry" = "保存できませんでした — 再試行";
+/* A8 — transcript editor learn chips */
+"Edit transcript" = "文字起こしを編集";
+"Fixing a word here also teaches your dictionary." = "ここで単語を直すと、辞書にも学習されます。";
+"Added “%@” — it’ll be fixed automatically next time." = "“%@”を追加しました — 次回から自動で修正されます。";
+"Learn “%@”?" = "“%@”を覚えますか？";
+"was “%@”" = "元は“%@”";
