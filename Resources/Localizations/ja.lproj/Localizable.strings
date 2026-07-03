@@ -606,3 +606,25 @@
 "Your name" = "名前";
 "Click to edit your name" = "クリックして名前を編集";
 "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "録画中にカメラの下に表示される小さなインジケーター。ライブタイマーと、Talkieが確信したときの現在のトピックを表示します。";
+
+/* L6a — Settings IA v2: group titles + subtitles + subpage scaffold */
+"Cleanup & intelligence" = "整形とインテリジェンス";
+"Apps" = "アプリ";
+"Notes & export" = "メモとエクスポート";
+"Claude" = "Claude";
+"Privacy & permissions" = "プライバシーと権限";
+"All languages" = "すべての言語";
+"Verify our claims" = "私たちの約束を検証";
+"Your dictation key, how text lands, and the mic." = "ディクテーションキー、テキストの挿入方法、マイク。";
+"How Talkie polishes text and learns your words." = "Talkieがテキストを整え、あなたの言葉を学習する方法。";
+"Which languages you speak; Talkie auto-detects." = "話す言語。Talkieが自動的に検出します。";
+"Per-app cleanup styles for the apps you customize." = "カスタマイズしたアプリごとの整形スタイル。";
+"Recording, transcription, and calendar context." = "録音、文字起こし、カレンダーのコンテキスト。";
+"Where notes and transcripts go, plus app behavior." = "メモや文字起こしの保存先と、アプリの動作。";
+"Let Claude read your meetings and context, on-device." = "Claudeに会議とコンテキストを読み取らせます（デバイス上で）。";
+"The permissions Talkie needs and proof nothing leaves." = "Talkieに必要な権限と、何も送信されない証拠。";
+"Tools that ship only in development builds." = "開発ビルドにのみ含まれるツール。";
+"The full language picker will live here." = "すべての言語の選択画面がここに表示されます。";
+"Meeting recording and transcription settings will live here." = "会議の録音と文字起こしの設定がここに表示されます。";
+"The on-device, zero-network proof will live here." = "デバイス上でネットワークを使わない証拠がここに表示されます。";
+"This settings page is coming soon." = "この設定ページは近日公開予定です。";

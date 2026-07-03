@@ -54,9 +54,31 @@ enum SettingsTab: Hashable, CaseIterable {
     }
 }
 
+/// A push-navigation route *inside* the Settings tab (L6a). The Settings root is
+/// a flat index of grouped cards (HYBRID IA); only these three genuinely deep
+/// areas push to a child screen rather than crowding the root. The cases are the
+/// scaffold — L6b (`allLanguages`), L6c (`meetings`), and L6d (`verifyClaims`)
+/// fill in the real destinations; until then they resolve to a placeholder so the
+/// route is navigable and the build stays green.
+enum SettingsPage: Hashable {
+    /// L6b — the full "All languages" picker (root shows only a selected strip).
+    case allLanguages
+    /// L6c — the Meetings settings subpage (also the deep-link target for the
+    /// Meetings tab, via `SettingsRouter.pendingPage`).
+    case meetings
+    /// L6d — the "Verify our claims" zero-network proof surface.
+    case verifyClaims
+}
+
 @MainActor
 final class SettingsRouter: ObservableObject {
     @Published var selectedTab: SettingsTab = .dashboard
+
+    /// A subpage another tab wants Settings to open when it next appears (L6a
+    /// scaffold, consumed by L6c's Meetings deep link). Purely additive: nothing
+    /// sets it yet, and the Settings root drains it on appear, so a `nil` here is
+    /// the normal "just show the index" case.
+    @Published var pendingPage: SettingsPage?
 }
 
 /// The app's main window (Dock app). A Claude-style sidebar shell hosting the
@@ -313,10 +335,15 @@ struct PageHeader: View {
 
 // MARK: - General
 
-/// Settings landing — flat, named sections on one scrolling page. Never more
-/// than this one level: no section pushes to a further child screen (Apple HIG's
-/// "flat toolbar panes, no sidebar-within-settings" convention for a macOS
-/// Settings surface).
+/// Settings landing — a flat index of plainly-labeled groups on one scrolling
+/// page, wrapped in a `NavigationStack` (L6a HYBRID IA). Most groups render their
+/// cards inline; only three genuinely deep areas — All languages (L6b), Meetings
+/// (L6c), and Verify our claims (L6d) — push to a child screen via a
+/// `SettingsPage` route so the root stays a legible index instead of an endless
+/// scroll. Each group carries a `SettingsSectionHeader` (sentence case, larger,
+/// `Theme.ink`) so section titles read a clear rung above the card `Eyebrow`s
+/// nested under them. Another tab can request a subpage by setting
+/// `SettingsRouter.pendingPage`; the root drains it on appear (consumed by L6c).
 private struct SettingsHome: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
@@ -326,59 +353,152 @@ private struct SettingsHome: View {
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Bool
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                PageHeader(title: "Settings",
-                           subtitle: "Tune how Talkie listens, cleans up, and behaves.")
+    /// The push-navigation stack path. Held here so `SettingsRouter.pendingPage`
+    /// can deep-link a subpage: on appear (and on any later change) we drain the
+    /// pending page onto this path, then clear it (L6a scaffold; L6c drives it).
+    @State private var path: [SettingsPage] = []
 
-                // H1: the dedicated Profile section is gone — your name is edited inline
-                // on the Dashboard header now (click "Welcome back, …"). One fewer section.
-                section("Dictation") {
-                    ActivationSettings(settings: settings)
-                    MicrophoneSettings(settings: settings)
-                    CleanupSettings(settings: settings)
-                    LanguageSettings(settings: settings)
-                }
-                section("Per-app & context") {
-                    ContextSettings(settings: settings, contextGraph: contextGraph, router: router)
-                    AppProfilesSettings(profiles: profiles)
-                    CalendarSettings()
-                }
-                section("Behavior") {
-                    BehaviorSettings(settings: settings)
-                    ExportDestinationsSettings()
-                }
-                // The public "Connect to Claude" card lives at the root (H1 hoisted it
-                // out of the Developer section, which is now hidden in normal builds).
-                // It ships with every install and is 100% on-device, so it belongs in
-                // front of every user, not behind a dev flag.
-                section("Claude") {
-                    MCPConnectorCard()
-                }
-                section("Privacy & Permissions") {
-                    PrivacyAndPermissionsSettings(settings: settings, permissions: permissions,
-                                                  history: history, onRetryHotKey: onRetryHotKey)
-                }
-                // H1: the Developer section is hidden in a normal public build. It
-                // reappears in Debug builds, when `TalkieDevMode` is set in defaults, or
-                // in `TALKIE_DEV_TOOLS` dev-channel builds (see `showDeveloperSection`).
-                if showDeveloperSection {
-                    section("Developer") {
-                        DeveloperSettings(settings: settings)
+    var body: some View {
+        NavigationStack(path: $path) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    PageHeader(title: "Settings",
+                               subtitle: "Tune how Talkie listens, cleans up, and behaves.")
+
+                    // H1: the dedicated Profile section is gone — your name is edited inline
+                    // on the Dashboard header now (click "Welcome back, …"). One fewer group.
+                    //
+                    // ── 1. Dictation ─────────────────────────────────────────────
+                    section("Dictation",
+                            subtitle: "Your dictation key, how text lands, and the mic.") {
+                        ActivationSettings(settings: settings)
+                        MicrophoneSettings(settings: settings)
+                    }
+                    // ── 2. Cleanup & intelligence ────────────────────────────────
+                    // Smart cleanup lives beside the context/learning/memory cards.
+                    // L6e MOUNTS its relocated Context-awareness + Learning cards
+                    // here (retiring the Memory card); until then `ContextSettings`
+                    // holds them inline. Do not remove — that's L6e's move, not L6a's.
+                    section("Cleanup & intelligence",
+                            subtitle: "How Talkie polishes text and learns your words.") {
+                        CleanupSettings(settings: settings)
+                        // ⇥ L6e slot: relocated Context-awareness + Learning cards land here.
+                        ContextSettings(settings: settings, contextGraph: contextGraph, router: router)
+                    }
+                    // ── 3. Languages ─────────────────────────────────────────────
+                    // L6b REPLACES the full grid with a compact selected-strip plus an
+                    // "All languages" push (`SettingsPage.allLanguages`, wired in the
+                    // NavigationStack below). For now the whole grid renders inline.
+                    section("Languages",
+                            subtitle: "Which languages you speak; Talkie auto-detects.") {
+                        // ⇥ L6b slot: selected-strip + NavigationLink(value: SettingsPage.allLanguages).
+                        LanguageSettings(settings: settings)
+                    }
+                    // ── 4. Apps ──────────────────────────────────────────────────
+                    section("Apps",
+                            subtitle: "Per-app cleanup styles for the apps you customize.") {
+                        AppProfilesSettings(profiles: profiles)
+                    }
+                    // ── 5. Meetings ──────────────────────────────────────────────
+                    // L6c MOUNTS a Meetings row here that pushes `SettingsPage.meetings`
+                    // (also the deep-link target for the Meetings tab via `pendingPage`).
+                    // Calendar context — reading meeting names — belongs to this group.
+                    section("Meetings",
+                            subtitle: "Recording, transcription, and calendar context.") {
+                        // ⇥ L6c slot: Meetings row → NavigationLink(value: SettingsPage.meetings).
+                        CalendarSettings()
+                    }
+                    // ── 6. Notes & export ────────────────────────────────────────
+                    // Dictation notes route through the same `ExportPreferences` as
+                    // meeting notes, so "Notes & export" is the honest label. The
+                    // general app-behavior toggles (sounds, login, floating bird) ride
+                    // along here rather than spawning a ninth group.
+                    section("Notes & export",
+                            subtitle: "Where notes and transcripts go, plus app behavior.") {
+                        ExportDestinationsSettings()
+                        BehaviorSettings(settings: settings)
+                    }
+                    // ── 7. Claude ────────────────────────────────────────────────
+                    // The public "Connect to Claude" card lives at the root (H1 hoisted it
+                    // out of the Developer section, which is now hidden in normal builds).
+                    // It ships with every install and is 100% on-device, so it belongs in
+                    // front of every user, not behind a dev flag.
+                    section("Claude",
+                            subtitle: "Let Claude read your meetings and context, on-device.") {
+                        MCPConnectorCard()
+                    }
+                    // ── 8. Privacy & permissions ─────────────────────────────────
+                    // L6d collapses the proofs behind a "Verify our claims" push
+                    // (`SettingsPage.verifyClaims`), keeping the permission levers inline.
+                    section("Privacy & permissions",
+                            subtitle: "The permissions Talkie needs and proof nothing leaves.") {
+                        // ⇥ L6d slot: "Verify our claims" row → NavigationLink(value: SettingsPage.verifyClaims).
+                        PrivacyAndPermissionsSettings(settings: settings, permissions: permissions,
+                                                      history: history, onRetryHotKey: onRetryHotKey)
+                    }
+                    // H1: the Developer section is hidden in a normal public build. It
+                    // reappears in Debug builds, when `TalkieDevMode` is set in defaults, or
+                    // in `TALKIE_DEV_TOOLS` dev-channel builds (see `showDeveloperSection`).
+                    if showDeveloperSection {
+                        section("Developer",
+                                subtitle: "Tools that ship only in development builds.") {
+                            DeveloperSettings(settings: settings)
+                        }
                     }
                 }
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.canvas)
+            // HYBRID push destinations (L6a scaffold). Each case resolves to a
+            // placeholder subpage for now; L6b/L6c/L6d swap in the real panes. The
+            // routes are navigable today so the scaffold is verifiable.
+            .navigationDestination(for: SettingsPage.self) { page in
+                switch page {
+                case .allLanguages:
+                    // L6b fills this in with the full picker.
+                    SubpagePlaceholder(
+                        title: "All languages",
+                        subtitle: "The full language picker will live here.")
+                case .meetings:
+                    // L6c fills this in with the Meetings settings pane.
+                    SubpagePlaceholder(
+                        title: "Meetings",
+                        subtitle: "Meeting recording and transcription settings will live here.")
+                case .verifyClaims:
+                    // L6d fills this in with the zero-network proof surface.
+                    SubpagePlaceholder(
+                        title: "Verify our claims",
+                        subtitle: "The on-device, zero-network proof will live here.")
+                }
+            }
         }
-        .background(Theme.canvas)
+        // Deep-link drain: if another tab asked for a subpage, push it and clear
+        // the request. Runs on first appear and whenever the request changes, so a
+        // link set while Settings is already open still lands (L6c).
+        .onAppear { drainPendingPage() }
+        .onChange(of: router.pendingPage) { _, _ in drainPendingPage() }
     }
 
+    /// Consume `SettingsRouter.pendingPage`: push it onto the nav path and clear
+    /// it. No-op when nothing is pending (the common case). Additive scaffolding —
+    /// nothing sets `pendingPage` until L6c.
+    private func drainPendingPage() {
+        guard let page = router.pendingPage else { return }
+        path = [page]
+        router.pendingPage = nil
+    }
+
+    /// A settings group: a `SettingsSectionHeader` (sentence case, `Theme.ink`,
+    /// a rung larger than the card `Eyebrow`) over a one-line plain-language
+    /// subtitle, then the group's cards. The header is deliberately NOT an
+    /// `Eyebrow`: card headers keep `Eyebrow`, so a group title and a card title
+    /// no longer render pixel-identical (the L6a typography fix).
     @ViewBuilder
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func section<Content: View>(_ title: String, subtitle: String,
+                                        @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            Eyebrow(text: title.uppercased())
+            SettingsSectionHeader(title: title, subtitle: subtitle)
             content()
         }
     }
@@ -399,6 +519,56 @@ private struct SettingsHome: View {
         #else
         return Dev.isEnabled
         #endif
+    }
+}
+
+/// The header for a top-level Settings *group* (L6a). Deliberately distinct from
+/// the card `Eyebrow` so the two rungs of the hierarchy read apart: this is
+/// SENTENCE CASE, `.talkieHeading(13, weight: .semibold)`, and `Theme.ink`,
+/// whereas `Eyebrow` is UPPERCASED, 11pt semibold, and `Theme.inkSecondary`
+/// (DesignSystem.swift). That's four differing attributes — size (13 vs 11),
+/// color (ink vs inkSecondary), case (sentence vs upper), and tracking (none vs
+/// 0.8) — so a group title no longer looks pixel-identical to the card titles
+/// nested beneath it. Lives here, not in DesignSystem.swift (which is read-only).
+struct SettingsSectionHeader: View {
+    let title: String
+    var subtitle: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(LocalizedStringKey(title))
+                .font(.talkieHeading(13, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+            if let subtitle {
+                Text(LocalizedStringKey(subtitle))
+                    .font(.talkieHeading(12, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+    }
+}
+
+/// A stand-in destination for the three HYBRID subpages until L6b/L6c/L6d build
+/// the real panes (L6a scaffold). Reuses `SubPage` so the placeholder already
+/// wears the app's serif header + canvas, and a `back`-able `NavigationStack`
+/// push is demonstrably working. Not shipped to users in normal flow — nothing
+/// links to these routes yet; they exist so the scaffold is verifiable.
+private struct SubpagePlaceholder: View {
+    let title: String
+    var subtitle: String? = nil
+
+    var body: some View {
+        SubPage(title: title, subtitle: subtitle) {
+            SettingsCard {
+                SettingsNote(
+                    text: "This settings page is coming soon.".loc,
+                    tone: Theme.inkTertiary,
+                    icon: "hammer")
+            }
+        }
     }
 }
 

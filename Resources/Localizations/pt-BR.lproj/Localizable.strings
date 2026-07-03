@@ -606,3 +606,25 @@
 "Your name" = "Seu nome";
 "Click to edit your name" = "Clique para editar seu nome";
 "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "Um pequeno indicador sob a câmera durante a gravação, com um cronômetro ao vivo e o tópico atual quando o Talkie está confiante.";
+
+/* L6a — Settings IA v2: group titles + subtitles + subpage scaffold */
+"Cleanup & intelligence" = "Limpeza e inteligência";
+"Apps" = "Apps";
+"Notes & export" = "Notas e exportação";
+"Claude" = "Claude";
+"Privacy & permissions" = "Privacidade e permissões";
+"All languages" = "Todos os idiomas";
+"Verify our claims" = "Verificar nossas promessas";
+"Your dictation key, how text lands, and the mic." = "Sua tecla de ditado, como o texto é inserido e o microfone.";
+"How Talkie polishes text and learns your words." = "Como o Talkie refina o texto e aprende suas palavras.";
+"Which languages you speak; Talkie auto-detects." = "Quais idiomas você fala; o Talkie detecta automaticamente.";
+"Per-app cleanup styles for the apps you customize." = "Estilos de limpeza por app para os que você personaliza.";
+"Recording, transcription, and calendar context." = "Gravação, transcrição e contexto do calendário.";
+"Where notes and transcripts go, plus app behavior." = "Para onde vão notas e transcrições, além do comportamento do app.";
+"Let Claude read your meetings and context, on-device." = "Deixe o Claude ler suas reuniões e contexto, no dispositivo.";
+"The permissions Talkie needs and proof nothing leaves." = "As permissões que o Talkie precisa e a prova de que nada sai.";
+"Tools that ship only in development builds." = "Ferramentas incluídas apenas nas versões de desenvolvimento.";
+"The full language picker will live here." = "O seletor completo de idiomas ficará aqui.";
+"Meeting recording and transcription settings will live here." = "As configurações de gravação e transcrição de reuniões ficarão aqui.";
+"The on-device, zero-network proof will live here." = "A prova local, sem rede, ficará aqui.";
+"This settings page is coming soon." = "Esta página de configurações chega em breve.";

@@ -606,3 +606,25 @@
 "Your name" = "Je naam";
 "Click to edit your name" = "Klik om je naam te bewerken";
 "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "Een kleine indicator onder de camera tijdens het opnemen, met een live-timer en het huidige onderwerp wanneer Talkie zeker is.";
+
+/* L6a — Settings IA v2: group titles + subtitles + subpage scaffold */
+"Cleanup & intelligence" = "Opschonen en intelligentie";
+"Apps" = "Apps";
+"Notes & export" = "Notities en export";
+"Claude" = "Claude";
+"Privacy & permissions" = "Privacy en machtigingen";
+"All languages" = "Alle talen";
+"Verify our claims" = "Onze beloften verifiëren";
+"Your dictation key, how text lands, and the mic." = "Je dicteertoets, hoe tekst wordt ingevoegd en de microfoon.";
+"How Talkie polishes text and learns your words." = "Hoe Talkie tekst bijschaaft en je woorden leert.";
+"Which languages you speak; Talkie auto-detects." = "Welke talen je spreekt; Talkie detecteert ze automatisch.";
+"Per-app cleanup styles for the apps you customize." = "Opschoonstijlen per app voor de apps die je aanpast.";
+"Recording, transcription, and calendar context." = "Opname, transcriptie en agendacontext.";
+"Where notes and transcripts go, plus app behavior." = "Waar notities en transcripties heen gaan, plus appgedrag.";
+"Let Claude read your meetings and context, on-device." = "Laat Claude je vergaderingen en context lezen, lokaal.";
+"The permissions Talkie needs and proof nothing leaves." = "De machtigingen die Talkie nodig heeft en het bewijs dat niets weggaat.";
+"Tools that ship only in development builds." = "Hulpmiddelen die alleen in ontwikkelbuilds zitten.";
+"The full language picker will live here." = "De volledige taalkiezer komt hier.";
+"Meeting recording and transcription settings will live here." = "Instellingen voor vergaderopname en transcriptie komen hier.";
+"The on-device, zero-network proof will live here." = "Het lokale bewijs zonder netwerk komt hier.";
+"This settings page is coming soon." = "Deze instellingenpagina komt binnenkort.";

@@ -606,3 +606,25 @@
 "Your name" = "Tu nombre";
 "Click to edit your name" = "Haz clic para editar tu nombre";
 "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "Un pequeño indicador bajo la cámara mientras grabas, con un temporizador en vivo y el tema actual cuando Talkie está seguro.";
+
+/* L6a — Settings IA v2: group titles + subtitles + subpage scaffold */
+"Cleanup & intelligence" = "Limpieza e inteligencia";
+"Apps" = "Aplicaciones";
+"Notes & export" = "Notas y exportación";
+"Claude" = "Claude";
+"Privacy & permissions" = "Privacidad y permisos";
+"All languages" = "Todos los idiomas";
+"Verify our claims" = "Verificar nuestras promesas";
+"Your dictation key, how text lands, and the mic." = "Tu tecla de dictado, cómo se inserta el texto y el micrófono.";
+"How Talkie polishes text and learns your words." = "Cómo Talkie pule el texto y aprende tus palabras.";
+"Which languages you speak; Talkie auto-detects." = "Qué idiomas hablas; Talkie los detecta automáticamente.";
+"Per-app cleanup styles for the apps you customize." = "Estilos de limpieza por aplicación para las que personalizas.";
+"Recording, transcription, and calendar context." = "Grabación, transcripción y contexto del calendario.";
+"Where notes and transcripts go, plus app behavior." = "A dónde van las notas y transcripciones, y el comportamiento de la app.";
+"Let Claude read your meetings and context, on-device." = "Deja que Claude lea tus reuniones y contexto, en el dispositivo.";
+"The permissions Talkie needs and proof nothing leaves." = "Los permisos que Talkie necesita y la prueba de que nada sale.";
+"Tools that ship only in development builds." = "Herramientas incluidas solo en las versiones de desarrollo.";
+"The full language picker will live here." = "El selector de idiomas completo aparecerá aquí.";
+"Meeting recording and transcription settings will live here." = "Los ajustes de grabación y transcripción de reuniones aparecerán aquí.";
+"The on-device, zero-network proof will live here." = "La prueba local, sin red, aparecerá aquí.";
+"This settings page is coming soon." = "Esta página de ajustes llegará pronto.";
