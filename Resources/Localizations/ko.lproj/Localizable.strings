@@ -227,6 +227,16 @@
 "Talkie couldn't open that file." = "Talkie가 파일을 열지 못했습니다.";
 "That doesn't look like a Talkie dictionary (.talkiepack)." = "Talkie 사전(.talkiepack)이 아닌 것 같습니다.";
 
+/* A7 — import a competitor app's dictionary (VoiceInk / Superwhisper / Wispr Flow) */
+"Import from another app" = "다른 앱에서 가져오기";
+"Bring your dictionary over from VoiceInk, Superwhisper, or Wispr Flow" = "VoiceInk, Superwhisper 또는 Wispr Flow에서 사전을 가져오세요";
+"No dictation apps detected on this Mac" = "이 Mac에서 받아쓰기 앱을 찾지 못했습니다";
+"Import from %@" = "%@에서 가져오기";
+"Choose a %@ file…" = "%@ 파일 선택…";
+"Talkie couldn't read that %@ file." = "Talkie가 해당 %@ 파일을 읽지 못했습니다.";
+"Imported from %@" = "%@에서 가져옴";
+"%@ dictionary" = "%@ 사전";
+
 "Added “%@” — from your Claude Code prompt" = "“%@” 추가됨 — Claude Code 프롬프트에서";
 "Claude added “%@” to dictionary" = "Claude가 사전에 “%@”을(를) 추가함";
 "Claude added “%@” → “%@” to dictionary" = "Claude가 사전에 “%@” → “%@”을(를) 추가함";
