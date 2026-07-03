@@ -402,3 +402,9 @@
 "Law" = "Derecho";
 "Research" = "Investigación";
 "Writer" = "Escritor";
+
+/* A10 — terminal cwd auto-scoping (auto-detected + pinned projects) */
+"Projects" = "Proyectos";
+"Pin a folder…" = "Fijar una carpeta…";
+"Talkie detects the project behind the editor or terminal you dictate into automatically — including parallel worktrees — and scopes filenames to it. Everything stays on your Mac; it only reads filenames, never file contents." = "Talkie detecta automáticamente el proyecto detrás del editor o la terminal en que dictas —incluidos los worktrees paralelos— y limita los nombres de archivo a ese proyecto. Todo permanece en tu Mac; solo lee nombres de archivo, nunca su contenido.";
+"Optional — pin a project you always want indexed, so its filenames snap even before you dictate into it." = "Opcional: fija un proyecto que quieras tener siempre indexado, para que sus nombres de archivo se ajusten incluso antes de dictar en él.";

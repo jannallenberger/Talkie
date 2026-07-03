@@ -329,6 +329,93 @@ final class ProjectScannerTests: XCTestCase {
         XCTAssertNotNil(pathMerged, "ambiguous resolution must still return the merged (first-wins) path")
     }
 
+    // MARK: - A10 (b): index-on-first-sight + LRU cap
+
+    /// A detected-but-unpinned root gets an automatic background index (first-sight): its
+    /// scoped snapshot becomes available WITHOUT the root being added as a pinned folder,
+    /// and WITHOUT being written to project_index.json (so the file doesn't accumulate every
+    /// directory visited). This is the "brand-new worktree usable within one dictation"
+    /// acceptance criterion.
+    @MainActor
+    func testIndexOnFirstSightScopesWithoutPinningOrPersisting() async throws {
+        let wt = root.appendingPathComponent("freshWorktree")
+        try FileManager.default.createDirectory(at: wt, withIntermediateDirectories: true)
+        try touch("GammaView.tsx", in: wt)
+
+        let indexURL = root.appendingPathComponent("index-firstsight.json")
+        let store = ProjectIndexStore(fileURL: indexURL)
+        // Sanity: not indexed yet, no scoped snapshot.
+        XCTAssertNil(store.snapshot(for: wt))
+
+        store.indexRootOnFirstSight(wt)
+        try await waitUntil { store.snapshot(for: wt) != nil }
+
+        // Scoped snapshot now snaps this root's file…
+        let (out, reps) = SpokenFileMatcher.format("gamma view dot tsx", snapshot: store.snapshot(for: wt)!)
+        XCTAssertEqual(reps, 1, "first-sight index must make the root's files snappable: \(out)")
+        // …but the root is NOT pinned.
+        XCTAssertFalse(store.hasFolders, "an auto-indexed root must NOT become a pinned folder")
+        XCTAssertTrue(store.folders.isEmpty)
+
+        // …and it is NOT persisted: a fresh store over the same file sees no roots.
+        let reopened = ProjectIndexStore(fileURL: indexURL)
+        XCTAssertNil(reopened.snapshot(for: wt),
+                     "auto (first-sight) roots must not be written to project_index.json")
+        XCTAssertFalse(reopened.hasFolders)
+    }
+
+    /// The auto-root set is LRU-capped: after visiting more than the cap's worth of fresh
+    /// roots, the OLDEST auto root's index is evicted so the in-memory footprint stays
+    /// bounded across a long parallel-session day.
+    @MainActor
+    func testAutoRootsAreLRUCapped() async throws {
+        let store = ProjectIndexStore(fileURL: root.appendingPathComponent("index-lru.json"))
+        // Cap is 8; make 10 distinct git-less roots (a bucket is created regardless).
+        var roots: [URL] = []
+        for i in 0..<10 {
+            let r = root.appendingPathComponent("auto\(i)")
+            try FileManager.default.createDirectory(at: r, withIntermediateDirectories: true)
+            try touch("File\(i).swift", in: r)
+            roots.append(r)
+        }
+        // Index them one at a time, waiting for each to land so the LRU order is defined.
+        for r in roots {
+            store.indexRootOnFirstSight(r)
+            try await waitUntil { store.snapshot(for: r) != nil }
+        }
+        // The two oldest (auto0, auto1) must have been evicted; the most-recent 8 survive.
+        XCTAssertNil(store.snapshot(for: roots[0]), "oldest auto root should be evicted past the cap")
+        XCTAssertNil(store.snapshot(for: roots[1]), "second-oldest auto root should be evicted too")
+        for r in roots.suffix(8) {
+            XCTAssertNotNil(store.snapshot(for: r), "the most-recent 8 auto roots must be retained")
+        }
+    }
+
+    /// Pinning a root that was previously auto-indexed promotes it: it becomes a pinned
+    /// folder (persisted), and is no longer subject to auto-root eviction.
+    @MainActor
+    func testPinningPromotesAnAutoRoot() async throws {
+        let r = root.appendingPathComponent("promoteMe")
+        try FileManager.default.createDirectory(at: r, withIntermediateDirectories: true)
+        try touch("Promoted.swift", in: r)
+        let indexURL = root.appendingPathComponent("index-promote.json")
+        let store = ProjectIndexStore(fileURL: indexURL)
+
+        store.indexRootOnFirstSight(r)
+        try await waitUntil { store.snapshot(for: r) != nil }
+        XCTAssertFalse(store.hasFolders)
+
+        // Now pin it — a rescan runs; it becomes a persisted folder.
+        store.addFolders([r])
+        try await waitUntil { store.hasFolders && !store.isScanning && store.snapshot(for: r) != nil }
+        XCTAssertTrue(store.folders.contains { $0.path == r.standardizedFileURL.path },
+                      "a pinned promoted root appears in the folders list")
+
+        // Persisted now: a fresh store sees it.
+        let reopened = ProjectIndexStore(fileURL: indexURL)
+        XCTAssertTrue(reopened.hasFolders, "a pinned (promoted) root must persist to disk")
+    }
+
     /// Poll a main-actor condition with a timeout — the background scan is async, so tests
     /// wait for it to settle rather than sleeping a fixed duration.
     @MainActor

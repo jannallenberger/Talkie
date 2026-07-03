@@ -219,6 +219,21 @@ final class ProjectIndexStore: ObservableObject {
     /// detached work polls `Task.isCancelled` and breaks out promptly.
     private var scanTask: Task<[String: ProjectRootIndex], Never>?
 
+    // MARK: Auto (index-on-first-sight) roots — A10
+
+    /// Paths of roots auto-indexed on first sight (a detected terminal cwd we scanned but
+    /// the user never pinned). Kept SEPARATE from `folderPaths` so they're session-visible
+    /// but never persisted — `save()` writes only pinned roots. LRU-ordered (most-recent
+    /// last) and capped at `autoRootCap`, so visiting many checkouts across a session can't
+    /// grow the in-memory index without bound.
+    private var autoRootOrder: [String] = []
+    /// Auto-root ceiling. ~8 recently-visited checkouts is plenty for the parallel-worktree
+    /// workflow; older ones are evicted (their bucket dropped) as new ones arrive.
+    private let autoRootCap = 8
+    /// Paths with an auto-scan currently in flight, so a rapid re-focus doesn't kick off a
+    /// second walk of the same root.
+    private var autoScanInFlight: Set<String> = []
+
     /// The app injects nothing (defaults to the shared support-dir file); tests pass a
     /// temp `fileURL` so a scan never touches — or clobbers — the real project_index.json.
     init(fileURL: URL? = nil) {
@@ -237,12 +252,19 @@ final class ProjectIndexStore: ObservableObject {
     func addFolder(_ url: URL) { addFolders([url]) }
 
     /// Add several project roots at once (ignoring duplicates) and rescan a
-    /// single time, so picking five folders doesn't kick off five scans.
+    /// single time, so picking five folders doesn't kick off five scans. Paths are
+    /// standardized so a pinned root's key matches the scanner's bucket key (and so
+    /// promoting a previously auto-indexed root de-dups correctly).
     func addFolders(_ urls: [URL]) {
         var added = false
-        for url in urls where !data.folderPaths.contains(url.path) {
-            data.folderPaths.append(url.path)
+        for url in urls {
+            let path = url.standardizedFileURL.path
+            guard !data.folderPaths.contains(path) else { continue }
+            data.folderPaths.append(path)
             added = true
+            // Promoting an auto root to pinned: it's no longer an evictable auto root; the
+            // upcoming rescan re-indexes it authoritatively (and will persist it).
+            autoRootOrder.removeAll { $0 == path }
         }
         guard added else { return }
         save()
@@ -262,6 +284,10 @@ final class ProjectIndexStore: ObservableObject {
         scanGeneration += 1   // supersede any in-flight scan so it can't refill
         scanTask?.cancel()    // and stop the walk now — don't let it churn the disk
         scanTask = nil
+        // Clear wipes everything, auto roots included; drop their bookkeeping too so a
+        // stale LRU entry can't resurrect an evicted bucket.
+        autoRootOrder = []
+        autoScanInFlight = []
         isScanning = false
         save()
         rebuildSnapshot()
@@ -281,9 +307,13 @@ final class ProjectIndexStore: ObservableObject {
         // fire inside the detached walk.)
         scanTask?.cancel()
         let paths = data.folderPaths
+        // Auto (first-sight) roots survive a pinned rescan — a worktree you were just
+        // dictating into shouldn't vanish because you pinned an unrelated folder. We
+        // carry their buckets across and re-attach them after the pinned scan lands.
+        let carriedAuto = autoRootBuckets()
         guard !paths.isEmpty else {
             scanTask = nil
-            data.roots = [:]
+            data.roots = carriedAuto
             data.legacyMerged = ProjectRootIndex()
             data.scannedAtUnix = nil
             isScanning = false
@@ -301,7 +331,14 @@ final class ProjectIndexStore: ObservableObject {
         // let the newest scan settle `isScanning`.
         guard generation == scanGeneration else { return }
         scanTask = nil
-        data.roots = result
+        // Pinned scan results are authoritative for pinned roots; re-attach the carried
+        // auto roots UNLESS the same path was just pinned (then the pinned result wins).
+        var merged = result
+        for (path, bucket) in carriedAuto where merged[path] == nil { merged[path] = bucket }
+        data.roots = merged
+        // Keep the LRU list consistent with what's actually present as an auto root (a
+        // path just promoted to pinned is no longer an auto root).
+        autoRootOrder = autoRootOrder.filter { data.roots[$0] != nil && !data.folderPaths.contains($0) }
         // The per-root buckets are now authoritative; drop the migrated legacy blob so it
         // can't shadow a freshly-scanned root or get re-persisted.
         data.legacyMerged = ProjectRootIndex()
@@ -309,6 +346,16 @@ final class ProjectIndexStore: ObservableObject {
         isScanning = false
         save()
         rebuildSnapshot()
+    }
+
+    /// The buckets of the current auto (first-sight) roots, keyed by path — the ones NOT
+    /// pinned. Used to carry auto roots across a pinned rescan (which rebuilds `data.roots`).
+    private func autoRootBuckets() -> [String: ProjectRootIndex] {
+        var out: [String: ProjectRootIndex] = [:]
+        for path in autoRootOrder where !data.folderPaths.contains(path) {
+            if let bucket = data.roots[path] { out[path] = bucket }
+        }
+        return out
     }
 
     /// Resolve a window-title filename to the real on-disk path of an indexed file, or
@@ -338,6 +385,60 @@ final class ProjectIndexStore: ObservableObject {
                                                docTerms: bucket.docTerms)
     }
 
+    /// Index a detected-but-unpinned root in the background (A10 index-on-first-sight), so a
+    /// worktree Jann just spun up is scoped within a dictation or two WITHOUT him having to
+    /// add a folder chip. The root's bucket lands in `data.roots` but the path is tracked
+    /// as an AUTO root (LRU-capped, never written to `project_index.json`) — so the index
+    /// doesn't accumulate every directory ever visited. A no-op when the root is already
+    /// indexed (pinned or auto), or a scan for it is already in flight. Utility QoS, single
+    /// root, so it never contends with a running build (the parallel-session use case).
+    func indexRootOnFirstSight(_ root: URL) {
+        let path = root.standardizedFileURL.path
+        guard data.roots[path] == nil else {           // already have an index for it
+            if autoRootOrder.contains(path) { touchAutoRoot(path) }  // keep it warm in the LRU
+            return
+        }
+        guard autoScanInFlight.insert(path).inserted else { return }  // scan already running
+        // Snapshot the generation so a pinned rescan/clear that lands AFTER this walk
+        // (bumping the generation) causes us to drop our stale result. We deliberately do
+        // NOT cancel `scanTask` — that Task is the user's authoritative pinned rescan; a
+        // best-effort first-sight scan must never abort it. Both run at utility QoS.
+        let generation = scanGeneration
+        Task { [weak self] in
+            let bucket = await Task.detached(priority: .utility) {
+                ProjectScanner.indexOne(root: root)
+            }.value
+            guard let self else { return }
+            self.autoScanInFlight.remove(path)
+            // A pin/clear/rescan (which bumps the generation) happened while we walked —
+            // drop this result so we never clobber authoritative state.
+            guard generation == self.scanGeneration else { return }
+            guard self.data.roots[path] == nil, !self.data.folderPaths.contains(path) else { return }
+            self.data.roots[path] = bucket
+            self.touchAutoRoot(path)
+            self.evictAutoRootsIfNeeded()
+            // Auto roots are NOT persisted — `save()` strips them — so no disk write here.
+            self.rebuildSnapshot()
+        }
+    }
+
+    /// Mark an auto root most-recently-used (LRU: most-recent last).
+    private func touchAutoRoot(_ path: String) {
+        autoRootOrder.removeAll { $0 == path }
+        autoRootOrder.append(path)
+    }
+
+    /// Evict the oldest auto roots (and drop their in-memory buckets) once we exceed the
+    /// cap, so the auto-index footprint stays bounded across a long parallel-session day.
+    private func evictAutoRootsIfNeeded() {
+        while autoRootOrder.count > autoRootCap, let oldest = autoRootOrder.first {
+            autoRootOrder.removeFirst()
+            // Only drop it if it's still an auto root (a pin would have removed it from the
+            // order list already).
+            if !data.folderPaths.contains(oldest) { data.roots[oldest] = nil }
+        }
+    }
+
     private func rebuildSnapshot() {
         snapshot = SpokenFileMatcher.buildSnapshot(files: data.mergedFiles, symbols: data.mergedSymbols,
                                                    docTerms: data.mergedDocTerms)
@@ -350,7 +451,14 @@ final class ProjectIndexStore: ObservableObject {
     }
 
     private func save() {
-        guard let raw = try? JSONEncoder().encode(data) else { return }
+        // Persist ONLY pinned roots — the ones the user picked (in `folderPaths`). Auto
+        // roots (index-on-first-sight) are deliberately kept out of the file so
+        // project_index.json doesn't accumulate every directory ever visited across a
+        // parallel-session day; they live in memory for this run only. We snapshot `data`,
+        // drop any bucket whose path isn't pinned, and encode that.
+        var persisted = data
+        persisted.roots = data.roots.filter { data.folderPaths.contains($0.key) }
+        guard let raw = try? JSONEncoder().encode(persisted) else { return }
         try? raw.write(to: fileURL, options: .atomic)
     }
 }

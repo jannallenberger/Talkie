@@ -233,4 +233,60 @@ final class ProjectRootDetectorTests: XCTestCase {
                                         windowTitle: "App.swift — Talkie")
         XCTAssertNil(root, "a bare-name title never resolves, even when a matching repo exists")
     }
+
+    // MARK: - A10: terminal cwd fallback (proc_pidinfo)
+
+    /// The title ALWAYS wins over the cwd fallback: when the window title carries a
+    /// resolvable path, that path is returned even if a (bogus) processID is supplied —
+    /// the proc walk is only consulted when the title yields nothing.
+    func testTitlePathWinsOverProcFallback() throws {
+        let repo = try mkdir("titlewins")
+        _ = try mkdir("titlewins/.git")
+        // Pass a nonsense PID; the title must still resolve first, never touching proc.
+        let root = Detector.resolveRoot(bundleID: "com.apple.Terminal",
+                                        windowTitle: repo.path,
+                                        processID: 999_999)
+        XCTAssertEqual(root?.standardizedFileURL.path, repo.standardizedFileURL.path,
+                       "a resolvable title path is used before the cwd fallback")
+    }
+
+    /// `processID: 0` disables the proc fallback entirely — a bare-name title with no
+    /// process handle resolves to nil (the A9 offer path, unchanged).
+    func testZeroProcessIDDisablesFallback() {
+        let root = Detector.resolveRoot(bundleID: "com.apple.Terminal",
+                                        windowTitle: "claude — myrepo",
+                                        processID: 0)
+        XCTAssertNil(root, "with no processID and a path-less title, there is nothing to resolve")
+    }
+
+    /// The cwd fallback is best-effort and MUST NOT crash on a nonexistent PID — it simply
+    /// yields nil (fails closed). This guards the hardened-terminal degrade path.
+    func testCwdFallbackOnDeadPIDYieldsNilNotCrash() {
+        // PID 999999 is (almost certainly) not a live process; proc_pidinfo returns 0.
+        let root = Detector.cwdGitRoot(terminalPID: 999_999, fileManager: .default)
+        XCTAssertNil(root, "an invalid PID must degrade to nil, never crash")
+    }
+
+    /// A non-positive PID short-circuits before any syscall.
+    func testCwdFallbackRejectsNonPositivePID() {
+        XCTAssertNil(Detector.cwdGitRoot(terminalPID: 0, fileManager: .default))
+        XCTAssertNil(Detector.cwdGitRoot(terminalPID: -1, fileManager: .default))
+    }
+
+    /// Best-effort smoke: walking the CURRENT test process's own PID subtree must not
+    /// crash and must return either nil or a real git working copy (never a bogus path).
+    /// This exercises the live `proc_listchildpids` + `proc_pidinfo` path without asserting
+    /// a specific repo (the test host's process tree isn't fixed).
+    func testCwdFallbackOnOwnPIDIsSafe() {
+        let root = Detector.cwdGitRoot(terminalPID: getpid(), fileManager: .default)
+        if let root {
+            var isDir: ObjCBool = false
+            XCTAssertTrue(FileManager.default.fileExists(atPath: root.path, isDirectory: &isDir))
+            XCTAssertTrue(isDir.boolValue, "a resolved cwd root must be a real directory")
+            XCTAssertTrue(FileManager.default.fileExists(
+                atPath: root.appendingPathComponent(".git").path),
+                "a resolved cwd root must actually contain a .git")
+        }
+        // nil is a perfectly valid outcome (no child shell / not a git dir) — no assertion.
+    }
 }

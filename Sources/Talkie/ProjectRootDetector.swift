@@ -1,4 +1,5 @@
 import Foundation
+import Darwin // proc_pidinfo / proc_listchildpids — local process introspection, no network
 
 /// Turns "who you're dictating into" (a target app's bundle id + window title) into
 /// a discoverable project root — a directory that actually exists and is a git
@@ -36,15 +37,30 @@ enum ProjectRootDetector {
     /// The best project root discoverable from this target, or nil. Pure parsing
     /// feeds real-filesystem resolution; `fileManager` is injectable so tests can
     /// resolve against a fixture tree (defaults to `.default` in the app).
+    ///
+    /// **Title first, cwd second (A10).** We always try the window-title path candidates
+    /// first (the false-negative-biased parse above). When those yield nothing AND we have
+    /// the terminal's `processID`, we fall back to reading the working directory of the
+    /// terminal's child shells via `proc_pidinfo` — this is what lets a bare Claude Code
+    /// terminal (whose title is often just "claude — repo", no path) scope to the checkout
+    /// it's actually `cd`'d into, including a parallel worktree. If the shells disagree
+    /// (multiple tabs in different repos) and the title gave no signal, we return nil and
+    /// the caller keeps the merged snapshot — never a guess. `processID` defaults to 0
+    /// (no proc fallback), keeping the pure title-only call site (A9's offer) unchanged.
     static func resolveRoot(
         bundleID: String?,
         windowTitle: String?,
+        processID: pid_t = 0,
         fileManager: FileManager = .default
     ) -> URL? {
         for candidate in pathCandidates(bundleID: bundleID, windowTitle: windowTitle) {
             if let root = gitRoot(forPath: candidate, fileManager: fileManager) {
                 return root
             }
+        }
+        // Title had no resolvable path — try the terminal's shell cwd(s).
+        if processID > 0, let root = cwdGitRoot(terminalPID: processID, fileManager: fileManager) {
+            return root
         }
         return nil
     }
@@ -164,5 +180,97 @@ enum ProjectRootDetector {
             return NSHomeDirectory() + String(path.dropFirst(1))
         }
         return path
+    }
+
+    // MARK: - Terminal cwd fallback (A10)
+
+    /// How deep we walk the terminal's process subtree looking for shells. A terminal
+    /// emulator's frontmost tab is a login shell that is usually a direct child or one or
+    /// two levels down (shell → the program it launched). Shallow on purpose — deep enough
+    /// to reach the shell, shallow enough to stay cheap and not wander into unrelated
+    /// grandchild trees.
+    private static let maxProcDepth = 4
+    /// Cap on descendants visited, so a terminal running a fan-out of subprocesses can't
+    /// make this walk unbounded. Best-effort: we stop at the cap and reason over whatever
+    /// cwds we gathered.
+    private static let maxProcVisited = 64
+
+    /// Read the working directory git root behind a terminal process, or nil. Enumerates
+    /// the terminal PID's descendant shells (`proc_listchildpids`), reads each one's cwd
+    /// (`proc_pidinfo` with `PROC_PIDVNODEPATHINFO`), resolves each cwd to a git root, and:
+    ///   • returns that root if every resolvable shell agrees on ONE repo (the common
+    ///     single-repo case, incl. a lone tab),
+    ///   • returns nil if two shells resolve to DIFFERENT repos (ambiguous multi-tab — we
+    ///     refuse to guess, per the never-a-wrong-scope gate).
+    /// Pure-syscall + read-only; every call is best-effort and returns nil on any failure
+    /// (a hardened terminal that denies `proc_pidinfo` simply degrades to title-only).
+    static func cwdGitRoot(terminalPID: pid_t, fileManager fm: FileManager) -> URL? {
+        guard terminalPID > 0 else { return nil }
+        var distinctRoots: [String: URL] = [:]   // standardized path → root
+        var visited = 0
+
+        // BFS over the process subtree, bounded by depth and visit count.
+        var frontier: [(pid: pid_t, depth: Int)] = [(terminalPID, 0)]
+        var seenPIDs: Set<pid_t> = [terminalPID]
+        while !frontier.isEmpty {
+            let (pid, depth) = frontier.removeFirst()
+            visited += 1
+            if visited > maxProcVisited { break }
+
+            // Read this process's cwd and try to resolve it to a repo root. We skip the
+            // terminal app's OWN cwd (depth 0) — it's the app bundle's launch dir, not a
+            // project — and only trust the shell descendants.
+            if depth > 0, let cwd = workingDirectory(ofPID: pid),
+               let root = gitRoot(forPath: cwd, fileManager: fm) {
+                distinctRoots[root.standardizedFileURL.path] = root
+                // Two different repos among the tabs → ambiguous, refuse to guess.
+                if distinctRoots.count > 1 { return nil }
+            }
+
+            if depth < maxProcDepth {
+                for child in childPIDs(ofPID: pid) where seenPIDs.insert(child).inserted {
+                    frontier.append((child, depth + 1))
+                }
+            }
+        }
+        // Exactly one repo across all shells → confident. Zero → nil (no signal).
+        return distinctRoots.count == 1 ? distinctRoots.values.first : nil
+    }
+
+    /// Direct child PIDs of `pid` via `proc_listchildpids`. Best-effort: returns [] on any
+    /// error or a process with no children. Sized generously and retried once if the first
+    /// probe fills the buffer (a shell with a burst of children).
+    private static func childPIDs(ofPID pid: pid_t) -> [pid_t] {
+        var capacity = 64
+        for _ in 0..<2 {
+            var buffer = [pid_t](repeating: 0, count: capacity)
+            let bytes = proc_listchildpids(pid, &buffer, Int32(capacity * MemoryLayout<pid_t>.size))
+            guard bytes > 0 else { return [] }
+            let count = Int(bytes) / MemoryLayout<pid_t>.size
+            if count < capacity {
+                return buffer.prefix(count).filter { $0 > 0 }
+            }
+            capacity *= 2   // buffer was full — there may be more; grow and retry once.
+        }
+        return []
+    }
+
+    /// The current working directory of a process via `proc_pidinfo(PROC_PIDVNODEPATHINFO)`,
+    /// or nil. Reads only the `pvi_cdir` (current directory) vnode path — a single local
+    /// syscall, no network, no subprocess. Fails closed (nil) when the call returns an
+    /// unexpected size or the process is gone / not permitted.
+    private static func workingDirectory(ofPID pid: pid_t) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        let ret = withUnsafeMutablePointer(to: &info) { ptr -> Int32 in
+            proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, ptr, size)
+        }
+        guard ret == size else { return nil }
+        // vip_path is a fixed-size C char array (MAXPATHLEN) — read it as a C string.
+        var path = withUnsafePointer(to: &info.pvi_cdir.vip_path) { p -> String in
+            p.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
+        }
+        path = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.isEmpty ? nil : path
     }
 }

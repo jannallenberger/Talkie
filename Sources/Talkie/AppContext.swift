@@ -21,6 +21,11 @@ struct CapturedContext: Sendable {
     var phrases: [String]
     /// The raw window title (used for project/file matching downstream).
     var windowTitle: String?
+    /// The frontmost app's process id, kept so A10's terminal cwd fallback can walk the
+    /// shell's children when the window title carries no path (`proc_pidinfo`, purely
+    /// local). 0 when there's no frontmost app. Not part of `TargetApp` identity — it's
+    /// an ephemeral per-session handle, never used for profiles/accounting.
+    var processID: pid_t = 0
 
     static let empty = CapturedContext(target: .unknown, phrases: [], windowTitle: nil)
 }
@@ -48,7 +53,8 @@ enum ContextCapture {
 
         // Don't mine Talkie's own UI for context, and respect the setting.
         if !minePhrases || bundleID == selfBundleID {
-            return CapturedContext(target: target, phrases: [], windowTitle: nil)
+            return CapturedContext(target: target, phrases: [], windowTitle: nil,
+                                   processID: front.processIdentifier)
         }
 
         var sources: [String] = []
@@ -57,7 +63,8 @@ enum ContextCapture {
         if let near = focusedText() { sources.append(near) }
 
         let phrases = PhraseMiner.mine(from: sources)
-        return CapturedContext(target: target, phrases: phrases, windowTitle: windowTitle)
+        return CapturedContext(target: target, phrases: phrases, windowTitle: windowTitle,
+                               processID: front.processIdentifier)
     }
 
     // MARK: Accessibility reads
