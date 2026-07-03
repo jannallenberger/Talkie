@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let contextGraph = ContextGraphStore()
     let macros = MacroStore()
     let profiles = AppProfileStore()
-    let searchEngine = SearchEngine()
+    let searchEngine = SearchEngine(sidecarDirectory: AppPaths.supportDirectory()) // L13-a: persist sentence vectors in <support>/search/
     /// The confidence-based niche vocabulary store: jargon Talkie learns silently
     /// from what you dictate and confirm, graduating into the post-hoc
     /// `NicheCorrector` without a hand-curated Dictionary entry. `@MainActor`;

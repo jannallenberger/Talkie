@@ -88,6 +88,11 @@ struct MemoryView: View {
         history.clearAll()
         contextGraph.purge(source: .dictation, sourceID: nil)
         contextSummary?.clearSummary()
+        // L13-a: wipe the on-disk sentence-vector sidecar now, so the search cache
+        // doesn't keep vectors for text you just cleared until the debounced rebuild
+        // eventually rewrites it. (A delete of a single dictation ages out via that
+        // rebuild; a full clear shouldn't have to wait for the debounce.)
+        searchEngine.clearSidecar()
     }
 
     private var searchField: some View {

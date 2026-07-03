@@ -84,19 +84,44 @@ struct SemanticIndex: Sendable {
     /// reconstructed per record AND per search). `nil` → keyword-only search.
     private let embedding: LoadedEmbedding?
 
-    init(records: [SearchRecord]) {
+    /// The merged `contentHash → vector` map for exactly the records in THIS index,
+    /// so the builder can persist it to the on-disk sidecar (L13-a). Every record
+    /// whose bounded text embedded to a vector contributes one entry — whether the
+    /// vector came from `reuse` (a cache hit) or a fresh embedding — so persisting
+    /// this map writes only the current records' hashes and lets deleted content age
+    /// out. Records that don't embed (empty text / unavailable model) are absent.
+    let vectorsByHash: [String: [Double]]
+
+    /// - Parameters:
+    ///   - records: the corpus to index.
+    ///   - reuse: a `contentHash → vector` map from a previously persisted sidecar.
+    ///     For each record, its bounded text is hashed the SAME way the sidecar
+    ///     keys it; on a hit the cached vector is reused verbatim (byte-identical to
+    ///     re-embedding — the model is deterministic), on a miss the record is
+    ///     embedded now. When `reuse` is empty, this is byte-identical to the old
+    ///     always-embed path.
+    init(records: [SearchRecord], reuse: [String: [Double]] = [:]) {
         // Load the NL model ONCE for the whole build (it was previously reconstructed
         // per record via `Embedder.vector`'s default), then keep it for query time.
         // Constructed from value-type `SearchRecord`s + precomputed vectors/tokens,
         // so the result stays `Sendable` and is safe to build off-main.
         let loaded = Embedder.loaded()
         embedding = loaded
+        var merged: [String: [Double]] = [:]
+        merged.reserveCapacity(records.count)
         entries = records.map { record in
             let bounded = String(record.text.prefix(SemanticIndex.maxIndexedChars))
-            return Entry(record: record,
-                         vector: Embedder.vector(for: bounded, embedding: loaded?.embedding),
+            // Reuse the cached vector when the bounded text hasn't changed; otherwise
+            // embed. The reuse key is the sidecar's stable content hash of the SAME
+            // bounded slice we would embed, so a hit is exactly the vector a fresh
+            // embed would produce — reuse never changes a search result.
+            let hash = VectorSidecar.contentHash(bounded)
+            let vector = reuse[hash] ?? Embedder.vector(for: bounded, embedding: loaded?.embedding)
+            if let vector { merged[hash] = vector }
+            return Entry(record: record, vector: vector,
                          tokens: SemanticIndex.tokenize(bounded))
         }
+        vectorsByHash = merged
     }
 
     func search(_ query: String, limit: Int = 20) -> [SearchHit] {
