@@ -70,6 +70,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem?
     private var mainWindow: MainWindowController?
+    /// Backs the two macOS Services ("Transcribe with Talkie", "Clean up with
+    /// Talkie"). `NSApp.servicesProvider` holds this only *weakly*, so we retain it
+    /// here for the app's lifetime — otherwise the provider would deallocate and the
+    /// services would silently stop responding. Registered in
+    /// `applicationDidFinishLaunching` (see `setupServices`).
+    private var servicesProvider: ServicesProvider?
 
     private var isDictating = false
     /// True while the current session is locked hands-free (a tap-tap put it in
@@ -176,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupEngineHandler()
         setupHotKey()
+        setupServices()
 
         // Watch the MCP inbox for Claude-queued dictionary suggestions and surface
         // each with an Undo pill. Started here so a suggestion written while the app
@@ -487,6 +494,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         _ = monitor.start()
         hotKey = monitor
+    }
+
+    /// Register Talkie's two macOS Services ("Transcribe with Talkie", "Clean up
+    /// with Talkie"). `NSApp.servicesProvider` is a WEAK reference, so we hold the
+    /// provider in a stored property (`servicesProvider`) for the app's lifetime;
+    /// without that it would deallocate and the services would silently stop
+    /// responding. `NSUpdateDynamicServices()` prompts the Services system to
+    /// re-read this process's registration now — the `NSServices` array in
+    /// Info.plist is what actually advertises the items to other apps' menus (that
+    /// requires LaunchServices to have re-registered the bundle, which
+    /// `scripts/run.sh`'s `lsregister -f` handles on install).
+    private func setupServices() {
+        let provider = ServicesProvider()
+        NSApp.servicesProvider = provider
+        servicesProvider = provider
+        NSUpdateDynamicServices()
     }
 
     /// A tap-tap locked recording hands-free. Recording is already running (it
