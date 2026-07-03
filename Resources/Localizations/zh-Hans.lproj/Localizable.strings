@@ -606,3 +606,25 @@
 "Your name" = "你的名字";
 "Click to edit your name" = "点击以编辑你的名字";
 "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "录制时显示在摄像头下方的小指示器，带有实时计时器，并在 Talkie 有把握时显示当前主题。";
+
+/* L6a — Settings IA v2: group titles + subtitles + subpage scaffold */
+"Cleanup & intelligence" = "整理与智能";
+"Apps" = "应用";
+"Notes & export" = "笔记与导出";
+"Claude" = "Claude";
+"Privacy & permissions" = "隐私与权限";
+"All languages" = "所有语言";
+"Verify our claims" = "验证我们的承诺";
+"Your dictation key, how text lands, and the mic." = "你的听写键、文本如何插入以及麦克风。";
+"How Talkie polishes text and learns your words." = "Talkie 如何润色文本并学习你的词汇。";
+"Which languages you speak; Talkie auto-detects." = "你说的语言；Talkie 会自动检测。";
+"Per-app cleanup styles for the apps you customize." = "为你自定义的应用设置的按应用整理风格。";
+"Recording, transcription, and calendar context." = "录音、转写和日历上下文。";
+"Where notes and transcripts go, plus app behavior." = "笔记和转写内容的去向，以及应用行为。";
+"Let Claude read your meetings and context, on-device." = "让 Claude 读取你的会议和上下文（在设备上）。";
+"The permissions Talkie needs and proof nothing leaves." = "Talkie 所需的权限以及不外传的证明。";
+"Tools that ship only in development builds." = "仅包含在开发版本中的工具。";
+"The full language picker will live here." = "完整的语言选择器将显示在这里。";
+"Meeting recording and transcription settings will live here." = "会议录音和转写设置将显示在这里。";
+"The on-device, zero-network proof will live here." = "设备上零联网的证明将显示在这里。";
+"This settings page is coming soon." = "此设置页面即将推出。";

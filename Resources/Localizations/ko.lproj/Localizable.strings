@@ -606,3 +606,25 @@
 "Your name" = "이름";
 "Click to edit your name" = "클릭하여 이름 편집";
 "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "녹화 중 카메라 아래에 표시되는 작은 표시기로, 실시간 타이머와 Talkie가 확신할 때 현재 주제를 보여줍니다.";
+
+/* L6a — Settings IA v2: group titles + subtitles + subpage scaffold */
+"Cleanup & intelligence" = "정리 및 인텔리전스";
+"Apps" = "앱";
+"Notes & export" = "노트 및 내보내기";
+"Claude" = "Claude";
+"Privacy & permissions" = "개인정보 보호 및 권한";
+"All languages" = "모든 언어";
+"Verify our claims" = "우리의 약속 확인";
+"Your dictation key, how text lands, and the mic." = "받아쓰기 키, 텍스트 삽입 방식, 마이크.";
+"How Talkie polishes text and learns your words." = "Talkie가 텍스트를 다듬고 사용자의 단어를 학습하는 방식.";
+"Which languages you speak; Talkie auto-detects." = "사용하는 언어. Talkie가 자동으로 감지합니다.";
+"Per-app cleanup styles for the apps you customize." = "사용자화한 앱별 정리 스타일.";
+"Recording, transcription, and calendar context." = "녹음, 전사, 캘린더 컨텍스트.";
+"Where notes and transcripts go, plus app behavior." = "노트와 전사본의 저장 위치 및 앱 동작.";
+"Let Claude read your meetings and context, on-device." = "Claude가 회의와 컨텍스트를 읽도록 허용합니다(기기 내에서).";
+"The permissions Talkie needs and proof nothing leaves." = "Talkie에 필요한 권한과 아무것도 전송되지 않는다는 증거.";
+"Tools that ship only in development builds." = "개발 빌드에만 포함되는 도구.";
+"The full language picker will live here." = "전체 언어 선택기가 여기에 표시됩니다.";
+"Meeting recording and transcription settings will live here." = "회의 녹음 및 전사 설정이 여기에 표시됩니다.";
+"The on-device, zero-network proof will live here." = "네트워크를 사용하지 않는 기기 내 증거가 여기에 표시됩니다.";
+"This settings page is coming soon." = "이 설정 페이지는 곧 제공됩니다.";

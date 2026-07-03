@@ -608,3 +608,25 @@
 "Your name" = "Your name";
 "Click to edit your name" = "Click to edit your name";
 "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident." = "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident.";
+
+/* L6a — Settings IA v2: group titles + subtitles + subpage scaffold */
+"Cleanup & intelligence" = "Cleanup & intelligence";
+"Apps" = "Apps";
+"Notes & export" = "Notes & export";
+"Claude" = "Claude";
+"Privacy & permissions" = "Privacy & permissions";
+"All languages" = "All languages";
+"Verify our claims" = "Verify our claims";
+"Your dictation key, how text lands, and the mic." = "Your dictation key, how text lands, and the mic.";
+"How Talkie polishes text and learns your words." = "How Talkie polishes text and learns your words.";
+"Which languages you speak; Talkie auto-detects." = "Which languages you speak; Talkie auto-detects.";
+"Per-app cleanup styles for the apps you customize." = "Per-app cleanup styles for the apps you customize.";
+"Recording, transcription, and calendar context." = "Recording, transcription, and calendar context.";
+"Where notes and transcripts go, plus app behavior." = "Where notes and transcripts go, plus app behavior.";
+"Let Claude read your meetings and context, on-device." = "Let Claude read your meetings and context, on-device.";
+"The permissions Talkie needs and proof nothing leaves." = "The permissions Talkie needs and proof nothing leaves.";
+"Tools that ship only in development builds." = "Tools that ship only in development builds.";
+"The full language picker will live here." = "The full language picker will live here.";
+"Meeting recording and transcription settings will live here." = "Meeting recording and transcription settings will live here.";
+"The on-device, zero-network proof will live here." = "The on-device, zero-network proof will live here.";
+"This settings page is coming soon." = "This settings page is coming soon.";
