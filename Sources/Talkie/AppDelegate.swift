@@ -18,6 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// L4: running word/phrase frequency, accumulated at record time (transcripts
     /// are pruned after 7 days, so "most used" can't be recomputed from history).
     let wordFreq = WordFrequencyStore()
+    /// L3a: rolling per-dictation software-latency record (last 50, numeric only —
+    /// no transcript text). Populated from the post-release `ProcessingTrace`; the
+    /// UI is L3b, so nothing consumes it in a view yet — it just accumulates.
+    let latency = LatencyStore()
     /// L2-a: the dashboard Scratchpad (notes + tasks). Also the rescue sink for
     /// transcripts that couldn't be pasted — see the `.leftOnClipboard` branch, where
     /// a NON-secure-input failure appends the transcript here instead of leaving it
@@ -95,6 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Blocks a new session from overlapping the in-flight one (which shares the
     /// engine + audio); a re-press during this window just nudges the pill.
     private var isProcessing = false
+    /// L3a: flips true after the first dictation latency is recorded this launch,
+    /// so exactly one record per app run is tagged `coldStart` (first-dictation
+    /// warm-up costs, e.g. model spin-up, look different from steady-state).
+    private var didRecordLatencyThisLaunch = false
     /// Bumped on every begin; lets an in-flight async setup detect that the
     /// user already released the key (or started a newer session) and bail.
     private var sessionID = 0
@@ -1566,6 +1574,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             trace.stage("insert")
             trace.finish(chars: finalText.count, streamed: usedStreaming)
+            // L3a: persist this dictation's software latency (numeric only — no
+            // transcript text). Reads the trace's already-accumulated stages; adds
+            // no work to the recognition/cleanup path. Skipped for the `.empty`
+            // outcome (nothing landed); `finalText` is non-empty here (guarded
+            // above), so `chars` > 0. Exactly one record per launch is `coldStart`.
+            if case .empty = outcome {
+                // nothing inserted — don't record a latency sample
+            } else {
+                let report = trace.report
+                func stageMs(_ name: String) -> Double {
+                    report.stages.first { $0.name == name }?.ms ?? 0
+                }
+                let outcomeLabel: String
+                switch outcome {
+                case .inserted: outcomeLabel = "inserted"
+                case .leftOnClipboard: outcomeLabel = "leftOnClipboard"
+                case .empty: outcomeLabel = "empty"
+                }
+                let isColdStart = !self.didRecordLatencyThisLaunch
+                self.didRecordLatencyThisLaunch = true
+                self.latency.record(
+                    totalMs: report.totalMs,
+                    finalizeMs: stageMs("finalize"),
+                    reTxMs: stageMs("reTx"),
+                    cleanupMs: stageMs("cleanup"),
+                    insertMs: stageMs("insert"),
+                    chars: finalText.count,
+                    streamed: usedStreaming,
+                    optimistic: optimistic != nil,
+                    coldStart: isColdStart,
+                    mode: mode.rawValue,
+                    outcome: outcomeLabel
+                )
+            }
             switch outcome {
             case .inserted:
                 Feedback.done()
