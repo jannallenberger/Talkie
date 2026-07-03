@@ -498,3 +498,11 @@
 "≈ the King James Bible (~783,000)" = "≈ the King James Bible (~783,000)";
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ the entire Harry Potter saga (~1.08 million words)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)";
+
+// Run-shortcut command + on-save Shortcut (G8)
+"Ran shortcut “%@”" = "Ran shortcut “%@”";
+"No shortcut named “%@”" = "No shortcut named “%@”";
+"Couldn't run the shortcut “%@”" = "Couldn't run the shortcut “%@”";
+"After saving" = "After saving";
+"After saving a meeting note, run" = "After saving a meeting note, run";
+"Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network.";
