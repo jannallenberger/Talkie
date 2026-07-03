@@ -745,7 +745,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // (global → per-category → per-app merge, falling back to `settings.*`
         // for every unset field). Snapshotted so a mid-session profile edit
         // can't skew the in-flight session; carried into `endDictation` below.
-        let profile = profiles.resolve(for: captured.target, settings: settings)
+        var profile = profiles.resolve(for: captured.target, settings: settings)
+
+        // G9 — Prompt cleanup with agent-terminal auto-detection. When you're
+        // dictating into a terminal that is running a coding agent (Claude Code,
+        // Codex, aider — detected from the window title) and you have NOT set an
+        // explicit per-app style for that terminal, reshape the ramble into a
+        // prompt instead of inserting it faithfully. Zero settings: a per-app
+        // override always wins (checked here), the category default is untouched
+        // for every other terminal, and `.prompt` is also manually pickable.
+        // We mutate the LOCAL `profile` BEFORE it is snapshotted into
+        // `sessionProfile`/`sessionCleanup` and before prewarm, so the whole
+        // session (prewarm, streaming cleanup, stop-time pass, accounting) sees
+        // the promoted style. `windowTitle` is nil when context awareness is off
+        // or the target is Talkie itself, so this silently no-ops to the resolved
+        // style in those cases (acceptable; logged).
+        let hasExplicitStyleOverride = captured.target.bundleID
+            .flatMap { profiles.profile(for: $0)?.cleanupStyle } != nil
+        if captured.target.category == .terminal,
+           !hasExplicitStyleOverride,
+           AgentTerminalDetector.isAgentSession(windowTitle: captured.windowTitle) {
+            profile.cleanupStyle = .prompt
+            talkieDebugLog("cleanup: agent terminal detected (title=\(captured.windowTitle ?? "nil")) → .prompt")
+        }
+
         sessionProfile = profile
 
         // Bias the recognizer with the union of: custom vocabulary (narrowed by

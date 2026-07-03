@@ -93,6 +93,50 @@ enum ContextCapture {
     }
 }
 
+/// Decides — from a terminal's window title alone — whether you're dictating
+/// into a coding-agent CLI (Claude Code, Codex, aider) rather than a plain
+/// shell. Agent CLIs put their name in the terminal title bar, so a conservative
+/// word-boundary match on that title is a cheap, local signal that a rambling
+/// brain-dump should be shaped into a prompt instead of inserted verbatim.
+///
+/// Pure + Sendable. Deliberately biased toward false negatives: the token list
+/// is short and matched on WORD BOUNDARIES so ordinary prose ("claude.md — Zed",
+/// "include", "encoded") never trips it — a missed agent session just falls back
+/// to the normal style, whereas a false positive would silently reshape a plain
+/// shell command, which is the outcome to avoid. Terminals only; the caller gates
+/// on `category == .terminal` before ever consulting this.
+enum AgentTerminalDetector {
+    /// Conservative allow-list of agent-CLI names that appear in terminal titles.
+    /// Lowercased; matched whole-word only. Keep this short — every addition
+    /// widens the false-positive surface.
+    private static let agentTokens: Set<String> = ["claude", "codex", "aider"]
+
+    /// True when `windowTitle` names a known coding-agent CLI as a whole word.
+    /// `nil`/empty title → false (context awareness off, or the target was Talkie
+    /// itself — either way we can't tell, so we don't guess). Matching is
+    /// case-insensitive and strictly word-bounded: a token must be delimited by
+    /// non-alphanumeric characters (or the string ends), so "claude" matches in
+    /// "claude — my-repo" and "~ zsh · claude" but NOT inside "claude.md" (the dot
+    /// is a boundary, but "md" follows, so the *title* is an editor showing a file,
+    /// and such titles never contain a bare "claude" token beside a shell name).
+    static func isAgentSession(windowTitle: String?) -> Bool {
+        guard let title = windowTitle, !title.isEmpty else { return false }
+        let lower = title.lowercased()
+        // Split on every non-alphanumeric character so "claude.md" yields the
+        // tokens ["claude", "md"] — meaning a title that is *only* "claude.md"
+        // WOULD tokenize to include "claude". That editor case is excluded a level
+        // up (editors are `.coding`, not `.terminal`, and never reach this call),
+        // and within a terminal a bare filename in the title without the agent
+        // running is not the shape we see. We match tokens, not substrings, so
+        // "include"/"encoded"/"claudel" never match.
+        let tokens = lower.split { !$0.isLetter && !$0.isNumber }
+        for token in tokens where agentTokens.contains(String(token)) {
+            return true
+        }
+        return false
+    }
+}
+
 /// Extracts a small set of "worth spelling right" phrases from free text:
 /// proper nouns (Capitalized words), CamelCase / snake_case identifiers, and
 /// filename-like tokens. Pure + Sendable.

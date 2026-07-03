@@ -134,6 +134,7 @@
 "Friendly" = "友好";
 "Professional" = "专业";
 "Concise" = "简洁";
+"Prompt" = "提示词";
 "Talkie Meetings folder" = "Talkie 会议文件夹";
 "A folder I choose" = "我选择的文件夹";
 "Insert exactly what you said, word for word." = "逐字插入你所说的内容。";
@@ -146,6 +147,7 @@
 "Warm and casual, like texting a friend." = "亲切随意，像给朋友发短信。";
 "Polished and courteous, like a work email." = "精炼有礼，像一封工作邮件。";
 "Tight and to the point." = "简练而切题。";
+"Restructures a brain-dump into a clear agent prompt." = "将零散的想法整理成清晰的智能体提示词。";
 
 /* dashboard stat cards */
 "Words per minute" = "每分钟字数";

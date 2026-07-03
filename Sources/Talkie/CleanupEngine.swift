@@ -14,6 +14,7 @@ enum CleanupStyle: String, CaseIterable, Codable, Identifiable {
     case friendly
     case professional
     case concise
+    case prompt
 
     var id: String { rawValue }
 
@@ -25,6 +26,7 @@ enum CleanupStyle: String, CaseIterable, Codable, Identifiable {
         case .friendly: return "Friendly".loc
         case .professional: return "Professional".loc
         case .concise: return "Concise".loc
+        case .prompt: return "Prompt".loc
         }
     }
 
@@ -36,6 +38,7 @@ enum CleanupStyle: String, CaseIterable, Codable, Identifiable {
         case .friendly: return "Warm and casual, like texting a friend.".loc
         case .professional: return "Polished and courteous, like a work email.".loc
         case .concise: return "Tight and to the point.".loc
+        case .prompt: return "Restructures a brain-dump into a clear agent prompt.".loc
         }
     }
 
@@ -116,6 +119,23 @@ enum CleanupStyle: String, CaseIterable, Codable, Identifiable {
             Example:
             Input: "Hey, Joey, we still on for coffee? I think we maybe should leave earlier to make it there in time. There might be traffic. What are you thinking?"
             Output: "Hey Joey, are we still on for coffee? Let's leave early to beat traffic. What do you think?"
+            \(tail)
+            """
+        case .prompt:
+            return """
+            This dictated brain-dump is going into a coding-agent chat (Claude Code, \
+            Codex, an aider terminal). Restructure it into a clear, well-formed prompt \
+            WITHOUT adding, inventing, or answering anything: lead with the single core \
+            request as the first sentence, then the necessary context in a sentence or \
+            two, then move every constraint, requirement, or "make sure to…" into a \
+            Markdown bullet list, one per line. Keep ALL of the speaker's content — this \
+            is a reordering, not a summary or a rewrite of their intent. \
+            Preserve commands, file names, identifiers, numbers, and symbols exactly as \
+            dictated, and reproduce any quoted string verbatim.
+
+            Example:
+            Input: "okay so I need to um refactor the auth handler in Session.swift, it's got that retry bug, and make sure it still passes the existing tests and doesn't touch the public API and uh keep it under 60 lines"
+            Output: "Refactor the auth handler in Session.swift to fix the retry bug.\\n\\nConstraints:\\n- Keep the existing tests passing\\n- Don't touch the public API\\n- Keep it under 60 lines"
             \(tail)
             """
         }
