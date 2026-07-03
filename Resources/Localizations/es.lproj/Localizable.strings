@@ -497,6 +497,23 @@
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ toda la saga de Harry Potter (~1,08 millones de palabras)";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ el doble de la saga de Harry Potter; Canción de hielo y fuego hasta ahora (~1,7 millones)";
 
+// Run-shortcut command + on-save Shortcut (G8)
+"Ran shortcut “%@”" = "Atajo “%@” ejecutado";
+"No shortcut named “%@”" = "No hay ningún atajo llamado “%@”";
+"Couldn't run the shortcut “%@”" = "No se pudo ejecutar el atajo “%@”";
+"After saving" = "Después de guardar";
+"After saving a meeting note, run" = "Al guardar una nota de reunión, ejecutar";
+"Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "Ejecuta uno de tus atajos de macOS cuando termina de guardarse una nota de reunión, pasándole el archivo de la nota. Se queda en tu Mac — sin red.";
+/* Watched inbox folder (D6) */
+"Watch a folder" = "Vigilar una carpeta";
+"Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection." = "Desactivado. Elige una carpeta y cualquier archivo de audio o vídeo que llegue a ella — una nota de voz enviada por AirDrop, una grabación de iCloud — se transcribe en una nota en tu Mac y luego se mueve a una subcarpeta “Transcribed” dentro de ella. Talkie solo lee archivos locales y nunca abre una conexión.";
+"Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection." = "Los archivos que llegan aquí se transcriben en el dispositivo y se mueven a “Transcribed”. Talkie vigila solo esta carpeta (no sus subcarpetas), lee únicamente archivos locales y nunca abre una conexión.";
+"Watched folder" = "Carpeta vigilada";
+"No folder — this feature is off" = "Sin carpeta — esta función está desactivada";
+"Choose…" = "Elegir…";
+"Change…" = "Cambiar…";
+"Stop watching" = "Dejar de vigilar";
+"That folder isn’t reachable right now — nothing will be watched until it’s back." = "Esa carpeta no está disponible ahora mismo — no se vigilará nada hasta que vuelva.";
 // L3b — Dictation Speed card + why-it-might-be-slow diagnostics page
 "Dictation speed" = "Velocidad de dictado";
 "Instant" = "Instantáneo";

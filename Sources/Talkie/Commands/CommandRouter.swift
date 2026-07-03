@@ -46,6 +46,14 @@ final class CommandRouter {
     func intent(for spoken: String, meetings: MeetingSnapshot = .empty, crossSurfaceEnabled: Bool = false) -> (any CommandIntent)? {
         if let expansion = macros.match(spoken) { return MacroIntent(expansion: expansion) }
         if let spelled = SpellingParser.parse(spoken) { return SpellingIntent(output: spelled) }
+        // "run [the] shortcut <name>" (G8). Placed after the macro match (a user macro
+        // still wins) and before the imperative rewrite: "run" is deliberately NOT in
+        // `rewriteVerbs`, and the parser requires the literal word "shortcut", so
+        // ordinary dictation like "run the tests then commit" never reaches this branch
+        // — it falls through and types literally. Always-on (no flag): it fires only on
+        // the explicit carrier phrase and, at run time, only on an exact installed-name
+        // match, so it can't misfire on prose.
+        if RunShortcutParser.parse(spoken) != nil { return RunShortcutIntent() }
         if crossSurfaceEnabled, CrossSurfaceParser.parse(spoken) != nil {
             return CrossSurfaceIntent(meetings: meetings)
         }

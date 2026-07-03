@@ -451,6 +451,9 @@ final class MeetingStore: ObservableObject {
         // Resolve ON the main actor (reads @Published prefs); `resolvedDestination()`
         // already falls back to the Talkie folder for an inaccessible custom path.
         let destination = ExportPreferences.shared.resolvedDestination()
+        // Read the optional on-save Shortcut here too (it's @Published) so the detached
+        // task doesn't touch the main actor. nil = off = today's behaviour exactly. (G8.)
+        let postSaveShortcut = ExportPreferences.shared.postSaveShortcutName
         // The on-disk write is fire-and-forget: the in-memory `meetings` list and the
         // JSON index the UI reads are the authority, so the note is never lost to a
         // slow or failed write. A SECOND, independent fallback writes to the default
@@ -458,10 +461,19 @@ final class MeetingStore: ObservableObject {
         // "never lose a note" contract even when the resolved destination is healthy
         // at resolve-time but fails mid-write (e.g. a vault unmounts).
         Task.detached {
+            // The URL the note actually landed at — the chosen destination's, or the
+            // fallback folder's — so a post-save Shortcut receives the real file.
+            let writtenURL: URL?
             do {
-                _ = try await destination.write(note)
+                writtenURL = try await destination.write(note)
             } catch {
-                _ = try? await TalkieFolderDestination().write(note)
+                writtenURL = try? await TalkieFolderDestination().write(note)
+            }
+            // Post-save automation: only when the user picked a Shortcut, and only after
+            // the note actually wrote. Exact-name match inside `run`; a stale/renamed
+            // choice simply no-ops (`.noMatch`) without disturbing the save.
+            if let name = postSaveShortcut, !name.isEmpty, let url = writtenURL {
+                _ = await ShortcutsRunner.run(name: name, inputPath: url.path)
             }
         }
     }

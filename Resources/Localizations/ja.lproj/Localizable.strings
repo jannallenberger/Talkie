@@ -497,6 +497,23 @@
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ ハリー・ポッター全編（約108万語）";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ ハリー・ポッター全編の2倍、または氷と炎の歌のこれまで（約170万語）";
 
+// Run-shortcut command + on-save Shortcut (G8)
+"Ran shortcut “%@”" = "ショートカット“%@”を実行しました";
+"No shortcut named “%@”" = "“%@”というショートカットはありません";
+"Couldn't run the shortcut “%@”" = "ショートカット“%@”を実行できませんでした";
+"After saving" = "保存後";
+"After saving a meeting note, run" = "会議メモの保存後に実行";
+"Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "会議メモの保存が完了したときにmacOSのショートカットを実行し、メモのファイルを渡します。Macの内部だけで完結し、ネットワークは使いません。";
+/* Watched inbox folder (D6) */
+"Watch a folder" = "フォルダを監視";
+"Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection." = "オフ。フォルダを選ぶと、そこに届いた音声・動画ファイル（AirDrop で送られたボイスメモや iCloud の録音など）が Mac 上でノートに文字起こしされ、その中の「Transcribed」サブフォルダに移動されます。Talkie はローカルのファイルを読むだけで、接続を行うことはありません。";
+"Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection." = "ここに届いたファイルはデバイス上で文字起こしされ、「Transcribed」に移動されます。Talkie はこのフォルダのみ（サブフォルダは含まず）を監視し、ローカルのファイルのみを読み、接続を行うことはありません。";
+"Watched folder" = "監視中のフォルダ";
+"No folder — this feature is off" = "フォルダなし — この機能はオフです";
+"Choose…" = "選択…";
+"Change…" = "変更…";
+"Stop watching" = "監視を停止";
+"That folder isn’t reachable right now — nothing will be watched until it’s back." = "そのフォルダには今アクセスできません — 戻るまで何も監視されません。";
 // L3b — Dictation Speed card + why-it-might-be-slow diagnostics page
 "Dictation speed" = "音声入力の速度";
 "Instant" = "瞬時";

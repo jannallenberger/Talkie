@@ -58,6 +58,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Built in `applicationDidFinishLaunching` so it can capture the same session probes
     /// as `meetingRecorder`. Not `private` so `MeetingsView` observes its progress.
     private(set) var fileImporter: FileImportCoordinator!
+    /// Watches one user-picked folder (D6) and auto-transcribes any audio/video file that
+    /// lands there into a meeting, moving the original into a `Transcribed/` subfolder — all
+    /// local file I/O, zero network. OFF until the user picks a folder (never seeded). Built
+    /// in `applicationDidFinishLaunching` after `fileImporter`, whose queue it feeds.
+    private var inboxWatcher: InboxWatcher!
+    /// Re-arms `inboxWatcher` when the watched-folder preference changes (pick / clear in
+    /// the Meetings settings row), so turning it on/off takes effect without a relaunch.
+    private var inboxWatchObservation: AnyCancellable?
     private let audio = AudioCapture()
     /// The always-on floating macaw (separate from the transient capture pill).
     private let birdBuddy = BirdBuddyController()
@@ -220,6 +228,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             isProcessing: { [weak self] in self?.isProcessing == true },
             isRecording: { [weak self] in self?.meetingRecorder?.isRecording == true }
         )
+
+        // Watched-inbox folder (D6): auto-transcribe audio/video that lands in a folder the
+        // user picks. Feeds the same `fileImporter` queue (so the same model-exclusivity
+        // and dedup apply). Armed from the persisted preference — which defaults to OFF (no
+        // seeded path) — and re-armed whenever that preference changes.
+        inboxWatcher = InboxWatcher(coordinator: fileImporter, meetingStore: meetingStore)
+        inboxWatcher.syncFromPreferences()
+        inboxWatchObservation = InboxWatchPreferences.shared.$folderPath
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.inboxWatcher?.syncFromPreferences() }
 
         setupMeetingDetection()
 
@@ -1528,6 +1546,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 },
                                 onUndo: { [weak self] in self?.hud.hide() }
                             )
+                        } else if result.replacement.isEmpty {
+                            // A side-effect intent (e.g. "run shortcut Ship It") ran and
+                            // has nothing to insert — every other CommandResult is
+                            // insertion-only, so an empty replacement is the explicit
+                            // "done, type nothing" signal. Confirm with a toast naming the
+                            // shortcut, never inject the empty string. Parse the name from
+                            // `ctx.spokenCommand` (an immutable copy) rather than the
+                            // `var finalText`, so this read doesn't widen that variable's
+                            // isolation region into the mixed-isolation learning closures below.
+                            let ranName = RunShortcutParser.parse(ctx.spokenCommand) ?? ctx.spokenCommand
+                            self.hud.showSaved(String(format: "Ran shortcut “%@”".loc, ranName))
                         } else {
                             _ = TextInjector.insert(result.replacement, mode: mode)
                             self.hud.hide()

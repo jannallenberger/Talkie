@@ -17,6 +17,11 @@ struct MeetingsView: View {
     /// stays untouched; nil only in previews/tests, where there is nothing to purge.
     var contextGraph: ContextGraphStore? = AppDelegate.shared?.contextGraph
 
+    /// The one watched-inbox folder (D6). Its own shared store (plain absolute path, no
+    /// bookmark — the app isn't sandboxed), observed so the row reflects pick/clear live.
+    /// Empty path = OFF; the watcher is never seeded with a default.
+    @ObservedObject private var inboxWatch = InboxWatchPreferences.shared
+
     @State private var showingAppPicker = false
     /// Flashes the drop zone briefly when a non-audio file is rejected.
     @State private var rejectedDrop = false
@@ -43,6 +48,7 @@ struct MeetingsView: View {
                 languageModeRow
                 if recorder.isRecording { notesCard }
                 folderRow
+                watchedInboxCard
                 detectionCard
 
                 if store.meetings.isEmpty {
@@ -262,6 +268,63 @@ struct MeetingsView: View {
             .buttonStyle(.link)
             .font(.system(size: 12))
         }
+    }
+
+    /// The watched-inbox folder (D6): pick ONE folder and any audio/video file that lands
+    /// there is transcribed into a note, then moved into a `Transcribed/` subfolder. Off
+    /// until you choose a folder (no default is ever set), and the copy says exactly what
+    /// will happen — this is a privacy-sensitive capability, so it's opt-in and explicit.
+    @ViewBuilder
+    private var watchedInboxCard: some View {
+        SettingsCard(
+            header: "Watch a folder",
+            footer: inboxWatch.folderPath.isEmpty
+                ? "Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection.".loc
+                : "Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection.".loc
+        ) {
+            SettingsRow(
+                title: "Watched folder".loc,
+                subtitle: inboxWatch.folderPath.isEmpty
+                    ? "No folder — this feature is off".loc
+                    : inboxWatch.folderPath
+            ) {
+                HStack(spacing: 8) {
+                    Button(inboxWatch.folderPath.isEmpty ? "Choose…".loc : "Change…".loc,
+                           action: pickInboxFolder)
+                    if !inboxWatch.folderPath.isEmpty {
+                        Button("Stop watching".loc, action: stopWatchingInbox)
+                    }
+                }
+            }
+            if !inboxWatch.folderPath.isEmpty, !inboxWatch.folderIsAccessible {
+                SettingsDivider(leadingInset: 0)
+                SettingsNote(
+                    text: "That folder isn’t reachable right now — nothing will be watched until it’s back.".loc,
+                    tone: Theme.warning, icon: "exclamationmark.triangle.fill")
+            }
+        }
+    }
+
+    /// Pick the single folder to watch. Directories only; the app isn't sandboxed, so we
+    /// store the plain path (no security-scoped bookmark), matching `ExportPreferences`.
+    private func pickInboxFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Watch"
+        panel.message = "Pick a folder to watch. Audio and video files that land in it will be transcribed into notes and moved into a “Transcribed” subfolder."
+        if !inboxWatch.folderPath.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: inboxWatch.folderPath)
+        }
+        if panel.runModal() == .OK, let url = panel.url {
+            inboxWatch.folderPath = url.path
+        }
+    }
+
+    /// Turn watching off by clearing the path — the watcher disarms on the next change.
+    private func stopWatchingInbox() {
+        inboxWatch.folderPath = ""
     }
 
     private var emptyState: some View {

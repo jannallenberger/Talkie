@@ -497,6 +497,23 @@
 "≈ the entire Harry Potter saga (~1.08 million words)" = "≈ 整套《哈利·波特》（约 108 万词）";
 "≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ 两套《哈利·波特》；或目前的《冰与火之歌》（约 170 万）";
 
+// Run-shortcut command + on-save Shortcut (G8)
+"Ran shortcut “%@”" = "已运行快捷指令“%@”";
+"No shortcut named “%@”" = "没有名为“%@”的快捷指令";
+"Couldn't run the shortcut “%@”" = "无法运行快捷指令“%@”";
+"After saving" = "保存后";
+"After saving a meeting note, run" = "保存会议笔记后运行";
+"Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network." = "当会议笔记保存完成时运行你的一个 macOS 快捷指令，并将笔记文件传递给它。仅在你的 Mac 上完成 — 不联网。";
+/* Watched inbox folder (D6) */
+"Watch a folder" = "监视文件夹";
+"Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection." = "已关闭。选择一个文件夹，任何落入其中的音频或视频文件（通过 AirDrop 发来的语音备忘录、iCloud 录音等）都会在你的 Mac 上被转写成一条笔记，然后被移到其中的“Transcribed”子文件夹。Talkie 只读取本地文件，从不建立连接。";
+"Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection." = "落入此处的文件会在本机被转写并移到“Transcribed”。Talkie 仅监视此文件夹（不包括其子文件夹），只读取本地文件，从不建立连接。";
+"Watched folder" = "监视的文件夹";
+"No folder — this feature is off" = "没有文件夹 — 此功能已关闭";
+"Choose…" = "选择…";
+"Change…" = "更改…";
+"Stop watching" = "停止监视";
+"That folder isn’t reachable right now — nothing will be watched until it’s back." = "该文件夹目前无法访问 — 在它恢复之前不会监视任何内容。";
 // L3b — Dictation Speed card + why-it-might-be-slow diagnostics page
 "Dictation speed" = "听写速度";
 "Instant" = "即时";

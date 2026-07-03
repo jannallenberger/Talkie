@@ -98,4 +98,52 @@ final class CommandRouterTests: XCTestCase {
         let intent = r.intent(for: "spell alpha bravo")
         XCTAssertEqual(intent?.id, "insert-macro", "a matching macro outranks the spelling parser")
     }
+
+    // MARK: Run-shortcut command (G8) routing precedence
+
+    /// A router over an EMPTY macro set — so a real/leaked user macro on this machine
+    /// (the shared `MacroStore` loads `macros.json` from disk) can't intercept the
+    /// phrase and make a routing assertion flaky. Any macros present are cleared, the
+    /// closure runs, and the store is left as it was found.
+    private func withEmptyMacros(_ body: (CommandRouter) -> Void) {
+        let macros = MacroStore()
+        let saved = macros.macros
+        for macro in saved { macros.delete(macro) }
+        defer { for macro in saved { macros.add(trigger: macro.trigger, expansion: macro.expansion) } }
+        body(CommandRouter(macros: macros, summarizer: StubLLM(output: nil)))
+    }
+
+    /// "run shortcut <name>" routes to `RunShortcutIntent`, which needs no selection —
+    /// so it can never be lost the way a `needsSelection` intent with no selection would.
+    /// (Whether a shortcut actually exists is resolved at run time, not at routing.)
+    func testRunShortcutRoutesToRunShortcutIntent() {
+        withEmptyMacros { r in
+            let intent = r.intent(for: "run shortcut Ship It")
+            XCTAssertEqual(intent?.id, "run-shortcut", "the run-shortcut carrier routes to RunShortcutIntent")
+            XCTAssertEqual(intent?.needsSelection, false, "running a shortcut never needs a selection")
+            XCTAssertEqual(intent?.isMutating, false, "it inserts nothing to transform")
+        }
+    }
+
+    /// The acceptance criterion: "run the tests then commit" (no literal "shortcut")
+    /// must NOT route to a command — it falls through and dictates literally. This is
+    /// checked via the router so the "run" ∉ rewriteVerbs guarantee is exercised too.
+    func testRunTheTestsFallsThroughToDictation() {
+        withEmptyMacros { r in
+            XCTAssertNil(r.intent(for: "run the tests then commit"),
+                         "'run' is not a rewrite verb and there's no 'shortcut' word — must dictate normally")
+        }
+    }
+
+    /// A macro whose trigger is "run shortcut …" still wins (precedence: macro >
+    /// run-shortcut), matching how macros outrank every other parser. Adds then removes
+    /// the macro so the on-disk store is left exactly as it was found.
+    func testMacroWinsOverRunShortcut() {
+        let macros = MacroStore()
+        macros.add(trigger: "run shortcut ship it", expansion: "EXPANDED")
+        defer { macros.macros.filter { $0.trigger == "run shortcut ship it" }.forEach { macros.delete($0) } }
+        let r = CommandRouter(macros: macros, summarizer: StubLLM(output: nil))
+        XCTAssertEqual(r.intent(for: "run shortcut ship it")?.id, "insert-macro",
+                       "a matching macro outranks the run-shortcut parser")
+    }
 }
