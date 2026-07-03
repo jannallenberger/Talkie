@@ -88,6 +88,14 @@ final class AudioCapture: @unchecked Sendable {
     /// `AudioDevices.resolveSwap` whether the active device actually changed.
     private var currentDeviceUID: String?
     private var onLevel: (@Sendable (Float) -> Void)?
+    /// Optional passive tap on the CONVERTED analyzer-format PCM (D9 keep-audio tee),
+    /// fired for every non-empty converted buffer just like `captured?.append`. Retained
+    /// so the shared `installAndStart` (also used by config-change recovery) captures it
+    /// by value into the render block. The tee is deliberately passive — it never blocks
+    /// the capture path (the writer behind it hops to its own serial queue) and never
+    /// changes what's yielded to the analyzer, so transcription is byte-for-byte
+    /// unaffected whether it's set or nil.
+    private var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     /// Surfaces a recoverable capture failure (e.g. the active mic vanished mid-session
     /// and none remains) to the caller, which routes it to its error/HUD path. Called
     /// on the main thread from `handleConfigurationChange()`.
@@ -116,6 +124,7 @@ final class AudioCapture: @unchecked Sendable {
         bufferAudio: Bool = false,
         bufferSeconds: Double = 90,
         onLevel: (@Sendable (Float) -> Void)? = nil,
+        onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? = nil,
         onCaptureFailed: (@Sendable (Error) -> Void)? = nil
     ) throws {
         guard !isRunning else { return }
@@ -134,6 +143,7 @@ final class AudioCapture: @unchecked Sendable {
         self.continuation = continuation
         self.preferredDeviceUID = preferredDeviceUID
         self.onLevel = onLevel
+        self.onBuffer = onBuffer
         self.onCaptureFailed = onCaptureFailed
 
         // Fresh session: clear any stale mic-alive stamp from a prior recording so the
@@ -206,6 +216,7 @@ final class AudioCapture: @unchecked Sendable {
 
         let capture = self.captured
         let onLevel = self.onLevel
+        let onBuffer = self.onBuffer
         // Captured by value (a reference type, safe across the RT boundary) so the
         // render thread stamps mic-liveness without touching `self`.
         let clockLock = self.bufferClockLock
@@ -222,6 +233,10 @@ final class AudioCapture: @unchecked Sendable {
             guard let converted = Self.convert(buffer: buffer, using: converter, to: targetFormat) else { return }
             if converted.frameLength > 0 {
                 capture?.append(converted)
+                // Passive keep-audio tee (D9): hand the converted buffer to the writer,
+                // which copies it and hops to its own serial queue — so this stays a
+                // non-blocking, transcription-neutral side effect.
+                onBuffer?(converted)
                 continuation.yield(AnalyzerInput(buffer: converted))
             }
         }
@@ -336,6 +351,7 @@ final class AudioCapture: @unchecked Sendable {
         targetFormat = nil
         continuation = nil
         onLevel = nil
+        onBuffer = nil
         onCaptureFailed = nil
         currentDeviceUID = nil
         // Clear the mic-alive stamp so a stopped capture never reads as "alive".

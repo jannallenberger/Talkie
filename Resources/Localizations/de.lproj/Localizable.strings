@@ -573,3 +573,13 @@
 "Cut Wi-Fi, then speak — it still works." = "WLAN aus, dann sprechen — es funktioniert trotzdem.";
 "Told you. Nothing left this Mac." = "Sehen Sie? Nichts hat diesen Mac verlassen.";
 "Your dictated words, offline" = "Ihre diktierten Worte, offline";
+
+// MARK: - Keep-audio meetings + click-to-play (D9)
+"Play from here" = "Ab hier abspielen";
+"That audio couldn’t be played — the file may be missing or incomplete." = "Dieses Audio konnte nicht abgespielt werden – die Datei fehlt möglicherweise oder ist unvollständig.";
+
+// MARK: - Keep-audio toggle (D9)
+"Audio" = "Audio";
+"Keep audio with meeting notes" = "Audio bei den Besprechungsnotizen behalten";
+"Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "Speichert die Audioaufnahme jeder Aufzeichnung, sodass du auf jede Zeile des Transkripts klicken kannst, um genau diesen Moment zu hören.";
+"Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "Standardmäßig aus. Behaltenes Audio bleibt in ~/Talkie Meetings/ neben der Notiz, verlässt niemals deinen Mac und wird mit der Besprechung gelöscht. Etwa 30 MB pro Stunde je Gesprächsseite. Diktat-Audio wird nie behalten.";

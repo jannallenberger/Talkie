@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -48,6 +49,7 @@ struct MeetingsView: View {
                 languageModeRow
                 if recorder.isRecording { notesCard }
                 folderRow
+                keepAudioCard
                 watchedInboxCard
                 detectionCard
 
@@ -57,6 +59,7 @@ struct MeetingsView: View {
                     ForEach(store.meetings) { meeting in
                         MeetingRow(
                             meeting: meeting,
+                            folderURL: store.folderURL,
                             onReveal: { reveal(meeting) },
                             onCopy: { copy(meeting) },
                             onDelete: { pendingDelete = meeting },
@@ -267,6 +270,24 @@ struct MeetingsView: View {
             }
             .buttonStyle(.link)
             .font(.system(size: 12))
+        }
+    }
+
+    /// Keep-audio toggle (D9). Default OFF — retaining raw call audio is a genuine
+    /// privacy + disk decision, so the subtitle says the cost in plain words and the
+    /// choice is snapshotted at recording start (flipping it mid-call doesn't change a
+    /// recording already underway). When on, each recording writes per-stream `.m4a`
+    /// files beside its note, and clicking a transcript line plays that exact moment.
+    @ViewBuilder
+    private var keepAudioCard: some View {
+        SettingsCard(
+            header: "Audio",
+            footer: "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept.".loc
+        ) {
+            SettingsToggleRow(
+                title: "Keep audio with meeting notes".loc,
+                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
+                isOn: $settings.keepMeetingAudio)
         }
     }
 
@@ -511,6 +532,9 @@ private struct RecordingDot: View {
 
 private struct MeetingRow: View {
     let meeting: Meeting
+    /// ~/Talkie Meetings/ — where this meeting's kept audio (D9) lives, so the
+    /// transcript expansion can resolve a segment's file for click-to-play.
+    let folderURL: URL
     let onReveal: () -> Void
     let onCopy: () -> Void
     let onDelete: () -> Void
@@ -600,6 +624,17 @@ private struct MeetingRow: View {
             DisclosureGroup(isExpanded: $expanded) {
                 if draft != nil {
                     transcriptEditor
+                } else if meeting.hasPlayableAudio, let segments = meeting.segments {
+                    // D9 click-to-play: the transcript becomes a list of tappable
+                    // segments, each seeking the kept audio to that exact moment, with
+                    // the playing segment highlighted. Shown ONLY when both timed
+                    // segments AND kept audio exist; otherwise the plain transcript
+                    // below is unchanged. Editing takes precedence (draft branch above)
+                    // so a fix isn't fighting a playhead.
+                    MeetingPlaybackView(segments: segments,
+                                        audioFiles: meeting.audioFiles,
+                                        folderURL: folderURL)
+                        .padding(.top, 4)
                 } else {
                     Text(meeting.transcript)
                         .font(.system(size: 12.5))
@@ -808,6 +843,170 @@ private struct MeetingRow: View {
     private var exportBaseName: String {
         let stem = (meeting.fileName as NSString).deletingPathExtension
         return stem.isEmpty ? NoteTemplate.slug(meeting.title) : stem
+    }
+}
+
+/// D9 — click-to-play synced transcript. Lists a meeting's timed segments; tapping one
+/// seeks the kept audio to that segment's start and plays, and a ~12 Hz timer highlights
+/// whichever segment is currently sounding. For a two-stream meeting (separate `-me` /
+/// `-them` files) each segment plays the file matching its speaker, swapping the loaded
+/// `AVAudioPlayer` when you cross from one speaker to the other; for a solo import (one
+/// file) every segment plays that one recording.
+///
+/// The quote-verification feature for people who structurally can't put a call in a
+/// cloud tool: the audio never leaves the Mac, and you can hear the exact moment behind
+/// any line of the transcript. Only ever rendered when `meeting.hasPlayableAudio`, so
+/// there's always a real file behind every play button.
+///
+/// All state is main-actor `@State`; `AVAudioPlayer` is created, seeked, and polled on
+/// the main actor (no background audio thread of ours), and torn down on disappear so a
+/// collapsed row isn't left holding an open file.
+private struct MeetingPlaybackView: View {
+    let segments: [MeetingSegment]
+    let audioFiles: [String: String]?
+    let folderURL: URL
+
+    /// The loaded player, or nil before the first tap. Recreated when a tap targets a
+    /// different file than the one currently loaded (two-stream Me↔Them switch).
+    @State private var player: AVAudioPlayer?
+    /// Basename the `player` has loaded, so we know whether a tap needs a reload.
+    @State private var currentFile: String?
+    @State private var isPlaying = false
+    /// The player's last-polled `currentTime` (audio-clock seconds), driving the
+    /// highlight. Only meaningful together with `currentFile`.
+    @State private var currentTime: Double = 0
+    /// A file that failed to load (missing / partial m4a from a crashed recording), so
+    /// the row shows an honest one-line notice instead of silently doing nothing.
+    @State private var loadError = false
+
+    /// ~12 Hz is smooth enough for a moving highlight without busy-spinning; it only
+    /// does work while something is actually playing.
+    private let ticker = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
+
+    /// The segment currently sounding (for the highlight), or nil when paused/stopped or
+    /// playing a different file's stream. Pure function over the polled time.
+    private var activeIndex: Int? {
+        guard isPlaying, let currentFile else { return nil }
+        return Meeting.activeSegmentIndex(
+            at: currentTime, segments: segments, fileName: currentFile, audioFiles: audioFiles)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
+                segmentRow(index: index, segment: segment)
+            }
+            if loadError {
+                Text("That audio couldn’t be played — the file may be missing or incomplete.".loc)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.inkTertiary)
+                    .padding(.top, 4)
+            }
+        }
+        .onReceive(ticker) { _ in tick() }
+        .onDisappear(perform: teardown)
+    }
+
+    @ViewBuilder
+    private func segmentRow(index: Int, segment: MeetingSegment) -> some View {
+        let playable = Meeting.audioFileName(forSpeaker: segment.speaker, in: audioFiles) != nil
+        let isActive = activeIndex == index
+        Button {
+            toggle(segment: segment)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: isActive ? "pause.fill" : "play.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(playable ? Theme.coral : Theme.inkTertiary)
+                    .frame(width: 12)
+                Text(MeetingTranscriptRenderer.timecode(segment.start))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.inkTertiary)
+                    .frame(width: 40, alignment: .leading)
+                Text(segment.text)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(isActive ? Theme.ink : Theme.inkSecondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.vertical, 3)
+            .padding(.horizontal, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isActive ? Theme.coral.opacity(0.12) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!playable)
+        .help(playable ? "Play from here".loc : "")
+    }
+
+    /// Tapping a segment: pause if it's the one already playing; otherwise seek this
+    /// segment's file to its start and play. Crossing to a segment on a different stream
+    /// (Me↔Them) loads that file first.
+    private func toggle(segment: MeetingSegment) {
+        guard let name = Meeting.audioFileName(forSpeaker: segment.speaker, in: audioFiles) else { return }
+        // Already playing this exact moment's stream → treat the tap as pause.
+        if isPlaying, currentFile == name,
+           Meeting.activeSegmentIndex(at: currentTime, segments: segments,
+                                      fileName: name, audioFiles: audioFiles) == indexOf(segment) {
+            player?.pause()
+            isPlaying = false
+            return
+        }
+        guard let ready = ensurePlayer(for: name) else { return }
+        ready.currentTime = max(0, min(segment.start, ready.duration))
+        ready.play()
+        currentTime = ready.currentTime
+        isPlaying = true
+    }
+
+    /// Load (or reuse) the player for `name`, returning it ready to seek — or nil if the
+    /// file can't be opened (a partial/missing recording), latching `loadError` so the
+    /// row explains itself. Swapping files stops the previous stream so two never sound
+    /// at once.
+    private func ensurePlayer(for name: String) -> AVAudioPlayer? {
+        if currentFile == name, let player { return player }
+        player?.stop()
+        let url = folderURL.appendingPathComponent(name)
+        guard let fresh = try? AVAudioPlayer(contentsOf: url) else {
+            player = nil
+            currentFile = nil
+            isPlaying = false
+            loadError = true
+            return nil
+        }
+        fresh.prepareToPlay()
+        player = fresh
+        currentFile = name
+        loadError = false
+        return fresh
+    }
+
+    /// Poll the player each tick while it's playing, mirroring its clock into
+    /// `currentTime` (drives the highlight) and noticing when playback reaches the end
+    /// so the highlight clears. Does nothing when paused/stopped — no idle churn.
+    private func tick() {
+        guard isPlaying, let player else { return }
+        if player.isPlaying {
+            currentTime = player.currentTime
+        } else {
+            // Reached the end (or was stopped by the system) — clear the playing state.
+            isPlaying = false
+        }
+    }
+
+    private func teardown() {
+        player?.stop()
+        player = nil
+        currentFile = nil
+        isPlaying = false
+    }
+
+    private func indexOf(_ segment: MeetingSegment) -> Int? {
+        segments.firstIndex(of: segment)
     }
 }
 

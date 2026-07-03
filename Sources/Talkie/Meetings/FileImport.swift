@@ -752,6 +752,16 @@ final class FileImportCoordinator: ObservableObject {
         // while `participants` stays the user-facing "Imported".
         let id = UUID()
         let start = Self.contentCreationDate(of: item.url) ?? Date()
+        let fileName = MeetingStore.fileName(for: start, id: id)
+        // D9 — keep the imported audio beside its note so clicking a transcript
+        // segment can play that exact moment. Copy (never re-encode) the ORIGINAL
+        // file next to the `.md`, sharing its basename so the pair reads as one unit
+        // in ~/Talkie Meetings/ (the visible, files-you-own folder — never Application
+        // Support). Copying is a free win: no toggle, no privacy decision, because the
+        // source file already exists on disk and the user chose to import it. A failed
+        // copy (disk full, unreadable source) is non-fatal — the meeting is still
+        // created, just without playback (`audioFiles` stays nil).
+        let audioFiles = Self.copyImportedAudio(from: item.url, noteFileName: fileName)
         let meeting = Meeting(
             id: id,
             title: item.url.deletingPathExtension().lastPathComponent,
@@ -761,8 +771,9 @@ final class FileImportCoordinator: ObservableObject {
             summary: summary,
             participants: ["Imported"],
             source: "talkie (imported: \(item.url.lastPathComponent))",
-            fileName: MeetingStore.fileName(for: start, id: id),
-            segments: result.segments
+            fileName: fileName,
+            segments: result.segments,
+            audioFiles: audioFiles
         )
         let countBefore = meetingStore.meetings.count
         meetingStore.add(meeting)
@@ -790,5 +801,31 @@ final class FileImportCoordinator: ObservableObject {
         let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
         guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
         return values.creationDate ?? values.contentModificationDate
+    }
+
+    /// Copy `source` into ~/Talkie Meetings/ under the note's basename + the source's
+    /// own extension (`2026-07-03-…-meeting.mp3`), returning the `["Imported": name]`
+    /// map for `Meeting.audioFiles`, or nil when the copy can't be made (so the meeting
+    /// is still created, just without playback). A plain byte copy — the original codec
+    /// is preserved, no re-encode — because it's the *source of truth* the user is
+    /// verifying quotes against. `contentBasename` from the note keeps the audio and
+    /// note filenames aligned even when the source's own name is arbitrary. If a file
+    /// with that exact name somehow already exists (a re-import into the same second),
+    /// it's removed first so `copyItem` can't throw on a stale collision.
+    private static func copyImportedAudio(from source: URL, noteFileName: String) -> [String: String]? {
+        let ext = source.pathExtension
+        guard !ext.isEmpty else { return nil }
+        let stem = (noteFileName as NSString).deletingPathExtension
+        guard !stem.isEmpty else { return nil }
+        let destName = "\(stem).\(ext)"
+        let dest = AppPaths.meetingsDirectory().appendingPathComponent(destName)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: dest.path) { try? fm.removeItem(at: dest) }
+        do {
+            try fm.copyItem(at: source, to: dest)
+        } catch {
+            return nil
+        }
+        return ["Imported": destName]
     }
 }

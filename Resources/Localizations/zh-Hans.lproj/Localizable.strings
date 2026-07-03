@@ -573,3 +573,13 @@
 "Cut Wi-Fi, then speak — it still works." = "断开 Wi-Fi 再说话 — 照样能用。";
 "Told you. Nothing left this Mac." = "看吧，什么都没离开这台 Mac。";
 "Your dictated words, offline" = "你离线口述的文字";
+
+// MARK: - Keep-audio meetings + click-to-play (D9)
+"Play from here" = "从这里播放";
+"That audio couldn’t be played — the file may be missing or incomplete." = "无法播放该音频——文件可能缺失或不完整。";
+
+// MARK: - Keep-audio toggle (D9)
+"Audio" = "音频";
+"Keep audio with meeting notes" = "将音频与会议记录一起保存";
+"Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "保存每次录音的音频，让你可以点击转录中的任意一行来聆听那一刻。";
+"Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "默认关闭。保留的音频存放在笔记旁的 ~/Talkie Meetings/ 中，绝不离开你的 Mac，并会随会议一起删除。通话每一方每小时约 30 MB。听写音频永不保留。";

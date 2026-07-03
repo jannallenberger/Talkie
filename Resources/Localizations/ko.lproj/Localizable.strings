@@ -573,3 +573,13 @@
 "Cut Wi-Fi, then speak — it still works." = "Wi-Fi를 끄고 말해도 그대로 작동합니다.";
 "Told you. Nothing left this Mac." = "보셨죠. 아무것도 이 Mac을 떠나지 않았습니다.";
 "Your dictated words, offline" = "오프라인으로 받아쓴 내용";
+
+// MARK: - Keep-audio meetings + click-to-play (D9)
+"Play from here" = "여기서부터 재생";
+"That audio couldn’t be played — the file may be missing or incomplete." = "이 오디오를 재생할 수 없습니다 — 파일이 없거나 불완전할 수 있습니다.";
+
+// MARK: - Keep-audio toggle (D9)
+"Audio" = "오디오";
+"Keep audio with meeting notes" = "회의 메모와 함께 오디오 보관";
+"Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "각 녹음의 오디오를 저장하여 대화 기록의 어느 줄이든 클릭해 바로 그 순간을 들을 수 있습니다.";
+"Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "기본값은 꺼짐. 보관된 오디오는 메모 옆의 ~/Talkie Meetings/에 남아 Mac을 벗어나지 않으며 회의와 함께 삭제됩니다. 통화의 각 방향당 시간당 약 30 MB. 받아쓰기 오디오는 보관되지 않습니다.";

@@ -241,6 +241,15 @@ final class AppSettings: ObservableObject {
     @Published var meetingLiveTopic: Bool {
         didSet { defaults.set(meetingLiveTopic, forKey: Keys.meetingLiveTopic); notifyChanged() }
     }
+    /// Keep each recorded meeting's raw audio in ~/Talkie Meetings/ (D9), so clicking
+    /// a transcript line plays that exact moment. Default **OFF**: retaining raw call
+    /// audio is a real privacy + disk decision (~30 MB/hour per captured stream), so
+    /// it's an explicit opt-in, and it's snapshotted at recording START (not read live),
+    /// so flipping it mid-call never changes what a recording already committed to.
+    /// Never applies to dictation, whose audio is deliberately ephemeral.
+    @Published var keepMeetingAudio: Bool {
+        didSet { defaults.set(keepMeetingAudio, forKey: Keys.keepMeetingAudio); notifyChanged() }
+    }
     /// The known-meeting-app allowlist that drives detection. Stored JSON-encoded
     /// (UserDefaults has no array-of-Codable), decoded fault-tolerantly to the seed.
     @Published var meetingAllowlist: [MeetingApp] {
@@ -379,6 +388,18 @@ final class AppSettings: ObservableObject {
         NotificationCenter.default.post(name: .talkieSettingsChanged, object: nil)
     }
 
+    /// The persisted "Keep audio with meeting notes" choice, read straight from the
+    /// standard store (the same one the `@Published keepMeetingAudio` writes to). Exposed
+    /// as a `nonisolated static` so `MeetingRecorder.start()` can snapshot it at recording
+    /// START without an injected closure — the recorder is composed by AppDelegate, but
+    /// this one privacy-gated flag is read directly (mirroring how `InboxWatchPreferences`
+    /// / `ExportPreferences` singletons are read at their point of use) so the concurrent
+    /// AppDelegate work stays untouched. Defaults to `false` (an unset key reads false),
+    /// matching the registered default — meetings keep NO audio unless the user opts in.
+    nonisolated static var keepMeetingAudioEnabled: Bool {
+        UserDefaults.standard.bool(forKey: Keys.keepMeetingAudio)
+    }
+
     // MARK: - Vibe Coding in-context offer (A9)
 
     /// Whether the one-tap "Index 〈Repo〉 filenames?" offer may be shown for `root`
@@ -424,6 +445,7 @@ final class AppSettings: ObservableObject {
             Keys.autoDetectMeetings: true,
             Keys.showMeetingPill: true,
             Keys.meetingLiveTopic: true,
+            Keys.keepMeetingAudio: false,
             Keys.pasteLastShortcutEnabled: true,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
@@ -481,6 +503,7 @@ final class AppSettings: ObservableObject {
         autoDetectMeetings = d.bool(forKey: Keys.autoDetectMeetings)
         showMeetingPill = d.bool(forKey: Keys.showMeetingPill)
         meetingLiveTopic = d.bool(forKey: Keys.meetingLiveTopic)
+        keepMeetingAudio = d.bool(forKey: Keys.keepMeetingAudio)
         meetingAllowlist = AppSettings.decodeAllowlist(d.data(forKey: Keys.meetingAllowlist))
         mutedMeetingApps = d.stringArray(forKey: Keys.mutedMeetingApps) ?? []
         pasteLastShortcutEnabled = d.bool(forKey: Keys.pasteLastShortcutEnabled)
@@ -608,6 +631,7 @@ final class AppSettings: ObservableObject {
         static let autoDetectMeetings = "autoDetectMeetings"
         static let showMeetingPill = "showMeetingPill"
         static let meetingLiveTopic = "meetingLiveTopic"
+        static let keepMeetingAudio = "keepMeetingAudio"
         static let meetingAllowlist = "meetingAllowlist"
         static let mutedMeetingApps = "mutedMeetingApps"
         static let pasteLastShortcutEnabled = "pasteLastShortcutEnabled"

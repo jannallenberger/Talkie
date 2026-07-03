@@ -1,5 +1,80 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
+
+/// A confined, non-blocking sink that writes converted PCM to one compressed `.m4a`
+/// file (D9 keep-audio tee). It sits behind the capture classes' `onBuffer` tap, which
+/// fires on the realtime capture/IOProc thread — so the one hard rule is **never block
+/// that thread**. `append(_:)` therefore only bounces the buffer onto a private serial
+/// queue and returns immediately; all `AVAudioFile` I/O happens on that queue, one
+/// buffer at a time (mirroring the `SingleShotInput`/`OneShot` confinement pattern and
+/// `AudioCapture`'s own lock discipline). `@unchecked Sendable` is accurate because
+/// every mutable member (`file`, `failed`) is touched ONLY inside `queue`; nothing else
+/// reads them.
+///
+/// The file is created lazily from the FIRST buffer's format, so the on-disk stream is
+/// exactly what the recognizer heard (the analyzer's mono format) encoded as AAC — the
+/// faithful source for quote-verification, and small on disk. If encoding setup or a
+/// write ever fails, it latches `failed` and silently drops the rest: a broken tee must
+/// never take down a recording, and a half-written file simply means that stream offers
+/// no playback (the row degrades gracefully).
+final class MeetingAudioFileWriter: @unchecked Sendable {
+    private let url: URL
+    private let queue: DispatchQueue
+    private var file: AVAudioFile?
+    private var failed = false
+    private var started = false
+
+    init(url: URL) {
+        self.url = url
+        self.queue = DispatchQueue(label: "com.coralate.talkie.meeting-audio-writer")
+    }
+
+    /// Hand one converted buffer to the writer. Returns instantly; the copy-free handoff
+    /// is safe because the capture classes allocate a FRESH output buffer per convert
+    /// (it does not alias the RT block's input), so the closure can retain it. All actual
+    /// file work runs serialized on `queue`.
+    func append(_ buffer: AVAudioPCMBuffer) {
+        queue.async { [self] in
+            guard !failed else { return }
+            if file == nil {
+                // Create the AAC file from the first buffer's format. `settings` asks for
+                // MPEG-4 AAC in the same channel/rate as the incoming PCM; AVAudioFile
+                // does the PCM→AAC encode on write.
+                var settings = buffer.format.settings
+                settings[AVFormatIDKey] = kAudioFormatMPEG4AAC
+                do {
+                    file = try AVAudioFile(
+                        forWriting: url, settings: settings,
+                        commonFormat: buffer.format.commonFormat,
+                        interleaved: buffer.format.isInterleaved)
+                    started = true
+                } catch {
+                    failed = true
+                    return
+                }
+            }
+            do {
+                try file?.write(from: buffer)
+            } catch {
+                // One failed write shouldn't spam; latch and stop.
+                failed = true
+            }
+        }
+    }
+
+    /// Flush and close the file, blocking only the caller (never the RT thread) until the
+    /// serial queue drains the last queued write. Idempotent — a second close is a no-op.
+    /// Returns whether a usable file was actually produced (at least one buffer written
+    /// and no failure), so the recorder only records `audioFiles` for streams that really
+    /// have playable audio on disk.
+    @discardableResult
+    func close() -> Bool {
+        queue.sync {
+            file = nil // releasing the AVAudioFile finalizes the m4a container
+        }
+        return started && !failed
+    }
+}
 
 /// Records a meeting from up to two audio streams and labels who said what:
 ///
@@ -106,6 +181,33 @@ final class MeetingRecorder: ObservableObject {
     private var micLocale = "en-US"
     private var farLocale = "en-US"
 
+    // MARK: Keep-audio tee (D9)
+    //
+    // When the "Keep audio with meeting notes" toggle is on, the recording tees each
+    // stream's converted PCM to an AAC `.m4a` beside the note. The toggle is snapshotted
+    // ONCE at start() (like langsAtStart) — flipping it mid-call never changes what a
+    // recording already committed to. The meeting id is also fixed at start() so the
+    // audio filenames share the `.md` basename the meeting will get at stop().
+    /// Whether THIS recording keeps audio (snapshot of the toggle at start()).
+    private var keepAudio = false
+    /// The meeting id chosen at start() so audio filenames align with the note; consumed
+    /// when the `Meeting` is built at stop().
+    private var pendingMeetingID: UUID?
+    /// The per-stream writers, non-nil only while a keep-audio recording is live. Closed
+    /// on every start()/stop() exit path so a crash mid-recording leaves at most a
+    /// partial (harmless) file, never an open handle.
+    private var micWriter: MeetingAudioFileWriter?
+    private var farWriter: MeetingAudioFileWriter?
+    /// The audio filenames decided at start() (so they share the note's basename), used
+    /// to record `audioFiles` and to clean up partials on a discarded start. Empty when
+    /// keep-audio is off for this recording.
+    private var micAudioName = ""
+    private var farAudioName = ""
+    /// The `speaker → basename` map accumulated for the streams actually opened, folded
+    /// into `Meeting.audioFiles` at stop(). Empty unless keep-audio was on AND a stream
+    /// produced a usable file.
+    private var keepAudioFiles: [String: String] = [:]
+
     /// Calendar context captured at start() (opt-in): used to title the note and
     /// pre-bias attendee names, and to seed the graph with the people present.
     private var eventTitle: String?
@@ -161,6 +263,26 @@ final class MeetingRecorder: ObservableObject {
         micLocale = pinned ?? (primaryLocale?() ?? "en-US")
         farLocale = micLocale
 
+        // Keep-audio (D9): snapshot the toggle ONCE, now — mid-call flips don't count.
+        // Fix the meeting id here too so the audio filenames share the `.md` basename the
+        // meeting gets at stop(). The mic writer is opened eagerly (the mic stream always
+        // exists); the far writer is opened only if the far-end stream comes up, below.
+        keepAudio = AppSettings.keepMeetingAudioEnabled
+        keepAudioFiles = [:]
+        micWriter = nil
+        farWriter = nil
+        let meetingID = UUID()
+        pendingMeetingID = meetingID
+        if keepAudio {
+            let audioStem = (MeetingStore.fileName(for: start, id: meetingID) as NSString).deletingPathExtension
+            micAudioName = "\(audioStem)-me.m4a"
+            farAudioName = "\(audioStem)-them.m4a"
+        } else {
+            micAudioName = ""
+            farAudioName = ""
+        }
+        let micTap = keepAudio ? makeWriterTap(basename: micAudioName, assignTo: \.micWriter) : nil
+
         // Calendar (opt-in): if granted, title the meeting from the overlapping
         // event and pre-bias attendee names into both recognizers. Returns nil when
         // not authorized — no permission prompt mid-recording.
@@ -188,6 +310,7 @@ final class MeetingRecorder: ObservableObject {
                     onLiveSegment: { segment in log.add(.me, segment); liveFeed?(.me, segment) }
                 ) {
                     try audio.start(targetFormat: session.format, continuation: session.continuation,
+                                    onBuffer: micTap,
                                     onCaptureFailed: { [weak self] error in
                                         Task { @MainActor in self?.handleMicCaptureFailure(error) }
                                     })
@@ -210,6 +333,7 @@ final class MeetingRecorder: ObservableObject {
                 })
                 try audio.start(targetFormat: session.format, continuation: session.continuation,
                                 bufferAudio: multiLang, bufferSeconds: 600,
+                                onBuffer: micTap,
                                 onCaptureFailed: { [weak self] error in
                                     Task { @MainActor in self?.handleMicCaptureFailure(error) }
                                 })
@@ -217,6 +341,7 @@ final class MeetingRecorder: ObservableObject {
         } catch {
             await engine.cancelSession()
             if let mic = micMulti { await mic.cancel(); micMulti = nil }
+            closeAudioWriters(record: false) // discard any partial mic tee
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
@@ -225,6 +350,7 @@ final class MeetingRecorder: ObservableObject {
             audio.stop()
             if let mic = micMulti { await mic.cancel(); micMulti = nil }
             else { _ = await engine.finishSession() }
+            closeAudioWriters(record: false) // discard any partial mic tee
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
@@ -234,13 +360,19 @@ final class MeetingRecorder: ObservableObject {
         //    mic-only. Multilingual uses live per-language lanes like the mic; if
         //    those can't start (e.g. analyzer cap), it falls back to a single engine.
         var farActive = false
+        // The far-end keep-audio tap is created only if the far stream actually comes up
+        // (below), so a mic-only recording never opens a "-them" file. Built lazily so the
+        // writer isn't created for a stream that fails to start.
         if SystemAudioCapture.isSupported {
+            let farTap: (@Sendable (AVAudioPCMBuffer) -> Void)? =
+                keepAudio ? makeWriterTap(basename: farAudioName, assignTo: \.farWriter) : nil
             if multiLang, distinctLangs.count > 1, MultiLangStreamTranscriber.isAvailable {
                 let fm = MultiLangStreamTranscriber()
                 if let farSession = try? await fm.start(
                     localeIDs: distinctLangs, contextualStrings: eventAttendees,
                     onLiveSegment: { segment in log.add(.them, segment); liveFeed?(.them, segment) }
-                ), (try? systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation)) != nil {
+                ), (try? systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
+                                           onBuffer: farTap)) != nil {
                     farMulti = fm
                     farActive = true
                 } else {
@@ -261,13 +393,24 @@ final class MeetingRecorder: ObservableObject {
                         liveFeed?(.them, seg.text)
                     })
                     try systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
-                                          bufferAudio: multiLang, bufferSeconds: 600)
+                                          bufferAudio: multiLang, bufferSeconds: 600,
+                                          onBuffer: farTap)
                     farEngine = far
                     farActive = true
                     farLocale = locale
                 } catch {
                     await far.cancelSession()
                 }
+            }
+            // The far stream never started → drop the writer we speculatively created so
+            // it can't linger holding a (never-written) "-them" file open, and clear its
+            // recorded name so stop() won't claim a Them file that doesn't exist.
+            if !farActive, farWriter != nil {
+                farWriter?.close()
+                farWriter = nil
+                try? FileManager.default.removeItem(
+                    at: AppPaths.meetingsDirectory().appendingPathComponent(farAudioName))
+                farAudioName = ""
             }
         }
         // Stopped while the far-end was spinning up → tear everything back down.
@@ -278,6 +421,7 @@ final class MeetingRecorder: ObservableObject {
             else { _ = await engine.finishSession() }
             if let farM = farMulti { await farM.cancel(); farMulti = nil }
             else if let farEngine { _ = await farEngine.finishSession(); self.farEngine = nil }
+            closeAudioWriters(record: false) // discard any partial mic/far tee
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
@@ -315,6 +459,64 @@ final class MeetingRecorder: ObservableObject {
         talkieDebugLog("MeetingRecorder: mic capture failed mid-recording: \(error.localizedDescription)")
         guard isRecording, !isFinishing else { return }
         Task { await stop() }
+    }
+
+    // MARK: Keep-audio tee helpers (D9)
+
+    /// Build a writer for `basename` in ~/Talkie Meetings/, stash it on `self` via
+    /// `keyPath` (so stop()/teardown can close it), and return the `@Sendable` tap that
+    /// forwards converted buffers to it. The tap captures the writer directly (a
+    /// `Sendable` class), never `self`, so it's safe on the capture thread. Called on the
+    /// main actor while wiring a stream, before that stream's capture starts.
+    private func makeWriterTap(
+        basename: String,
+        assignTo keyPath: ReferenceWritableKeyPath<MeetingRecorder, MeetingAudioFileWriter?>
+    ) -> @Sendable (AVAudioPCMBuffer) -> Void {
+        let writer = MeetingAudioFileWriter(
+            url: AppPaths.meetingsDirectory().appendingPathComponent(basename))
+        self[keyPath: keyPath] = writer
+        return { buffer in writer.append(buffer) }
+    }
+
+    /// Close both keep-audio writers (idempotent) and record `audioFiles` entries only
+    /// for streams that produced a usable file. Safe to call from ANY start()/stop()
+    /// exit path — a nil writer is a no-op, and closing twice is harmless. `record`
+    /// gates whether the produced files become part of the meeting: a real stop
+    /// closes+records; a cancelled/failed start closes and DELETES the partials so a
+    /// discarded recording leaves nothing behind. Uses the filenames fixed at start(),
+    /// so they always match the note's basename.
+    private func closeAudioWriters(record: Bool) {
+        if let mic = micWriter {
+            let ok = mic.close()
+            if record, ok, !micAudioName.isEmpty { keepAudioFiles["Me"] = micAudioName }
+            micWriter = nil
+        }
+        if let far = farWriter {
+            let ok = far.close()
+            if record, ok, !farAudioName.isEmpty { keepAudioFiles["Them"] = farAudioName }
+            farWriter = nil
+        }
+        if !record {
+            // A discarded start: remove any partial files the writers may have created so
+            // a cancelled recording leaves nothing behind.
+            for name in [micAudioName, farAudioName] where !name.isEmpty {
+                try? FileManager.default.removeItem(
+                    at: AppPaths.meetingsDirectory().appendingPathComponent(name))
+            }
+            keepAudioFiles = [:]
+        }
+    }
+
+    /// Delete any kept-audio files already written for THIS recording and forget them —
+    /// used when a recording produced no transcript, so a notes-only/empty meeting doesn't
+    /// leave orphan audio on disk that delete could never reach. Best-effort; the writers
+    /// were already closed by `closeAudioWriters(record: true)`.
+    private func discardKeptAudioFiles() {
+        for name in keepAudioFiles.values where !name.isEmpty {
+            try? FileManager.default.removeItem(
+                at: AppPaths.meetingsDirectory().appendingPathComponent(name))
+        }
+        keepAudioFiles = [:]
     }
 
     private func tick() {
@@ -392,6 +594,12 @@ final class MeetingRecorder: ObservableObject {
         // Stop capture first so no more buffers arrive, then finalize each stream.
         systemAudio.stop()
         audio.stop()
+        // Capture is fully stopped (both stop()s drained their in-flight buffers), so the
+        // keep-audio tee has seen its last buffer — close the writers now and record which
+        // streams produced a usable file. `close()` blocks only here (its serial queue),
+        // never the capture thread. The resulting `keepAudioFiles` is folded into the
+        // meeting below; if the recording turns out empty, the files are discarded there.
+        closeAudioWriters(record: true)
 
         let start = startedAt ?? Date()
         let duration = Date().timeIntervalSince(start)
@@ -457,6 +665,11 @@ final class MeetingRecorder: ObservableObject {
         // rendered transcript and `.md` are unchanged (segments live only in the index).
         let segments = MeetingTranscriptRenderer.segments(from: finalTurns)
         guard !clean.isEmpty else {
+            // Nothing was transcribed → any kept audio has no transcript to verify against
+            // and no meeting will reference it (a notes-only meeting has no segments, so it
+            // isn't playable). Discard the files so we never orphan audio on disk that
+            // delete could never reach.
+            discardKeptAudioFiles()
             // Nothing was transcribed — but if the user jotted notes, those are real
             // work and must not vanish. Persist a notes-only meeting before clearing,
             // rather than wiping `notes` and returning empty-handed.
@@ -540,7 +753,13 @@ final class MeetingRecorder: ObservableObject {
             summary = summary.isEmpty ? section : summary + "\n\n" + section
         }
 
-        let id = UUID()
+        // Reuse the id fixed at start() so the `.md` basename matches the kept-audio
+        // filenames (only meaningful when keep-audio was on; harmless otherwise).
+        let id = pendingMeetingID ?? UUID()
+        pendingMeetingID = nil
+        // Fold in the kept-audio map, if this recording produced any files. Empty →
+        // nil, so a no-keep-audio meeting persists exactly like before (no key).
+        let audioFiles = keepAudioFiles.isEmpty ? nil : keepAudioFiles
         let meeting = Meeting(
             id: id,
             title: eventTitle ?? Self.makeTitle(start: start),
@@ -552,9 +771,11 @@ final class MeetingRecorder: ObservableObject {
             source: wasFarEnd ? "talkie (mic + system audio)" : "talkie (mic-only)",
             fileName: MeetingStore.fileName(for: start, id: id),
             segments: segments,
-            chapters: chapters
+            chapters: chapters,
+            audioFiles: audioFiles
         )
         store.add(meeting)
+        keepAudioFiles = [:]
         // The meeting is durably persisted only now — so the crash-partial can only
         // be dropped here, AFTER store.add (not before the summarization awaits, where
         // a crash would lose the whole transcript). No `await` between store.add and
