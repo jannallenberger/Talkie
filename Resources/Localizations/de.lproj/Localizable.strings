@@ -651,3 +651,11 @@
 "Meeting recording and transcription settings will live here." = "Einstellungen für Meeting-Aufnahme und -Transkription erscheinen hier.";
 "The on-device, zero-network proof will live here." = "Der lokale Beweis ohne Netzwerkzugriff erscheint hier.";
 "This settings page is coming soon." = "Diese Einstellungsseite kommt bald.";
+
+/* L7 — profile picture (opt-in, in-app only) */
+"Add a photo" = "Foto hinzufügen";
+"Change your photo" = "Foto ändern";
+"Choose" = "Auswählen";
+"Choose a photo" = "Foto auswählen";
+"Choose photo…" = "Foto auswählen…";
+"Remove photo" = "Foto entfernen";

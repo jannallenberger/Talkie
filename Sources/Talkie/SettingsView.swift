@@ -113,6 +113,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         latency: LatencyStore,
         systemPressure: SystemPressure,
         scratchpad: ScratchpadStore,
+        profileImage: ProfileImageStore,
         autoAddPreviewLog: AutoAddPreviewLog,
         projectIndex: ProjectIndexStore,
         contextSummary: ContextSummaryStore,
@@ -140,6 +141,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             latency: latency,
             systemPressure: systemPressure,
             scratchpad: scratchpad,
+            profileImage: profileImage,
             autoAddPreviewLog: autoAddPreviewLog,
             projectIndex: projectIndex,
             contextSummary: contextSummary,
@@ -214,6 +216,9 @@ struct MainView: View {
     @ObservedObject var latency: LatencyStore
     @ObservedObject var systemPressure: SystemPressure
     @ObservedObject var scratchpad: ScratchpadStore
+    /// L7: the optional profile picture, forwarded to the dashboard header, the
+    /// meeting rows, and `MemoryView` (whose "Clear everything" clears it too).
+    @ObservedObject var profileImage: ProfileImageStore
     /// L2-b (LOG-ONLY): forwarded to `MemoryView` only so its true-delete cascade can
     /// purge the AI-auto-add calibration log. Not `@ObservedObject` — this log drives
     /// no UI, so nothing here should redraw when it changes.
@@ -258,11 +263,13 @@ struct MainView: View {
         case .dashboard:
             DashboardView(settings: settings, stats: stats, history: history,
                           activity: activity, appUsage: appUsage,
-                          scratchpad: scratchpad, wordFreq: wordFreq,
+                          scratchpad: scratchpad, profileImage: profileImage,
+                          wordFreq: wordFreq,
                           jobTitle: jobTitle,
                           latency: latency, pressure: systemPressure, router: router)
         case .meetings:
-            MeetingsView(recorder: meetingRecorder, store: meetingStore, settings: settings)
+            MeetingsView(recorder: meetingRecorder, store: meetingStore,
+                         settings: settings, profileImage: profileImage)
         case .dictionary:
             DictionarySettings(dictionary: dictionary, nicheVocab: nicheVocab)
         case .memory:
@@ -271,7 +278,7 @@ struct MainView: View {
                        wordFreq: wordFreq, scratchpad: scratchpad,
                        autoAddPreviewLog: autoAddPreviewLog,
                        contextSummary: contextSummary,
-                       jobTitle: jobTitle)
+                       jobTitle: jobTitle, profileImage: profileImage)
         case .commands:
             CommandsView(settings: settings, macros: macros,
                          commandRouter: commandRouter, hud: hud,

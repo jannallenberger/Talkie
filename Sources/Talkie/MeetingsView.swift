@@ -7,15 +7,19 @@ struct MeetingsView: View {
     @ObservedObject var recorder: MeetingRecorder
     @ObservedObject var store: MeetingStore
     @ObservedObject var settings: AppSettings
-    /// The drop-to-transcribe coordinator. Defaulted from the shared AppDelegate so the
-    /// existing `MeetingsView(recorder:store:settings:)` call site stays untouched (the
-    /// composition root is owned elsewhere); nil only in previews/tests, where the import
-    /// affordances simply don't render.
+    /// L7: the optional profile picture, shown leading each in-app meeting row (only
+    /// when a photo is set — no avatar noise otherwise). In-app display only; the
+    /// image is never written into exported meeting notes. Threaded from the
+    /// composition root via `MainView`, like the other stores.
+    @ObservedObject var profileImage: ProfileImageStore
+    /// The drop-to-transcribe coordinator. Defaulted from the shared AppDelegate so
+    /// call sites needn't pass it (the composition root is owned elsewhere); nil only
+    /// in previews/tests, where the import affordances simply don't render.
     var importer: FileImportCoordinator? = AppDelegate.shared?.fileImporter
     /// The shared memory graph, so deleting a meeting also purges the provenance the
     /// graph extracted from its transcript. Defaulted from the composition root (like
-    /// `importer`) so the existing `MeetingsView(recorder:store:settings:)` call site
-    /// stays untouched; nil only in previews/tests, where there is nothing to purge.
+    /// `importer`) so call sites needn't pass it; nil only in previews/tests, where
+    /// there is nothing to purge.
     var contextGraph: ContextGraphStore? = AppDelegate.shared?.contextGraph
 
     /// The one watched-inbox folder (D6). Its own shared store (plain absolute path, no
@@ -59,6 +63,7 @@ struct MeetingsView: View {
                     ForEach(store.meetings) { meeting in
                         MeetingRow(
                             meeting: meeting,
+                            profileImage: profileImage,
                             folderURL: store.folderURL,
                             onReveal: { reveal(meeting) },
                             onCopy: { copy(meeting) },
@@ -525,6 +530,9 @@ private struct RecordingDot: View {
 
 private struct MeetingRow: View {
     let meeting: Meeting
+    /// L7: the user's profile picture, shown leading the row header ONLY when a photo
+    /// is set. In-app display only — never written into the exported note.
+    @ObservedObject var profileImage: ProfileImageStore
     /// ~/Talkie Meetings/ — where this meeting's kept audio (D9) lives, so the
     /// transcript expansion can resolve a segment's file for click-to-play.
     let folderURL: URL
@@ -552,7 +560,12 @@ private struct MeetingRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 10) {
+                // L7: the profile picture leads the row, but only when one is set —
+                // a photo-less library shows no avatar column at all (no noise).
+                if profileImage.image != nil {
+                    AvatarView(store: profileImage, size: 20)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Self.dateFormatter.string(from: meeting.date))
                         .font(.talkieHeading(14, weight: .semibold))
