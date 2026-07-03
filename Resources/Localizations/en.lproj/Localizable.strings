@@ -246,6 +246,9 @@
 "Added “%@” — from your Claude Code prompt" = "Added “%@” — from your Claude Code prompt";
 "Claude added “%@” to dictionary" = "Claude added “%@” to dictionary";
 "Claude added “%@” → “%@” to dictionary" = "Claude added “%@” → “%@” to dictionary";
+"Claude removed “%@” → “%@” from dictionary" = "Claude removed “%@” → “%@” from dictionary";
+"Claude changed “%@” → “%@” to “%@”" = "Claude changed “%@” → “%@” to “%@”";
+"Claude removed “%@” from dictionary" = "Claude removed “%@” from dictionary";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac.";
 /* G1 — Connect to Claude connector card */
 "Connect to Claude" = "Connect to Claude";
@@ -657,4 +660,4 @@
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
 "What Claude can do" = "What Claude can do";
 "asks first" = "asks first";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.";

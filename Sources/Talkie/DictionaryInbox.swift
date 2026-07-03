@@ -227,13 +227,30 @@ final class DictionaryInbox {
 
         defer { delete(url) }   // consumed either way once we've decided
 
-        switch s.kind {
-        case "vocabulary":
+        // An `op` field that's present but unrecognized decodes to nil — discard it
+        // rather than fall through to `.add` (a forward-rev op we don't understand
+        // must never be silently reinterpreted as an add).
+        guard let op = s.operation else {
+            talkieDebugLog("DictionaryInbox: discarding suggestion with unknown op \"\(s.op ?? "")\"")
+            return .consumedNoPill
+        }
+
+        switch (s.kind, op) {
+        case ("vocabulary", .add):
             return applyVocabulary(s.term)
-        case "replacement":
+        case ("replacement", .add):
             return applyReplacement(from: s.from, to: s.to)
+        // L15 management ops.
+        case ("replacement", .removeReplacement):
+            return applyRemoveReplacement(from: s.from, to: s.to)
+        case ("replacement", .updateReplacement):
+            return applyUpdateReplacement(from: s.from, to: s.to, newTo: s.newTo)
+        case ("vocabulary", .removeVocabularyTerm):
+            return applyRemoveVocabulary(s.term)
         default:
-            talkieDebugLog("DictionaryInbox: discarding suggestion with unknown kind \"\(s.kind)\"")
+            // A well-formed op on the wrong kind (e.g. removeVocabularyTerm on a
+            // "replacement" file) — reject rather than guess.
+            talkieDebugLog("DictionaryInbox: discarding suggestion with kind/op mismatch \"\(s.kind)\"/\"\(op.rawValue)\"")
             return .consumedNoPill
         }
     }
@@ -278,6 +295,67 @@ final class DictionaryInbox {
             guard let self else { return }
             self.dictionary.removeLearnedReplacement(from: from, to: to)
             self.nicheVocab.recordRejection(to)
+            self.presentReverted()
+        }
+        return .appliedPillShown
+    }
+
+    // MARK: Apply — L15 management ops (remove rule, update rule, remove vocab)
+    //
+    // These mutate an EXISTING entry and, like the adds, are applied only behind the
+    // HUD-Undo pill (never silent). No `recordIngest` here — that passive-occurrence
+    // signal is for *adding* jargon; removing/retargeting a rule isn't evidence a
+    // term is real. A target that no longer exists at apply time is a graceful
+    // no-op (`.consumedNoPill`): the file is consumed, nothing is shown.
+
+    /// Remove a replacement rule (from → to). Undo restores the exact prior rule
+    /// (id + flags preserved).
+    private func applyRemoveReplacement(from rawFrom: String?, to rawTo: String?) -> Outcome {
+        guard let from = validated(rawFrom), let to = validated(rawTo) else { return .consumedNoPill }
+        guard let removed = dictionary.removeReplacementMatching(from: from, to: to) else {
+            talkieDebugLog("DictionaryInbox: remove replacement \"\(from)\"→\"\(to)\" — no such rule, no-op")
+            return .consumedNoPill
+        }
+        presentPill(String(format: "Claude removed “%@” → “%@” from dictionary".loc, removed.from, removed.to)) { [weak self] in
+            guard let self else { return }
+            self.dictionary.restoreReplacement(removed)
+            self.presentReverted()
+        }
+        return .appliedPillShown
+    }
+
+    /// Change a replacement rule's target (from → to  becomes  from → newTo). Undo
+    /// restores the prior target (the whole prior rule, id + flags preserved).
+    private func applyUpdateReplacement(from rawFrom: String?, to rawTo: String?, newTo rawNewTo: String?) -> Outcome {
+        guard let from = validated(rawFrom), let to = validated(rawTo), let newTo = validated(rawNewTo) else {
+            return .consumedNoPill
+        }
+        guard let prior = dictionary.updateReplacementTarget(from: from, to: to, newTo: newTo) else {
+            talkieDebugLog("DictionaryInbox: update replacement \"\(from)\"→\"\(to)\" to \"\(newTo)\" — no such rule or no change, no-op")
+            return .consumedNoPill
+        }
+        presentPill(String(format: "Claude changed “%@” → “%@” to “%@”".loc, prior.from, prior.to, newTo)) { [weak self] in
+            guard let self else { return }
+            self.dictionary.restoreReplacement(prior)
+            self.presentReverted()
+        }
+        return .appliedPillShown
+    }
+
+    /// Remove a vocabulary term. Undo re-adds it.
+    private func applyRemoveVocabulary(_ rawTerm: String?) -> Outcome {
+        guard let term = validated(rawTerm) else { return .consumedNoPill }
+        // Find the term as actually stored (case-insensitively) so the pill and the
+        // Undo restore use the user's real casing, not Claude's.
+        guard let stored = dictionary.vocabulary.first(where: { $0.caseInsensitiveCompare(term) == .orderedSame }) else {
+            talkieDebugLog("DictionaryInbox: remove vocab \"\(term)\" — not present, no-op")
+            return .consumedNoPill
+        }
+        dictionary.removeVocabularyTerm(stored)
+        dictionary.save()
+        presentPill(String(format: "Claude removed “%@” from dictionary".loc, stored)) { [weak self] in
+            guard let self else { return }
+            self.dictionary.restoreVocabularyTerm(stored)
             self.presentReverted()
         }
         return .appliedPillShown
@@ -377,12 +455,41 @@ final class DictionaryInbox {
 /// the JSON shape is a contract kept byte-compatible on both sides. Extra/absent
 /// fields are tolerated (optionals) for forward/back-compat, matching the store's
 /// "new fields optional" persistence rule.
+///
+/// MIRROR: `Sources/TalkieMCP/TalkieStore.swift` → `DictionarySuggestion`. Any field
+/// change here MUST be applied there in the same commit (mirror-don't-import).
+///
+/// L15 adds the optional `op` (operation) + `newTo`. `op` is absent on every
+/// add-only file the A5 writers produced, so it defaults to `.add` (see the
+/// `operation` helper below) and old files decode + behave identically.
 struct TalkieMCPSuggestion: Codable {
     var kind: String
+    /// The operation. Absent/`"add"` = the original add; other values are the L15
+    /// edit/remove ops. Optional + defaulted (see `operation`) for back-compat.
+    var op: String?
     var term: String?
     var from: String?
     var to: String?
+    /// For `updateReplacement` only: the new target the rule should produce.
+    var newTo: String?
     var note: String?
     var createdUnix: Double
     var version: Int
+
+    /// The five operations this inbox understands. `add` is the default so an
+    /// add-only file with no `op` field maps to the original A5 behavior.
+    enum Op: String {
+        case add
+        case removeReplacement
+        case updateReplacement
+        case removeVocabularyTerm
+    }
+
+    /// The decoded op, defaulting to `.add` when the field is absent, and nil when
+    /// the field is present but unrecognized (so the handler can discard it rather
+    /// than silently treating an unknown op as an add).
+    var operation: Op? {
+        guard let op, !op.isEmpty else { return .add }
+        return Op(rawValue: op)
+    }
 }

@@ -246,6 +246,9 @@
 "Added “%@” — from your Claude Code prompt" = "« %@ » ajouté — depuis votre prompt Claude Code";
 "Claude added “%@” to dictionary" = "Claude a ajouté « %@ » au dictionnaire";
 "Claude added “%@” → “%@” to dictionary" = "Claude a ajouté « %@ » → « %@ » au dictionnaire";
+"Claude removed “%@” → “%@” from dictionary" = "Claude a supprimé « %@ » → « %@ » du dictionnaire";
+"Claude changed “%@” → “%@” to “%@”" = "Claude a changé « %@ » → « %@ » en « %@ »";
+"Claude removed “%@” from dictionary" = "Claude a supprimé « %@ » du dictionnaire";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Apprendre les corrections de vos prompts Claude Code ? Ce sont des fichiers locaux ; rien ne quitte votre Mac.";
 /* G1 — Connect to Claude connector card */
 "Connect to Claude" = "Se connecter à Claude";
@@ -655,4 +658,4 @@
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
 "What Claude can do" = "Ce que Claude peut faire";
 "asks first" = "demande d'abord";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie fournit un petit serveur local pour que Claude puisse lire vos réunions, votre briefing, vos engagements, le contexte, les statistiques, votre dictionnaire et vos notes — sur l'appareil, rien ne quitte votre Mac. Claude peut aussi suggérer des entrées de dictionnaire — chacune attend votre confirmation en un geste, avec annulation. Fourni avec l'app : aucun téléchargement ni build séparé.";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie fournit un petit serveur local pour que Claude puisse lire vos réunions, votre briefing, vos engagements, le contexte, les statistiques, votre dictionnaire et vos notes — sur l'appareil, rien ne quitte votre Mac. Claude peut aussi gérer votre dictionnaire — ajouter, modifier ou supprimer des entrées et des règles — mais chaque changement attend votre confirmation en un geste, avec annulation. Fourni avec l'app : aucun téléchargement ni build séparé.";

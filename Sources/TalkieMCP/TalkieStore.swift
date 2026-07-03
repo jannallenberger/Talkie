@@ -40,15 +40,34 @@ struct TalkieStore {
     /// binary must not import the app target (it would drag in the whole app and
     /// break the separate, network-free product claim). The two decoders must stay
     /// byte-compatible — extra fields are optional on the reader for back-compat.
+    ///
+    /// MIRROR: `Sources/Talkie/DictionaryInbox.swift` → `TalkieMCPSuggestion`. Any
+    /// field change here MUST be applied there in the same commit (mirror-don't-import).
+    ///
+    /// L15 adds an `op` (operation) axis on top of the original add-only shape:
+    ///   • `op` absent or `"add"`      → the A5 behavior: add a vocab term / from→to rule.
+    ///   • `op == "removeReplacement"` → remove the rule identified by (`from`,`to`).
+    ///   • `op == "updateReplacement"` → change rule (`from`→`to`) so its target becomes `newTo`.
+    ///   • `op == "removeVocabularyTerm"` → remove the vocab `term`.
+    /// `op` is OPTIONAL and defaults to `.add` on decode, so every add-only file the
+    /// A5 writers produced (which carry no `op`) still decodes and behaves identically.
     struct DictionarySuggestion: Codable {
-        /// `"vocabulary"` (add a bias/vocab term) or `"replacement"` (add a from→to rule).
+        /// `"vocabulary"` (a bias/vocab term) or `"replacement"` (a from→to rule).
+        /// Names the store the op targets; the `op` field names the mutation.
         var kind: String
-        /// For `vocabulary`: the term. For `replacement`: unused.
+        /// The operation. Absent/`"add"` = the original add. Other values (see the
+        /// doc above) are the L15 edit/remove ops. Optional + defaulted for back-compat.
+        var op: String?
+        /// For `vocabulary`: the term (add or remove target). For `replacement`: unused.
         var term: String?
-        /// For `replacement`: the misheard spelling.
+        /// For `replacement`: the misheard spelling (the rule's match key, for add/remove/update).
         var from: String?
-        /// For `replacement`: the canonical spelling to write.
+        /// For `replacement` add: the canonical spelling to write. For remove/update:
+        /// the EXISTING target that identifies which rule (with `from`) to act on.
         var to: String?
+        /// For `updateReplacement` ONLY: the new canonical spelling the rule should
+        /// produce (the rule keeps its `from`; its target changes `to` → `newTo`).
+        var newTo: String?
         /// Optional free-text note from Claude (why it's suggesting this). Surfaced
         /// nowhere yet; carried for provenance/inspection.
         var note: String?
@@ -69,7 +88,7 @@ struct TalkieStore {
         let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "Error: term is empty." }
         let suggestion = DictionarySuggestion(
-            kind: "vocabulary", term: trimmed, from: nil, to: nil, note: note,
+            kind: "vocabulary", op: "add", term: trimmed, from: nil, to: nil, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
                      ok: "Queued “\(trimmed)” — it’ll appear in Talkie with an Undo the moment you confirm it. Nothing changes your recognition until then.")
@@ -81,10 +100,54 @@ struct TalkieStore {
         let t = to.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !f.isEmpty, !t.isEmpty else { return "Error: both from and to are required." }
         let suggestion = DictionarySuggestion(
-            kind: "replacement", term: nil, from: f, to: t, note: note,
+            kind: "replacement", op: "add", term: nil, from: f, to: t, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
                      ok: "Queued “\(f)” → “\(t)” — it’ll appear in Talkie with an Undo the moment you confirm it. Nothing changes your recognition until then.")
+    }
+
+    // MARK: L15 — dictionary/jargon MANAGEMENT (edit + remove), same inbox handshake
+
+    /// Queue a "remove this from→to replacement rule" suggestion. Same confirm-with-
+    /// Undo contract as the adds: nothing is removed until the user confirms it in
+    /// Talkie, and the Undo restores the rule. If no such rule exists at apply time,
+    /// the app no-ops gracefully (nothing to confirm).
+    func queueRemoveReplacement(from: String, to: String, note: String?) -> String {
+        let f = from.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = to.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !f.isEmpty, !t.isEmpty else { return "Error: both from and to are required." }
+        let suggestion = DictionarySuggestion(
+            kind: "replacement", op: "removeReplacement", term: nil, from: f, to: t, newTo: nil, note: note,
+            createdUnix: Date().timeIntervalSince1970, version: 1)
+        return write(suggestion,
+                     ok: "Queued removal of “\(f)” → “\(t)” — Talkie will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+    }
+
+    /// Queue an "update this replacement rule's target" suggestion: the rule matched
+    /// by (`from`,`to`) should instead produce `newTo`. Same confirm-with-Undo
+    /// contract; the Undo restores the previous target. No-ops if the rule is gone.
+    func queueUpdateReplacement(from: String, to: String, newTo: String, note: String?) -> String {
+        let f = from.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = to.trimmingCharacters(in: .whitespacesAndNewlines)
+        let n = newTo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !f.isEmpty, !t.isEmpty, !n.isEmpty else { return "Error: from, to, and new_to are all required." }
+        let suggestion = DictionarySuggestion(
+            kind: "replacement", op: "updateReplacement", term: nil, from: f, to: t, newTo: n, note: note,
+            createdUnix: Date().timeIntervalSince1970, version: 1)
+        return write(suggestion,
+                     ok: "Queued a change to “\(f)” → “\(n)” (was “\(t)”) — Talkie will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+    }
+
+    /// Queue a "remove this vocabulary term" suggestion. Same confirm-with-Undo
+    /// contract; the Undo restores the term. No-ops if the term isn't present.
+    func queueRemoveVocabularyTerm(_ term: String, note: String?) -> String {
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Error: term is empty." }
+        let suggestion = DictionarySuggestion(
+            kind: "vocabulary", op: "removeVocabularyTerm", term: trimmed, from: nil, to: nil, newTo: nil, note: note,
+            createdUnix: Date().timeIntervalSince1970, version: 1)
+        return write(suggestion,
+                     ok: "Queued removal of “\(trimmed)” — Talkie will ask you to confirm it, with an Undo. Nothing changes until you accept.")
     }
 
     /// Write one suggestion as an atomic, uuid-named JSON file. Deterministic key

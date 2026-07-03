@@ -18,7 +18,7 @@ struct MCPServer {
             return ok(id, [
                 "protocolVersion": protocolVersion,
                 "capabilities": ["tools": ["listChanged": false]],
-                "serverInfo": ["name": "talkie", "version": "0.3.0"],
+                "serverInfo": ["name": "talkie", "version": "0.4.0"],
             ])
         case "notifications/initialized", "initialized", "notifications/cancelled":
             return nil
@@ -97,6 +97,19 @@ struct MCPServer {
                 return toolErr(id, "add_replacement requires from and to")
             }
             text = store.queueReplacement(from: from, to: to, note: strArg("note"))
+        case "remove_replacement":
+            guard let from = strArg("from"), let to = strArg("to") else {
+                return toolErr(id, "remove_replacement requires from and to")
+            }
+            text = store.queueRemoveReplacement(from: from, to: to, note: strArg("note"))
+        case "update_replacement":
+            guard let from = strArg("from"), let to = strArg("to"), let newTo = strArg("new_to") else {
+                return toolErr(id, "update_replacement requires from, to, and new_to")
+            }
+            text = store.queueUpdateReplacement(from: from, to: to, newTo: newTo, note: strArg("note"))
+        case "remove_vocabulary_term":
+            guard let term = strArg("term") else { return toolErr(id, "remove_vocabulary_term requires term") }
+            text = store.queueRemoveVocabularyTerm(term, note: strArg("note"))
         default:
             return err(id, -32602, "Unknown tool: \(name)")
         }
@@ -176,6 +189,28 @@ struct MCPServer {
                   "to": strProp("What it should become (the canonical spelling)."),
                   "note": strProp("Optional: why you're suggesting it (kept for the user's provenance).")],
                  required: ["from", "to"], mutating: true),
+            // L15 dictionary/jargon MANAGEMENT tools (edit + remove). Same trust
+            // contract as the two adds above: MUTATING but never a direct write —
+            // each call drops one atomic file into the inbox, and the app applies it
+            // only after showing an Undo pill (so a prompt-injected session can never
+            // silently change recognition). Annotated `readOnlyHint: false` so a host
+            // gates them. Call `get_dictionary` first to see the exact `from → to` /
+            // term strings to target.
+            spec("remove_replacement", "Remove a spoken→written replacement rule from the user's Talkie dictionary (identified by its exact from → to). QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it, and the Undo restores the rule. Call get_dictionary first to get the exact from/to. No-ops harmlessly if the rule is already gone.",
+                 ["from": strProp("The rule's misheard form (its `from`), exactly as get_dictionary shows it."),
+                  "to": strProp("The rule's current target (its `to`), exactly as get_dictionary shows it."),
+                  "note": strProp("Optional: why you're suggesting the removal (kept for the user's provenance).")],
+                 required: ["from", "to"], mutating: true),
+            spec("update_replacement", "Change the target of an existing replacement rule in the user's Talkie dictionary — the rule matched by (from, to) should instead produce new_to (its `from` is unchanged). QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it, and the Undo restores the previous target. Call get_dictionary first to get the exact from/to. No-ops harmlessly if the rule is already gone.",
+                 ["from": strProp("The rule's misheard form (its `from`), exactly as get_dictionary shows it."),
+                  "to": strProp("The rule's CURRENT target (its `to`), exactly as get_dictionary shows it."),
+                  "new_to": strProp("The new canonical spelling the rule should produce instead."),
+                  "note": strProp("Optional: why you're suggesting the change (kept for the user's provenance).")],
+                 required: ["from", "to", "new_to"], mutating: true),
+            spec("remove_vocabulary_term", "Remove a niche/jargon vocabulary term from the user's Talkie dictionary. QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it, and the Undo restores the term. Call get_dictionary first to get the exact term. No-ops harmlessly if the term isn't present.",
+                 ["term": strProp("The exact vocabulary term to remove, as get_dictionary shows it."),
+                  "note": strProp("Optional: why you're suggesting the removal (kept for the user's provenance).")],
+                 required: ["term"], mutating: true),
         ]
     }
 

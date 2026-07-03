@@ -67,6 +67,26 @@ final class DictionaryInboxTests: XCTestCase {
                "createdUnix": Date().timeIntervalSince1970, "version": version])
     }
 
+    // L15 management-op writers (op field present).
+
+    @discardableResult
+    private func writeRemoveReplacement(from: String, to: String) -> URL {
+        write(["kind": "replacement", "op": "removeReplacement", "from": from, "to": to,
+               "createdUnix": Date().timeIntervalSince1970, "version": 1])
+    }
+
+    @discardableResult
+    private func writeUpdateReplacement(from: String, to: String, newTo: String) -> URL {
+        write(["kind": "replacement", "op": "updateReplacement", "from": from, "to": to,
+               "newTo": newTo, "createdUnix": Date().timeIntervalSince1970, "version": 1])
+    }
+
+    @discardableResult
+    private func writeRemoveVocab(_ term: String) -> URL {
+        write(["kind": "vocabulary", "op": "removeVocabularyTerm", "term": term,
+               "createdUnix": Date().timeIntervalSince1970, "version": 1])
+    }
+
     @discardableResult
     private func write(_ dict: [String: Any]) -> URL {
         let clean = dict.filter { !($0.value is NSNull) }
@@ -178,6 +198,155 @@ final class DictionaryInboxTests: XCTestCase {
         XCTAssertEqual(applied, 0, "a duplicate rule surfaces no pill")
         XCTAssertEqual(dictionary.replacements.filter { $0.to == "Higgsfield" }.count, 1,
                        "no duplicate rule added")
+    }
+
+    // MARK: L15 — back-compat (an add-only file with no `op` field still works)
+
+    func testAddOnlyFileWithNoOpFieldStillApplies() {
+        // The exact pre-L15 shape (no `op` key) must decode + behave as `.add`.
+        writeVocab("Higgsfield")   // writeVocab never emits an `op` field
+        XCTAssertEqual(inbox.drainSynchronouslyForTesting(), 1,
+                       "a legacy add-only file (no op) is treated as an add")
+        XCTAssertTrue(dictionary.vocabulary.contains("Higgsfield"))
+    }
+
+    // MARK: L15 — remove replacement rule
+
+    func testRemoveReplacementRemovesRuleAndPings() {
+        _ = dictionary.addLearnedReplacement(from: "higgs field", to: "Higgsfield")
+        writeRemoveReplacement(from: "higgs field", to: "Higgsfield")
+        let applied = inbox.drainSynchronouslyForTesting()
+
+        XCTAssertEqual(applied, 1, "the removal applied and showed a pill")
+        XCTAssertNil(dictionary.replacements.first { $0.to == "Higgsfield" },
+                     "the rule is gone")
+        XCTAssertTrue(spy.shown.first!.message.contains("Claude"),
+                      "the pill attributes the change to Claude (never silent)")
+        XCTAssertTrue(spy.shown.first!.message.contains("Higgsfield"))
+    }
+
+    func testUndoRemoveReplacementRestoresTheRuleVerbatim() {
+        _ = dictionary.addLearnedReplacement(from: "higgs field", to: "Higgsfield")
+        let originalID = dictionary.replacements.first { $0.to == "Higgsfield" }!.id
+        writeRemoveReplacement(from: "higgs field", to: "Higgsfield")
+        inbox.drainSynchronouslyForTesting()
+        XCTAssertNil(dictionary.replacements.first { $0.to == "Higgsfield" })
+
+        spy.shown.first!.onUndo()
+
+        let restored = dictionary.replacements.first { $0.to == "Higgsfield" }
+        XCTAssertNotNil(restored, "Undo restores the removed rule")
+        XCTAssertEqual(restored?.id, originalID, "restored verbatim (same id + flags)")
+        XCTAssertEqual(restored?.isLearned, true, "the learned flag survives the round-trip")
+        XCTAssertEqual(spy.revertedCount, 1)
+    }
+
+    func testRemoveReplacementCanRemoveACuratedRuleToo() {
+        // Claude can manage curated rules, not just learned ones.
+        dictionary.replacements = [Replacement(from: "api", to: "API", learned: false)]
+        writeRemoveReplacement(from: "api", to: "API")
+        XCTAssertEqual(inbox.drainSynchronouslyForTesting(), 1)
+        XCTAssertTrue(dictionary.replacements.isEmpty, "a curated rule is removable")
+    }
+
+    func testRemoveMissingReplacementIsSilentNoOp() {
+        writeRemoveReplacement(from: "nope", to: "nada")
+        XCTAssertEqual(inbox.drainSynchronouslyForTesting(), 0,
+                       "removing a rule that doesn't exist shows no pill")
+        XCTAssertEqual(spy.shown.count, 0)
+        XCTAssertTrue(inboxFiles().isEmpty, "the no-op file is still consumed")
+    }
+
+    // MARK: L15 — update replacement rule target
+
+    func testUpdateReplacementRetargetsRuleAndPings() {
+        _ = dictionary.addLearnedReplacement(from: "higgs field", to: "Higgsfield")
+        writeUpdateReplacement(from: "higgs field", to: "Higgsfield", newTo: "HiggsField")
+        let applied = inbox.drainSynchronouslyForTesting()
+
+        XCTAssertEqual(applied, 1)
+        XCTAssertNil(dictionary.replacements.first { $0.to == "Higgsfield" })
+        XCTAssertNotNil(dictionary.replacements.first { $0.from.lowercased() == "higgs field" && $0.to == "HiggsField" },
+                        "the rule now targets the new spelling")
+        XCTAssertTrue(spy.shown.first!.message.contains("Claude"))
+    }
+
+    func testUndoUpdateReplacementRestoresPreviousTarget() {
+        _ = dictionary.addLearnedReplacement(from: "higgs field", to: "Higgsfield")
+        let originalID = dictionary.replacements.first { $0.to == "Higgsfield" }!.id
+        writeUpdateReplacement(from: "higgs field", to: "Higgsfield", newTo: "HiggsField")
+        inbox.drainSynchronouslyForTesting()
+
+        spy.shown.first!.onUndo()
+
+        let restored = dictionary.replacements.first { $0.from.lowercased() == "higgs field" }
+        XCTAssertEqual(restored?.to, "Higgsfield", "Undo restores the previous target")
+        XCTAssertEqual(restored?.id, originalID, "same rule (id preserved), not a new one")
+        XCTAssertEqual(spy.revertedCount, 1)
+    }
+
+    func testUpdateMissingReplacementIsSilentNoOp() {
+        writeUpdateReplacement(from: "nope", to: "nada", newTo: "whatever")
+        XCTAssertEqual(inbox.drainSynchronouslyForTesting(), 0)
+        XCTAssertEqual(spy.shown.count, 0)
+    }
+
+    func testUpdateReplacementToSameTargetIsNoOp() {
+        _ = dictionary.addLearnedReplacement(from: "higgs field", to: "Higgsfield")
+        writeUpdateReplacement(from: "higgs field", to: "Higgsfield", newTo: "Higgsfield")
+        XCTAssertEqual(inbox.drainSynchronouslyForTesting(), 0,
+                       "retargeting to the same value changes nothing → no pill")
+    }
+
+    // MARK: L15 — remove vocabulary term
+
+    func testRemoveVocabularyRemovesTermAndPings() {
+        dictionary.vocabulary = ["Higgsfield", "Coralate"]
+        writeRemoveVocab("Higgsfield")
+        let applied = inbox.drainSynchronouslyForTesting()
+
+        XCTAssertEqual(applied, 1)
+        XCTAssertFalse(dictionary.vocabulary.contains("Higgsfield"))
+        XCTAssertTrue(dictionary.vocabulary.contains("Coralate"), "only the named term is removed")
+        XCTAssertTrue(spy.shown.first!.message.contains("Claude"))
+    }
+
+    func testRemoveVocabularyMatchesCaseInsensitivelyAndRestoresUserCasing() {
+        dictionary.vocabulary = ["Higgsfield"]
+        writeRemoveVocab("higgsfield")   // different casing than stored
+        inbox.drainSynchronouslyForTesting()
+        XCTAssertFalse(dictionary.vocabulary.contains("Higgsfield"), "matched case-insensitively")
+
+        spy.shown.first!.onUndo()
+        XCTAssertTrue(dictionary.vocabulary.contains("Higgsfield"),
+                      "Undo restores the term in the user's original casing")
+        XCTAssertEqual(spy.revertedCount, 1)
+    }
+
+    func testRemoveMissingVocabularyIsSilentNoOp() {
+        dictionary.vocabulary = ["Coralate"]
+        writeRemoveVocab("Higgsfield")
+        XCTAssertEqual(inbox.drainSynchronouslyForTesting(), 0)
+        XCTAssertEqual(dictionary.vocabulary, ["Coralate"], "unrelated terms untouched")
+    }
+
+    // MARK: L15 — an unknown op is rejected, not treated as an add
+
+    func testUnknownOpIsDiscardedNotTreatedAsAdd() {
+        _ = write(["kind": "vocabulary", "op": "wipe_everything", "term": "Higgsfield",
+                   "createdUnix": Date().timeIntervalSince1970, "version": 1])
+        XCTAssertEqual(inbox.drainSynchronouslyForTesting(), 0,
+                       "an unrecognized op is discarded, never reinterpreted as an add")
+        XCTAssertFalse(dictionary.vocabulary.contains("Higgsfield"))
+        XCTAssertTrue(inboxFiles().isEmpty)
+    }
+
+    func testKindOpMismatchIsDiscarded() {
+        // removeVocabularyTerm on a "replacement" kind is incoherent → discard.
+        _ = write(["kind": "replacement", "op": "removeVocabularyTerm", "term": "Higgsfield",
+                   "createdUnix": Date().timeIntervalSince1970, "version": 1])
+        XCTAssertEqual(inbox.drainSynchronouslyForTesting(), 0)
+        XCTAssertTrue(inboxFiles().isEmpty)
     }
 
     // MARK: Malformed / oversized files are discarded
