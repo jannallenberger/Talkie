@@ -276,3 +276,9 @@
 "%d imported" = "%d 件を読み込み";
 "%d skipped: %@" = "%d 件をスキップ: %@";
 "your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "ミーティング一覧は最新の %d 件までを保持するため、古い読み込みは一覧から外れました(ノートはディスクに残っています)。";
+
+/* D3 — timestamped exports menu */
+"Subtitles (.srt)" = "字幕 (.srt)";
+"Subtitles (.vtt)" = "字幕 (.vtt)";
+"Spreadsheet (.csv)" = "スプレッドシート (.csv)";
+"Data (.json)" = "データ (.json)";

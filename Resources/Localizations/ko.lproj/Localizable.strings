@@ -276,3 +276,9 @@
 "%d imported" = "%d개 가져옴";
 "%d skipped: %@" = "%d개 건너뜀: %@";
 "your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "회의 목록은 최근 %d개만 유지하므로 오래된 가져오기는 목록에서 밀려났습니다(노트는 디스크에 그대로 있습니다).";
+
+/* D3 — timestamped exports menu */
+"Subtitles (.srt)" = "자막 (.srt)";
+"Subtitles (.vtt)" = "자막 (.vtt)";
+"Spreadsheet (.csv)" = "스프레드시트 (.csv)";
+"Data (.json)" = "데이터 (.json)";

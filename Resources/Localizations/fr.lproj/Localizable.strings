@@ -276,3 +276,9 @@
 "%d imported" = "%d importés";
 "%d skipped: %@" = "%d ignorés : %@";
 "your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "votre liste de réunions ne garde que les %d plus récentes ; les imports plus anciens sont donc sortis de la liste (leurs notes restent sur le disque).";
+
+/* D3 — timestamped exports menu */
+"Subtitles (.srt)" = "Sous-titres (.srt)";
+"Subtitles (.vtt)" = "Sous-titres (.vtt)";
+"Spreadsheet (.csv)" = "Feuille de calcul (.csv)";
+"Data (.json)" = "Données (.json)";

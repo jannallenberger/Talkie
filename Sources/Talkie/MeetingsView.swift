@@ -420,6 +420,23 @@ private struct MeetingRow: View {
                         .help("Regenerate summary")
                     }
                     Button(action: onCopy) { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("Copy transcript")
+                    // Timestamped exports (D3) — only when this meeting actually has
+                    // timed segments (recorded/imported after D2). Pre-D2 notes simply
+                    // don't show the menu, so there's no dead UI and no migration.
+                    if let segments = meeting.segments, !segments.isEmpty {
+                        Menu {
+                            Button("Subtitles (.srt)") { export(segments, as: .srt) }
+                            Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
+                            Button("Spreadsheet (.csv)") { export(segments, as: .csv) }
+                            Button("Data (.json)") { export(segments, as: .json) }
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .menuIndicator(.hidden)
+                        .buttonStyle(.plain)
+                        .fixedSize()
+                        .help("Export…")
+                    }
                     Button(action: onReveal) { Image(systemName: "folder") }.buttonStyle(.plain).help("Reveal note in Finder")
                 }
             }
@@ -446,6 +463,70 @@ private struct MeetingRow: View {
         }
         .talkieCard(padding: 14)
         .onHover { hovering = $0 }
+    }
+
+    // MARK: Timestamped export (D3)
+
+    /// The four sidecar formats offered by the row's Export menu, each paired with
+    /// its file extension and the UTI hint the save panel uses to name the file.
+    private enum ExportFormat {
+        case srt, vtt, csv, json
+
+        var fileExtension: String {
+            switch self {
+            case .srt: return "srt"
+            case .vtt: return "vtt"
+            case .csv: return "csv"
+            case .json: return "json"
+            }
+        }
+    }
+
+    /// Render `segments` to the chosen format and write them via a save panel. The
+    /// default filename reuses the meeting's `.md` basename (so a "2026-07-03-…-meeting"
+    /// note exports "2026-07-03-…-meeting.srt"), which keeps the sidecar sitting next
+    /// to whatever the user named the note. Pure render → disk write; nothing leaves
+    /// the machine.
+    private func export(_ segments: [MeetingSegment], as format: ExportFormat) {
+        let contents: String
+        switch format {
+        case .srt:
+            contents = TimedTranscriptExport.srt(segments)
+        case .vtt:
+            contents = TimedTranscriptExport.vtt(segments)
+        case .csv:
+            contents = TimedTranscriptExport.csv(segments)
+        case .json:
+            let header = TimedTranscriptExport.Header(
+                title: meeting.title,
+                date: meeting.date,
+                durationSec: meeting.durationSec
+            )
+            contents = TimedTranscriptExport.json(segments, header: header)
+        }
+
+        let panel = NSSavePanel()
+        // `NSSavePanel.title` is a runtime String, so it doesn't auto-localize the way
+        // a SwiftUI `Text`/`Button` literal does — route it through `.loc` (the key
+        // already ships in all 10 .lproj from the dictionary-export button).
+        panel.title = "Export…".loc
+        panel.nameFieldStringValue = "\(exportBaseName).\(format.fileExtension)"
+        panel.canCreateDirectories = true
+        if let type = UTType(filenameExtension: format.fileExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? Data(contents.utf8).write(to: url, options: .atomic)
+        }
+    }
+
+    /// The meeting's `.md` file basename (without extension) — the default stem for
+    /// an exported sidecar. Falls back to a slug of the title when the filename
+    /// is somehow empty.
+    private var exportBaseName: String {
+        let stem = (meeting.fileName as NSString).deletingPathExtension
+        return stem.isEmpty ? NoteTemplate.slug(meeting.title) : stem
     }
 }
 
