@@ -71,6 +71,14 @@ struct MCPServer {
         case "search":
             guard let q = strArg("query") else { return toolErr(id, "search requires query") }
             text = store.search(query: q, limit: intArg("limit", 15), sources: strArr("sources"))
+        case "add_vocabulary_term":
+            guard let term = strArg("term") else { return toolErr(id, "add_vocabulary_term requires term") }
+            text = store.queueVocabularyTerm(term, note: strArg("note"))
+        case "add_replacement":
+            guard let from = strArg("from"), let to = strArg("to") else {
+                return toolErr(id, "add_replacement requires from and to")
+            }
+            text = store.queueReplacement(from: from, to: to, note: strArg("note"))
         default:
             return err(id, -32602, "Unknown tool: \(name)")
         }
@@ -112,12 +120,38 @@ struct MCPServer {
                  ["query": strProp("Search text — a phrase or paraphrase works; exact terms still rank at top."),
                   "limit": numProp("Max hits (default 15)."),
                   "sources": arrProp("Restrict to: meetings|dictations|entities.")]),
+            // The two teach-back tools (A5). MUTATING, but the mutation is a QUEUED
+            // suggestion, never a direct dictionary write: each call drops one atomic
+            // file into the inbox, and the app applies it only after showing an
+            // Undo pill. Annotated `readOnlyHint: false` so an MCP host gates them
+            // rather than auto-approving like the reads above.
+            spec("add_vocabulary_term", "Suggest a niche/jargon term (a name, product, or acronym) for the user's Talkie dictionary, so their speech recognition spells it right. QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it. Call this when the user corrects a mis-transcribed term in their prompt (e.g. they wrote \"Higgsfield\" where recognition would mishear it).",
+                 ["term": strProp("The exact spelling to add (e.g. \"Higgsfield\", \"claude.md\", \"Coralate\")."),
+                  "note": strProp("Optional: why you're suggesting it (kept for the user's provenance).")],
+                 required: ["term"], mutating: true),
+            spec("add_replacement", "Suggest a spoken→written replacement rule for the user's Talkie dictionary — when recognition reliably hears one thing (\"correlate\", \"higgs field\") but the user means another (\"Coralate\", \"Higgsfield\"). QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it.",
+                 ["from": strProp("What recognition tends to produce (the misheard form)."),
+                  "to": strProp("What it should become (the canonical spelling)."),
+                  "note": strProp("Optional: why you're suggesting it (kept for the user's provenance).")],
+                 required: ["from", "to"], mutating: true),
         ]
     }
 
-    private static func spec(_ name: String, _ desc: String, _ props: [String: [String: Any]]) -> [String: Any] {
-        ["name": name, "description": desc,
-         "inputSchema": ["type": "object", "properties": props, "required": [String]()]]
+    private static func spec(_ name: String, _ desc: String, _ props: [String: [String: Any]],
+                             required: [String] = [], mutating: Bool = false) -> [String: Any] {
+        var out: [String: Any] = [
+            "name": name, "description": desc,
+            "inputSchema": ["type": "object", "properties": props, "required": required],
+        ]
+        // MCP tool annotations: mark the writers non-read-only so a host surfaces a
+        // confirmation instead of silently auto-running them (the reads stay
+        // annotation-free, i.e. safe to auto-approve). `destructiveHint: false`
+        // because the app-side apply is add-only + undoable, never a destructive
+        // overwrite.
+        if mutating {
+            out["annotations"] = ["readOnlyHint": false, "destructiveHint": false, "title": name]
+        }
+        return out
     }
     private static func strProp(_ d: String) -> [String: Any] { ["type": "string", "description": d] }
     private static func numProp(_ d: String) -> [String: Any] { ["type": "integer", "description": d] }

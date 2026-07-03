@@ -16,6 +16,25 @@ write ("add a dictionary term"). It reads the same on-disk JSON/Markdown stores
 **read-mostly**, runs out-of-process (the app need not be open), and adds **zero**
 network code.
 
+> **Correction (2026-07-03, package A5 — the one write shipped, differently).**
+> This plan specified the write as a **direct atomic read-modify-write of
+> `dictionary.json`** from the peer binary (see §"DictionaryWriter", the
+> `add_dictionary_term` rows in the tool table, and the flock-sidecar notes). That
+> design was **not built as written**, because it races the app: `DictionaryStore.save()`
+> overwrites the *whole* `dictionary.json` unconditionally, so a peer write would be
+> silently clobbered on the next in-app save — and, worse, it would let a
+> prompt-injected Claude session change speech recognition **silently**. A5 ships the
+> same capability behind an **inbox handshake** instead: the peer exposes **two**
+> tools — `add_vocabulary_term` and `add_replacement` — that each write **one atomic
+> JSON file per suggestion** into `~/Library/Application Support/Talkie/inbox/`
+> (uuid-named, so concurrent sessions can't clobber each other) and **never touch
+> `dictionary.json`**. The app (`Sources/Talkie/DictionaryInbox.swift`) watches that
+> folder, validates (length / dedup / rate-cap), applies via the existing
+> `addVocabularyTerm` / `addLearnedReplacement`, and **shows the HUD-Undo pill** — the
+> same apply-with-visible-Undo contract the LearningEngine uses. So "the one write"
+> is now "queued suggestions the user confirms," which is strictly safer. See
+> `docs/MCP_TEACH_BACK.md`. The read tools in this plan are unchanged.
+
 ## 2. Why it matters
 
 This is one of the moat features the strategic thesis names explicitly: *"a local

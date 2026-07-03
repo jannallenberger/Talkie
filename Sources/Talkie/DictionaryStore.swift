@@ -121,6 +121,17 @@ final class DictionaryStore: ObservableObject {
         vocabulary.append(trimmed)
     }
 
+    /// Remove a vocabulary term by value (case-insensitively) — the symmetric undo
+    /// of `addVocabularyTerm`, used to reverse a Claude-suggested add from the HUD
+    /// Undo pill (`DictionaryInbox`). No-op if the term isn't present. Persistence is
+    /// the caller's responsibility (matching the other value mutators here, which the
+    /// Dictionary view drives via `.onChange`; the inbox calls `save()` itself).
+    func removeVocabularyTerm(_ term: String) {
+        let key = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        vocabulary.removeAll { $0.caseInsensitiveCompare(key) == .orderedSame }
+    }
+
     /// Auto-add a correction Talkie learned from watching the user edit text.
     /// Returns `true` when a NEW rule was added (so the caller can ping the user),
     /// `false` when it was empty, a no-op, or already present.

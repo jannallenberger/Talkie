@@ -21,6 +21,91 @@ struct TalkieStore {
         meetingsDir = home.appendingPathComponent("Talkie Meetings", isDirectory: true)
     }
 
+    // MARK: Dictionary teach-back (the ONE write path — an inbox handshake, A5)
+
+    /// A single Claude-suggested dictionary change, dropped as one atomic JSON file
+    /// into `~/Library/Application Support/Talkie/inbox/` for the app to confirm.
+    ///
+    /// This server NEVER touches `dictionary.json`: the app saves it unconditionally
+    /// (`DictionaryStore.save()` overwrites the whole file), so a peer write here
+    /// would race and could clobber the user's curated vocab. Instead every
+    /// suggestion is its own file — atomic, and two concurrent Claude sessions can't
+    /// clobber each other because there's no shared JSON to contend on. The app
+    /// watches the dir, validates, applies via the same `addLearnedReplacement` /
+    /// `addVocabularyTerm` the LearningEngine uses, and shows the HUD-Undo pill — so
+    /// a prompt-injected session can never *silently* pollute recognition.
+    ///
+    /// The shape is mirrored on the app side (`DictionaryInbox.Suggestion`) rather
+    /// than shared, for the same reason the store models above are mirrored: this
+    /// binary must not import the app target (it would drag in the whole app and
+    /// break the separate, network-free product claim). The two decoders must stay
+    /// byte-compatible — extra fields are optional on the reader for back-compat.
+    struct DictionarySuggestion: Codable {
+        /// `"vocabulary"` (add a bias/vocab term) or `"replacement"` (add a from→to rule).
+        var kind: String
+        /// For `vocabulary`: the term. For `replacement`: unused.
+        var term: String?
+        /// For `replacement`: the misheard spelling.
+        var from: String?
+        /// For `replacement`: the canonical spelling to write.
+        var to: String?
+        /// Optional free-text note from Claude (why it's suggesting this). Surfaced
+        /// nowhere yet; carried for provenance/inspection.
+        var note: String?
+        /// When the suggestion was written (unix seconds). The app rate-caps on
+        /// arrival time, not this, so a back-dated file can't dodge the cap.
+        var createdUnix: Double
+        /// Schema version, so the app can reject shapes it doesn't understand.
+        var version: Int
+    }
+
+    /// The inbox directory. Created on demand in BOTH processes (the app may not
+    /// have run yet when Claude writes the first suggestion).
+    private var inboxDir: URL { supportDir.appendingPathComponent("inbox", isDirectory: true) }
+
+    /// Queue an "add this vocabulary term" suggestion for the user to confirm in
+    /// Talkie. Returns a human/model-readable line; the tool layer wraps it.
+    func queueVocabularyTerm(_ term: String, note: String?) -> String {
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Error: term is empty." }
+        let suggestion = DictionarySuggestion(
+            kind: "vocabulary", term: trimmed, from: nil, to: nil, note: note,
+            createdUnix: Date().timeIntervalSince1970, version: 1)
+        return write(suggestion,
+                     ok: "Queued “\(trimmed)” — it’ll appear in Talkie with an Undo the moment you confirm it. Nothing changes your recognition until then.")
+    }
+
+    /// Queue an "add this from→to replacement rule" suggestion for confirmation.
+    func queueReplacement(from: String, to: String, note: String?) -> String {
+        let f = from.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = to.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !f.isEmpty, !t.isEmpty else { return "Error: both from and to are required." }
+        let suggestion = DictionarySuggestion(
+            kind: "replacement", term: nil, from: f, to: t, note: note,
+            createdUnix: Date().timeIntervalSince1970, version: 1)
+        return write(suggestion,
+                     ok: "Queued “\(f)” → “\(t)” — it’ll appear in Talkie with an Undo the moment you confirm it. Nothing changes your recognition until then.")
+    }
+
+    /// Write one suggestion as an atomic, uuid-named JSON file. Deterministic key
+    /// order (`.sortedKeys`) so the file is stable/inspectable. Best-effort: a write
+    /// failure returns an error string rather than crashing the stdio server.
+    private func write(_ suggestion: DictionarySuggestion, ok: String) -> String {
+        do {
+            try FileManager.default.createDirectory(at: inboxDir, withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(suggestion)
+            // uuid filename → no collision between concurrent sessions; `.json` so
+            // the watcher can ignore anything else that lands in the dir.
+            let url = inboxDir.appendingPathComponent("\(UUID().uuidString).json")
+            try data.write(to: url, options: .atomic)
+            return ok
+        } catch {
+            return "Error: couldn't queue the suggestion (\(error.localizedDescription))."
+        }
+    }
+
     // MARK: Models (mirror the app's on-disk shapes; extra fields optional)
 
     struct Meeting: Codable {

@@ -62,6 +62,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let musicController = MusicController()
     private let cleanup = CleanupEngine()
     private var hotKey: HotKeyMonitor?
+    /// Watches the MCP inbox for dictionary suggestions a Claude session queued (via
+    /// the bundled `talkie-mcp`) and applies each one *with the same HUD-Undo pill*
+    /// the LearningEngine uses — so a prompt-injected session can never silently
+    /// pollute recognition (A5). Built in `applicationDidFinishLaunching`.
+    private var dictionaryInbox: DictionaryInbox?
 
     private var statusItem: NSStatusItem?
     private var mainWindow: MainWindowController?
@@ -164,6 +169,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupEngineHandler()
         setupHotKey()
+
+        // Watch the MCP inbox for Claude-queued dictionary suggestions and surface
+        // each with an Undo pill. Started here so a suggestion written while the app
+        // was closed is scanned and pinged at launch — never applied silently.
+        let inbox = DictionaryInbox(dictionary: dictionary, nicheVocab: nicheVocab, hud: hud)
+        inbox.start()
+        dictionaryInbox = inbox
 
         permissions.refresh()
         observeSettings()

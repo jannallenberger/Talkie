@@ -230,6 +230,8 @@
 "That doesn't look like a Talkie dictionary (.talkiepack)." = "That doesn't look like a Talkie dictionary (.talkiepack).";
 
 "Added “%@” — from your Claude Code prompt" = "Added “%@” — from your Claude Code prompt";
+"Claude added “%@” to dictionary" = "Claude added “%@” to dictionary";
+"Claude added “%@” → “%@” to dictionary" = "Claude added “%@” → “%@” to dictionary";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac.";
 /* G1 — Connect to Claude connector card */
 "Connect to Claude" = "Connect to Claude";
