@@ -591,3 +591,11 @@
 "Talkie will start at login." = "로그인 시 Talkie가 시작됩니다.";
 "Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "3일 연속 받아쓰기했습니다. 사용을 실행하면 로그인 시 Talkie가 시작되어 단축키가 항상 작동합니다.";
 "Enable" = "사용";
+
+// MARK: - Keep-for-app cleanup style chip (H3)
+"Keep %@ for %@?" = "%@에 %@ 스타일을 유지할까요?";
+"Keep the %@ cleanup style as the default for %@?" = "정리 스타일 %@을(를) %@의 기본값으로 설정할까요?";
+"Keep the %@ cleanup style for %@? Activate Keep to make it this app's default." = "정리 스타일 %@을(를) %@에 유지할까요? '유지'를 실행하면 이 앱의 기본값이 됩니다.";
+"Makes this cleanup style the default for this app." = "이 정리 스타일을 이 앱의 기본값으로 설정합니다.";
+"%@ will use %@ from now on." = "이제부터 %@은(는) %@을(를) 사용합니다.";
+"Keep" = "유지";

@@ -591,3 +591,11 @@
 "Talkie will start at login." = "ログイン時に Talkie を起動します。";
 "Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "3日連続で音声入力しています。「有効にする」を実行すると、ログイン時に Talkie が起動し、ショートカットがいつでも使えます。";
 "Enable" = "有効にする";
+
+// MARK: - Keep-for-app cleanup style chip (H3)
+"Keep %@ for %@?" = "%@ を %@ に使い続けますか？";
+"Keep the %@ cleanup style as the default for %@?" = "クリーンアップスタイル「%@」を %@ の既定にしますか？";
+"Keep the %@ cleanup style for %@? Activate Keep to make it this app's default." = "クリーンアップスタイル「%@」を %@ に使いますか？「保持」を実行すると、このアプリの既定になります。";
+"Makes this cleanup style the default for this app." = "このクリーンアップスタイルをこのアプリの既定にします。";
+"%@ will use %@ from now on." = "今後 %@ は %@ を使用します。";
+"Keep" = "保持";

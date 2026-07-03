@@ -591,3 +591,11 @@
 "Talkie will start at login." = "O Talkie será iniciado ao fazer login.";
 "Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "Três dias seguidos ditando. Ative Ativar para iniciar o Talkie ao fazer login, para que seu atalho sempre funcione.";
 "Enable" = "Ativar";
+
+// MARK: - Keep-for-app cleanup style chip (H3)
+"Keep %@ for %@?" = "Manter %@ para %@?";
+"Keep the %@ cleanup style as the default for %@?" = "Definir o estilo de limpeza %@ como padrão para %@?";
+"Keep the %@ cleanup style for %@? Activate Keep to make it this app's default." = "Manter o estilo de limpeza %@ para %@? Ative Manter para torná-lo o padrão deste app.";
+"Makes this cleanup style the default for this app." = "Torna este estilo de limpeza o padrão deste app.";
+"%@ will use %@ from now on." = "%@ usará %@ a partir de agora.";
+"Keep" = "Manter";
