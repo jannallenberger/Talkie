@@ -383,3 +383,22 @@
 "Indexing %@ — spoken filenames will snap to real files" = "正在索引 %@ — 说出的文件名将对应到真实文件";
 "Index" = "索引";
 "Not now" = "暂不";
+
+
+// A6 — profession starter packs
+"Starter packs" = "入门词库";
+"Work in a niche field? Install a pack of common terms so Talkie fixes close misses of them from your first dictation. It can't make the recognizer say a word it's never heard — it proofreads what you dictate and swaps a close-sounding mistake for the right term." = "从事某个专业领域？安装一个常用术语词库，Talkie 从你第一次听写起就能纠正这些术语的相近误识。它无法让识别器说出从未听过的词——它会校对你听写的内容，把发音相近的错误换成正确的术语。";
+"Preview what's inside before it's added — nothing is installed until you confirm." = "添加前先预览内容——在你确认之前不会安装任何内容。";
+"Install" = "安装";
+"Talkie couldn't open that starter pack. Reinstalling Talkie should fix it." = "Talkie 无法打开该入门词库。重新安装 Talkie 应该可以解决。";
+"Preview and add the %@ pack" = "预览并添加 %@ 词库";
+"Tools, languages, and jargon — Kubernetes, SwiftPM, idempotent." = "工具、语言和行话 — Kubernetes、SwiftPM、idempotent。";
+"Conditions, procedures, and common medications." = "病症、操作和常用药物。";
+"Litigation, contracts, and estates." = "诉讼、合同和遗产。";
+"Statistics, methods, and math." = "统计、方法和数学。";
+"Literary devices and the editorial workflow." = "文学手法与编辑流程。";
+"Developer" = "开发者";
+"Medicine" = "医学";
+"Law" = "法律";
+"Research" = "研究";
+"Writer" = "写作者";

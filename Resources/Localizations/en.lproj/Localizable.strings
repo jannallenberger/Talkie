@@ -383,3 +383,22 @@
 "Indexing %@ — spoken filenames will snap to real files" = "Indexing %@ — spoken filenames will snap to real files";
 "Index" = "Index";
 "Not now" = "Not now";
+
+
+// A6 — profession starter packs
+"Starter packs" = "Starter packs";
+"Work in a niche field? Install a pack of common terms so Talkie fixes close misses of them from your first dictation. It can't make the recognizer say a word it's never heard — it proofreads what you dictate and swaps a close-sounding mistake for the right term." = "Work in a niche field? Install a pack of common terms so Talkie fixes close misses of them from your first dictation. It can't make the recognizer say a word it's never heard — it proofreads what you dictate and swaps a close-sounding mistake for the right term.";
+"Preview what's inside before it's added — nothing is installed until you confirm." = "Preview what's inside before it's added — nothing is installed until you confirm.";
+"Install" = "Install";
+"Talkie couldn't open that starter pack. Reinstalling Talkie should fix it." = "Talkie couldn't open that starter pack. Reinstalling Talkie should fix it.";
+"Preview and add the %@ pack" = "Preview and add the %@ pack";
+"Tools, languages, and jargon — Kubernetes, SwiftPM, idempotent." = "Tools, languages, and jargon — Kubernetes, SwiftPM, idempotent.";
+"Conditions, procedures, and common medications." = "Conditions, procedures, and common medications.";
+"Litigation, contracts, and estates." = "Litigation, contracts, and estates.";
+"Statistics, methods, and math." = "Statistics, methods, and math.";
+"Literary devices and the editorial workflow." = "Literary devices and the editorial workflow.";
+"Developer" = "Developer";
+"Medicine" = "Medicine";
+"Law" = "Law";
+"Research" = "Research";
+"Writer" = "Writer";

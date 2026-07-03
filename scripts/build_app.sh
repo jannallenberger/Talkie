@@ -163,6 +163,16 @@ if [[ -d "$ROOT/Resources/Localizations" ]]; then
   cp -R "$ROOT/Resources/Localizations/"*.lproj "$APP/Contents/Resources/" 2>/dev/null || true
 fi
 
+# Profession starter packs (A6) — curated .talkiepack dictionaries copied flat
+# into Contents/Resources/, mirroring how the brand PNGs and the connector .mcpb
+# are bundled. Loaded at runtime via StarterPack.load() ->
+# Bundle.main.url(forResource:withExtension:"talkiepack"). Curation is gated by
+# StarterPackTests (decode/≤300/guard-safe/zero-false-positives), so a broken
+# pack fails the test suite, not the user's dictation.
+if [[ -d "$ROOT/Resources/Packs" ]]; then
+  cp "$ROOT/Resources/Packs/"*.talkiepack "$APP/Contents/Resources/" 2>/dev/null || true
+fi
+
 # App icon from the Icon Composer .icon bundle (macOS 26 Liquid Glass).
 # actool emits AppIcon.icns (Finder/Dock fallback) + Assets.car (glass icon).
 if [[ -d "$ROOT/Resources/AppIcon.icon" ]]; then

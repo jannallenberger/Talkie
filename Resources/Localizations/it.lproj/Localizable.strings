@@ -383,3 +383,22 @@
 "Indexing %@ — spoken filenames will snap to real files" = "Indicizzazione di %@ — i nomi dei file dettati si allineeranno ai file reali";
 "Index" = "Indicizza";
 "Not now" = "Non ora";
+
+
+// A6 — profession starter packs
+"Starter packs" = "Pacchetti iniziali";
+"Work in a niche field? Install a pack of common terms so Talkie fixes close misses of them from your first dictation. It can't make the recognizer say a word it's never heard — it proofreads what you dictate and swaps a close-sounding mistake for the right term." = "Lavori in un campo specialistico? Installa un pacchetto di termini comuni così Talkie ne corregge gli errori simili fin dalla prima dettatura. Non può far dire al riconoscitore una parola che non ha mai sentito: rilegge ciò che detti e sostituisce un errore dal suono simile con il termine giusto.";
+"Preview what's inside before it's added — nothing is installed until you confirm." = "Guarda cosa contiene prima di aggiungerlo: non viene installato nulla finché non confermi.";
+"Install" = "Installa";
+"Talkie couldn't open that starter pack. Reinstalling Talkie should fix it." = "Talkie non è riuscito ad aprire quel pacchetto iniziale. Reinstallare Talkie dovrebbe risolvere.";
+"Preview and add the %@ pack" = "Anteprima e aggiunta del pacchetto %@";
+"Tools, languages, and jargon — Kubernetes, SwiftPM, idempotent." = "Strumenti, linguaggi e gergo — Kubernetes, SwiftPM, idempotente.";
+"Conditions, procedures, and common medications." = "Patologie, procedure e farmaci comuni.";
+"Litigation, contracts, and estates." = "Contenzioso, contratti e successioni.";
+"Statistics, methods, and math." = "Statistica, metodi e matematica.";
+"Literary devices and the editorial workflow." = "Figure retoriche e flusso di lavoro editoriale.";
+"Developer" = "Sviluppatore";
+"Medicine" = "Medicina";
+"Law" = "Diritto";
+"Research" = "Ricerca";
+"Writer" = "Autore";

@@ -383,3 +383,22 @@
 "Indexing %@ — spoken filenames will snap to real files" = "%@ をインデックス中 — 話したファイル名が実際のファイルに一致します";
 "Index" = "インデックス";
 "Not now" = "後で";
+
+
+// A6 — profession starter packs
+"Starter packs" = "スターターパック";
+"Work in a niche field? Install a pack of common terms so Talkie fixes close misses of them from your first dictation. It can't make the recognizer say a word it's never heard — it proofreads what you dictate and swaps a close-sounding mistake for the right term." = "専門分野で使っていますか？よく使う用語のパックをインストールすれば、最初のディクテーションからTalkieがその惜しい聞き間違いを直します。認識器が一度も聞いたことのない語を言わせることはできません。ディクテーションした内容を校正し、音の近い誤りを正しい用語に置き換えます。";
+"Preview what's inside before it's added — nothing is installed until you confirm." = "追加する前に中身を確認できます。確認するまで何もインストールされません。";
+"Install" = "インストール";
+"Talkie couldn't open that starter pack. Reinstalling Talkie should fix it." = "そのスターターパックを開けませんでした。Talkieを再インストールすると直るはずです。";
+"Preview and add the %@ pack" = "%@パックをプレビューして追加";
+"Tools, languages, and jargon — Kubernetes, SwiftPM, idempotent." = "ツール、言語、専門用語 — Kubernetes、SwiftPM、idempotent。";
+"Conditions, procedures, and common medications." = "疾患、処置、一般的な薬剤。";
+"Litigation, contracts, and estates." = "訴訟、契約、相続。";
+"Statistics, methods, and math." = "統計、手法、数学。";
+"Literary devices and the editorial workflow." = "文学技法と編集ワークフロー。";
+"Developer" = "開発者";
+"Medicine" = "医療";
+"Law" = "法律";
+"Research" = "研究";
+"Writer" = "ライター";
