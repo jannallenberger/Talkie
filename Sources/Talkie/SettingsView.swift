@@ -687,9 +687,29 @@ private struct MCPConnectorCard: View {
         "claude mcp add talkie -- \"\(path)\""
     }
 
-    private let toolNames = ["list_meetings", "get_meeting", "get_brief",
-                             "list_commitments", "lookup_entity", "search",
-                             "get_recent_context", "graph_query"]
+    /// One chip in the "What Claude can do" strip. `write == true` marks a tool that
+    /// only QUEUES a suggestion for the user to confirm (the two A5 teach-back tools);
+    /// those render tinted with an "asks first" suffix so the disclosure is honest —
+    /// the reads are silent-auto, the writes ask. This list is the third hand-kept
+    /// mirror of the tool set (alongside MCPServer.toolSpecs and connector/manifest.json
+    /// tools[]); scripts/check-mcp-drift.sh fails CI if the three ever disagree.
+    private struct ToolChip: Identifiable { let name: String; let write: Bool; var id: String { name } }
+    private let toolChips: [ToolChip] = [
+        .init(name: "list_meetings", write: false),
+        .init(name: "get_meeting", write: false),
+        .init(name: "get_brief", write: false),
+        .init(name: "list_commitments", write: false),
+        .init(name: "lookup_entity", write: false),
+        .init(name: "search", write: false),
+        .init(name: "get_recent_context", write: false),
+        .init(name: "graph_query", write: false),
+        .init(name: "get_stats", write: false),
+        .init(name: "get_dictionary", write: false),
+        .init(name: "list_dictations", write: false),
+        .init(name: "read_scratchpad", write: false),
+        .init(name: "add_vocabulary_term", write: true),
+        .init(name: "add_replacement", write: true),
+    ]
 
     @State private var copiedConfig = false
     @State private var copiedCommand = false
@@ -700,7 +720,7 @@ private struct MCPConnectorCard: View {
     var body: some View {
         SettingsCard(
             header: "Connect to Claude",
-            footer: "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build.".loc
+            footer: "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc
         ) {
             if let path {
                 // (a) Claude Desktop — one double-click via the bundled .mcpb.
@@ -743,20 +763,29 @@ private struct MCPConnectorCard: View {
                 }
                 SettingsDivider()
 
-                // The read-only tools Claude gains, as chips.
+                // The tools Claude gains, as chips. Reads render plainly; the two
+                // teach-back writes are tinted with an "asks first" suffix so the
+                // disclosure is honest (reads auto-run, writes wait for a tap).
                 VStack(alignment: .leading, spacing: 8) {
-                    Eyebrow(text: "What Claude can read")
+                    Eyebrow(text: "What Claude can do")
                     FlowLayout(spacing: 6) {
-                        ForEach(toolNames, id: \.self) { name in
-                            Text(name)
-                                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                                .foregroundStyle(Theme.inkSecondary)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                                        .fill(Theme.surface)
-                                )
+                        ForEach(toolChips) { chip in
+                            HStack(spacing: 4) {
+                                Text(chip.name)
+                                    .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                                if chip.write {
+                                    Text("asks first".loc)
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                        .textCase(.uppercase)
+                                }
+                            }
+                            .foregroundStyle(chip.write ? Theme.coralDeep : Theme.inkSecondary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                                    .fill(chip.write ? Theme.coralWash : Theme.surface)
+                            )
                         }
                     }
                 }

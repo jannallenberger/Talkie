@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "talkie",
   "display_name": "Talkie",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Query your local Talkie meetings, daily brief, context graph, and dictation history — on-device, no network.",
   "long_description": "Talkie's local MCP server exposes your meetings, today's brief, your personal context graph (people, projects, commitments), and your dictation history to Claude — 100% on-device. Nothing leaves your Mac. Reads are direct; the two teach-back tools (add_vocabulary_term, add_replacement) only QUEUE a dictionary suggestion, which Talkie applies with a one-tap Undo — so a session can never silently change your speech recognition.",
   "author": {
@@ -20,13 +20,17 @@
   },
   "tools": [
     { "name": "list_meetings", "description": "List recent meetings (id, title, date, duration, participants, one-line summary)." },
-    { "name": "get_meeting", "description": "Get a meeting's full summary + transcript by id, title, or most recent." },
+    { "name": "get_meeting", "description": "Get a meeting's full summary + transcript by id prefix, title match, or calendar day (yyyy-MM-dd)." },
     { "name": "get_brief", "description": "Today's on-device brief — what you worked on, commitments, open threads." },
     { "name": "list_commitments", "description": "Commitments / action items extracted from your meetings (context graph), newest first. Nothing is ever marked done — treat these as things you said, not a task list." },
     { "name": "lookup_entity", "description": "Look up people / projects / terms by name, with provenance." },
     { "name": "search", "description": "Semantic + keyword search across meetings, dictations, and entities — finds by meaning, not just substring." },
     { "name": "get_recent_context", "description": "Recent context recall, with provenance, on-device — what you've been dictating, meeting about, and mentioning in the last N minutes, as a timestamped report. Pass a topic for recency-weighted related items." },
     { "name": "graph_query", "description": "Recall what's known about one person / project / term, with provenance, on-device — header, recent snippets, and other entities seen in the same dictations or meetings." },
+    { "name": "get_stats", "description": "The user's lifetime Talkie dictation stats — words, dictations, speaking time, average/best WPM, fixes Talkie made, and current/longest daily streak — on-device (totals survive the 7-day history prune)." },
+    { "name": "get_dictionary", "description": "List the user's Talkie dictionary — vocabulary terms and spoken→written replacement rules (learned rules tagged) — on-device; call before add_vocabulary_term or add_replacement so you don't suggest a duplicate." },
+    { "name": "list_dictations", "description": "List the user's recent dictations newest-first (timestamp, app, opening text) from the retained history window — a recent window, not an archive: Talkie prunes history per the user's retention setting (default 7 days)." },
+    { "name": "read_scratchpad", "description": "Read the user's Talkie scratchpad — their quick notes and checkbox tasks (done-state shown) — on-device and read-only (Claude reads the scratchpad but never writes it)." },
     { "name": "add_vocabulary_term", "description": "Suggest a niche/jargon term for the user's dictionary so recognition spells it right — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
     { "name": "add_replacement", "description": "Suggest a spoken→written replacement rule for the user's dictionary — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." }
   ],

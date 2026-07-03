@@ -18,7 +18,7 @@ struct MCPServer {
             return ok(id, [
                 "protocolVersion": protocolVersion,
                 "capabilities": ["tools": ["listChanged": false]],
-                "serverInfo": ["name": "talkie", "version": "0.2.0"],
+                "serverInfo": ["name": "talkie", "version": "0.3.0"],
             ])
         case "notifications/initialized", "initialized", "notifications/cancelled":
             return nil
@@ -80,6 +80,15 @@ struct MCPServer {
         case "graph_query":
             guard let e = strArg("entity") else { return toolErr(id, "graph_query requires entity") }
             text = store.graphQuery(entity: e, limit: (args["limit"] != nil) ? intArg("limit", 8) : nil)
+        case "get_stats":
+            text = store.getStats()
+        case "get_dictionary":
+            text = store.getDictionary()
+        case "list_dictations":
+            text = store.listDictations(limit: intArg("limit", 20),
+                                        app: strArg("app"), since: strArg("since"))
+        case "read_scratchpad":
+            text = store.readScratchpad()
         case "add_vocabulary_term":
             guard let term = strArg("term") else { return toolErr(id, "add_vocabulary_term requires term") }
             text = store.queueVocabularyTerm(term, note: strArg("note"))
@@ -142,6 +151,17 @@ struct MCPServer {
                  ["entity": strProp("Name or alias to look up (e.g. a person, project, or term)."),
                   "limit": numProp("Optional: max provenance snippets and co-occurring entities (default 8).")],
                  required: ["entity"]),
+            // L10 read tools. Read-only and annotation-free (auto-approvable like the
+            // other reads); each degrades to a friendly line when its store file is
+            // absent/empty. Descriptions stay one sentence — every tool is loaded into
+            // every Claude session's context.
+            spec("get_stats", "The user's lifetime Talkie dictation stats — words, dictations, speaking time, average/best WPM, fixes Talkie made, and current/longest daily streak — on-device (totals survive the 7-day history prune).", [:]),
+            spec("get_dictionary", "List the user's Talkie dictionary — vocabulary terms and spoken→written replacement rules (learned rules tagged) — on-device; call this BEFORE add_vocabulary_term or add_replacement so you don't suggest something they already have.", [:]),
+            spec("list_dictations", "List the user's recent dictations newest-first (timestamp, app, opening text) from the retained history window — a recent window, not an archive: Talkie prunes history per the user's retention setting (default 7 days).",
+                 ["limit": numProp("Max dictations to return (default 20)."),
+                  "app": strProp("Filter to dictations whose app name contains this substring."),
+                  "since": strProp("Only dictations on/after this calendar day (yyyy-MM-dd).")]),
+            spec("read_scratchpad", "Read the user's Talkie scratchpad — their quick notes and checkbox tasks (done-state shown) — on-device and read-only (Claude reads the scratchpad but never writes it).", [:]),
             // The two teach-back tools (A5). MUTATING, but the mutation is a QUEUED
             // suggestion, never a direct dictionary write: each call drops one atomic
             // file into the inbox, and the app applies it only after showing an

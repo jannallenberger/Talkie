@@ -653,3 +653,8 @@
 "Meeting recording and transcription settings will live here." = "Meeting recording and transcription settings will live here.";
 "The on-device, zero-network proof will live here." = "The on-device, zero-network proof will live here.";
 "This settings page is coming soon." = "This settings page is coming soon.";
+
+/* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
+"What Claude can do" = "What Claude can do";
+"asks first" = "asks first";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.";

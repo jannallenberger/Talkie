@@ -141,16 +141,76 @@ struct TalkieStore {
     }
     struct Brief: Codable { var summary: String; var generatedAtUnix: Double? }
 
+    // L10 mirrors. Each is a byte-compatible copy of an app-side on-disk shape,
+    // NOT an import (this binary must not drag in the app target — the separate,
+    // network-free product claim). Extra/newer fields decode as optionals so a
+    // forward-rev app file never breaks the reader.
+
+    /// Mirrors `StatsStore.Payload` — lifetime dictation totals (kept separate from
+    /// the 7-day history so the totals survive pruning). The three fix counters are
+    /// optional exactly as on the app side (files written before fix-tracking omit
+    /// them). L4's milestone fields, if/when they land, decode via the extra
+    /// optionals here and are ignored — never required.
+    struct StatsPayload: Codable {
+        var totalWords: Int
+        var totalDictations: Int
+        var totalDurationSec: Double
+        var bestWPM: Double
+        var dictionaryFixes: Int?
+        var fillersRemoved: Int?
+        var aiWordsChanged: Int?
+    }
+
+    /// Mirrors `DayStat` — one day's activity, the value type in `activity.json`'s
+    /// bare `[String: DayStat]` dictionary (keys are `yyyy-MM-dd`).
+    struct DayStat: Codable { var words: Int; var dictations: Int }
+
+    /// Mirrors `Replacement` — a spoken→written rule. `learned` is optional (older
+    /// files predate the flag), surfaced as a "(learned)" tag. Only `from`/`to`/
+    /// `learned` are read here; the case/whole-word flags are decoded-and-ignored.
+    struct Replacement: Codable {
+        var from: String
+        var to: String
+        var learned: Bool?
+    }
+
+    /// Mirrors `DictionaryStore.Payload` — the on-disk `dictionary.json` shape.
+    struct DictionaryPayload: Codable {
+        var replacements: [Replacement]
+        var vocabulary: [String]
+    }
+
+    /// Mirrors `ScratchpadLine` (L2-a) — one row of the dashboard Scratchpad,
+    /// persisted as a flat array in `scratchpad.json`. This is now a formal external
+    /// contract (Round-2: Jann approved Claude READING the scratchpad). Read-only:
+    /// this server never writes scratchpad.json — only the user or the failed-paste
+    /// rescue does. Fields beyond text/isTask/done are decoded but unused here.
+    struct ScratchpadLine: Codable {
+        var text: String
+        var isTask: Bool
+        var done: Bool
+        var createdUnix: Double?
+        var addedByAI: Bool?
+    }
+
     // MARK: Loaders
 
     private var meetingsFile: URL { supportDir.appendingPathComponent("meetings.json") }
     private var entitiesFile: URL { supportDir.appendingPathComponent("graph/entities.json") }
     private var historyFile: URL { supportDir.appendingPathComponent("history.json") }
+    private var statsFile: URL { supportDir.appendingPathComponent("stats.json") }
+    private var activityFile: URL { supportDir.appendingPathComponent("activity.json") }
+    private var dictionaryFile: URL { supportDir.appendingPathComponent("dictionary.json") }
+    private var scratchpadFile: URL { supportDir.appendingPathComponent("scratchpad.json") }
 
     func meetings() -> [Meeting] { (decode(meetingsFile) ?? []) }
     func entities() -> [Entity] { (decode(entitiesFile) ?? []) }
     func history() -> [DictationEntry] { (decode(historyFile) ?? []) }
     func brief() -> Brief? { decode(supportDir.appendingPathComponent("context_summary.json")) }
+    func stats() -> StatsPayload? { decode(statsFile) }
+    func activity() -> [String: DayStat] { (decode(activityFile) ?? [:]) }
+    func dictionary() -> DictionaryPayload? { decode(dictionaryFile) }
+    func scratchpad() -> [ScratchpadLine] { (decode(scratchpadFile) ?? []) }
 
     /// The staleness fingerprint of the three files that feed the semantic index,
     /// stat'd fresh per `tools/call`. A change here invalidates the memoized index so
@@ -685,6 +745,237 @@ struct TalkieStore {
             if ($0.entity.mentions ?? 0) != ($1.entity.mentions ?? 0) { return ($0.entity.mentions ?? 0) > ($1.entity.mentions ?? 0) }
             return $0.entity.displayName < $1.entity.displayName
         }
+    }
+
+    // MARK: get_stats (L10) — lifetime totals + streaks from activity.json
+
+    /// The calendar ActivityStore uses for streak/heatmap math: Gregorian, week
+    /// starting Monday. MIRRORED from `ActivityStore` (`firstWeekday = 2`). The
+    /// streak functions below take a calendar so the selftest can pin `Date()`
+    /// semantics with a fixture; production passes this.
+    static var activityCalendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.firstWeekday = 2 // Monday — matches ActivityStore
+        return c
+    }
+
+    /// Parse an `activity.json` `yyyy-MM-dd` key back to a Date. MIRRORS
+    /// `ActivityStore.date(fromKey:)`. Returns nil for a malformed key.
+    static func activityDate(fromKey key: String, calendar: Calendar) -> Date? {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var c = DateComponents()
+        c.year = parts[0]; c.month = parts[1]; c.day = parts[2]
+        return calendar.date(from: c)
+    }
+
+    /// Format a Date to the `yyyy-MM-dd` activity key. MIRRORS
+    /// `ActivityStore.key(for:)`.
+    static func activityKey(for date: Date, calendar: Calendar) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    /// Current streak: consecutive days (ending today, OR yesterday when today is
+    /// still empty) with ≥1 dictation. MIRROR of `ActivityStore.currentStreak`
+    /// (ActivityStore.swift:67-82) — INCLUDING the today-may-be-empty rule: an empty
+    /// today does NOT break a streak that ran through yesterday. `now` is injectable
+    /// so the selftest can assert the rule against a fixture. Pure (no I/O).
+    static func currentStreak(days: [String: DayStat], now: Date, calendar: Calendar) -> Int {
+        func hasActivity(on day: Date) -> Bool {
+            (days[activityKey(for: day, calendar: calendar)]?.dictations ?? 0) > 0
+        }
+        var streak = 0
+        var day = calendar.startOfDay(for: now)
+        if !hasActivity(on: day) {
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: day) else { return 0 }
+            day = yesterday
+        }
+        while hasActivity(on: day) {
+            streak += 1
+            guard let prev = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+            day = prev
+        }
+        return streak
+    }
+
+    /// Longest run of consecutive active days ever recorded. MIRROR of
+    /// `ActivityStore.longestStreak` (ActivityStore.swift:85-99). Pure (no I/O).
+    static func longestStreak(days: [String: DayStat], calendar: Calendar) -> Int {
+        let activeDays = days.filter { $0.value.dictations > 0 }.keys
+            .compactMap { activityDate(fromKey: $0, calendar: calendar) }
+            .map { calendar.startOfDay(for: $0) }
+            .sorted()
+        guard !activeDays.isEmpty else { return 0 }
+        var longest = 1, run = 1
+        for i in 1..<activeDays.count {
+            let gap = calendar.dateComponents([.day], from: activeDays[i - 1], to: activeDays[i]).day ?? 0
+            if gap == 1 { run += 1; longest = max(longest, run) }
+            else if gap > 1 { run = 1 }
+        }
+        return longest
+    }
+
+    /// `get_stats` — one honest, lifetime-labelled block: totals that survive the
+    /// 7-day prune (stats.json) plus current/longest streak computed from
+    /// activity.json with ActivityStore's exact semantics. Degrades to a friendly
+    /// line when nothing has been recorded yet. Read-only.
+    func getStats() -> String {
+        let s = stats()
+        let days = activity()
+        let cal = Self.activityCalendar
+        let now = Date()
+        let cur = Self.currentStreak(days: days, now: now, calendar: cal)
+        let longest = Self.longestStreak(days: days, calendar: cal)
+
+        // Zero-fill when stats.json is absent so a machine with only activity.json
+        // (a streak but no totals file yet) still reports rather than falsely
+        // claiming nothing exists.
+        let totals = s ?? StatsPayload(totalWords: 0, totalDictations: 0, totalDurationSec: 0, bestWPM: 0,
+                                       dictionaryFixes: nil, fillersRemoved: nil, aiWordsChanged: nil)
+        guard totals.totalDictations > 0 || totals.totalWords > 0 || !days.isEmpty else {
+            return "No dictation stats on this Mac yet — Talkie starts counting once you dictate."
+        }
+        let avgWPM = totals.totalDurationSec > 0
+            ? Double(totals.totalWords) / (totals.totalDurationSec / 60) : 0
+        let hours = totals.totalDurationSec / 3600
+
+        var lines: [String] = ["# Talkie stats (lifetime totals — these survive the 7-day history prune)"]
+        lines.append("• Words dictated: \(totals.totalWords)")
+        lines.append("• Dictations: \(totals.totalDictations)")
+        lines.append(String(format: "• Speaking time: %.1f h", hours))
+        if avgWPM > 0 { lines.append(String(format: "• Average speed: %.0f WPM (best %.0f WPM)", avgWPM, totals.bestWPM)) }
+        else if totals.bestWPM > 0 { lines.append(String(format: "• Best speed: %.0f WPM", totals.bestWPM)) }
+
+        // Fixes are optional (older files omit them) — only shown when present.
+        let dictFixes = totals.dictionaryFixes ?? 0
+        let fillers = totals.fillersRemoved ?? 0
+        let aiWords = totals.aiWordsChanged ?? 0
+        if dictFixes + fillers + aiWords > 0 {
+            lines.append("• Fixes by Talkie: \(dictFixes + fillers + aiWords) (dictionary \(dictFixes), fillers \(fillers), AI cleanup \(aiWords))")
+        }
+
+        lines.append("• Current streak: \(cur) day\(cur == 1 ? "" : "s") · longest \(longest) day\(longest == 1 ? "" : "s")")
+        return lines.joined(separator: "\n")
+    }
+
+    // MARK: get_dictionary (L10) — vocab + replacement rules
+
+    /// Per-tool display cap so the dictionary never floods a Claude context; the
+    /// tail says how many were elided.
+    private static let dictionaryLineCap = 200
+
+    /// `get_dictionary` — the user's vocabulary terms + replacement rules
+    /// (`from → to`, with a "(learned)" tag for auto-learned rules), counts first,
+    /// capped with an honest "…and N more". The tool description tells the model to
+    /// call this BEFORE add_vocabulary_term/add_replacement so it doesn't queue a
+    /// suggestion that already exists. Read-only. This lists the user's own jargon —
+    /// the same privacy class as `search` over history (already reachable data, now
+    /// merely listable), no new store.
+    func getDictionary() -> String {
+        guard let d = dictionary() else {
+            return "No dictionary on this Mac yet — Talkie seeds one the first time it runs."
+        }
+        let vocab = d.vocabulary
+        let rules = d.replacements
+        guard !vocab.isEmpty || !rules.isEmpty else {
+            return "Your Talkie dictionary is empty — no custom terms or replacement rules yet."
+        }
+
+        var out: [String] = ["# Talkie dictionary — \(vocab.count) vocabulary term\(vocab.count == 1 ? "" : "s"), \(rules.count) replacement rule\(rules.count == 1 ? "" : "s")",
+                             "(Call this before suggesting an add so you don't queue a duplicate.)"]
+
+        // Budget the cap across both sections proportionally isn't worth it — just
+        // stream vocab then rules, cutting off at the shared cap with one tail.
+        var shown = 0
+        func room() -> Int { max(0, Self.dictionaryLineCap - shown) }
+
+        if !vocab.isEmpty {
+            let take = min(vocab.count, room())
+            out.append("\n## Vocabulary (\(vocab.count))")
+            out.append(contentsOf: vocab.prefix(take).map { "• \($0)" })
+            shown += take
+            if take < vocab.count { out.append("…and \(vocab.count - take) more vocabulary term\(vocab.count - take == 1 ? "" : "s")") }
+        }
+        if !rules.isEmpty {
+            let take = min(rules.count, room())
+            out.append("\n## Replacement rules (\(rules.count)) — spoken → written")
+            out.append(contentsOf: rules.prefix(take).map { r in
+                let tag = (r.learned ?? false) ? " (learned)" : ""
+                return "• \(r.from) → \(r.to)\(tag)"
+            })
+            shown += take
+            if take < rules.count { out.append("…and \(rules.count - take) more replacement rule\(rules.count - take == 1 ? "" : "s")") }
+        }
+        return out.joined(separator: "\n")
+    }
+
+    // MARK: list_dictations (L10) — a chronological view of history.json
+
+    private static let dictationSnippetCap = 140
+
+    /// `list_dictations(limit, app?, since?)` — the missing chronological list over
+    /// history.json (which `search` reads but can't enumerate). Newest first; each
+    /// line is `timestamp · app · first ~140 chars`. `app` filters on the appName
+    /// substring; `since` is a `yyyy-MM-dd` day (reusing `parseDay`). The retention
+    /// window is stated honestly in the tool description — Talkie prunes history per
+    /// the user's setting (default 7 days), so this is a recent window, not an
+    /// archive. Read-only.
+    func listDictations(limit: Int, app: String?, since: String?) -> String {
+        var items = history().sorted { $0.timestampUnix > $1.timestampUnix }
+
+        if let app = app?.lowercased(), !app.isEmpty {
+            items = items.filter { ($0.appName ?? "").lowercased().contains(app) }
+        }
+        if let since, let day = Self.parseDay(since) {
+            let cutoff = Self.activityCalendar.startOfDay(for: day).timeIntervalSince1970
+            items = items.filter { $0.timestampUnix >= cutoff }
+        }
+
+        guard !items.isEmpty else {
+            return "No dictation history on this Mac for that filter — Talkie keeps only a recent window (default 7 days)."
+        }
+
+        let shown = items.prefix(max(1, limit))
+        var lines = shown.map { d -> String in
+            let app = (d.appName?.isEmpty == false) ? " · \(d.appName!)" : ""
+            let oneLine = d.text.split(whereSeparator: \.isNewline).first.map(String.init) ?? d.text
+            let snippet = oneLine.count > Self.dictationSnippetCap
+                ? String(oneLine.prefix(Self.dictationSnippetCap)) + "…" : oneLine
+            return "• [\(stamp(d.timestampUnix))]\(app) \(snippet)"
+        }
+        if items.count > shown.count {
+            lines.append("(+\(items.count - shown.count) more in the retained window — raise limit to see them.)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    // MARK: read_scratchpad (L10, Round-2) — the user's notes + tasks
+
+    /// `read_scratchpad` — the user's dashboard Scratchpad: notes and checkbox
+    /// tasks, with done-state marked (`[x]`/`[ ]`). Decodes L2-a's flat
+    /// `scratchpad.json` array. READ-ONLY: Jann approved Claude *reading* the
+    /// scratchpad (Round-2), but NOT writing it — scratchpad-write was deliberately
+    /// not selected, so there is no write path here (A5's inbox stays the only one).
+    /// Degrades to a friendly line when the file is absent/empty.
+    func readScratchpad() -> String {
+        let lines = scratchpad()
+        guard !lines.isEmpty else {
+            return "Your Talkie scratchpad is empty — no notes or tasks yet."
+        }
+        let tasks = lines.filter { $0.isTask }
+        let notes = lines.filter { !$0.isTask }
+
+        var out: [String] = ["# Talkie scratchpad — \(notes.count) note\(notes.count == 1 ? "" : "s"), \(tasks.count) task\(tasks.count == 1 ? "" : "s")"]
+        if !tasks.isEmpty {
+            out.append("\n## Tasks")
+            out.append(contentsOf: tasks.map { "• [\($0.done ? "x" : " ")] \($0.text)" })
+        }
+        if !notes.isEmpty {
+            out.append("\n## Notes")
+            out.append(contentsOf: notes.map { "• \($0.text)" })
+        }
+        return out.joined(separator: "\n")
     }
 }
 

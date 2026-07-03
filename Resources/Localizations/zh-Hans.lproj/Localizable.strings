@@ -651,3 +651,8 @@
 "Meeting recording and transcription settings will live here." = "会议录音和转写设置将显示在这里。";
 "The on-device, zero-network proof will live here." = "设备上零联网的证明将显示在这里。";
 "This settings page is coming soon." = "此设置页面即将推出。";
+
+/* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
+"What Claude can do" = "Claude 可以做什么";
+"asks first" = "会先询问";
+"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also suggest dictionary entries — each waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie 附带一个小型本地服务器，让 Claude 可以读取你的会议、简报、承诺、上下文、统计、词典和笔记——全部在设备上处理，不会离开你的 Mac。Claude 还可以建议词典条目——每一条都会等待你一键确认（可撤销）后才生效。随应用打包：无需单独下载或构建。";

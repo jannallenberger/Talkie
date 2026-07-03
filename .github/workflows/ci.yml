@@ -67,6 +67,15 @@ jobs:
       - name: Zero-network gate
         run: ./scripts/check-no-network.sh
 
+      # MCP tool-surface drift gate (L10). Plain bash + grep + awk (POSIX, no
+      # BSD-only idioms), so it belongs on the cheap ubuntu gates job next to the
+      # zero-network wall — it reads source text and needs no Swift build. It fails
+      # if the tool set spelled out in MCPServer.swift toolSpecs, connector/
+      # manifest.json tools[], and SettingsView's chip array ever disagree, or if
+      # the serverInfo and manifest versions drift apart.
+      - name: MCP drift gate
+        run: ./scripts/check-mcp-drift.sh
+
       # Lint the workflow files themselves. We download a pinned actionlint
       # release binary rather than depending on a third-party marketplace action,
       # keeping CI's own dependency surface as small as the app's.
