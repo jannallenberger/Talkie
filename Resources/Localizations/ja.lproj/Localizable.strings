@@ -571,3 +571,7 @@
 "Cut Wi-Fi, then speak — it still works." = "Wi-Fi を切って話しても、ちゃんと動きます。";
 "Told you. Nothing left this Mac." = "ね？ 何もこの Mac から出ていません。";
 "Your dictated words, offline" = "オフラインで話した言葉";
+
+// MARK: - Keep-audio meetings + click-to-play (D9)
+"Play from here" = "ここから再生";
+"That audio couldn’t be played — the file may be missing or incomplete." = "この音声を再生できませんでした。ファイルが見つからないか、不完全な可能性があります。";

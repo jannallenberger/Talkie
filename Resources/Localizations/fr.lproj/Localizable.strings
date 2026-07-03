@@ -571,3 +571,7 @@
 "Cut Wi-Fi, then speak — it still works." = "Coupez le Wi-Fi, puis parlez — ça marche quand même.";
 "Told you. Nothing left this Mac." = "On vous l’avait dit. Rien n’a quitté ce Mac.";
 "Your dictated words, offline" = "Vos mots dictés, hors ligne";
+
+// MARK: - Keep-audio meetings + click-to-play (D9)
+"Play from here" = "Lire à partir d’ici";
+"That audio couldn’t be played — the file may be missing or incomplete." = "Cet audio n’a pas pu être lu — le fichier est peut-être manquant ou incomplet.";

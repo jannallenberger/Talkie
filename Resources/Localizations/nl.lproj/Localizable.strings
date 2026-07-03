@@ -571,3 +571,7 @@
 "Cut Wi-Fi, then speak — it still works." = "Wi-Fi uit, dan spreken — het werkt gewoon.";
 "Told you. Nothing left this Mac." = "Zie je wel. Niets heeft deze Mac verlaten.";
 "Your dictated words, offline" = "Je gedicteerde woorden, offline";
+
+// MARK: - Keep-audio meetings + click-to-play (D9)
+"Play from here" = "Vanaf hier afspelen";
+"That audio couldn’t be played — the file may be missing or incomplete." = "Deze audio kon niet worden afgespeeld — het bestand ontbreekt mogelijk of is onvolledig.";

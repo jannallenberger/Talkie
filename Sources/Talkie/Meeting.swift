@@ -32,6 +32,58 @@ struct Chapter: Codable, Hashable, Sendable {
 }
 
 extension Meeting {
+    /// Whether this meeting can offer click-to-play: it has BOTH timed segments (D2)
+    /// AND at least one kept audio file (D9). Pre-D2 notes, and any meeting whose audio
+    /// wasn't kept, return false — so the playback UI never appears with nothing behind
+    /// it. Pure so the row can gate on it and tests can assert it.
+    var hasPlayableAudio: Bool {
+        guard let segments, !segments.isEmpty else { return false }
+        guard let audioFiles, !audioFiles.isEmpty else { return false }
+        return true
+    }
+
+    /// The audio file basename that plays a given segment's speaker, or a single-file
+    /// fallback. Resolution, in order:
+    /// 1. An exact speaker match (`audioFiles["Them"]` for a "Them" segment) — the
+    ///    two-stream case where Me and Them are separate files.
+    /// 2. When there's exactly one kept file, that file — the solo/import case where
+    ///    every segment plays the same recording regardless of its speaker label.
+    /// 3. Otherwise nil (a speaker with no matching file and no unambiguous single
+    ///    file), so the row can disable that segment's play button rather than seek the
+    ///    wrong stream. Pure/`nonisolated` for direct unit testing.
+    nonisolated static func audioFileName(
+        forSpeaker speaker: String, in audioFiles: [String: String]?
+    ) -> String? {
+        guard let audioFiles, !audioFiles.isEmpty else { return nil }
+        if let exact = audioFiles[speaker] { return exact }
+        if audioFiles.count == 1, let only = audioFiles.values.first { return only }
+        return nil
+    }
+
+    /// Index of the segment that is "playing" at audio-clock time `t` (seconds) for the
+    /// file named `fileName`, or nil when none is. A segment is active from its `start`
+    /// until the next same-file segment's `start` (so the highlight moves continuously,
+    /// not just during each segment's literal span — real transcripts have gaps), and
+    /// only segments whose speaker maps to `fileName` are considered (two-stream files
+    /// don't highlight each other's turns). Returns the LAST segment once `t` passes its
+    /// start. Pure/`nonisolated` so the timer-driven highlight is unit-testable without
+    /// an `AVAudioPlayer`.
+    nonisolated static func activeSegmentIndex(
+        at t: Double, segments: [MeetingSegment], fileName: String, audioFiles: [String: String]?
+    ) -> Int? {
+        // The subset of segments that belong to this file, keeping original indices so
+        // the caller can map the result straight back onto `segments`.
+        let mine = segments.enumerated().filter {
+            audioFileName(forSpeaker: $0.element.speaker, in: audioFiles) == fileName
+        }
+        guard !mine.isEmpty else { return nil }
+        var current: Int?
+        for entry in mine {
+            if t + 0.001 >= entry.element.start { current = entry.offset } else { break }
+        }
+        return current
+    }
+
     /// Render the "## Chapters" note section — `[mm:ss] Topic` bullets sorted by
     /// time — or `""` when there is nothing to show. A meeting must have shifted
     /// topics at least once (≥ 2 chapters) to earn the section: a single chapter is
@@ -73,6 +125,17 @@ struct Meeting: Codable, Identifiable, Hashable {
     /// the live-topic engine was off or never accepted a topic. Evicted with the
     /// meeting like `segments`, so it never grows `meetings.json` unboundedly.
     var chapters: [Chapter]? = nil
+    /// Audio kept beside this meeting's note (D9), keyed by the speaker/source label
+    /// → the audio file's basename inside ~/Talkie Meetings/ (a visible, files-you-own
+    /// folder, NEVER Application Support). An import records `["Imported": "<stem>.<ext>"]`
+    /// (the original file copied, not re-encoded); a live recording with "Keep audio"
+    /// on records `["Me": "<stem>-me.m4a"]` and, when the far end was captured,
+    /// `"Them": "<stem>-them.m4a"`. Nil for every meeting recorded before D9, and for
+    /// recordings made with the (default-off) keep-audio toggle disabled — so the
+    /// common case persists no call audio and old notes decode unchanged. The files
+    /// are removed with the meeting by `MeetingStore.delete`, and clicking a transcript
+    /// segment seeks the matching stream's file to that moment (`MeetingsView`).
+    var audioFiles: [String: String]? = nil
 
     var date: Date { Date(timeIntervalSince1970: startUnix) }
 }
@@ -96,6 +159,7 @@ extension Meeting {
         fileName = try c.decode(String.self, forKey: .fileName)
         segments = try c.decodeIfPresent([MeetingSegment].self, forKey: .segments)
         chapters = try c.decodeIfPresent([Chapter].self, forKey: .chapters)
+        audioFiles = try c.decodeIfPresent([String: String].self, forKey: .audioFiles)
     }
 }
 
@@ -378,13 +442,24 @@ final class MeetingStore: ObservableObject {
 
     func delete(_ meeting: Meeting) {
         meetings.removeAll { $0.id == meeting.id }
-        // A meeting persists no audio — the `.md` transcript IS the recording, so
-        // overwrite-then-delete it (best effort, see FileShredder) rather than a plain
-        // unlink that leaves the transcript bytes intact-but-unlinked on disk. The
-        // graph provenance sourced from this meeting is purged at the caller
-        // (MeetingsView) so this store stays single-purpose.
+        // Overwrite-then-delete the `.md` transcript (best effort, see FileShredder)
+        // rather than a plain unlink that leaves the transcript bytes intact-but-
+        // unlinked on disk. The graph provenance sourced from this meeting is purged at
+        // the caller (MeetingsView) so this store stays single-purpose.
         let url = meetingsDirectoryURL.appendingPathComponent(meeting.fileName)
         FileShredder.shred(url)
+        // Delete honesty (D9): a meeting that kept its audio beside the note must not
+        // leave that audio behind when the note is deleted — the whole point of the
+        // feature is user-owned files, so removing the meeting removes ALL of them.
+        // Only bare basenames are stored, so resolve each inside the meetings folder;
+        // a value that somehow isn't a plain filename (contains a path separator) is
+        // ignored rather than allowed to escape the folder. Best-effort + failure-
+        // tolerant, exactly like the `.md`: a partial m4a from a crashed recording, or
+        // an already-missing file, simply falls through FileShredder's unlink.
+        for name in (meeting.audioFiles?.values).map(Array.init) ?? []
+        where !name.isEmpty && !name.contains("/") {
+            FileShredder.shred(meetingsDirectoryURL.appendingPathComponent(name))
+        }
         save()
     }
 
