@@ -95,6 +95,18 @@ final class ContextSummaryStore: ObservableObject {
 
     var isAvailable: Bool { ContextSummaryEngine.isAvailable }
 
+    /// Wipe the persisted Brief immediately. The Brief is generated from the literal
+    /// text of your dictations, so a deleted dictation's words can linger inside
+    /// `context_summary.json` until the next refresh overwrites it. Deleting a
+    /// dictation (or clearing history) calls this so those words cannot survive the
+    /// delete — the file is rewritten empty right away, and the next `refresh` rebuilds
+    /// the Brief from only what remains.
+    func clearSummary() {
+        summary = ""
+        generatedAt = nil
+        save()
+    }
+
     func refresh(from history: HistoryStore) async {
         guard !isGenerating else { return }
         isGenerating = true

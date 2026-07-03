@@ -73,6 +73,21 @@ final class ContextGraphStore: ObservableObject {
         save()
     }
 
+    // MARK: Purge (true delete — the provenance join key is `Provenance.sourceID`)
+
+    /// Forget everything the graph learned from a deleted source, so deleting a
+    /// dictation or meeting also erases the provenance snippets that quoted its text.
+    /// `sourceID == nil` purges the whole source class (used by "Clear all history").
+    /// Delegates the decision to the pure `ContextGraphPolicy.purge`, then persists —
+    /// the write matters: `entities.json` holds the literal snippets on disk, so a
+    /// `grep` of the deleted text over the support directory must come up empty.
+    func purge(source: ProvenanceSource, sourceID: String?) {
+        let kept = ContextGraphPolicy.purge(entities: Array(entities.values),
+                                            source: source, sourceID: sourceID)
+        entities = Dictionary(kept.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        save()
+    }
+
     // MARK: Backfill (collision-free: reads existing stores, writes only the graph)
 
     /// Seed the graph from already-stored dictations + meetings so it is useful
@@ -199,6 +214,45 @@ enum ContextGraphPolicy {
     /// again over an already-seen dictation) is therefore a no-op for `mentions`.
     static func isNewProvenance(_ candidate: Provenance, in existing: [Provenance]) -> Bool {
         !existing.contains { $0.source == candidate.source && $0.sourceID == candidate.sourceID }
+    }
+
+    /// True-delete the graph's memory of one source. This is the join key that makes
+    /// "delete a dictation and its extracted facts are gone" honest: `Provenance`
+    /// carries the originating `source` (dictation / meeting / …) and `sourceID`
+    /// (`DictationEntry.id` / `Meeting.id`), so a deleted source can be matched and
+    /// its snippets — up to 120 chars of the literal dictation text — physically
+    /// removed from every entity.
+    ///
+    /// - `sourceID != nil` purges just that one source (one deleted dictation/meeting).
+    /// - `sourceID == nil` purges the WHOLE source class (e.g. "Clear all history"
+    ///   removes every `.dictation` provenance at once).
+    ///
+    /// For each entity: drop the matching provenance, decrement `mentions` by exactly
+    /// the number removed (floored at 0 — a corrupt over-count can never underflow),
+    /// and drop the entity entirely once it has no provenance left to justify it —
+    /// UNLESS it is `pinned`. A pinned entity is a term the user explicitly taught
+    /// (a dictionary rule); it survives even when the mention that first surfaced it
+    /// is deleted, because the user curated it directly, not the deleted source.
+    /// Pure and actor-free so the delete semantics can be unit-tested without disk.
+    static func purge(entities: [Entity], source: ProvenanceSource, sourceID: String?) -> [Entity] {
+        var result: [Entity] = []
+        result.reserveCapacity(entities.count)
+        for var entity in entities {
+            let before = entity.provenance.count
+            entity.provenance.removeAll { p in
+                p.source == source && (sourceID == nil || p.sourceID == sourceID)
+            }
+            let removed = before - entity.provenance.count
+            if removed > 0 {
+                entity.mentions = max(0, entity.mentions - removed)
+            }
+            // Keep the entity if it still has provenance, or if the user pinned it
+            // (a taught dictionary term outlives the source that first mentioned it).
+            if !entity.provenance.isEmpty || entity.pinned {
+                result.append(entity)
+            }
+        }
+        return result
     }
 
     /// How "valuable" an entity is, for eviction ranking. Higher survives. Driven by

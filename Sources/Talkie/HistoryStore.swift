@@ -170,6 +170,14 @@ final class HistoryStore: ObservableObject {
 
     func clearAll() {
         entries.removeAll()
+        // Overwrite-then-delete the existing history.json before the empty rewrite,
+        // so the literal dictation text it held doesn't sit intact-but-unlinked on
+        // disk (best effort — see FileShredder). save() then writes the now-empty set.
+        // Cancel any in-flight debounced write first so it can't race the shred and
+        // re-materialize the old bytes between the overwrite and the empty rewrite.
+        pendingSave?.cancel()
+        pendingSave = nil
+        FileShredder.shred(fileURL)
         save()
     }
 

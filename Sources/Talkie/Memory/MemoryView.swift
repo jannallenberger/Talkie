@@ -14,8 +14,14 @@ struct MemoryView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var searchEngine: SearchEngine
     let meetingStore: MeetingStore
+    /// Cleared on every delete so `context_summary.json` can't keep quoting text you
+    /// just deleted. Defaulted so previews/tests that don't wire it still compile.
+    var contextSummary: ContextSummaryStore? = nil
 
     @State private var query = ""
+    /// Drives the "Clear everything" confirmation — clearing history also erases what
+    /// Talkie's memory extracted from it, so we ask first and state the scope honestly.
+    @State private var showingClearConfirm = false
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -41,7 +47,7 @@ struct MemoryView: View {
                 }
                 .disabled(history.entries.isEmpty)
                 Button(role: .destructive) {
-                    history.clearAll()
+                    showingClearConfirm = true
                 } label: {
                     Label("Clear", systemImage: "trash")
                 }
@@ -54,6 +60,34 @@ struct MemoryView: View {
         }
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .confirmationDialog("Clear your dictation history?",
+                            isPresented: $showingClearConfirm, titleVisibility: .visible) {
+            Button("Clear everything", role: .destructive) { clearEverything() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.")
+        }
+    }
+
+    // MARK: Delete (true delete — history + graph provenance + Brief)
+
+    /// Delete one dictation everywhere it left a trace: the history entry, the graph
+    /// provenance snippets that quoted its text (matched by the entry's id), and the
+    /// persisted Brief (which is regenerated from literal history text, so it could
+    /// otherwise still quote the deleted words until the next refresh).
+    private func deleteDictation(_ entry: DictationEntry) {
+        history.delete(entry)
+        contextGraph.purge(source: .dictation, sourceID: entry.id.uuidString)
+        contextSummary?.clearSummary()
+    }
+
+    /// Clear all history AND everything the memory graph learned from dictations,
+    /// then wipe the Brief. Pinned dictionary terms the user taught survive (the graph
+    /// purge keeps them). Meetings are a separate source and are untouched here.
+    private func clearEverything() {
+        history.clearAll()
+        contextGraph.purge(source: .dictation, sourceID: nil)
+        contextSummary?.clearSummary()
     }
 
     private var searchField: some View {
@@ -107,7 +141,7 @@ struct MemoryView: View {
                         MemoryDictationRow(entry: entry, formatter: Self.dateFormatter) {
                             copyToClipboard(entry.text)
                         } onDelete: {
-                            history.delete(entry)
+                            deleteDictation(entry)
                         }
                     }
                 }
@@ -148,7 +182,7 @@ struct MemoryView: View {
                 MemoryDictationRow(entry: entry, formatter: Self.dateFormatter) {
                     copyToClipboard(entry.text)
                 } onDelete: {
-                    history.delete(entry)
+                    deleteDictation(entry)
                 }
             }
         case .meeting:

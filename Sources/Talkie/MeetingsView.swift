@@ -11,12 +11,20 @@ struct MeetingsView: View {
     /// composition root is owned elsewhere); nil only in previews/tests, where the import
     /// affordances simply don't render.
     var importer: FileImportCoordinator? = AppDelegate.shared?.fileImporter
+    /// The shared memory graph, so deleting a meeting also purges the provenance the
+    /// graph extracted from its transcript. Defaulted from the composition root (like
+    /// `importer`) so the existing `MeetingsView(recorder:store:settings:)` call site
+    /// stays untouched; nil only in previews/tests, where there is nothing to purge.
+    var contextGraph: ContextGraphStore? = AppDelegate.shared?.contextGraph
 
     @State private var showingAppPicker = false
     /// Flashes the drop zone briefly when a non-audio file is rejected.
     @State private var rejectedDrop = false
     /// True while a supported file is hovering over the drop target.
     @State private var dropTargeting = false
+    /// The meeting awaiting delete confirmation. Deleting a meeting overwrites its
+    /// transcript file and forgets what the graph learned from it, so we confirm first.
+    @State private var pendingDelete: Meeting?
 
     var body: some View {
         ScrollView {
@@ -45,7 +53,7 @@ struct MeetingsView: View {
                             meeting: meeting,
                             onReveal: { reveal(meeting) },
                             onCopy: { copy(meeting) },
-                            onDelete: { store.delete(meeting) },
+                            onDelete: { pendingDelete = meeting },
                             onRegenerate: { await regenerateSummary(meeting) },
                             onSaveTranscript: { edited in saveTranscript(meeting, edited: edited) },
                             onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
@@ -87,6 +95,26 @@ struct MeetingsView: View {
         }
         .animation(.easeInOut(duration: 0.15), value: dropTargeting)
         .animation(.easeInOut(duration: 0.2), value: rejectedDrop)
+        .confirmationDialog("Delete this meeting?",
+                            isPresented: Binding(get: { pendingDelete != nil },
+                                                 set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible,
+                            presenting: pendingDelete) { meeting in
+            Button("Delete", role: .destructive) { deleteMeeting(meeting) }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: { _ in
+            Text("Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.")
+        }
+    }
+
+    /// Delete a meeting everywhere: the store overwrites-then-removes its `.md`
+    /// transcript, and we purge the graph provenance the meeting's transcript produced
+    /// (matched by the meeting id). Wiring the graph purge here keeps `MeetingStore`
+    /// single-purpose, per the package spec.
+    private func deleteMeeting(_ meeting: Meeting) {
+        store.delete(meeting)
+        contextGraph?.purge(source: .meeting, sourceID: meeting.id.uuidString)
+        pendingDelete = nil
     }
 
     /// Route a dropped batch: expand any dropped folders (shallow, sorted) and hand the

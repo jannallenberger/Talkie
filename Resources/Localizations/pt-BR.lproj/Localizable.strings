@@ -349,3 +349,11 @@
 "Signature: %@" = "Assinatura: %@";
 "Version: %@" = "Versão: %@";
 "Taken: %@" = "Gerado: %@";
+
+# I3 — true delete (purge + best-effort shred) confirmations
+"Delete" = "Excluir";
+"Clear everything" = "Apagar tudo";
+"Clear your dictation history?" = "Apagar seu histórico de ditado?";
+"Delete this meeting?" = "Excluir esta reunião?";
+"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Apaga seu histórico de ditado e tudo o que a memória do Talkie extraiu dele. As regras de dicionário que você ensinou permanecem. O Talkie sobrescreve o arquivo antes de excluí-lo. Para se proteger caso seu Mac seja perdido ou apreendido, mantenha o FileVault ativado.";
+"Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Apaga a transcrição e tudo o que a memória do Talkie extraiu desta reunião. O Talkie sobrescreve o arquivo antes de excluí-lo. Para se proteger caso seu Mac seja perdido ou apreendido, mantenha o FileVault ativado.";
