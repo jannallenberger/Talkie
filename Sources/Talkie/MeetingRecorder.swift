@@ -74,6 +74,15 @@ final class MeetingRecorder: ObservableObject {
     private var partialURL: URL?
     private var timer: Timer?
 
+    /// Cheap dirty-check for the per-second partial flush: the last flush's
+    /// (notes, turn count). A 2-hour meeting must not re-serialize and re-write an
+    /// identical partial every second, so `tick()` skips the write when neither the
+    /// notes string nor the turn count has changed (and the far-end flag hasn't
+    /// flipped) since the last flush. Reset when a recording starts (in `start()`).
+    private var lastFlushedNotes: String?
+    private var lastFlushedTurnCount = -1
+    private var lastFlushedFarEnd: Bool?
+
     /// Guards the async `start()` window: `start()` does several `await`s (mic
     /// permission, model load, two `beginSession`s). `isStarting` blocks a second
     /// start during that window; `cancelStart` lets a `stop()` tapped mid-start
@@ -117,8 +126,16 @@ final class MeetingRecorder: ObservableObject {
         // Snapshot the live-segment feed once so both stream handlers (which run on
         // the transcriber's @Sendable executor) capture a Sendable value, not `self`.
         let liveFeed = onLiveSegment
-        let pURL = AppPaths.meetingsDirectory().appendingPathComponent(".recording.partial.txt")
-        try? Data().write(to: pURL)
+        // Structured crash partial (C7): a hidden JSON dotfile in the meetings folder,
+        // flushed every second by `tick()` and recovered on the next launch. Seed it
+        // now with the true start time so a crash during setup still recovers an honest
+        // timeline; `tick()` fills in notes/transcript/far-end as they change.
+        let pURL = AppPaths.meetingsDirectory().appendingPathComponent(".recording.partial.json")
+        if let seed = Self.encodePartial(
+            RecordingPartial(startedAt: start.timeIntervalSince1970, farEnd: false, notes: "", transcript: "")
+        ) {
+            try? seed.write(to: pURL, options: .atomic)
+        }
 
         // Snapshot the language config. When the user speaks more than one language,
         // buffer each stream so it can be re-transcribed in its detected language at
@@ -259,6 +276,14 @@ final class MeetingRecorder: ObservableObject {
         turnLog = log
         startedAt = start
         partialURL = pURL
+        // Reset the flush dirty-check to EXACTLY the seed partial that was written to
+        // disk above (empty notes/turns, `farEnd: false`). So if this recording is
+        // actually capturing the far end (`farActive`), the very first tick sees the
+        // flag differ from disk and flushes, correcting `farEnd` in the partial; and
+        // steady state still elides identical re-writes for a long meeting.
+        lastFlushedNotes = ""
+        lastFlushedTurnCount = 0
+        lastFlushedFarEnd = false
         elapsed = 0
         capturingFarEnd = farActive
         isRecording = true
@@ -282,18 +307,14 @@ final class MeetingRecorder: ObservableObject {
     private func tick() {
         guard let startedAt else { return }
         elapsed = Date().timeIntervalSince(startedAt)
-        // Periodic crash-safety flush of the running transcript.
-        if let turnLog, let partialURL {
-            let text = MeetingTranscriptRenderer.render(turnLog.snapshot())
-            try? text.data(using: .utf8)?.write(to: partialURL, options: .atomic)
-        }
 
         // Zero-PCM far-end tap watchdog (plan 01 §4.2a). Only meaningful while we
         // believe we're capturing the far end: poll its health, passing the mic-alive
         // cross-check so a genuinely quiet call isn't mistaken for a dead tap. The
         // watchdog rebuilds a dead tap transparently; if it stays dead past the cap it
         // gives up, and we honestly downgrade the record card to "Recording (mic
-        // only)…" (MeetingsView flips automatically off `capturingFarEnd`).
+        // only)…" (MeetingsView flips automatically off `capturingFarEnd`). Run it
+        // BEFORE the partial flush so a same-tick downgrade is reflected in `farEnd`.
         if capturingFarEnd {
             let micAge = audio.secondsSinceLastBuffer()
             if systemAudio.checkHealth(micSecondsSinceLastBuffer: micAge) == .gaveUp {
@@ -301,6 +322,42 @@ final class MeetingRecorder: ObservableObject {
                 talkieDebugLog("MeetingRecorder: far-end capture gave up (dead tap) — now recording mic only.")
             }
         }
+
+        // Periodic crash-safety flush of the structured partial (C7): transcript AND
+        // the user's typed live notes AND the far-end flag, so a crash loses nothing.
+        // `notes` is @Published main-actor state and `tick()` is main-actor, so this
+        // read is in-isolation with no hop. Cheap dirty-check: skip the (re-)serialize
+        // and write entirely when nothing observable changed since the last flush —
+        // a 2-hour meeting must not re-write an identical partial 7200 times.
+        flushPartialIfDirty()
+    }
+
+    /// Serialize and atomically write the crash partial only when it has changed since
+    /// the last flush. The dirty-check compares the notes string, the turn count, and
+    /// the far-end flag — the three things that can move a partial's content — so
+    /// steady state (nothing said, nothing typed) costs a couple of comparisons, not a
+    /// full JSON encode + disk write, every second.
+    private func flushPartialIfDirty() {
+        guard let turnLog, let partialURL, let startedAt else { return }
+        let turns = turnLog.snapshot()
+        let farEnd = capturingFarEnd
+        // Nothing observable changed → don't re-serialize identical bytes.
+        if lastFlushedNotes == notes,
+           lastFlushedTurnCount == turns.count,
+           lastFlushedFarEnd == farEnd {
+            return
+        }
+        let partial = RecordingPartial(
+            startedAt: startedAt.timeIntervalSince1970,
+            farEnd: farEnd,
+            notes: notes,
+            transcript: MeetingTranscriptRenderer.render(turns)
+        )
+        guard let data = Self.encodePartial(partial) else { return }
+        try? data.write(to: partialURL, options: .atomic)
+        lastFlushedNotes = notes
+        lastFlushedTurnCount = turns.count
+        lastFlushedFarEnd = farEnd
     }
 
     /// Stop, transcribe-finalize both streams, summarize, and save the meeting note.
@@ -528,6 +585,128 @@ final class MeetingRecorder: ObservableObject {
         return parts.joined(separator: "\n\n")
     }
 
+    // MARK: Crash-safe partial (encode / decode / recovery mapping)
+
+    /// The on-disk crash-recovery record, flushed every second while recording and
+    /// parsed once on the next launch. It carries everything a faithful recovery
+    /// needs that the old plaintext partial threw away: the true start time (so the
+    /// recovered note isn't stamped "now"), the far-end capture flag (so participants
+    /// are right without sniffing the transcript for a "Them:" label), and — the real
+    /// gap C7 closes — the user's typed live notes, which a crash used to lose.
+    /// Written atomically to a hidden dotfile in the meetings folder; `version` lets a
+    /// future format change be detected rather than mis-parsed.
+    struct RecordingPartial: Codable, Equatable, Sendable {
+        var version: Int = 1
+        /// Recording start, unix seconds — the honest `startUnix` for recovery.
+        var startedAt: Double
+        /// Whether the far end was being captured at the last flush (C6 can downgrade
+        /// mid-meeting, so this tracks the live flag rather than being fixed at start).
+        var farEnd: Bool
+        /// The user's typed live notes at the last flush.
+        var notes: String
+        /// The rendered transcript through the last flush.
+        var transcript: String
+    }
+
+    /// Deterministic JSON for the partial (sorted keys) so the cheap dirty-check in
+    /// `tick()` — which compares the *encoded bytes* against the last flush — never
+    /// sees a spurious diff from dictionary key-order churn and re-writes identical
+    /// data. `nonisolated` + pure so it's unit-testable and callable off the actor.
+    nonisolated static func encodePartial(_ partial: RecordingPartial) -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try? encoder.encode(partial)
+    }
+
+    /// Parse a partial's bytes, tolerantly: the structured JSON first, then — for one
+    /// release — the legacy plaintext partial an app crashed while writing before this
+    /// upgrade. Returns nil when neither yields a recoverable record. Pure/testable.
+    nonisolated static func decodePartial(_ data: Data) -> RecordingPartial? {
+        if let partial = try? JSONDecoder().decode(RecordingPartial.self, from: data) {
+            return partial
+        }
+        // Legacy shim: a pre-C7 partial was plain rendered-transcript text with no
+        // start time or notes. Recover the transcript; stamp start = 0 so the caller
+        // falls back to the file's modification date for the timeline (an honest floor,
+        // same as the duration floor), and infer far-end from the old "] Them:" sniff.
+        guard let raw = String(data: data, encoding: .utf8) else { return nil }
+        return recoverLegacyPlaintext(raw)
+    }
+
+    /// Build a `RecordingPartial` from a legacy plaintext partial (rendered transcript
+    /// only). `startedAt = 0` signals "no embedded start time" so recovery uses the
+    /// file's modification date; far-end is inferred from the interleaved "] Them:"
+    /// label the old renderer emitted for two-speaker calls. Returns nil if empty.
+    nonisolated static func recoverLegacyPlaintext(_ raw: String) -> RecordingPartial? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return RecordingPartial(
+            version: 0,
+            startedAt: 0,
+            farEnd: trimmed.contains("] Them:"),
+            notes: "",
+            transcript: trimmed
+        )
+    }
+
+    /// The recovered timeline + content derived PURELY from a partial (no actor state,
+    /// no I/O) so the start-time / duration-floor / far-end / notes-composition mapping
+    /// is unit-testable directly. Returns nil when there is nothing worth recovering
+    /// (no transcript AND no notes):
+    /// - `start` = the true recorded start (`startedAt`), or `modified` for a legacy
+    ///   partial that carried none (`startedAt <= 0`).
+    /// - `duration` = an honest floor: the partial file's last-write time minus the
+    ///   start (the recording ran at least that long), clamped to ≥ 0.
+    /// - `participants` from the `farEnd` flag (no transcript string-sniff).
+    /// - `summary` = the raw notes under "## Your notes" via `composeSummary` (or empty
+    ///   when there were none) — recovery stays summary-less (no launch-time model call).
+    nonisolated static func recoveryPlan(
+        from partial: RecordingPartial,
+        modified: Date
+    ) -> (start: Date, duration: Double, transcript: String, participants: [String], summary: String)? {
+        let transcript = partial.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let notes = partial.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty || !notes.isEmpty else { return nil }
+
+        let start = partial.startedAt > 0
+            ? Date(timeIntervalSince1970: partial.startedAt)
+            : modified
+        // Honest duration floor: the file was last flushed at `modified`, so the
+        // recording ran at least start→modified. Never negative (clock skew / a
+        // legacy partial whose start we defaulted to `modified` → 0).
+        let duration = max(0, modified.timeIntervalSince(start))
+        return (
+            start: start,
+            duration: duration,
+            transcript: transcript,
+            participants: partial.farEnd ? ["Me", "Them"] : ["Me"],
+            // Summary-less by design; the raw notes land under "## Your notes" so the
+            // user's typed work survives the crash.
+            summary: Self.composeSummary(userNotes: notes, transcriptSummary: "", fused: nil)
+        )
+    }
+
+    /// Assemble the recovered `Meeting` from a parsed partial, or nil when there is
+    /// nothing worth recovering. `@MainActor` only because it reaches the main-actor
+    /// `MeetingStore.fileName` / `titleFormatter`; all the mapping logic lives in the
+    /// pure `recoveryPlan` above, which the tests exercise directly.
+    @MainActor
+    static func makeRecoveredMeeting(from partial: RecordingPartial, modified: Date) -> Meeting? {
+        guard let plan = recoveryPlan(from: partial, modified: modified) else { return nil }
+        let id = UUID()
+        return Meeting(
+            id: id,
+            title: "Recovered meeting · " + titleFormatter.string(from: plan.start),
+            startUnix: plan.start.timeIntervalSince1970,
+            durationSec: plan.duration,
+            transcript: plan.transcript,
+            summary: plan.summary,
+            participants: plan.participants,
+            source: "talkie (recovered)",
+            fileName: MeetingStore.fileName(for: plan.start, id: id)
+        )
+    }
+
     /// Compose the "## Action items" note section from Stage-2 commitment
     /// candidates. Pure (no actor state) so it's unit-testable, mirroring
     /// `composeSummary`. Returns the section markdown, or `nil` — no empty
@@ -625,30 +804,45 @@ final class MeetingRecorder: ObservableObject {
         Locale(identifier: id).language.languageCode?.identifier ?? id
     }
 
-    /// On launch, recover a transcript left behind by a crash mid-recording into a
-    /// Meeting (no summary). Must run before any new recording overwrites the file.
+    /// On launch, recover a recording left behind by a crash mid-meeting into a
+    /// Meeting (summary-less). Must run before any new recording overwrites the file,
+    /// and it's idempotent: the partial is removed right after parse — BEFORE the
+    /// `store.add` — so a double launch (or a crash between parse and add) can never
+    /// recover the same meeting twice.
+    ///
+    /// Reads the structured `.recording.partial.json` (C7); for one release it also
+    /// falls back to a legacy plaintext `.recording.partial.txt` an older build may
+    /// have left behind. The recovered note carries the TRUE start time and an honest
+    /// duration floor (from the partial's last-write time), the far-end flag drives
+    /// participants, and the user's typed notes are preserved under "## Your notes".
     func recoverPartialIfNeeded() {
-        let pURL = AppPaths.meetingsDirectory().appendingPathComponent(".recording.partial.txt")
-        guard let raw = try? String(contentsOf: pURL, encoding: .utf8) else { return }
-        try? FileManager.default.removeItem(at: pURL)
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        // A two-speaker partial carries "] Them:" labels; a solo one doesn't — so the
-        // recovered note's participants stay consistent with its transcript shape.
-        let recoveredFarEnd = trimmed.contains("] Them:")
-        let date = Date()
-        let id = UUID()
-        store.add(Meeting(
-            id: id,
-            title: "Recovered meeting · " + Self.titleFormatter.string(from: date),
-            startUnix: date.timeIntervalSince1970,
-            durationSec: 0,
-            transcript: trimmed,
-            summary: "",
-            participants: recoveredFarEnd ? ["Me", "Them"] : ["Me"],
-            source: "talkie (recovered)",
-            fileName: MeetingStore.fileName(for: date, id: id)
-        ))
+        let dir = AppPaths.meetingsDirectory()
+        let jsonURL = dir.appendingPathComponent(".recording.partial.json")
+        let legacyURL = dir.appendingPathComponent(".recording.partial.txt")
+        let fm = FileManager.default
+
+        // Prefer the structured partial; fall back to the legacy plaintext shim.
+        let url = fm.fileExists(atPath: jsonURL.path) ? jsonURL : legacyURL
+        guard let data = try? Data(contentsOf: url) else {
+            // No structured partial and no legacy one to read — but still sweep any
+            // stray legacy file so it can't linger and mis-recover on a later launch.
+            try? fm.removeItem(at: legacyURL)
+            return
+        }
+        // The file's last-write time is the honest duration-floor anchor: the recording
+        // ran at least start→(last flush). Read it BEFORE deleting the file.
+        let modified = (try? fm.attributesOfItem(atPath: url.path)[.modificationDate] as? Date)
+            .flatMap { $0 } ?? Date()
+
+        // Remove BOTH candidate files now, before store.add, so recovery is idempotent
+        // and a leftover legacy file can't shadow a future recording.
+        try? fm.removeItem(at: jsonURL)
+        try? fm.removeItem(at: legacyURL)
+
+        guard let partial = Self.decodePartial(data),
+              let meeting = Self.makeRecoveredMeeting(from: partial, modified: modified)
+        else { return }
+        store.add(meeting)
     }
 
     private static let titleFormatter: DateFormatter = {
