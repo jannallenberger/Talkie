@@ -136,6 +136,7 @@
 "Friendly" = "Freundlich";
 "Professional" = "Professionell";
 "Concise" = "Knapp";
+"Prompt" = "Prompt";
 "Talkie Meetings folder" = "Talkie-Besprechungsordner";
 "A folder I choose" = "Ein Ordner meiner Wahl";
 "Insert exactly what you said, word for word." = "Fügt genau das ein, was Sie gesagt haben, Wort für Wort.";
@@ -148,6 +149,7 @@
 "Warm and casual, like texting a friend." = "Herzlich und locker, wie eine Nachricht an Freunde.";
 "Polished and courteous, like a work email." = "Ausgefeilt und höflich, wie eine geschäftliche E-Mail.";
 "Tight and to the point." = "Knapp und auf den Punkt.";
+"Restructures a brain-dump into a clear agent prompt." = "Formt einen Gedankenstrom zu einem klaren Agenten-Prompt um.";
 
 /* dashboard stat cards */
 "Words per minute" = "Wörter pro Minute";

@@ -136,6 +136,7 @@
 "Friendly" = "친근하게";
 "Professional" = "전문적";
 "Concise" = "간결하게";
+"Prompt" = "프롬프트";
 "Talkie Meetings folder" = "Talkie 회의 폴더";
 "A folder I choose" = "직접 선택한 폴더";
 "Insert exactly what you said, word for word." = "말한 그대로 한 마디도 빠짐없이 삽입합니다.";
@@ -148,6 +149,7 @@
 "Warm and casual, like texting a friend." = "친구에게 문자 보내듯 따뜻하고 편안하게.";
 "Polished and courteous, like a work email." = "업무 이메일처럼 정중하고 다듬어진 어조로.";
 "Tight and to the point." = "간결하고 핵심만 짚어서.";
+"Restructures a brain-dump into a clear agent prompt." = "두서없는 생각을 명확한 에이전트 프롬프트로 재구성합니다.";
 
 /* dashboard stat cards */
 "Words per minute" = "분당 단어 수";

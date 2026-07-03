@@ -136,6 +136,7 @@
 "Friendly" = "フレンドリー";
 "Professional" = "プロフェッショナル";
 "Concise" = "簡潔";
+"Prompt" = "プロンプト";
 "Talkie Meetings folder" = "Talkieミーティングフォルダ";
 "A folder I choose" = "自分で選んだフォルダ";
 "Insert exactly what you said, word for word." = "話した内容を一字一句そのまま挿入します。";
@@ -148,6 +149,7 @@
 "Warm and casual, like texting a friend." = "友だちへのメッセージのような、温かくカジュアルな調子。";
 "Polished and courteous, like a work email." = "仕事のメールのような、洗練された丁寧な調子。";
 "Tight and to the point." = "引き締まった、要点を押さえた文章。";
+"Restructures a brain-dump into a clear agent prompt." = "頭の中の断片を、明確なエージェント用プロンプトに整えます。";
 
 /* dashboard stat cards */
 "Words per minute" = "1分あたりの単語数";

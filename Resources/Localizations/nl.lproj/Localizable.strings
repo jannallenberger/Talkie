@@ -136,6 +136,7 @@
 "Friendly" = "Vriendelijk";
 "Professional" = "Professioneel";
 "Concise" = "Beknopt";
+"Prompt" = "Prompt";
 "Talkie Meetings folder" = "Map Talkie-vergaderingen";
 "A folder I choose" = "Een map die ik kies";
 "Insert exactly what you said, word for word." = "Voeg precies in wat u hebt gezegd, woord voor woord.";
@@ -148,6 +149,7 @@
 "Warm and casual, like texting a friend." = "Warm en informeel, als een berichtje aan een vriend.";
 "Polished and courteous, like a work email." = "Verzorgd en hoffelijk, als een zakelijke e-mail.";
 "Tight and to the point." = "Bondig en to the point.";
+"Restructures a brain-dump into a clear agent prompt." = "Herstructureert een braindump tot een heldere agent-prompt.";
 
 /* dashboard stat cards */
 "Words per minute" = "Woorden per minuut";

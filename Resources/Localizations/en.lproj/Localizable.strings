@@ -136,6 +136,7 @@
 "Friendly" = "Friendly";
 "Professional" = "Professional";
 "Concise" = "Concise";
+"Prompt" = "Prompt";
 "Talkie Meetings folder" = "Talkie Meetings folder";
 "A folder I choose" = "A folder I choose";
 "Insert exactly what you said, word for word." = "Insert exactly what you said, word for word.";
@@ -148,6 +149,7 @@
 "Warm and casual, like texting a friend." = "Warm and casual, like texting a friend.";
 "Polished and courteous, like a work email." = "Polished and courteous, like a work email.";
 "Tight and to the point." = "Tight and to the point.";
+"Restructures a brain-dump into a clear agent prompt." = "Restructures a brain-dump into a clear agent prompt.";
 
 /* dashboard stat cards */
 "Words per minute" = "Words per minute";
