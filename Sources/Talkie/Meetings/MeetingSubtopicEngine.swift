@@ -52,6 +52,14 @@ actor MeetingSubtopicEngine {
     private let summarizer: any Summarizer
     private let model: MeetingSubtopicModel
 
+    /// Fired exactly when a NEW topic clears the confidence + hysteresis bar and
+    /// becomes the shown topic — the same instant `model.current` updates. The
+    /// wiring layer uses it to record a chapter boundary, stamping the topic with
+    /// the recorder's live elapsed time. Purely additive: the pill's behavior is
+    /// unchanged whether or not this is set. Kept `@Sendable` because it's invoked
+    /// from the actor and hops to the main actor at the call site.
+    private let onAccepted: (@Sendable (String) -> Void)?
+
     private var window: [String] = []
     private var windowChars = 0
     private var charsSinceEval = 0
@@ -59,9 +67,11 @@ actor MeetingSubtopicEngine {
     private var loop: Task<Void, Never>?
 
     init(summarizer: any Summarizer = PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.2)),
-         model: MeetingSubtopicModel) {
+         model: MeetingSubtopicModel,
+         onAccepted: (@Sendable (String) -> Void)? = nil) {
         self.summarizer = summarizer
         self.model = model
+        self.onAccepted = onAccepted
     }
 
     /// Usable only when the on-device language model is available; otherwise the
@@ -121,14 +131,33 @@ actor MeetingSubtopicEngine {
         guard let raw = await summarizer.generate(instructions: Self.instructions, input: input)
         else { return }
 
+        apply(raw)
+    }
+
+    /// Fold one raw model response into the gate, publishing to the pill and firing
+    /// `onAccepted` on (and only on) an accept transition. Split out of `tick()` so
+    /// the accept/publish/hook sequence can be driven deterministically in tests
+    /// (`evaluateForTesting`) without the timer or the new-chars gate.
+    private func apply(_ raw: String) {
         let parsed = Self.parse(raw)
         let before = gate.accepted
         gate = Self.step(gate, topic: parsed.topic, high: parsed.high)
         if gate.accepted != before, let now = gate.accepted {
             let m = model
             Task { @MainActor in m.current = now }
+            // Same instant the pill updates: notify the chapter collector. The
+            // callback stamps the accept time itself, so the engine stays free of
+            // any clock/recorder dependency and the pill behavior is untouched.
+            onAccepted?(now)
         }
     }
+
+    /// Test seam: run a single evaluation from a canned model response, exercising
+    /// the real parse → hysteresis → publish/`onAccepted` path (no timer, no model,
+    /// no new-chars gate). Lets a test prove the accept hook fires exactly on the
+    /// accept transition — the ordering guarantee chapters rely on. Not used in
+    /// production; the live path goes through `tick()`.
+    func evaluateForTesting(_ raw: String) { apply(raw) }
 
     /// The guard-railed system prompt. Two hard gates against misrepresentation: it
     /// must answer `NONE` whenever it can't tell, and `HIGH` only when the recent

@@ -68,6 +68,28 @@ enum TimedTranscriptExport {
         return blocks.joined(separator: "\n\n") + "\n"
     }
 
+    // MARK: Chapter list
+
+    /// A YouTube-description-style chapter list (D8): one `M:SS Topic` line per
+    /// chapter, sorted by time, e.g. `00:00 Intro\n07:32 Budget review`. This is the
+    /// exact shape YouTube parses into clickable chapters when pasted into a video
+    /// description, so it's the one export a meeting's topic timeline is worth. Uses
+    /// the `mm:ss` / `h:mm:ss` timecode (no brackets — brackets break YouTube's
+    /// parser), trailing newline for a clean paste.
+    ///
+    /// Returns `""` when there is nothing to render — fewer than two chapters — so
+    /// a lone topic (which is noise, like the note section) produces no file and the
+    /// menu can gate on emptiness. The caller (the export menu) only offers this when
+    /// chapters exist, but the guard keeps the renderer honest on its own.
+    static func chapterList(_ chapters: [Chapter]) -> String {
+        guard chapters.count >= 2 else { return "" }
+        let lines = chapters
+            .sorted { $0.start < $1.start }
+            .map { "\(MeetingTranscriptRenderer.timecode($0.start)) \($0.title)" }
+            .joined(separator: "\n")
+        return lines + "\n"
+    }
+
     // MARK: VTT
 
     /// WebVTT (`.vtt`). Same one-cue-per-segment model with `HH:MM:SS.mmm`
@@ -75,12 +97,30 @@ enum TimedTranscriptExport {
     /// spans (`<v Me>…`) so a compliant player can style/attribute each speaker;
     /// solo recordings emit the bare line. Text is minimally escaped (`&`, `<`, `>`)
     /// so a literal angle bracket in speech can't be misread as markup.
-    static func vtt(_ segments: [MeetingSegment]) -> String {
+    ///
+    /// When `chapters` are supplied (D8), a `NOTE Chapter: <title>` block is emitted
+    /// at each chapter's cue boundary — a spec-legal WebVTT comment a player ignores
+    /// for playback but a human (or a chapter-aware tool) can read. The note is
+    /// placed just before the first cue whose start is at/after the chapter time, so
+    /// it sits at the right point in the timeline; chapters past the last cue append
+    /// at the end. Callers with no chapters pass `[]` and get byte-identical output
+    /// to before.
+    static func vtt(_ segments: [MeetingSegment], chapters: [Chapter] = []) -> String {
         let cues = repaired(segments)
         let tagged = hasMultipleSpeakers(cues)
+        // Sort chapters once; walk them in lockstep with the cues so each NOTE lands
+        // before the first cue at/after its start.
+        let orderedChapters = chapters.sorted { $0.start < $1.start }
+        var chapterIndex = 0
 
         var out = "WEBVTT\n"
         for cue in cues {
+            // Emit any chapter NOTE whose start falls at/before this cue's start.
+            while chapterIndex < orderedChapters.count,
+                  orderedChapters[chapterIndex].start <= cue.start {
+                out += "\nNOTE Chapter: \(vttNoteEscape(orderedChapters[chapterIndex].title))\n"
+                chapterIndex += 1
+            }
             let escaped = vttEscape(cue.text)
             let body: String
             if tagged {
@@ -92,6 +132,12 @@ enum TimedTranscriptExport {
                 body = escaped
             }
             out += "\n\(vttTimecode(cue.start)) --> \(vttTimecode(cue.end))\n\(body)\n"
+        }
+        // Any chapters beyond the last cue's start still deserve a marker; append them
+        // so a late topic shift isn't silently dropped from the sidecar.
+        while chapterIndex < orderedChapters.count {
+            out += "\nNOTE Chapter: \(vttNoteEscape(orderedChapters[chapterIndex].title))\n"
+            chapterIndex += 1
         }
         return out
     }
@@ -254,6 +300,19 @@ enum TimedTranscriptExport {
         text.replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    /// Escape a chapter title for a single-line WebVTT `NOTE` block. Two structural
+    /// hazards, not markup: a newline would split the comment (a blank line ends a
+    /// NOTE, a non-blank line would read as more comment text out of place), and the
+    /// literal `-->` cue-timing arrow is illegal inside a NOTE. Both are neutralized
+    /// (newlines → spaces, `-->` → `→`) so the topic label — engine-bounded to a
+    /// short noun phrase, but defended anyway — can never corrupt the file.
+    private static func vttNoteEscape(_ text: String) -> String {
+        text.replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "-->", with: "→")
     }
 
     // MARK: - Codable payload

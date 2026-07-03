@@ -53,6 +53,16 @@ final class MeetingRecorder: ObservableObject {
     /// snapshotted into a local at `start()`, so it must be wired before recording.
     var onLiveSegment: (@Sendable (MeetingSpeaker, String) -> Void)?
 
+    /// Chapter boundaries the live subtopic engine accepted during THIS recording,
+    /// in accept order (D8). AppDelegate resets it at `onRecordingStarted` and
+    /// appends `(topic, elapsed)` on every accept; `stop()` snapshots it into the
+    /// composed `Meeting.chapters` *synchronously, before its first `await`*, then
+    /// clears it — so the ordering trap is closed: the collector is filled through
+    /// recording and consumed at compose-time, never handed over in the stop path
+    /// where the `$isRecording` sink has already reset the engine. `@MainActor` state
+    /// (the class is `@MainActor`), mutated and read only on the main actor.
+    var pendingChapters: [Chapter] = []
+
     private let engine: TranscriptionEngine // shared mic engine ("Me")
     private let store: MeetingStore
     private let summarizer = MeetingSummarizer()
@@ -284,6 +294,9 @@ final class MeetingRecorder: ObservableObject {
         lastFlushedNotes = ""
         lastFlushedTurnCount = 0
         lastFlushedFarEnd = false
+        // Clear any chapters left by a prior recording so this meeting starts fresh
+        // (belt-and-suspenders: AppDelegate also resets at onRecordingStarted).
+        pendingChapters = []
         elapsed = 0
         capturingFarEnd = farActive
         isRecording = true
@@ -386,6 +399,15 @@ final class MeetingRecorder: ObservableObject {
         let wasFarEnd = capturingFarEnd
         let langs = langsAtStart
         let userNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Snapshot the chapters SYNCHRONOUSLY here, before the first `await` below, so
+        // the ordering trap is closed: the `$isRecording` sink (which fires the moment
+        // we set `isRecording = false` above) resets the subtopic engine, but the
+        // boundaries it already accepted live in this main-actor array and are captured
+        // now. Any accept still queued as a main-actor task runs either before this line
+        // or after `stop()` next suspends — never torn. `nil` (not `[]`) when empty so a
+        // meeting with no topic shifts decodes/persists exactly like a pre-D8 note.
+        let chapters = pendingChapters.isEmpty ? nil : pendingChapters
+        pendingChapters = []
 
         // Finalize each stream. A multilingual (live-lanes) stream resolves its
         // per-segment language vote here and rebuilds the speaker's turns — each
@@ -529,7 +551,8 @@ final class MeetingRecorder: ObservableObject {
             participants: participants,
             source: wasFarEnd ? "talkie (mic + system audio)" : "talkie (mic-only)",
             fileName: MeetingStore.fileName(for: start, id: id),
-            segments: segments
+            segments: segments,
+            chapters: chapters
         )
         store.add(meeting)
         // The meeting is durably persisted only now — so the crash-partial can only

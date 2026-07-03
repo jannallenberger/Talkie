@@ -313,6 +313,7 @@
 "Subtitles (.vtt)" = "字幕 (.vtt)";
 "Spreadsheet (.csv)" = "电子表格 (.csv)";
 "Data (.json)" = "数据 (.json)";
+"Chapters (.txt)" = "章节 (.txt)";
 
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "已保存到 %@";
