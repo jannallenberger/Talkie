@@ -519,7 +519,6 @@
 "Dictation speed" = "Dicteersnelheid";
 "Instant" = "Direct";
 "Fast" = "Snel";
-"OK" = "Oké";
 "Slow" = "Traag";
 "median of your last dictation" = "mediaan van je laatste dictaat";
 "median of your last %d dictations" = "mediaan van je laatste %d dictaten";
@@ -530,7 +529,6 @@
 "Finalize speech" = "Spraak afronden";
 "Re-transcribe" = "Opnieuw transcriberen";
 "Clean up" = "Opschonen";
-"Insert" = "Invoegen";
 "First dictation after launch — model load" = "Eerste dictaat na starten — model laden";
 "Shown on its own — it isn't counted in the medians above." = "Apart weergegeven — het telt niet mee in de medianen hierboven.";
 "What might be slowing things down" = "Wat het mogelijk vertraagt";

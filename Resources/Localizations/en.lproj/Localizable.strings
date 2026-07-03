@@ -521,7 +521,6 @@
 "Dictation speed" = "Dictation speed";
 "Instant" = "Instant";
 "Fast" = "Fast";
-"OK" = "OK";
 "Slow" = "Slow";
 "median of your last dictation" = "median of your last dictation";
 "median of your last %d dictations" = "median of your last %d dictations";
@@ -532,7 +531,6 @@
 "Finalize speech" = "Finalize speech";
 "Re-transcribe" = "Re-transcribe";
 "Clean up" = "Clean up";
-"Insert" = "Insert";
 "First dictation after launch — model load" = "First dictation after launch — model load";
 "Shown on its own — it isn't counted in the medians above." = "Shown on its own — it isn't counted in the medians above.";
 "What might be slowing things down" = "What might be slowing things down";

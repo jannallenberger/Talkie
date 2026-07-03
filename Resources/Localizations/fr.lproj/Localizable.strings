@@ -519,7 +519,6 @@
 "Dictation speed" = "Vitesse de dictée";
 "Instant" = "Instantané";
 "Fast" = "Rapide";
-"OK" = "Correct";
 "Slow" = "Lent";
 "median of your last dictation" = "médiane de votre dernière dictée";
 "median of your last %d dictations" = "médiane de vos %d dernières dictées";
@@ -530,7 +529,6 @@
 "Finalize speech" = "Finaliser la parole";
 "Re-transcribe" = "Re-transcrire";
 "Clean up" = "Nettoyer";
-"Insert" = "Insérer";
 "First dictation after launch — model load" = "Première dictée après le lancement — chargement du modèle";
 "Shown on its own — it isn't counted in the medians above." = "Affichée à part — elle n’est pas comptée dans les médianes ci-dessus.";
 "What might be slowing things down" = "Ce qui pourrait ralentir les choses";

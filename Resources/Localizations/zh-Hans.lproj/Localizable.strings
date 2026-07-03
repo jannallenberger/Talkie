@@ -519,7 +519,6 @@
 "Dictation speed" = "听写速度";
 "Instant" = "即时";
 "Fast" = "快速";
-"OK" = "一般";
 "Slow" = "缓慢";
 "median of your last dictation" = "你最近一次听写的中位数";
 "median of your last %d dictations" = "你最近 %d 次听写的中位数";
@@ -530,7 +529,6 @@
 "Finalize speech" = "确定语音";
 "Re-transcribe" = "重新转写";
 "Clean up" = "整理";
-"Insert" = "插入";
 "First dictation after launch — model load" = "启动后的首次听写——加载模型";
 "Shown on its own — it isn't counted in the medians above." = "单独显示——不计入上方的中位数。";
 "What might be slowing things down" = "可能拖慢速度的因素";

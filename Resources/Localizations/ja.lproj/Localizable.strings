@@ -519,7 +519,6 @@
 "Dictation speed" = "音声入力の速度";
 "Instant" = "瞬時";
 "Fast" = "高速";
-"OK" = "普通";
 "Slow" = "遅い";
 "median of your last dictation" = "直近の音声入力の中央値";
 "median of your last %d dictations" = "直近 %d 回の音声入力の中央値";
@@ -530,7 +529,6 @@
 "Finalize speech" = "音声の確定";
 "Re-transcribe" = "再文字起こし";
 "Clean up" = "整形";
-"Insert" = "挿入";
 "First dictation after launch — model load" = "起動後の最初の音声入力 — モデルの読み込み";
 "Shown on its own — it isn't counted in the medians above." = "個別に表示しています。上の中央値には含まれません。";
 "What might be slowing things down" = "速度低下の原因になりうるもの";

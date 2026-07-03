@@ -519,7 +519,6 @@
 "Dictation speed" = "받아쓰기 속도";
 "Instant" = "즉시";
 "Fast" = "빠름";
-"OK" = "보통";
 "Slow" = "느림";
 "median of your last dictation" = "최근 받아쓰기의 중앙값";
 "median of your last %d dictations" = "최근 받아쓰기 %d회의 중앙값";
@@ -530,7 +529,6 @@
 "Finalize speech" = "음성 확정";
 "Re-transcribe" = "재전사";
 "Clean up" = "정리";
-"Insert" = "삽입";
 "First dictation after launch — model load" = "실행 후 첫 받아쓰기 — 모델 로드";
 "Shown on its own — it isn't counted in the medians above." = "별도로 표시됩니다 — 위의 중앙값에는 포함되지 않습니다.";
 "What might be slowing things down" = "속도를 늦출 수 있는 요인";
