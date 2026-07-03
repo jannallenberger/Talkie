@@ -738,7 +738,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             minePhrases: settings.contextAwareness
         )
         currentTarget = captured.target
-        currentVibeSnapshot = settings.vibeCoding ? projectIndex.snapshot : .empty
+
+        // A10 — scope filename snapping + repo terms to the checkout the terminal is
+        // actually in. Resolve the project root behind the target from the window title,
+        // then prefer THAT root's scoped snapshot over the merged global one. When the
+        // root is unknown or ambiguous, or it isn't indexed yet, `snapshot(for:)` returns
+        // nil and we fall back to the merged snapshot — never a wrong-repo scope. Only
+        // resolved when vibe coding is on and the target is an editor/terminal; otherwise
+        // there's nothing to scope. The offer path below reuses the same resolved root.
+        var resolvedVibeRoot: URL?
+        if settings.vibeCoding,
+           captured.target.category == .coding || captured.target.category == .terminal {
+            resolvedVibeRoot = ProjectRootDetector.resolveRoot(
+                bundleID: captured.target.bundleID,
+                windowTitle: captured.windowTitle)
+        }
+        if settings.vibeCoding {
+            if let root = resolvedVibeRoot, let scoped = projectIndex.snapshot(for: root) {
+                currentVibeSnapshot = scoped
+            } else {
+                currentVibeSnapshot = projectIndex.snapshot
+            }
+        } else {
+            currentVibeSnapshot = .empty
+        }
 
         // A9 — Vibe Coding turns itself on. When the feature is OFF and you're
         // dictating into an editor/terminal, try to discover the real git repo behind
@@ -772,7 +795,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         activeFileMineTask?.cancel()
         activeFileMineTask = nil
         if settings.vibeCoding,
-           let filePath = projectIndex.resolveIndexedFilePath(forWindowTitle: captured.windowTitle) {
+           let filePath = projectIndex.resolveIndexedFilePath(forWindowTitle: captured.windowTitle,
+                                                              root: resolvedVibeRoot) {
             activeFileMineTask = Task.detached(priority: .utility) { [weak self] in
                 let terms = await FileIdentifierCache.shared.terms(forPath: filePath)
                 if Task.isCancelled || terms.isEmpty { return }

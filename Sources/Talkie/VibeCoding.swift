@@ -2,30 +2,67 @@ import Foundation
 
 // MARK: - Project index (auto-scan a folder you pick)
 
-/// Persisted snapshot of a scanned project: which folders, when, and the files
-/// found across all of them. Spoken filenames are matched against this so
-/// "exercise library dot tsx" snaps to the real `ExerciseLibrary.tsx`.
-struct ProjectIndexData: Codable {
-    var folderPaths: [String] = []  // the project roots, in the order picked
-    var scannedAtUnix: Double?
+/// One scanned project root's index: the files/symbols/docs it holds, kept SEPARATE
+/// from every other root (A10). This is what lets a spoken filename scope to the repo
+/// the terminal is actually in — a worktree `Talkie-B` snaps to *its* casing and terms,
+/// not to `Talkie-A`'s — instead of everyone merging into one bucket where the first
+/// folder wins colliding basenames.
+struct ProjectRootIndex: Codable {
     var files: [String] = []        // basenames, e.g. "ExerciseLibrary.tsx"
     var symbols: [String] = []      // bare identifiers, e.g. "ExerciseLibrary"
-    /// Jargon mined from the project's docs (CLAUDE.md/README/docs) + git branch and
+    /// Jargon mined from THIS root's docs (CLAUDE.md/README/docs) + git branch and
     /// commit-message words (A3). Feeds the post-hoc niche corrector so "cloud MD"
     /// snaps to `CLAUDE.md` when you dictate in this project. Deduped, capped.
     var docTerms: [String] = []
-    /// Lowercased basename → its full on-disk path (A11). Lets a window-title filename
-    /// ("ExerciseLibrary.tsx — …") resolve to the real file whose identifiers we then
-    /// mine for that session. First folder wins a colliding basename, matching the
-    /// `files` de-dup. Memory-bounded by the same `maxFiles` cap as `files`, so a
-    /// stack of monorepos can't blow the map up. Persisted so title→file resolution
-    /// works right after launch without waiting for a rescan.
+    /// Lowercased basename → its full on-disk path (A11), for THIS root only. Lets a
+    /// window-title filename ("ExerciseLibrary.tsx — …") resolve to the real file whose
+    /// identifiers we then mine for that session.
     var filePaths: [String: String] = [:]
+
+    init() {}
+    init(files: [String], symbols: [String], docTerms: [String], filePaths: [String: String]) {
+        self.files = files
+        self.symbols = symbols
+        self.docTerms = docTerms
+        self.filePaths = filePaths
+    }
+}
+
+/// Persisted snapshot of a scanned project: which folders, when, and the files
+/// found in each of them. Spoken filenames are matched against this so
+/// "exercise library dot tsx" snaps to the real `ExerciseLibrary.tsx`.
+///
+/// **Per-root (A10).** The index is now keyed BY root (`roots[path]`), so dictating in
+/// one checkout scopes to that checkout's files/terms rather than a global merge. The
+/// merged view (first-folder-wins across `folderPaths` order) is still derived on demand
+/// as the FALLBACK snapshot for when we can't tell which root you're in.
+///
+/// **Back-compat / migration.** Older builds wrote FLAT top-level `files`/`symbols`/
+/// `docTerms`/`filePaths` merged across all folders (there was no per-root split). We
+/// still decode those tolerantly into `legacyMerged`; the merged accessors fold it in so
+/// an old `project_index.json` keeps working (filename snapping, the merged fallback)
+/// with zero loss until the next rescan repopulates the per-root `roots` map — at which
+/// point `legacyMerged` is cleared. Decode round-trips old files by design (see the
+/// migration test); we never throw on a legacy file.
+struct ProjectIndexData: Codable {
+    var folderPaths: [String] = []  // the project roots, in the order picked
+    var scannedAtUnix: Double?
+    /// Per-root buckets, keyed by absolute root path. Written by `rescan`. A root in
+    /// `folderPaths` with no entry here simply hasn't been scanned yet (or was scanned
+    /// by an older build — see `legacyMerged`).
+    var roots: [String: ProjectRootIndex] = [:]
+    /// The pre-A10 merged arrays, decoded from an older on-disk file. Non-empty ONLY
+    /// right after upgrading from a flat `project_index.json`; a rescan clears it once
+    /// the per-root buckets are filled. Folded into the merged accessors so the global
+    /// fallback still works before that first rescan.
+    var legacyMerged = ProjectRootIndex()
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case folderPaths, folderPath, scannedAtUnix, files, symbols, docTerms, filePaths
+        case folderPaths, folderPath, scannedAtUnix, roots
+        // Legacy flat fields (pre-A10) — decoded, never re-encoded.
+        case files, symbols, docTerms, filePaths
     }
 
     init(from decoder: Decoder) throws {
@@ -37,20 +74,96 @@ struct ProjectIndexData: Codable {
             folderPaths = [single]  // migrate the old single-folder field
         }
         scannedAtUnix = try c.decodeIfPresent(Double.self, forKey: .scannedAtUnix)
-        files = try c.decodeIfPresent([String].self, forKey: .files) ?? []
-        symbols = try c.decodeIfPresent([String].self, forKey: .symbols) ?? []
-        docTerms = try c.decodeIfPresent([String].self, forKey: .docTerms) ?? []
-        filePaths = try c.decodeIfPresent([String: String].self, forKey: .filePaths) ?? [:]
+        roots = try c.decodeIfPresent([String: ProjectRootIndex].self, forKey: .roots) ?? [:]
+        // Migration: fold any legacy top-level merged arrays into `legacyMerged`, so an
+        // old flat file round-trips without loss until the next rescan. If the new `roots`
+        // map is already present we still keep the legacy arrays (harmless — the merged
+        // accessors de-dup), but in practice a file has one shape or the other.
+        legacyMerged = ProjectRootIndex(
+            files: try c.decodeIfPresent([String].self, forKey: .files) ?? [],
+            symbols: try c.decodeIfPresent([String].self, forKey: .symbols) ?? [],
+            docTerms: try c.decodeIfPresent([String].self, forKey: .docTerms) ?? [],
+            filePaths: try c.decodeIfPresent([String: String].self, forKey: .filePaths) ?? [:]
+        )
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(folderPaths, forKey: .folderPaths)
         try c.encodeIfPresent(scannedAtUnix, forKey: .scannedAtUnix)
-        try c.encode(files, forKey: .files)
-        try c.encode(symbols, forKey: .symbols)
-        try c.encode(docTerms, forKey: .docTerms)
-        try c.encode(filePaths, forKey: .filePaths)
+        try c.encode(roots, forKey: .roots)
+        // We deliberately DON'T re-encode the legacy flat fields: once we've loaded and
+        // (eventually) rescanned, the per-root `roots` map is authoritative. Persisting a
+        // legacy file that still carries un-rescanned data preserves it via `legacyMerged`
+        // only in memory; the moment a rescan runs, the file is rewritten in the new shape.
+        // To avoid *losing* legacy data if the app quits before any rescan, we round-trip
+        // it back out under the legacy keys when (and only when) `roots` is still empty.
+        if roots.isEmpty, !legacyMerged.files.isEmpty || !legacyMerged.docTerms.isEmpty {
+            try c.encode(legacyMerged.files, forKey: .files)
+            try c.encode(legacyMerged.symbols, forKey: .symbols)
+            try c.encode(legacyMerged.docTerms, forKey: .docTerms)
+            try c.encode(legacyMerged.filePaths, forKey: .filePaths)
+        }
+    }
+
+    // MARK: - Merged (fallback) accessors
+
+    /// The roots that actually have an index, in `folderPaths` order (so "first folder
+    /// wins" a colliding basename stays deterministic and matches pre-A10 behavior).
+    /// Includes the legacy merged bucket LAST, under a sentinel path, so its files are a
+    /// lower-priority fallback than any freshly-scanned root.
+    private var orderedBuckets: [ProjectRootIndex] {
+        var out: [ProjectRootIndex] = []
+        for path in folderPaths {
+            if let bucket = roots[path] { out.append(bucket) }
+        }
+        // Any scanned root not in folderPaths (shouldn't happen, but be safe).
+        for (path, bucket) in roots where !folderPaths.contains(path) { out.append(bucket) }
+        if !legacyMerged.files.isEmpty || !legacyMerged.docTerms.isEmpty || !legacyMerged.filePaths.isEmpty {
+            out.append(legacyMerged)
+        }
+        return out
+    }
+
+    /// First-folder-wins de-duped basenames across every bucket — the merged file list
+    /// that feeds the GLOBAL fallback snapshot (used when we can't resolve which root
+    /// you're in) and the Settings file count.
+    var mergedFiles: [String] {
+        var files: [String] = []
+        var seen = Set<String>()
+        for bucket in orderedBuckets {
+            for f in bucket.files where seen.insert(f.lowercased()).inserted { files.append(f) }
+        }
+        return files
+    }
+
+    var mergedSymbols: [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for bucket in orderedBuckets {
+            for s in bucket.symbols where seen.insert(s.lowercased()).inserted { out.append(s) }
+        }
+        return out
+    }
+
+    var mergedDocTerms: [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for bucket in orderedBuckets {
+            for t in bucket.docTerms where seen.insert(t.lowercased()).inserted { out.append(t) }
+        }
+        return out
+    }
+
+    /// First-folder-wins merged basename→path map — the FALLBACK for title→file
+    /// resolution when the active root is unknown. Per-root maps are preferred by the
+    /// caller; this only backstops the ambiguous case.
+    var mergedFilePaths: [String: String] {
+        var out: [String: String] = [:]
+        for bucket in orderedBuckets {
+            for (k, v) in bucket.filePaths where out[k] == nil { out[k] = v }
+        }
+        return out
     }
 }
 
@@ -104,10 +217,12 @@ final class ProjectIndexStore: ObservableObject {
     /// prior one — the generation token alone only discards a stale *result*; the
     /// walk would otherwise keep churning the disk on a huge project dir. The
     /// detached work polls `Task.isCancelled` and breaks out promptly.
-    private var scanTask: Task<ProjectScanner.Result, Never>?
+    private var scanTask: Task<[String: ProjectRootIndex], Never>?
 
-    init() {
-        fileURL = AppPaths.supportDirectory().appendingPathComponent("project_index.json")
+    /// The app injects nothing (defaults to the shared support-dir file); tests pass a
+    /// temp `fileURL` so a scan never touches — or clobbers — the real project_index.json.
+    init(fileURL: URL? = nil) {
+        self.fileURL = fileURL ?? AppPaths.supportDirectory().appendingPathComponent("project_index.json")
         load()
         rebuildSnapshot()
     }
@@ -115,7 +230,7 @@ final class ProjectIndexStore: ObservableObject {
     /// The chosen project roots, in the order they were added.
     var folders: [ProjectFolder] { data.folderPaths.map { ProjectFolder(path: $0) } }
     var hasFolders: Bool { !data.folderPaths.isEmpty }
-    var fileCount: Int { data.files.count }
+    var fileCount: Int { data.mergedFiles.count }
     var lastScanned: Date? { data.scannedAtUnix.map { Date(timeIntervalSince1970: $0) } }
 
     /// Add a project root (ignoring duplicates), then rescan everything.
@@ -152,9 +267,11 @@ final class ProjectIndexStore: ObservableObject {
         rebuildSnapshot()
     }
 
-    /// Walk every chosen folder off the main actor and rebuild the merged file
-    /// list. With no folders left, the index empties. A generation token makes
-    /// overlapping scans safe: only the latest one may write its result.
+    /// Walk every chosen folder off the main actor, PER ROOT, and rebuild the index.
+    /// With no folders left, the index empties. A generation token makes overlapping
+    /// scans safe: only the latest one may write its result. Each root's files/terms
+    /// land in its OWN bucket (A10) so `snapshot(for:)` can scope to a single checkout;
+    /// the merged fallback snapshot is rebuilt from all of them.
     func rescan() async {
         scanGeneration += 1
         let generation = scanGeneration
@@ -166,10 +283,8 @@ final class ProjectIndexStore: ObservableObject {
         let paths = data.folderPaths
         guard !paths.isEmpty else {
             scanTask = nil
-            data.files = []
-            data.symbols = []
-            data.docTerms = []
-            data.filePaths = [:]
+            data.roots = [:]
+            data.legacyMerged = ProjectRootIndex()
             data.scannedAtUnix = nil
             isScanning = false
             save()
@@ -178,7 +293,7 @@ final class ProjectIndexStore: ObservableObject {
         }
         isScanning = true
         let task = Task.detached(priority: .utility) {
-            ProjectScanner.scanAll(roots: paths.map { URL(fileURLWithPath: $0) })
+            ProjectScanner.scanPerRoot(roots: paths.map { URL(fileURLWithPath: $0) })
         }
         scanTask = task
         let result = await task.value
@@ -186,10 +301,10 @@ final class ProjectIndexStore: ObservableObject {
         // let the newest scan settle `isScanning`.
         guard generation == scanGeneration else { return }
         scanTask = nil
-        data.files = result.files
-        data.symbols = result.symbols
-        data.docTerms = result.docTerms
-        data.filePaths = result.filePaths
+        data.roots = result
+        // The per-root buckets are now authoritative; drop the migrated legacy blob so it
+        // can't shadow a freshly-scanned root or get re-persisted.
+        data.legacyMerged = ProjectRootIndex()
         data.scannedAtUnix = Date().timeIntervalSince1970
         isScanning = false
         save()
@@ -198,15 +313,34 @@ final class ProjectIndexStore: ObservableObject {
 
     /// Resolve a window-title filename to the real on-disk path of an indexed file, or
     /// nil (A11). Read on the main actor at `beginDictation`, then handed as a plain
-    /// `String` into the off-main miner. Returns nil for a title with no filename token
-    /// or a filename we didn't index — the caller then simply skips active-file mining.
-    func resolveIndexedFilePath(forWindowTitle title: String?) -> String? {
-        FileIdentifierMiner.resolvePath(fromWindowTitle: title, filePaths: data.filePaths)
+    /// `String` into the off-main miner. Prefers the ACTIVE root's own basename map when
+    /// one is given (A10 — so a title filename resolves to the file in *this* checkout),
+    /// falling back to the merged map when the root is unknown/unscoped. Returns nil for a
+    /// title with no filename token or a filename we didn't index — the caller then simply
+    /// skips active-file mining.
+    func resolveIndexedFilePath(forWindowTitle title: String?, root: URL? = nil) -> String? {
+        if let root, let bucket = data.roots[root.standardizedFileURL.path] {
+            if let hit = FileIdentifierMiner.resolvePath(fromWindowTitle: title, filePaths: bucket.filePaths) {
+                return hit
+            }
+        }
+        return FileIdentifierMiner.resolvePath(fromWindowTitle: title, filePaths: data.mergedFilePaths)
+    }
+
+    /// The scoped snapshot for a single resolved root (A10), or nil if that root has no
+    /// index yet. `beginDictation` uses this to scope filename snapping + repo terms to
+    /// the checkout the terminal is actually in; when it returns nil (unknown/ambiguous
+    /// root, or a brand-new root still scanning) the caller falls back to the merged
+    /// global `snapshot` — never a wrong-repo scope.
+    func snapshot(for root: URL) -> ProjectIndexSnapshot? {
+        guard let bucket = data.roots[root.standardizedFileURL.path] else { return nil }
+        return SpokenFileMatcher.buildSnapshot(files: bucket.files, symbols: bucket.symbols,
+                                               docTerms: bucket.docTerms)
     }
 
     private func rebuildSnapshot() {
-        snapshot = SpokenFileMatcher.buildSnapshot(files: data.files, symbols: data.symbols,
-                                                   docTerms: data.docTerms)
+        snapshot = SpokenFileMatcher.buildSnapshot(files: data.mergedFiles, symbols: data.mergedSymbols,
+                                                   docTerms: data.mergedDocTerms)
     }
 
     private func load() {
@@ -322,6 +456,47 @@ enum ProjectScanner {
         }
         return Result(files: files, symbols: Array(symbolSet), docTerms: docTerms,
                       filePaths: filePaths)
+    }
+
+    /// Scan several roots into SEPARATE per-root buckets (A10). Same per-root walk + git/
+    /// doc mining `scanAll` does, but each root's files/symbols/docTerms/filePaths stay in
+    /// their own `ProjectRootIndex` — no cross-root merge, so two checkouts with the same
+    /// basenames don't collide. Keyed by the root's standardized path (the same key
+    /// `data.roots` and `snapshot(for:)` use). Honors cancellation between roots. Each root
+    /// is independently capped by the same `maxFiles`/`maxDocTerms` limits as the merge.
+    static func scanPerRoot(roots: [URL]) -> [String: ProjectRootIndex] {
+        var out: [String: ProjectRootIndex] = [:]
+        for root in roots {
+            if Task.isCancelled { break }
+            let bucket = indexOne(root: root)
+            out[root.standardizedFileURL.path] = bucket
+        }
+        return out
+    }
+
+    /// Build one root's bucket: the file walk plus this root's git + doc jargon mine.
+    /// Factored out of `scanAll`'s per-root loop body so `scanPerRoot` and the merged
+    /// `scanAll` share exactly one mining path.
+    static func indexOne(root: URL) -> ProjectRootIndex {
+        let r = scan(root: root)
+        var docTerms: [String] = []
+        var docSeen = Set<String>()
+        func admitTerms(_ terms: [String]) {
+            for t in terms where docTerms.count < maxDocTerms {
+                if docSeen.insert(t.lowercased()).inserted { docTerms.append(t) }
+            }
+        }
+        if !Task.isCancelled {
+            admitTerms(RepoTermMiner.mineGit(root: root))
+            for docURL in r.docFiles.prefix(maxDocFiles) {
+                if Task.isCancelled { break }
+                if docTerms.count >= maxDocTerms { break }
+                guard let contents = readPrefix(of: docURL, maxBytes: maxDocBytes) else { continue }
+                admitTerms(RepoTermMiner.mineMarkdown(contents, maxBytes: maxDocBytes))
+            }
+        }
+        return ProjectRootIndex(files: r.files, symbols: r.symbols,
+                                docTerms: docTerms, filePaths: r.filePaths)
     }
 
     static func scan(root: URL) -> Result {
