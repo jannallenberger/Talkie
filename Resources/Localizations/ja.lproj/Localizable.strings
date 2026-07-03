@@ -563,3 +563,10 @@
 "Continue" = "続ける";
 "Start dictating" = "ディクテーションを開始";
 "Talkie is busy right now — try again in a moment." = "Talkie は現在処理中です — 少し待ってからもう一度お試しください。";
+
+// MARK: - Airplane-mode proof moment (H6)
+"Don't take our word for it — turn off Wi-Fi and dictate." = "言葉だけで信じないで — Wi-Fi を切って話してみてください。";
+"Try it offline" = "オフラインで試す";
+"Cut Wi-Fi, then speak — it still works." = "Wi-Fi を切って話しても、ちゃんと動きます。";
+"Told you. Nothing left this Mac." = "ね？ 何もこの Mac から出ていません。";
+"Your dictated words, offline" = "オフラインで話した言葉";

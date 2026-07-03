@@ -563,3 +563,10 @@
 "Continue" = "Continua";
 "Start dictating" = "Inizia a dettare";
 "Talkie is busy right now — try again in a moment." = "Talkie è occupato in questo momento — riprova tra poco.";
+
+// MARK: - Airplane-mode proof moment (H6)
+"Don't take our word for it — turn off Wi-Fi and dictate." = "Non fidarti sulla parola — spegni il Wi-Fi e detta.";
+"Try it offline" = "Provalo offline";
+"Cut Wi-Fi, then speak — it still works." = "Togli il Wi-Fi, poi parla — funziona lo stesso.";
+"Told you. Nothing left this Mac." = "Te l’avevo detto. Niente ha lasciato questo Mac.";
+"Your dictated words, offline" = "Le tue parole dettate, offline";

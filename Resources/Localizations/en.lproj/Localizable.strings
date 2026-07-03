@@ -565,3 +565,10 @@
 "Continue" = "Continue";
 "Start dictating" = "Start dictating";
 "Talkie is busy right now — try again in a moment." = "Talkie is busy right now — try again in a moment.";
+
+// MARK: - Airplane-mode proof moment (H6)
+"Don't take our word for it — turn off Wi-Fi and dictate." = "Don't take our word for it — turn off Wi-Fi and dictate.";
+"Try it offline" = "Try it offline";
+"Cut Wi-Fi, then speak — it still works." = "Cut Wi-Fi, then speak — it still works.";
+"Told you. Nothing left this Mac." = "Told you. Nothing left this Mac.";
+"Your dictated words, offline" = "Your dictated words, offline";
