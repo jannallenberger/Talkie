@@ -421,3 +421,16 @@
 "Fix the spelling of %@ for next time." = "Die Schreibweise von %@ für das nächste Mal korrigieren.";
 "Added “%@” to dictionary" = "„%@“ zum Wörterbuch hinzugefügt";
 "Already learning “%@”" = "„%@“ wird bereits gelernt";
+
+/* K8 — Improve Talkie: one-click redacted bug bundle */
+"Improve Talkie" = "Talkie verbessern";
+"Builds a diagnostic bundle — version, this Mac's setup, your settings, and a redacted tail of the debug log — so a bug report has what it needs. You see the whole thing before anything is copied, and your name, dictionary, history, and dictated words are never included." = "Erstellt ein Diagnosepaket – Version, die Konfiguration dieses Macs, deine Einstellungen und einen geschwärzten Ausschnitt des Debug-Protokolls –, damit ein Fehlerbericht alles Nötige enthält. Du siehst das Ganze, bevor etwas kopiert wird, und dein Name, Wörterbuch, Verlauf und deine diktierten Wörter werden nie mitgeschickt.";
+"Diagnostic bundle" = "Diagnosepaket";
+"Review it in full, then copy — nothing is copied until you do" = "Vollständig prüfen, dann kopieren – bis dahin wird nichts kopiert";
+"Review…" = "Prüfen …";
+"Report a bug" = "Fehler melden";
+"Opens Talkie's GitHub in your browser to file an issue" = "Öffnet Talkies GitHub im Browser, um ein Issue anzulegen";
+"Open GitHub" = "GitHub öffnen";
+"This is exactly what will be copied — read it first. Nothing has been copied yet." = "Genau das wird kopiert – lies es zuerst. Es wurde noch nichts kopiert.";
+"Close" = "Schließen";
+"Copy" = "Kopieren";

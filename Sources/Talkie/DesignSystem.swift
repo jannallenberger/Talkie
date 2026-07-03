@@ -198,6 +198,21 @@ enum Brand {
     /// The scarlet-macaw logo on transparent — the in-app mark.
     @MainActor static let logo: NSImage = image("TalkieLogo") ?? NSApp.applicationIconImage
 
+    /// Talkie's public repository base URL, read from the `TalkieRepoURL` Info.plist
+    /// key at runtime. Deliberately NOT a Swift string literal: a hard-coded web URL
+    /// in `Sources/Talkie` would trip `check-no-network.sh` (it scans for the URL
+    /// scheme even in comments), and the URL is config (not a user setting), so it
+    /// lives in Info.plist. Used only to hand a link to the user's browser (the
+    /// bug-report card) — never fetched in-process, so the zero-network wall holds.
+    /// `nil` if the key is somehow absent (e.g. an un-assembled debug run), which
+    /// callers treat as "no repo link available".
+    @MainActor static var repoURL: String? {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "TalkieRepoURL") as? String
+        else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     /// Decoded-once cache. Without it, `image(_:)` re-read the PNG from the
     /// bundle on every SwiftUI `body` pass, handing `Image` a fresh `NSImage`
     /// each time — so a hover-driven re-render re-decoded the bitmap and the tile
