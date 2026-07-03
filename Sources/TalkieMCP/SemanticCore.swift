@@ -41,6 +41,99 @@ struct LoadedEmbedding: @unchecked Sendable {
     let embedding: NLEmbedding
 }
 
+/// Deterministic, pure transcript chunker (L13-b). Splits a record's text into
+/// windows of ≤`maxChunkChars` on sentence/paragraph boundaries so a long meeting
+/// becomes fully searchable instead of invisible past the first `maxIndexedChars`.
+///
+/// MIRROR: Sources/Talkie/Search/SemanticIndex.swift (`TranscriptChunker`)
+///
+/// This is a byte-identical copy of the app's chunker: the sidecar vectors are keyed
+/// by `contentHash(chunkText)`, so if this split differed from the app's by a single
+/// character the two binaries would compute different hashes and stop sharing
+/// vectors. Every branch here must match the app's `TranscriptChunker` exactly — if
+/// you change one, change BOTH (grep `MIRROR:` / `TranscriptChunker`).
+///
+/// Guarantees (load-bearing):
+///   • **Byte-exact reconstruction:** concatenating all returned chunks reproduces
+///     `String(text.prefix(maxChunkChars * maxChunks))` exactly. This makes a SHORT
+///     record's single chunk byte-identical to the record's old bounded text, so its
+///     content hash (hence its shared sidecar vector) is unchanged.
+///   • **Single chunk for short records:** any text of ≤`maxChunkChars` UTF-16
+///     length returns exactly `[text]`.
+///   • **No overlap; bounded fan-out** (≤`maxChunks` chunks per record).
+enum TranscriptChunker {
+    /// MIRROR: Sources/Talkie/Search/SemanticIndex.swift (`maxChunkChars`)
+    static let maxChunkChars = 900
+    /// MIRROR: Sources/Talkie/Search/SemanticIndex.swift (`maxChunks`)
+    static let maxChunks = 80
+
+    /// Split `text` into ≤`maxChunkChars` windows on sentence/paragraph boundaries,
+    /// no overlap, at most `maxChunks` chunks. Pure and deterministic.
+    ///
+    /// MIRROR: Sources/Talkie/Search/SemanticIndex.swift (`TranscriptChunker.chunks`)
+    static func chunks(for text: String,
+                       maxChunkChars: Int = TranscriptChunker.maxChunkChars,
+                       maxChunks: Int = TranscriptChunker.maxChunks) -> [String] {
+        let scalars = text.unicodeScalars
+        guard !scalars.isEmpty else { return [] }
+        if scalars.count <= maxChunkChars { return [text] }
+
+        func isTerminator(_ s: Unicode.Scalar) -> Bool {
+            s == "." || s == "!" || s == "?" || s == "\n"
+        }
+
+        var segments: [Range<String.UnicodeScalarIndex>] = []
+        var segStart = scalars.startIndex
+        var i = scalars.startIndex
+        while i < scalars.endIndex {
+            if isTerminator(scalars[i]) {
+                var j = scalars.index(after: i)
+                while j < scalars.endIndex && isTerminator(scalars[j]) {
+                    j = scalars.index(after: j)
+                }
+                segments.append(segStart..<j)
+                segStart = j
+                i = j
+            } else {
+                i = scalars.index(after: i)
+            }
+        }
+        if segStart < scalars.endIndex { segments.append(segStart..<scalars.endIndex) }
+
+        var chunks: [String] = []
+        var windowStart = scalars.startIndex
+        var windowLen = 0
+        func closeWindow(_ end: String.UnicodeScalarIndex) {
+            if windowStart < end { chunks.append(String(scalars[windowStart..<end])) }
+        }
+        for seg in segments {
+            if chunks.count >= maxChunks { break }
+            var segLen = scalars.distance(from: seg.lowerBound, to: seg.upperBound)
+            if segLen > maxChunkChars {
+                if windowLen > 0 { closeWindow(seg.lowerBound); windowStart = seg.lowerBound; windowLen = 0 }
+                var cut = seg.lowerBound
+                while segLen > maxChunkChars && chunks.count < maxChunks {
+                    let next = scalars.index(cut, offsetBy: maxChunkChars)
+                    chunks.append(String(scalars[cut..<next]))
+                    cut = next
+                    segLen -= maxChunkChars
+                }
+                windowStart = cut
+                windowLen = scalars.distance(from: cut, to: seg.upperBound)
+                continue
+            }
+            if windowLen > 0 && windowLen + segLen > maxChunkChars {
+                closeWindow(seg.lowerBound)
+                windowStart = seg.lowerBound
+                windowLen = 0
+            }
+            windowLen += segLen
+        }
+        if chunks.count < maxChunks { closeWindow(scalars.endIndex) }
+        return chunks
+    }
+}
+
 /// On-device sentence embeddings via Apple NaturalLanguage — no network, no
 /// dependency. Returns `nil` when the model is unavailable, so callers degrade to
 /// keyword-only search (the acceptance criterion: embeddings unavailable ==
@@ -116,11 +209,18 @@ struct SemanticIndex: Sendable {
     /// MIRROR: Sources/Talkie/Search/SemanticIndex.swift (`maxIndexedChars`)
     static let maxIndexedChars = 2000
 
+    /// One indexed chunk (L13-b): a slice of a record's text, its embedding, tokens,
+    /// and lowercased haystack, plus a backref to the owning record. A short record
+    /// yields exactly one chunk equal to its whole text, so its scoring inputs
+    /// (vector/tokens/haystack) are byte-identical to the pre-L13-b whole-record
+    /// entry — MCP `search` output for a short record is unchanged.
     private struct Entry: Sendable {
         let record: SemanticRecord
+        /// The chunk's own text — the snippet source for a winning chunk.
+        let chunkText: String
         let vector: [Double]?
         let tokens: Set<String>
-        /// The bounded, lowercased text used for an exact-substring floor (§ below).
+        /// The chunk's lowercased text, for the exact-substring floor (§ below).
         let haystack: String
     }
 
@@ -138,13 +238,22 @@ struct SemanticIndex: Sendable {
         // for query time. Built from value-type records + precomputed vectors/tokens.
         let loaded = Embedder.loaded()
         embedding = loaded
-        entries = records.map { record in
-            let bounded = String(record.text.prefix(SemanticIndex.maxIndexedChars))
-            return Entry(record: record,
-                         vector: Embedder.vector(for: bounded, embedding: loaded?.embedding),
-                         tokens: SemanticIndex.tokenize(bounded),
-                         haystack: bounded.lowercased())
+        var built: [Entry] = []
+        built.reserveCapacity(records.count)
+        for record in records {
+            // L13-b: index CHUNKS, not the whole-record prefix — a phrase past the old
+            // 2000-char bound is now embedded and findable. A short record yields one
+            // chunk == its whole text (identical hash/vector/tokens/haystack as
+            // before), so short-record results are unchanged. MIRROR of the app's init.
+            for chunk in TranscriptChunker.chunks(for: record.text) {
+                built.append(Entry(record: record,
+                                   chunkText: chunk,
+                                   vector: Embedder.vector(for: chunk, embedding: loaded?.embedding),
+                                   tokens: SemanticIndex.tokenize(chunk),
+                                   haystack: chunk.lowercased()))
+            }
         }
+        entries = built
     }
 
     func search(_ query: String, limit: Int = 20) -> [SemanticHit] {
@@ -154,7 +263,13 @@ struct SemanticIndex: Sendable {
         let queryTokens = SemanticIndex.tokenize(q)
         let queryLower = q.lowercased()
 
-        let hits = entries.compactMap { entry -> SemanticHit? in
+        // Score every chunk, then dedupe per record keeping the best-scoring chunk
+        // (L13-b): the winning chunk supplies the snippet, and a record surfaces once.
+        // Keyed by `line` (the record's stable identity in this mirror). A short
+        // record (one chunk == whole text) collapses to exactly the pre-L13-b hit.
+        var best: [String: SemanticHit] = [:]
+        best.reserveCapacity(entries.count)
+        for entry in entries {
             let semantic = (queryVector != nil && entry.vector != nil)
                 ? SemanticIndex.cosine(queryVector!, entry.vector!) : 0
             let keyword = SemanticIndex.keywordScore(queryTokens, entry.tokens)
@@ -194,19 +309,24 @@ struct SemanticIndex: Sendable {
                 // and any lexical hit always outranks every semantic-only hit above.
                 // A margin/rank-relative filter is a deliberate later refinement, not
                 // an MCP-search concern (kept in scope: mirror the app's scoring).
-                guard semantic >= SemanticIndex.minSemantic else { return nil }
+                guard semantic >= SemanticIndex.minSemantic else { continue }
                 score = 0.7 * semantic
             }
 
-            return SemanticHit(line: entry.record.line,
-                               snippet: SemanticIndex.snippet(entry.record.text),
-                               score: score,
-                               sourceRank: entry.record.sourceRank)
+            // Per-record dedupe: keep the highest-scoring chunk. Ties keep the earlier
+            // chunk (document order), so the winner is deterministic.
+            if let existing = best[entry.record.line], existing.score >= score { continue }
+            best[entry.record.line] = SemanticHit(line: entry.record.line,
+                                                  snippet: SemanticIndex.snippet(entry.chunkText),
+                                                  score: score,
+                                                  sourceRank: entry.record.sourceRank)
         }
         // Rank by score; break ties by today's fixed per-source rank (entities 3 >
-        // meetings 2 > dictations 1) so equal-score ordering matches pre-change.
-        return Array(hits.sorted {
-            $0.score != $1.score ? $0.score > $1.score : $0.sourceRank > $1.sourceRank
+        // meetings 2 > dictations 1), then by line so equal-rank ties are stable.
+        return Array(best.values.sorted {
+            if $0.score != $1.score { return $0.score > $1.score }
+            if $0.sourceRank != $1.sourceRank { return $0.sourceRank > $1.sourceRank }
+            return $0.line < $1.line
         }.prefix(limit))
     }
 

@@ -29,6 +29,122 @@ struct LoadedEmbedding: @unchecked Sendable {
     let embedding: NLEmbedding
 }
 
+/// Deterministic, pure transcript chunker (L13-b). Splits a record's text into
+/// windows of ≤`maxChunkChars` on sentence/paragraph boundaries so a long meeting
+/// becomes fully searchable instead of invisible past the first `maxIndexedChars`.
+///
+/// MIRROR: Sources/TalkieMCP/SemanticCore.swift (`TranscriptChunker`)
+///
+/// Guarantees (load-bearing — the tests and the L13-a sidecar depend on them):
+///   • **Byte-exact reconstruction:** concatenating all returned chunks reproduces
+///     `String(text.prefix(SemanticIndex.maxIndexedChars * maxChunks))` exactly (no
+///     dropped/added characters — delimiters and whitespace are kept with their
+///     sentence). This is what makes a SHORT record's single chunk byte-identical to
+///     the record's old bounded text, so its content hash (hence its persisted
+///     sidecar vector AND its search result) is unchanged.
+///   • **Single chunk for short records:** any text of ≤`maxChunkChars` UTF-16
+///     length returns exactly `[text]` (one chunk == the whole text) — the
+///     result-identity requirement for short dictations.
+///   • **No overlap:** windows are strictly consecutive, non-overlapping slices.
+///   • **Bounded fan-out:** at most `maxChunks` chunks per record; text beyond the
+///     `maxChunks × maxChunkChars` reach is dropped (a meeting that long is already
+///     far past any realistic transcript, and the cap keeps the derived sidecar
+///     bounded — plan-19 §6).
+///
+/// Splitting is on the sentence/paragraph terminators `.`, `!`, `?`, and `\n`: the
+/// text is cut into segments AFTER each maximal run of terminators (so "a. b! c"
+/// → "a.", " b!", " c"), then consecutive segments are packed greedily into windows
+/// of ≤`maxChunkChars`. A single segment longer than `maxChunkChars` (no terminator
+/// for a very long stretch) is hard-split on the character boundary so the cap
+/// always holds. All operations are on `String.UnicodeScalarView` indices, so the
+/// concatenation identity is exact.
+enum TranscriptChunker {
+    /// Max characters (Unicode scalars) per chunk. ≤900 keeps each window well inside
+    /// the sentence model's useful range while staying a meaningful passage.
+    static let maxChunkChars = 900
+    /// Per-record cap on the number of chunks. Bounds the derived sidecar and the
+    /// per-record embed cost; a transcript longer than `maxChunks × maxChunkChars`
+    /// (~72k chars) is truncated to this many chunks.
+    static let maxChunks = 80
+
+    /// Split `text` into ≤`maxChunkChars` windows on sentence/paragraph boundaries,
+    /// no overlap, at most `maxChunks` chunks. Pure and deterministic.
+    static func chunks(for text: String,
+                       maxChunkChars: Int = TranscriptChunker.maxChunkChars,
+                       maxChunks: Int = TranscriptChunker.maxChunks) -> [String] {
+        let scalars = text.unicodeScalars
+        guard !scalars.isEmpty else { return [] }
+        // Fast path + identity guarantee: a short record is exactly one chunk equal
+        // to the whole text, so its hash/vector/snippet are byte-identical to pre-L13-b.
+        if scalars.count <= maxChunkChars { return [text] }
+
+        // Terminators that end a sentence/paragraph. We cut AFTER a maximal run of
+        // these, keeping the run attached to the preceding segment, so concatenating
+        // the segments reproduces the input verbatim.
+        func isTerminator(_ s: Unicode.Scalar) -> Bool {
+            s == "." || s == "!" || s == "?" || s == "\n"
+        }
+
+        // 1) Segment: walk scalars, closing a segment at the end of each terminator run.
+        var segments: [Range<String.UnicodeScalarIndex>] = []
+        var segStart = scalars.startIndex
+        var i = scalars.startIndex
+        while i < scalars.endIndex {
+            if isTerminator(scalars[i]) {
+                // Extend across the whole terminator run ("...", "?!", "\n\n").
+                var j = scalars.index(after: i)
+                while j < scalars.endIndex && isTerminator(scalars[j]) {
+                    j = scalars.index(after: j)
+                }
+                segments.append(segStart..<j)
+                segStart = j
+                i = j
+            } else {
+                i = scalars.index(after: i)
+            }
+        }
+        if segStart < scalars.endIndex { segments.append(segStart..<scalars.endIndex) }
+
+        // 2) Pack consecutive segments greedily into ≤maxChunkChars windows. A segment
+        //    longer than a window on its own is hard-split on the scalar boundary.
+        var chunks: [String] = []
+        var windowStart = scalars.startIndex
+        var windowLen = 0
+        func closeWindow(_ end: String.UnicodeScalarIndex) {
+            if windowStart < end { chunks.append(String(scalars[windowStart..<end])) }
+        }
+        for seg in segments {
+            if chunks.count >= maxChunks { break }
+            var segLen = scalars.distance(from: seg.lowerBound, to: seg.upperBound)
+            // Oversized single segment: flush the current window, then emit hard
+            // ≤maxChunkChars slices of the segment until it fits.
+            if segLen > maxChunkChars {
+                if windowLen > 0 { closeWindow(seg.lowerBound); windowStart = seg.lowerBound; windowLen = 0 }
+                var cut = seg.lowerBound
+                while segLen > maxChunkChars && chunks.count < maxChunks {
+                    let next = scalars.index(cut, offsetBy: maxChunkChars)
+                    chunks.append(String(scalars[cut..<next]))
+                    cut = next
+                    segLen -= maxChunkChars
+                }
+                // The remainder (< maxChunkChars) starts a fresh window.
+                windowStart = cut
+                windowLen = scalars.distance(from: cut, to: seg.upperBound)
+                continue
+            }
+            // Would this segment overflow the current window? Close it first (no overlap).
+            if windowLen > 0 && windowLen + segLen > maxChunkChars {
+                closeWindow(seg.lowerBound)
+                windowStart = seg.lowerBound
+                windowLen = 0
+            }
+            windowLen += segLen
+        }
+        if chunks.count < maxChunks { closeWindow(scalars.endIndex) }
+        return chunks
+    }
+}
+
 /// On-device sentence embeddings via Apple NaturalLanguage — no network, no
 /// dependency. Returns `nil` when the model is unavailable, so callers degrade to
 /// keyword-only search.
@@ -73,8 +189,14 @@ struct SemanticIndex: Sendable {
     /// dictation; only very long meeting transcripts are truncated.
     static let maxIndexedChars = 2000
 
+    /// One indexed chunk: a slice of a record's text (L13-b), its embedding, its
+    /// tokens, and a backref to the owning record + the record's `dateUnix`. A short
+    /// record produces exactly one chunk whose text is the whole record text, so its
+    /// hash/vector/tokens/snippet are byte-identical to the pre-L13-b whole-record
+    /// entry — result-identity for short records is structural, not incidental.
     private struct Entry: Sendable {
-        let record: SearchRecord
+        let record: SearchRecord      // backref: id + kind + dateUnix (+ full text for nothing now)
+        let chunkText: String         // the winning-chunk snippet source
         let vector: [Double]?
         let tokens: Set<String>
     }
@@ -109,18 +231,30 @@ struct SemanticIndex: Sendable {
         embedding = loaded
         var merged: [String: [Double]] = [:]
         merged.reserveCapacity(records.count)
-        entries = records.map { record in
-            let bounded = String(record.text.prefix(SemanticIndex.maxIndexedChars))
-            // Reuse the cached vector when the bounded text hasn't changed; otherwise
-            // embed. The reuse key is the sidecar's stable content hash of the SAME
-            // bounded slice we would embed, so a hit is exactly the vector a fresh
-            // embed would produce — reuse never changes a search result.
-            let hash = VectorSidecar.contentHash(bounded)
-            let vector = reuse[hash] ?? Embedder.vector(for: bounded, embedding: loaded?.embedding)
-            if let vector { merged[hash] = vector }
-            return Entry(record: record, vector: vector,
-                         tokens: SemanticIndex.tokenize(bounded))
+        var built: [Entry] = []
+        built.reserveCapacity(records.count)
+        for record in records {
+            // L13-b: index CHUNKS, not the whole-record prefix. A short record yields
+            // one chunk equal to its whole text (so its hash == the L13-a
+            // `contentHash(prefix(maxIndexedChars))` key and its persisted vector is
+            // reused verbatim — result-identity for short records). A long record
+            // yields up to `maxChunks` non-overlapping ≤`maxChunkChars` windows, so a
+            // phrase past the old 2000-char bound is now embedded and findable.
+            for chunk in TranscriptChunker.chunks(for: record.text) {
+                // Reuse the cached vector when this chunk's text hasn't changed;
+                // otherwise embed it now. The reuse key is the sidecar's stable
+                // content hash of the SAME text we embed, so a hit is exactly the
+                // vector a fresh embed would produce — reuse never changes a result.
+                // Chunk text is hashed identically in the MCP mirror, so the app and
+                // the MCP binary SHARE these vectors on disk.
+                let hash = VectorSidecar.contentHash(chunk)
+                let vector = reuse[hash] ?? Embedder.vector(for: chunk, embedding: loaded?.embedding)
+                if let vector { merged[hash] = vector }
+                built.append(Entry(record: record, chunkText: chunk, vector: vector,
+                                   tokens: SemanticIndex.tokenize(chunk)))
+            }
         }
+        entries = built
         vectorsByHash = merged
     }
 
@@ -130,19 +264,33 @@ struct SemanticIndex: Sendable {
         let queryVector = Embedder.vector(for: q, embedding: embedding?.embedding)
         let queryTokens = SemanticIndex.tokenize(q)
 
-        let hits = entries.compactMap { entry -> SearchHit? in
+        // Score every chunk, then dedupe per record keeping the best-scoring chunk
+        // (L13-b). The snippet is drawn from that winning chunk, so a long-meeting hit
+        // shows the passage that actually matched — and a short record (one chunk ==
+        // whole text) collapses to exactly the pre-L13-b hit (same id, same score,
+        // same snippet). Deterministic tie-break: a strictly-greater score wins; an
+        // equal score keeps the earlier chunk (document order), so ties are stable.
+        var best: [String: SearchHit] = [:]
+        best.reserveCapacity(entries.count)
+        for entry in entries {
             let semantic = (queryVector != nil && entry.vector != nil)
                 ? SemanticIndex.cosine(queryVector!, entry.vector!) : 0
             let keyword = SemanticIndex.keywordScore(queryTokens, entry.tokens)
             let score = SemanticIndex.blendedScore(semantic: semantic, keyword: keyword)
-            guard score > 0 else { return nil }
-            return SearchHit(id: entry.record.id,
-                             snippet: SemanticIndex.snippet(entry.record.text),
-                             kind: entry.record.kind,
-                             dateUnix: entry.record.dateUnix,
-                             score: score)
+            guard score > 0 else { continue }
+            if let existing = best[entry.record.id], existing.score >= score { continue }
+            best[entry.record.id] = SearchHit(id: entry.record.id,
+                                              snippet: SemanticIndex.snippet(entry.chunkText),
+                                              kind: entry.record.kind,
+                                              dateUnix: entry.record.dateUnix,
+                                              score: score)
         }
-        return Array(hits.sorted { $0.score > $1.score }.prefix(limit))
+        // Stable order: by score desc, then record id asc so equal-score hits have a
+        // deterministic order regardless of dictionary iteration.
+        let hits = best.values.sorted {
+            $0.score != $1.score ? $0.score > $1.score : $0.id < $1.id
+        }
+        return Array(hits.prefix(limit))
     }
 
     // MARK: Scoring helpers (pure)
