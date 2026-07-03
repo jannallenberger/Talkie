@@ -93,6 +93,58 @@ enum SemanticSelfTest {
         check("partition: dictation-only + no-provenance land in dictation bucket",
               parts.dictationOnly.map(\.displayName) == ["let me check the logs", "we need to ship"])
 
+        // --- L13-b: transcript chunking (pure, mostly no model) ------------------
+
+        // Chunk determinism: same text chunks identically.
+        let longText = String(repeating: "The team reviewed the roadmap and the risks. ", count: 200)
+        check("chunk determinism",
+              TranscriptChunker.chunks(for: longText) == TranscriptChunker.chunks(for: longText))
+
+        // Byte-exact reconstruction (the hash-reuse / short-record identity foundation):
+        // chunks concatenate back to the input (bounded by maxChunks × maxChunkChars).
+        let reach = TranscriptChunker.maxChunkChars * TranscriptChunker.maxChunks
+        let reconExpected = String(longText.unicodeScalars.prefix(reach).map(Character.init))
+        check("chunk reconstruction is byte-exact",
+              TranscriptChunker.chunks(for: longText).joined() == reconExpected)
+
+        // Short-record single-chunk identity: a short text is one chunk == whole text,
+        // so its scoring inputs are byte-identical to the pre-L13-b whole-record entry.
+        check("short record is a single whole-text chunk",
+              TranscriptChunker.chunks(for: "remember to buy oat milk and coffee")
+                == ["remember to buy oat milk and coffee"])
+
+        // Every chunk is within the cap.
+        check("chunks respect the character cap",
+              TranscriptChunker.chunks(for: longText).allSatisfy { $0.unicodeScalars.count <= TranscriptChunker.maxChunkChars })
+
+        // Per-record dedupe + long-text recall through the index. Build a record with a
+        // needle FAR past the old 2000-char bound and a term that repeats across chunks.
+        let filler = String(repeating: "The team discussed logistics and timelines. ", count: 60) // >2000 chars
+        let recallText = filler + "The launch retro is scheduled for Friday in the annex."
+        let dedupeText = String(repeating: "The budget was reviewed carefully here. ", count: 90) // many "budget" chunks
+        let chunkRecords = [
+            SemanticRecord(line: "meeting [11111111] Long Sync — 2026-07-01", text: recallText, sourceRank: 2),
+            SemanticRecord(line: "meeting [22222222] Budget Review — 2026-07-01", text: dedupeText, sourceRank: 2),
+        ]
+        let chunkIndex = SemanticIndex(records: chunkRecords)
+
+        // Long-text recall: "launch retro annex" only matches the needle, which lives
+        // past char 2000 — a hit proves the tail was indexed (keyword floor, no model).
+        let recallHits = chunkIndex.search("launch retro annex", limit: 10)
+        check("phrase past 2000 chars is findable (chunking)",
+              recallHits.contains { $0.line.contains("Long Sync") })
+        // The snippet is drawn from the winning (tail) chunk, so it carries the needle.
+        check("snippet is the matching passage, not the record head",
+              recallHits.first { $0.line.contains("Long Sync") }?.snippet.contains("launch retro") == true)
+
+        // Per-record dedupe: the budget record repeats "budget" across many chunks but
+        // must surface exactly once.
+        let dedupeHits = chunkIndex.search("budget", limit: 10)
+        check("per-record dedupe: multi-chunk record appears once",
+              dedupeHits.filter { $0.line.contains("Budget Review") }.count == 1)
+        check("no line appears twice in results",
+              Set(dedupeHits.map(\.line)).count == dedupeHits.count)
+
         // Criterion 1 (needs the model): a paraphrase with no shared ≥3-char token
         // still surfaces the meeting. Skip honestly if the model is unavailable.
         if index.isSemantic {
