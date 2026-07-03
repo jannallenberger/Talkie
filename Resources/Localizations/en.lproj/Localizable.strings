@@ -339,6 +339,8 @@
 "Share the proof" = "Share the proof";
 "Copy proof card" = "Copy proof card";
 "A shareable receipt that nothing leaves this Mac." = "A shareable receipt that nothing leaves this Mac.";
+"Copy diagnostic report" = "Copy diagnostic report";
+"A pasteable markdown receipt you can drop into a GitHub issue." = "A pasteable markdown receipt you can drop into a GitHub issue.";
 "Open network sockets right now:" = "Open network sockets right now:";
 "Couldn’t read this process’s sockets on this build." = "Couldn’t read this process’s sockets on this build.";
 "An internet socket is open — that’s unexpected for the on-device core." = "An internet socket is open — that’s unexpected for the on-device core.";

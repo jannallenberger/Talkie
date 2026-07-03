@@ -339,6 +339,8 @@
 "Share the proof" = "Partager la preuve";
 "Copy proof card" = "Copier la carte de preuve";
 "A shareable receipt that nothing leaves this Mac." = "Un reçu partageable prouvant que rien ne quitte ce Mac.";
+"Copy diagnostic report" = "Copier le rapport de diagnostic";
+"A pasteable markdown receipt you can drop into a GitHub issue." = "Un reçu markdown à coller dans une issue GitHub.";
 "Open network sockets right now:" = "Sockets réseau ouverts en ce moment :";
 "Couldn’t read this process’s sockets on this build." = "Impossible de lire les sockets de ce processus sur cette version.";
 "An internet socket is open — that’s unexpected for the on-device core." = "Un socket internet est ouvert — c’est inattendu pour le cœur sur l’appareil.";

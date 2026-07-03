@@ -339,6 +339,8 @@
 "Share the proof" = "Deel het bewijs";
 "Copy proof card" = "Bewijskaart kopiëren";
 "A shareable receipt that nothing leaves this Mac." = "Een deelbaar bewijs dat niets deze Mac verlaat.";
+"Copy diagnostic report" = "Diagnoserapport kopiëren";
+"A pasteable markdown receipt you can drop into a GitHub issue." = "Een plakbaar markdown-bewijs dat je in een GitHub-issue kunt zetten.";
 "Open network sockets right now:" = "Open netwerksockets op dit moment:";
 "Couldn’t read this process’s sockets on this build." = "Kon de sockets van dit proces niet lezen in deze build.";
 "An internet socket is open — that’s unexpected for the on-device core." = "Er staat een internetsocket open — dat is onverwacht voor de on-device kern.";
