@@ -38,7 +38,11 @@ final class AppProfileStore: ObservableObject {
             appAdaptiveCleanup: settings.appAdaptiveCleanup,
             cleanupStyle: p?.cleanupStyle ?? categoryStyle,
             cleanupLevel: p?.cleanupLevel ?? settings.cleanupLevel,
-            insertionMode: p?.insertionMode ?? settings.insertionMode,
+            // Paste is the universal default now that the global "Insert text by"
+            // control is gone (B2). An app only ever resolves to `.type` when it has a
+            // per-app override — set by the user, or learned automatically the first
+            // time a paste verifiably failed to land there.
+            insertionMode: p?.insertionMode ?? .paste,
             autoCapitalize: p?.autoCapitalize ?? settings.autoCapitalize,
             removeFillers: p?.removeFillers ?? settings.cleanupFillers,
             bundleID: app.bundleID,

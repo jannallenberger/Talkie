@@ -1326,6 +1326,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Feedback.done()
                 self.hud.showInserting(replacedWords: replacedWords)
                 self.hud.hide(after: replacedWords.isEmpty ? 0.4 : 1.4)
+                // Self-healing insertion (B2): a paste that returned `.inserted` did so
+                // optimistically — the ⌘V may never have landed (some apps swallow it).
+                // When the resolved mode was paste, ask the verifier whether our text
+                // actually made it into the focused field; if it verifiably did NOT,
+                // silently re-insert by typing and remember `.type` for this app so it
+                // fails at most once. The HUD stays on `.inserting` throughout — the
+                // healing is invisible. Guard rails (never fire when the caret is no
+                // longer trustworthy or a retry can't help): only for a plain paste
+                // (`mode == .paste`, so `.type` sessions are out), never after the
+                // optimistic replace-backward swap, and only when we know which app to
+                // remember the fix for (`target.bundleID != nil`). One retry max — this
+                // is a straight-line path, no loop. `.leftOnClipboard`/`.empty` never
+                // reach here. Verification runs to completion BEFORE the learn-watcher
+                // below starts, so the two never poll Accessibility concurrently.
+                if mode == .paste, optimistic == nil, let healBundleID = target.bundleID {
+                    // Privacy: the verifier reads the focused field's value via
+                    // Accessibility ONLY to check whether the exact text Talkie just
+                    // inserted is present. It compares against our own `finalText` and
+                    // never stores or forwards what it read.
+                    let verdict = await InsertionVerifier.verify(inserted: finalText)
+                    if verdict == .notLanded {
+                        talkieDebugLog("heal: paste did not land in \(target.name) — retrying by typing, learning .type")
+                        // Fire-and-forget type retry (its per-character loop runs off
+                        // the main actor inside TextInjector); verifying the retry is
+                        // out of scope — the goal is to get the text in, then remember.
+                        _ = TextInjector.insert(finalText, mode: .type)
+                        // Persist the learned winner: read-modify-write the app's
+                        // existing sheet so unrelated overrides (cleanup, vocabulary…)
+                        // are preserved; refresh the display name while we're here.
+                        var learned = self.profiles.profile(for: healBundleID)
+                            ?? AppProfile(bundleID: healBundleID, displayName: target.name)
+                        learned.displayName = target.name
+                        learned.insertionMode = .type
+                        self.profiles.upsert(learned)
+                    }
+                }
                 // Watch the field for the next few seconds: the instant the user
                 // fixes a word Talkie misrecognized, add it to the dictionary and
                 // ping them with an Undo (WhisperFlow-style live learning).
@@ -1464,7 +1500,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hud.showError("No transcript to paste yet.")
             return
         }
-        switch TextInjector.insert(text, mode: settings.insertionMode) {
+        // Resolve the FRONTMOST app's insertion mode (the global picker is gone as of
+        // B2). `minePhrases: false` — we only need the target's bundle id/category to
+        // honor a learned/user-set per-app rule, not the costlier context mining.
+        let target = ContextCapture.capture(selfBundleID: AppPaths.bundleIdentifier, minePhrases: false).target
+        let mode = profiles.resolve(for: target, settings: settings).insertionMode
+        switch TextInjector.insert(text, mode: mode) {
         case .inserted:
             Feedback.done()
             hud.showInserting(replacedWords: [])

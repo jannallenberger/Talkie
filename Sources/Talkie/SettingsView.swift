@@ -884,20 +884,16 @@ private struct ActivationSettings: View {
                 }
             }
             SettingsCard(header: "Insertion") {
-                SettingsRow(title: "Insert text by") {
-                    Picker("", selection: $settings.insertionMode) {
-                        ForEach(InsertionMode.allCases) { Text($0.displayName).tag($0) }
-                    }
-                    .labelsHidden().fixedSize()
-                }
-                if settings.insertionMode == .paste {
-                    SettingsDivider()
-                    SettingsToggleRow(
-                        title: "Insert instantly, polish in place",
-                        subtitle: "Experimental — pastes your raw words the moment you stop, then swaps in the cleaned version. May misfire if you keep typing right after.",
-                        isOn: $settings.optimisticInsertion
-                    )
-                }
+                // Talkie always pastes (fast) and silently retries with per-character
+                // typing when a paste verifiably doesn't land, remembering the winner
+                // per app — so there's no global Paste/Type control to pick. The only
+                // insertion knob is optimistic insertion below (paste is the universal
+                // default); an app that needs typing is set in Settings ▸ per-app rules.
+                SettingsToggleRow(
+                    title: "Insert instantly, polish in place",
+                    subtitle: "Experimental — pastes your raw words the moment you stop, then swaps in the cleaned version. May misfire if you keep typing right after.",
+                    isOn: $settings.optimisticInsertion
+                )
                 SettingsDivider()
                 SettingsToggleRow(
                     title: "Let commands target your last dictation",
