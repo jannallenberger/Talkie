@@ -591,3 +591,11 @@
 "Talkie will start at login." = "Talkie 将在登录时启动。";
 "Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "已连续三天听写。执行“启用”即可让 Talkie 在登录时启动，快捷键随时可用。";
 "Enable" = "启用";
+
+// MARK: - Keep-for-app cleanup style chip (H3)
+"Keep %@ for %@?" = "为 %@ 保留“%@”？";
+"Keep the %@ cleanup style as the default for %@?" = "将清理风格“%@”设为 %@ 的默认值？";
+"Keep the %@ cleanup style for %@? Activate Keep to make it this app's default." = "为 %@ 使用清理风格“%@”？点按“保留”即可将其设为此应用的默认值。";
+"Makes this cleanup style the default for this app." = "将此清理风格设为此应用的默认值。";
+"%@ will use %@ from now on." = "从现在起，%@ 将使用“%@”。";
+"Keep" = "保留";

@@ -187,6 +187,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// session begins; `.off` means "insert verbatim". This is the whole cleanup
     /// config now — style is Talkie's only cleanup model.
     private var sessionCleanup: CleanupStyle?
+    /// H3 — a style the user picked via the in-pill switcher DURING this dictation,
+    /// scoped to just this dictation (the switcher's tooltip promise). `nil` unless
+    /// they cycled it this session. When set, it (a) is mirrored into the in-flight
+    /// `sessionCleanup` + re-prewarmed so the stop-time pass actually uses it, and
+    /// (b) drives the post-insert "Keep for {App}?" chip — the ONLY thing that makes
+    /// the change persist. Cleared on every teardown path so it never leaks into the
+    /// next session, and NEVER written to `appCleanupStyles` on cycle.
+    private var sessionStyleOverride: CleanupStyle?
     /// The per-app rules resolved for the target app at the START of the session
     /// (global → per-category → per-app merge). Snapshotted once so a mid-session
     /// profile edit can't skew the in-flight session; `Sendable`, so it can ride
@@ -331,25 +339,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The Brief renders as a projection of the context graph.
         contextSummary.graphProvider = { [weak self] in self?.contextGraph.snapshot() ?? .empty }
 
-        // HUD cleanup-style switcher (feature 14): show + cycle the active *style*
-        // in-pill. The label reflects the style actually resolved for the in-flight
-        // session (per-app override or category style), so it matches what gets used
-        // at stop. Cycling advances the session category's style through every case
-        // and persists it (session-scoped switching is H3). When no session is live
-        // (rare — the switcher is a capture-phase control) fall back to the "other"
-        // category so the label is never empty.
+        // HUD cleanup-style switcher (feature 14 + H3): show + cycle the active
+        // *style* in-pill. The label reflects the style that will ACTUALLY be used at
+        // stop — the session-scoped override if the user cycled it this dictation,
+        // else the in-flight snapshot, else the resolved default — so the pill never
+        // lies. Cycling is SESSION-SCOPED (H3): it changes only THIS dictation, exactly
+        // as the switcher's tooltip promises. It sets `sessionStyleOverride` and mirrors
+        // the new style into the in-flight `sessionCleanup` (+ re-prewarms) so the
+        // stop-time cleanup pass uses it — and writes NOTHING to `appCleanupStyles`.
+        // A change persists only if the user later taps the post-insert "Keep for
+        // {App}?" chip. When no session is live (rare — the switcher is a capture-phase
+        // control) fall back to the "other" category so the label is never empty.
         hud.bindCleanupSwitcher(
             label: { [weak self] in
                 guard let self else { return nil }
-                return self.activeCleanupStyle.displayName
+                return self.effectiveSessionStyle.displayName
             },
             cycle: { [weak self] in
                 guard let self else { return }
-                let category = self.sessionProfile?.category ?? .other
-                let current = self.settings.cleanupStyle(for: category)
                 let all = CleanupStyle.allCases
-                if let i = all.firstIndex(of: current) {
-                    self.settings.appCleanupStyles[category.rawValue] = all[(i + 1) % all.count].rawValue
+                let current = self.effectiveSessionStyle
+                let next = all.firstIndex(of: current).map { all[($0 + 1) % all.count] } ?? all[0]
+                // Scope the change to THIS dictation only: remember the override (for
+                // the post-insert keep chip) and mirror it into the in-flight snapshot
+                // the stop-time pass reads. NO persisted-settings write happens here.
+                self.sessionStyleOverride = next
+                self.sessionCleanup = next
+                // Re-prewarm the on-device cleanup model for the newly chosen style, so
+                // the stop-time pass doesn't pay a cold load. Capture the actor-isolated
+                // engine reference the same way `beginDictation` does before hopping off
+                // the main actor. A no-op when the model is unavailable or the style is
+                // `.off` (which skips the model entirely).
+                let cleanupEngine = self.cleanup
+                if next != .off, CleanupEngine.isAvailable {
+                    Task { await cleanupEngine.prewarm(style: next) }
                 }
             }
         )
@@ -902,6 +925,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionProfile?.cleanupStyle ?? settings.cleanupStyle(for: .other)
     }
 
+    /// H3 — the style that will ACTUALLY clean this dictation, in priority order: a
+    /// mid-session switcher override, else the in-flight snapshot captured at begin,
+    /// else the resolved session/category default. This is what the pill label shows
+    /// and what a cycle reads to compute its "next" case, so the label and the
+    /// stop-time behaviour can never disagree.
+    private var effectiveSessionStyle: CleanupStyle {
+        sessionStyleOverride ?? sessionCleanup ?? activeCleanupStyle
+    }
+
     /// Kick off a best-effort background warm-up of the on-device cleanup model,
     /// matching the Speech `warmUp` pattern. Skips entirely when the model isn't
     /// available or the style skips the model (`.off`), so a cold first dictation
@@ -1249,6 +1281,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         musicController.resumeAfterDictation()
         currentStreaming?.cancel()
         currentStreaming = nil
+        // H3: a capture failure ends the session — drop any in-pill style override so
+        // it can't leak into the next dictation (nothing was inserted, so no keep chip).
+        sessionCleanup = nil
+        sessionStyleOverride = nil
         Task { await engine.cancelSession() }
         isProcessing = false
         updateStatusUI()
@@ -1284,6 +1320,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // No-op unless a race left music paused; keeps the invariant that music
             // is never left ducked when a session ends.
             musicController.resumeAfterDictation()
+            // H3: a session abandoned during setup — clear any in-pill style override
+            // (and its mirror) so it can't leak into the next dictation. Nothing was
+            // inserted, so there is no keep chip to offer.
+            sessionCleanup = nil
+            sessionStyleOverride = nil
             hud.hide()
             // H5: a try-it stopped before audio went live (e.g. clicked stop during
             // mic/model setup) — clear the sink and reset the onboarding button.
@@ -1386,11 +1427,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let target = currentTarget
         let selfBundle = AppPaths.bundleIdentifier
-        // Reuse the cleanup style captured at session start, so a mid-session
-        // change can't make the stats/filler accounting disagree with what the
+        // Reuse the cleanup style captured at session start — unless the user cycled
+        // the in-pill switcher this dictation, in which case `sessionCleanup` already
+        // carries that H3 override (the cycle mirrors it here on purpose) so the
+        // stop-time pass honors the switcher's tooltip. Snapshotting it still keeps a
+        // later settings change from skewing the stats/filler accounting vs. what the
         // assembler actually cleaned.
         let style = sessionCleanup ?? resolved.cleanupStyle
         sessionCleanup = nil
+        // H3 — decide whether to offer the post-insert "Keep for {App}?" chip. The pure
+        // gate offers only when the user actually cycled the switcher this dictation, the
+        // chosen style differs from the app's resolved default (cycling back is a no-op
+        // worth no chip), and the app has a bundle id to key a rule against. Captured
+        // here, before the override is cleared below, and surfaced only on a successful
+        // `.inserted` outcome (the no-stacking settle gate lives in `maybeOfferKeepStyle`).
+        let keepStyleOverride = KeepStyleOffer.decision(
+            sessionOverride: sessionStyleOverride,
+            resolvedDefault: resolved.cleanupStyle,
+            bundleID: currentTarget.bundleID
+        )
+        // H3 — whether the style was changed mid-dictation. When it was, the streamed
+        // per-segment cleanup that ran WHILE speaking used the OLD style, so its result
+        // is stale; force the whole-transcript re-clean below (which reads the current
+        // `style`) so a single-segment dictation still honors the switch. Without this,
+        // cycling on an uninterrupted utterance would silently keep the pre-cycle style —
+        // the exact "the tap did nothing to this dictation" bug H3 exists to kill.
+        let styleWasOverridden = sessionStyleOverride != nil
+        // Clear the session override on this (normal) teardown path — it must never
+        // leak into the next dictation. Other teardown paths clear it too.
+        sessionStyleOverride = nil
         // The live per-segment cleanup that ran while you spoke (nil when cleanup
         // is off). Consumed below, or discarded if a language switch re-wrote the
         // whole transcript.
@@ -1512,7 +1577,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // pass, so use it — it's already done. Multi-segment (you paused):
                 // fall through to the whole-transcript pass so the model punctuates
                 // with full context and a pause doesn't force a sentence break.
-                if let streaming, !languageSwitched, streaming.segmentCount <= 1 {
+                // H3: if the user cycled the style mid-dictation, the streamed buffer
+                // was cleaned with the OLD style — bypass it and re-clean with the
+                // current one, so even an uninterrupted utterance reflects the switch.
+                if let streaming, !languageSwitched, !styleWasOverridden, streaming.segmentCount <= 1 {
                     cleaned = await streaming.finishCleaned()
                     usedStreaming = true
                     // Never insert empty when we actually have a transcript (e.g.
@@ -2071,6 +2139,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // gates pass. Runs for Private apps too — it carries no transcript
                 // content and the streak was already recorded above (I1-safe).
                 self.maybeOfferLaunchAtLogin()
+                // H3 — if the user cycled the in-pill cleanup switcher this dictation
+                // to a non-default style, offer to keep it for this app. Nil unless a
+                // real, differing override happened; the helper adds the bundle-id and
+                // no-stacking gates (it loses to a learned ping / copy prompt).
+                self.maybeOfferKeepStyle(keepStyleOverride, target: target)
             case .leftOnClipboard(let reason):
                 // B9: the text is on the clipboard, NOT in the field — a caret-relative
                 // edit would corrupt whatever is focused, so clear the edit target.
@@ -2455,6 +2528,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: H3 — post-insert "Keep for {App}?" chip
+
+    /// After a successful insert where the user cycled the in-pill cleanup switcher
+    /// to a style that differs from this app's default (`override`, already decided
+    /// at stop), offer — in one tap — to make it the app's per-app rule. This is the
+    /// ONLY way an in-pill switcher change persists: the cycle itself was scoped to
+    /// just that dictation (honoring the switcher's tooltip), so ignoring this chip
+    /// discards the change.
+    ///
+    /// Gates, all failing safe toward NOT showing:
+    /// - `override` is nil unless a real, differing switch happened this dictation.
+    /// - Suppressed when the target app has NO bundle id (helper apps, and Talkie
+    ///   itself) — there's no stable key to write a per-app rule against.
+    /// - Fits the single-phase HUD queue like the A9/A12/H8 offers: it waits out the
+    ///   brief insert/learn pings, then shows ONLY if nothing interactive is on the
+    ///   notch — so a learned ping (which fires from the async edit-watcher) and the
+    ///   copy-prompt both win and the keep chip is simply dropped that turn (learning
+    ///   and paste-recovery beat a persistence nicety). A touch longer settle than the
+    ///   review chip so it also loses to A12.
+    private func maybeOfferKeepStyle(_ override: CleanupStyle?, target: TargetApp) {
+        guard let override, let bundleID = target.bundleID else { return }
+        let styleName = override.displayName
+        let appName = target.name
+        Task { @MainActor in
+            // Let the insert/learn pings — and the A9/A12/H8 offers that queue ahead of
+            // this — breathe and claim the notch first. Slightly longer than the review
+            // chip's 1.8s so a learned ping or a review chip deterministically wins.
+            try? await Task.sleep(for: .seconds(2.4))
+            guard !self.isDictating, !self.isProcessing,
+                  !self.hud.isPresentingInteractivePill else { return }
+            self.hud.showKeepStyle(style: styleName, app: appName) { [weak self] in
+                guard let self else { return }
+                // MERGE into the app's existing override sheet (read-modify-write) so
+                // unrelated overrides (insertion mode, vocabulary filter, Private) are
+                // preserved; refresh the display name while we're here. Mirrors the B2
+                // insertion-mode heal path's upsert idiom.
+                var profile = self.profiles.profile(for: bundleID)
+                    ?? AppProfile(bundleID: bundleID, displayName: appName)
+                profile.displayName = appName
+                profile.cleanupStyle = override
+                self.profiles.upsert(profile)
+                // Brief confirmation via the existing non-interactive saved pill.
+                self.hud.showSaved(String(format: "%@ will use %@ from now on.".loc, appName, styleName))
+            }
+        }
+    }
+
     // MARK: Paste last transcript (⌥⌘V)
 
     /// The re-paste shortcut label for the current activation key (e.g. "⌃⌘V"),
@@ -2794,5 +2914,26 @@ enum LaunchAtLoginOffer {
     @MainActor
     static func resolve(defaults: UserDefaults = .standard) {
         defaults.set(true, forKey: resolvedKey)
+    }
+}
+
+/// The pure decision for H3's post-insert "Keep for {App}?" chip: given the style the
+/// user cycled the in-pill switcher to this dictation (`sessionOverride`, nil if they
+/// never touched it), the style that was actually resolved as the app's default for
+/// this session (`resolvedDefault`), and the target app's bundle id (`bundleID`, nil
+/// for helper apps and Talkie itself), decide which style to offer to keep — or nil to
+/// show nothing. Extracted so the gate is unit-testable without the HUD, the profile
+/// store, or a live session.
+///
+/// It offers only when ALL hold: the user actually cycled to an override, that override
+/// differs from the resolved default (cycling back to the default is a no-op worth no
+/// chip), and there is a bundle id to key a per-app rule against. Every branch fails
+/// safe toward NOT offering — a spurious "keep?" chip is pure interruption.
+enum KeepStyleOffer {
+    static func decision(sessionOverride: CleanupStyle?,
+                         resolvedDefault: CleanupStyle,
+                         bundleID: String?) -> CleanupStyle? {
+        guard let sessionOverride, bundleID != nil else { return nil }
+        return sessionOverride != resolvedDefault ? sessionOverride : nil
     }
 }

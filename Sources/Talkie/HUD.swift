@@ -61,6 +61,14 @@ enum HUDPhase: Equatable {
     // Auto-dismisses like the other offers; shown at most once ever (a resolved flag
     // persists in UserDefaults), and it loses to every other interactive pill.
     case launchOffer
+    // The post-insert "Keep for {App}?" chip (H3): the user cycled the in-pill
+    // cleanup switcher DURING this dictation (which changed only that dictation),
+    // and the chosen style differs from the app's default — so offer, in one tap,
+    // to make it the app's per-app rule. `style` is the chosen style's display name,
+    // `app` the target app's name. Auto-dismisses like the other offers; ignoring it
+    // discards the change (the switcher was session-scoped, so nothing persisted).
+    // It loses to a learned ping and to the copy-prompt (recovery/learning win).
+    case keepStyle(style: String, app: String)
     case error(String)
 }
 
@@ -111,6 +119,10 @@ final class HUDModel: ObservableObject {
     /// The hub's closure flips `settings.launchAtLogin` on (registering the login
     /// item) and marks the once-ever offer resolved.
     var onLaunchOfferEnable: () -> Void = {}
+    /// Invoked when the user taps "Keep" on the post-insert keep-style chip (H3).
+    /// The hub's closure upserts the per-app rule (merging into any existing sheet)
+    /// so this app defaults to the chosen cleanup style from now on.
+    var onKeepStyle: () -> Void = {}
     /// How long the learned-correction ping stays up; the countdown ring depletes
     /// over exactly this window before the pill collapses.
     static let learnedDuration: TimeInterval = 5
@@ -121,6 +133,10 @@ final class HUDModel: ObservableObject {
     /// ring restarts from full. Separate from `learnedTick` so the two never fight
     /// over the ring's animation identity.
     @Published var launchOfferTick: Int = 0
+    /// Bumped when the keep-style chip (H3) is shown, so its countdown ring restarts
+    /// from full. Its own tick so it never fights the learned/launch rings over the
+    /// ring's animation identity.
+    @Published var keepStyleTick: Int = 0
 
     /// True while a hands-free-locked session (B4) is in its silence auto-stop
     /// countdown (B5). It does NOT change `phase` — the pill stays in `.listening` —
@@ -225,7 +241,8 @@ final class HUDController {
     /// short delay for those.
     var isPresentingInteractivePill: Bool {
         switch model.phase {
-        case .commandPreview, .learned, .copyPrompt, .offerVibe, .reviewLowConfidence, .launchOffer, .error:
+        case .commandPreview, .learned, .copyPrompt, .offerVibe, .reviewLowConfidence,
+             .launchOffer, .keepStyle, .error:
             return true
         default:
             return false
@@ -596,6 +613,37 @@ final class HUDController {
             }
             self.hideTask = nil
         }
+    }
+
+    /// How long the post-insert keep-style chip (H3) stays up. Matches the learned
+    /// ping's window (a coral countdown ring drains over it) — long enough to catch,
+    /// short enough that ignoring it discards the change without lingering.
+    static let keepStyleDuration: TimeInterval = HUDModel.learnedDuration
+
+    /// The post-insert "Keep for {App}?" chip (H3): the user cycled the in-pill
+    /// cleanup switcher during this dictation (which changed only that dictation), and
+    /// the chosen `style` differs from `app`'s default — so offer, in one tap, to make
+    /// it `app`'s per-app rule. Modeled on `showLearned`: mouse events on so "Keep" is
+    /// tappable, a coral countdown ring drains over `keepStyleDuration`, and a timeout
+    /// discards silently (the switcher was session-scoped, so nothing persisted). `onKeep`
+    /// is the hub's closure — it upserts the per-app rule. The hub only calls this when
+    /// no learned/copy/command pill is up, so it never stacks (learned/recovery win).
+    func showKeepStyle(style: String, app: String, onKeep: @escaping () -> Void) {
+        cancelHide()
+        let panel = ensurePanel()
+        model.onKeepStyle = { [weak self] in
+            self?.panel?.ignoresMouseEvents = true
+            onKeep()
+        }
+        model.keepStyleTick &+= 1          // restart the countdown ring from full
+        panel.ignoresMouseEvents = false   // let the user tap Keep
+        model.phase = .keepStyle(style: style, app: app)
+        reposition()
+        panel.orderFrontRegardless()
+        // The chip auto-dismisses and its panel may never take focus, so spell it out
+        // for a VoiceOver user: which style, which app, and that Keep persists it.
+        announce(String(format: "Keep the %@ cleanup style for %@? Activate Keep to make it this app's default.".loc, style, app))
+        hide(after: HUDController.keepStyleDuration)
     }
 
     /// How long the low-confidence review chip stays up before auto-dismissing.
@@ -1024,6 +1072,12 @@ private struct HUDView: View {
                     // over its (longer) window — a wordless "this dismisses itself".
                     CountdownRing(duration: HUDController.launchOfferDuration)
                         .id(model.launchOfferTick)
+                } else if case .keepStyle = model.phase {
+                    // H3: the post-insert keep-style chip drains the same coral ring
+                    // over its window — a wordless "ignore this and the change is
+                    // dropped". Keyed by `keepStyleTick` so it restarts from full.
+                    CountdownRing(duration: HUDController.keepStyleDuration)
+                        .id(model.keepStyleTick)
                 } else if model.silenceCountingDown {
                     // B5: a hands-free-locked session that's gone quiet drains the same
                     // coral ring over the auto-stop window — the visible, cancelable
@@ -1421,6 +1475,34 @@ private struct HUDView: View {
                             fill: chipFill(0.18), ink: ink(0.72),
                             hint: "Starts Talkie automatically at login so your hotkey is always ready.".loc) {
                     model.onLaunchOfferEnable()
+                }
+            }
+            .transition(.blurReplace)
+            .accessibilityElement(children: .contain)
+        case .keepStyle(let style, let app):
+            // Post-insert keep-style chip (H3): the user cycled the in-pill cleanup
+            // switcher this dictation — which changed only this dictation — and the
+            // chosen style differs from the app's default. Offer one tap to make it
+            // the app's rule. Same visual family as the vibe/launch offers: a wand
+            // glyph, the honest "Keep {Style} for {App}?" line, and one "Keep" chip.
+            // A coral countdown ring (above) drains over the window; a timeout drops
+            // the change (the switcher was session-scoped — nothing persisted).
+            HStack(spacing: 8) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.coral)
+                    .accessibilityHidden(true)
+                Text(String(format: "Keep %@ for %@?".loc, style, app))
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.92))
+                    .lineLimit(1)
+                    .frame(maxWidth: 300, alignment: .leading)
+                    .accessibilityLabel(
+                        String(format: "Keep the %@ cleanup style as the default for %@?".loc, style, app))
+                CommandChip(title: "Keep", prominent: true,
+                            fill: chipFill(0.18), ink: ink(0.72),
+                            hint: "Makes this cleanup style the default for this app.".loc) {
+                    model.onKeepStyle()
                 }
             }
             .transition(.blurReplace)
