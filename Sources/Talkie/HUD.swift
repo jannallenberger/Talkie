@@ -65,7 +65,14 @@ final class HUDModel: ObservableObject {
     /// let go of the key and it keeps recording until you tap once to stop. Only
     /// meaningful during the capture phases; reset when a session ends.
     @Published var handsFreeLocked: Bool = false
+    /// The live transcript's *finalized* portion — segments the recognizer has
+    /// committed and won't revise — rendered firmly (higher opacity) as the head of
+    /// the capture-pill's one-line tail (C1). Empty renders nothing, i.e. today's
+    /// bare pill.
     @Published var text: String = ""
+    /// The live transcript's *volatile* tail — the still-changing words — rendered
+    /// faintly after `text`, so you can watch words firm up as they finalize (C1).
+    @Published var volatileText: String = ""
     /// Rolling history of recent mic levels (newest last) driving the waveform.
     @Published var levels: [CGFloat] = Array(repeating: 0, count: HUDModel.barCount)
     /// Bumped to flash the pill when the key is pressed again mid-processing.
@@ -297,6 +304,7 @@ final class HUDController {
         model.handsFreeLocked = false   // fresh session starts un-locked
         model.phase = .arming
         model.text = ""
+        model.volatileText = ""
         let panel = ensurePanel()
         // Accept mouse events so the cleanup switcher is tappable while you talk.
         // The pass-through hosting view only claims clicks over the pill itself, so
@@ -329,7 +337,12 @@ final class HUDController {
         model.levels = l
     }
 
-    func updateTranscribing(_ text: String) {
+    /// Push a fresh partial into the capture pill (C1). The handoff carries STRUCTURE
+    /// — the committed `finalized` head and the still-changing `volatile` tail — so
+    /// the pill can render the volatile words fainter and let them firm up as they
+    /// finalize. Display only: the transcript still goes to the focused app; this
+    /// merely mirrors the tail so there's no "is it even hearing me?" dead air.
+    func updateTranscribing(finalized: String, volatile: String) {
         // Only meaningful while still capturing — a late partial must never
         // resurrect the pill out of processing/inserting/hidden.
         switch model.phase {
@@ -338,7 +351,8 @@ final class HUDController {
         }
         cancelHide()
         if model.phase != .transcribing { model.phase = .transcribing }
-        model.text = text
+        model.text = finalized
+        model.volatileText = volatile
     }
 
     func showProcessing() {
@@ -806,6 +820,48 @@ private struct HUDView: View {
         return .white.opacity(model.highContrast ? min(opacity + 0.06, 1) : opacity)
     }
 
+    /// C1 — the live transcript tail shown in the capture pill while you speak. The
+    /// finalized head (`model.text`) reads at ~0.85 white; the still-changing
+    /// `model.volatileText` follows dimmer (~0.5) so words visibly firm up as they
+    /// commit. It's a single `Text` over a two-run `AttributedString` (see
+    /// `liveTailString`) so it truncates as ONE line: `truncationMode(.head)` keeps
+    /// the newest words visible (older words fall off the left, even for a long
+    /// unbroken compound), and `maxWidth` caps the width so the `.fixedSize()` capsule
+    /// can't outgrow the 440pt panel. Empty text → nothing rendered, i.e. today's
+    /// exact pill.
+    @ViewBuilder
+    private var liveTail: some View {
+        if !model.text.isEmpty || !model.volatileText.isEmpty {
+            Text(liveTailString)
+                .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.head)
+                .frame(maxWidth: 260, alignment: .trailing)
+                // The pill mirrors your own live speech; VoiceOver already narrates
+                // capture via the group label, and a partial re-read every cadence
+                // would be noise, so keep this decorative tail out of the a11y tree.
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// The two-tone attributed tail: a firm finalized head + a dimmer volatile tail,
+    /// as ONE `AttributedString` so the `Text` truncates as a single line (SwiftUI
+    /// can't head-truncate a `Text` built from `+`-concatenated runs). A single space
+    /// joins head and tail only when both are present, so the seam reads as normal
+    /// word spacing. Colors flow through `ink(_:)` so high-contrast lifts them too.
+    private var liveTailString: AttributedString {
+        var attributed = AttributedString(model.text)
+        attributed.foregroundColor = ink(model.highContrast ? 0.95 : 0.85)
+        let volatile = model.volatileText
+        if !volatile.isEmpty {
+            let joiner = model.text.isEmpty ? "" : " "
+            var tail = AttributedString(joiner + volatile)
+            tail.foregroundColor = ink(model.highContrast ? 0.7 : 0.5)
+            attributed.append(tail)
+        }
+        return attributed
+    }
+
     var body: some View {
         // Top-anchored within the (larger, transparent) panel so the pill hugs
         // the notch; the headroom holds the shadow and the drop-in slide.
@@ -861,6 +917,13 @@ private struct HUDView: View {
                     Color.clear
                         .onAppear { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
                         .onChange(of: model.phase) { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
+                        // C1: the live tail widens the capture pill as you speak, so
+                        // republish the clickable rect on each text change too — the
+                        // click pass-through region must track the wider pill or the
+                        // CleanupSwitcher (and the transparent headroom's fall-through)
+                        // would go stale. Cheap: it just re-reads the frame.
+                        .onChange(of: model.text) { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
+                        .onChange(of: model.volatileText) { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
                 }
             )
             .onTapGesture {
@@ -907,6 +970,13 @@ private struct HUDView: View {
                 // change how Talkie polishes this dictation without leaving the
                 // record. Hidden entirely when no switcher is wired (today's pill).
                 CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
+                // C1: the live tail of what Talkie is hearing. The finalized head
+                // reads firmly; the volatile tail is dimmer and firms up as it
+                // commits. One truncating line, capped so the pill can't outgrow the
+                // panel — the HEAD truncates (…) so the newest words stay visible even
+                // for a long unbroken German compound. Empty text renders nothing, so
+                // the bare pill (dot + waveform + switcher) is exactly today's.
+                liveTail
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.handsFreeLocked)
             .transition(.blurReplace)
