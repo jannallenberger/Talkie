@@ -15,6 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let stats = StatsStore()
     let appUsage = AppUsageStore()
     let activity = ActivityStore()
+    /// L4: running word/phrase frequency, accumulated at record time (transcripts
+    /// are pruned after 7 days, so "most used" can't be recomputed from history).
+    let wordFreq = WordFrequencyStore()
     let projectIndex = ProjectIndexStore()
     let contextSummary = ContextSummaryStore()
     let meetingStore = MeetingStore()
@@ -1495,6 +1498,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             // Per-day activity (streak + heatmap) and where your words went.
             self.activity.record(words: words)
+            // L4: fold this dictation into the lifetime word/phrase frequency store.
+            self.wordFreq.record(text: finalText)
             if target.bundleID != selfBundle {
                 self.appUsage.record(target: target, words: words)
             }
@@ -1893,6 +1898,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 stats: stats,
                 appUsage: appUsage,
                 activity: activity,
+                wordFreq: wordFreq,
                 projectIndex: projectIndex,
                 contextSummary: contextSummary,
                 meetingRecorder: meetingRecorder,
