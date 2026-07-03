@@ -38,12 +38,21 @@ enum HUDPhase: Equatable {
     case commandReverted        // brief "Reverted" confirmation (mirrors .copied)
     case learned(String)        // "Added 'X' to dictionary" ping, with an Undo chip
     case saved(String)          // brief "Saved to <destination>" confirmation (mirrors .copied)
+    // A one-time teaching pill shown when a lone quick tap captured nothing —
+    // spells out the gesture ("Hold to talk · tap twice to lock") instead of just
+    // vanishing. Non-interactive; auto-hides.
+    case gestureHint
     case error(String)
 }
 
 @MainActor
 final class HUDModel: ObservableObject {
     @Published var phase: HUDPhase = .hidden
+    /// True while the current capture is locked hands-free (tap-tap). Drives a small
+    /// lock glyph in the listening pill so the locked state is unmistakable — you can
+    /// let go of the key and it keeps recording until you tap once to stop. Only
+    /// meaningful during the capture phases; reset when a session ends.
+    @Published var handsFreeLocked: Bool = false
     @Published var text: String = ""
     /// Rolling history of recent mic levels (newest last) driving the waveform.
     @Published var levels: [CGFloat] = Array(repeating: 0, count: HUDModel.barCount)
@@ -244,6 +253,7 @@ final class HUDController {
     func showArming() {
         cancelHide()
         resetLevels()
+        model.handsFreeLocked = false   // fresh session starts un-locked
         model.phase = .arming
         model.text = ""
         let panel = ensurePanel()
@@ -451,6 +461,29 @@ final class HUDController {
         }
     }
 
+    /// Flip the listening pill's hands-free lock glyph on/off. Called when a tap-tap
+    /// locks (on) and when the session ends (off). Purely presentational — the pill
+    /// must already be in a capture phase for the glyph to be visible.
+    func setHandsFreeLocked(_ locked: Bool) {
+        model.handsFreeLocked = locked
+    }
+
+    /// Show the one-time gesture-teaching pill (after a lone quick tap that captured
+    /// nothing). Non-interactive; announces itself and auto-hides. The caller gates
+    /// how often this appears (see `GestureHint`).
+    func showGestureHint() {
+        cancelHide()
+        let panel = ensurePanel()
+        panel.ignoresMouseEvents = true   // nothing to tap here
+        model.phase = .gestureHint
+        reposition()
+        panel.orderFrontRegardless()
+        // Non-focusable transient pill — announce the gesture so a VoiceOver user who
+        // just tapped-and-got-nothing still learns hold vs tap-tap.
+        announce("Hold your key to talk, or tap it twice to lock hands-free recording.".loc)
+        hide(after: 2.6)
+    }
+
     func showError(_ message: String) {
         cancelHide()
         let panel = ensurePanel()
@@ -470,10 +503,37 @@ final class HUDController {
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             self.panel?.ignoresMouseEvents = true
+            self.model.handsFreeLocked = false   // never carry a lock glyph into the next session
             self.model.phase = .hidden
             self.panel?.orderOut(nil)
             self.hideTask = nil
         }
+    }
+}
+
+// MARK: - Gesture-hint gating
+
+/// Gates the one-time "Hold to talk · tap twice to lock" teaching pill so it can't
+/// nag. A lone quick tap that captures nothing is a strong signal the user tapped
+/// instead of holding (or doesn't yet know tap-tap locks), so we teach the gesture
+/// in the pill — but only the first few such taps ever, tracked by a plain counter
+/// in `UserDefaults`. There is no setting and no other state: once the cap is hit,
+/// the hint is silent forever.
+enum GestureHint {
+    /// How many times a lone empty tap will surface the hint before we stay quiet.
+    static let maxShows = 3
+    private static let countKey = "gestureHintEmptyTapShows"
+
+    /// Whether to show the hint for this empty lone-tap, incrementing the persisted
+    /// counter when it says yes. Returns false once the cap is reached. Main-actor
+    /// (called from the dictation pipeline); `UserDefaults` access stays on the main
+    /// thread, so no synchronization is needed.
+    @MainActor
+    static func shouldShowEmptyTapHint(defaults: UserDefaults = .standard) -> Bool {
+        let shown = defaults.integer(forKey: countKey)
+        guard shown < maxShows else { return false }
+        defaults.set(shown + 1, forKey: countKey)
+        return true
     }
 }
 
@@ -593,18 +653,37 @@ private struct HUDView: View {
                 // recording starts, then it settles to steady red.
                 Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
                     .accessibilityHidden(true)
+                // Hands-free lock (tap-tap): a small lock glyph so it's obvious you
+                // can release the key and it keeps recording until you tap to stop.
+                // Only while genuinely locked; it slides in without disturbing the
+                // dot/waveform. Coral so it reads as an active Talkie state, not an
+                // error. Accessibility is folded into the group label below.
+                if model.handsFreeLocked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.coral)
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityHidden(true)
+                }
                 // Feature 14: the active cleanup style/level, tappable to cycle —
                 // change how Talkie polishes this dictation without leaving the
                 // record. Hidden entirely when no switcher is wired (today's pill).
                 CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
             }
+            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.handsFreeLocked)
             .transition(.blurReplace)
             // The dot + waveform are one status glyph to VoiceOver: state it plainly
             // rather than exposing a decorative waveform. The cleanup switcher stays
-            // a separate, labeled control (its own element inside this group).
+            // a separate, labeled control (its own element inside this group). When
+            // locked, say so — a hands-free VoiceOver user must hear that releasing
+            // the key won't stop it (a single tap will).
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(recording ? "Listening. Talkie is recording your voice.".loc
-                                           : "Getting ready to listen.".loc)
+            .accessibilityLabel(
+                model.handsFreeLocked
+                    ? "Listening, hands-free. Recording is locked — tap your key once to stop.".loc
+                    : (recording ? "Listening. Talkie is recording your voice.".loc
+                                 : "Getting ready to listen.".loc)
+            )
         case .processing:
             HStack(spacing: 7) {
                 ProgressView()
@@ -800,6 +879,23 @@ private struct HUDView: View {
             }
             .transition(.blurReplace)
             .accessibilityElement(children: .contain)
+        case .gestureHint:
+            // Teaching pill after a lone tap that captured nothing: a keyboard glyph
+            // and the one-line gesture summary. Non-interactive; auto-hides.
+            HStack(spacing: 7) {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(ink(0.85))
+                    .accessibilityHidden(true)
+                Text("Hold to talk · tap twice to lock")
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.9))
+                    .lineLimit(1)
+                    .frame(maxWidth: 300, alignment: .leading)
+            }
+            .transition(.blurReplace)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Hold your key to talk, or tap it twice to lock hands-free recording.".loc)
         case .error(let message):
             HStack(spacing: 7) {
                 Image(systemName: "exclamationmark.triangle.fill")

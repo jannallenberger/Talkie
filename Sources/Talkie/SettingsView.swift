@@ -235,7 +235,7 @@ private struct SidebarList: View {
         .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 3) {
-                Eyebrow(text: settings.activationMode == .holdToTalk ? "Hold to talk" : "Tap to toggle")
+                Eyebrow(text: "Hold to talk · tap twice to lock")
                 Text(settings.activationKey.displayName)
                     .font(.talkieHeading(12, weight: .medium))
                     .foregroundStyle(Theme.inkSecondary)
@@ -865,20 +865,14 @@ private struct ActivationSettings: View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Activation",
-                footer: settings.activationMode == .holdToTalk
-                    ? "Hold the key, speak, release to insert the text."
-                    : "Tap the key to start, tap again to stop and insert."
+                // One gesture family for everyone — no mode to choose. Spell it out
+                // once here so the picker's removal doesn't leave the behavior a
+                // mystery.
+                footer: "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.".loc
             ) {
                 SettingsRow(title: "Dictation key") {
                     Picker("", selection: $settings.activationKey) {
                         ForEach(ActivationKey.allCases) { Text($0.displayName).tag($0) }
-                    }
-                    .labelsHidden().fixedSize()
-                }
-                SettingsDivider()
-                SettingsRow(title: "Mode") {
-                    Picker("", selection: $settings.activationMode) {
-                        ForEach(ActivationMode.allCases) { Text($0.displayName).tag($0) }
                     }
                     .labelsHidden().fixedSize()
                 }

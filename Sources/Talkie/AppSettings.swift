@@ -46,20 +46,6 @@ extension ActivationKey {
     }
 }
 
-enum ActivationMode: String, CaseIterable, Codable, Identifiable {
-    case holdToTalk
-    case toggle
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .holdToTalk: return "Hold to talk".loc
-        case .toggle: return "Toggle (press to start, press to stop)".loc
-        }
-    }
-}
-
 enum InsertionMode: String, CaseIterable, Codable, Identifiable {
     case paste
     case type
@@ -193,9 +179,6 @@ final class AppSettings: ObservableObject {
 
     @Published var activationKey: ActivationKey {
         didSet { defaults.set(activationKey.rawValue, forKey: Keys.activationKey); notifyChanged() }
-    }
-    @Published var activationMode: ActivationMode {
-        didSet { defaults.set(activationMode.rawValue, forKey: Keys.activationMode); notifyChanged() }
     }
     @Published var localeIdentifier: String {
         didSet { defaults.set(localeIdentifier, forKey: Keys.localeIdentifier) }
@@ -374,7 +357,6 @@ final class AppSettings: ObservableObject {
         let d = UserDefaults.standard
         d.register(defaults: [
             Keys.activationKey: ActivationKey.rightOption.rawValue,
-            Keys.activationMode: ActivationMode.holdToTalk.rawValue,
             Keys.localeIdentifier: canonicalLocaleID(Locale.current.identifier),
             Keys.autoCapitalize: true,
             Keys.cleanupFillers: true,
@@ -402,7 +384,11 @@ final class AppSettings: ObservableObject {
             Keys.showBirdBuddy: true,
         ])
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
-        activationMode = ActivationMode(rawValue: d.string(forKey: Keys.activationMode) ?? "") ?? .holdToTalk
+        // B4 migration: the Hold/Toggle Mode picker is gone — every user now gets the
+        // one gesture family (hold to talk, tap twice to lock, tap to stop), so there
+        // is no mode to persist. Silently drop the stale scalar so it doesn't linger
+        // in the plist; the old `ActivationMode` enum is deleted outright.
+        d.removeObject(forKey: Keys.activationMode)
         // B2 migration: the global "Insert text by" control is gone — paste is now the
         // universal default and any app that needs typing learns it per-bundle (or the
         // user sets it in the per-app rule sheet). Silently drop the stale scalar so it
@@ -494,6 +480,9 @@ final class AppSettings: ObservableObject {
 
     private enum Keys {
         static let activationKey = "activationKey"
+        /// Legacy key — the Hold/Toggle Mode picker was removed in B4 (one unified
+        /// gesture family). Retained only so `init` can `removeObject` the stale
+        /// value from existing installs.
         static let activationMode = "activationMode"
         /// Legacy key — the global insertion-mode control was removed in B2. Retained
         /// only so `init` can `removeObject` the stale value from existing installs.

@@ -123,8 +123,6 @@
 "Right ⌥ Option" = "Rechter ⌥ Option";
 "Left ⌥ Option" = "Linker ⌥ Option";
 "Right ⌃ Control" = "Rechter ⌃ Control";
-"Hold to talk" = "Ingedrukt houden om te spreken";
-"Toggle (press to start, press to stop)" = "Schakelen (druk om te starten, druk om te stoppen)";
 "Paste (fast)" = "Plakken (snel)";
 "Type character-by-character" = "Teken voor teken typen";
 "None" = "Geen";
@@ -313,3 +311,11 @@
 "Added “%@” — it’ll be fixed automatically next time." = "“%@” toegevoegd — wordt de volgende keer automatisch gecorrigeerd.";
 "Learn “%@”?" = "“%@” leren?";
 "was “%@”" = "was “%@”";
+"Hold %@ to talk · tap twice to lock" = "Houd %@ ingedrukt om te praten · tik tweemaal om te vergrendelen";
+"Hold to talk · tap twice to lock" = "Houd ingedrukt om te praten · tik tweemaal om te vergrendelen";
+"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Houd de toets ingedrukt en spreek, laat dan los om in te voegen. Tik er tweemaal op om handsfree te vergrendelen — de opname loopt door zonder iets ingedrukt te houden; tik één keer om te stoppen en in te voegen.";
+"Hold, speak, release — or tap twice to go hands-free" = "Ingedrukt houden, praten, loslaten — of tik tweemaal voor handsfree";
+"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Houd je toets ingedrukt, zeg wat je wilt schrijven en laat los — Talkie plaatst de tekst waar je aan het typen bent. Haast? Tik tweemaal op de toets om de opname handsfree te vergrendelen en één keer om te stoppen.";
+"Listening, hands-free. Recording is locked — tap your key once to stop." = "Luistert, handsfree. De opname is vergrendeld — tik één keer op je toets om te stoppen.";
+"Hold your key to talk, or tap it twice to lock hands-free recording." = "Houd je toets ingedrukt om te praten, of tik er tweemaal op om handsfree opnemen te vergrendelen.";
+"Click here, then hold %@ and speak…" = "Klik hier, houd dan %@ ingedrukt en spreek…";

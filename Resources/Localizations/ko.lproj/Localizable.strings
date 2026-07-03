@@ -123,8 +123,6 @@
 "Right ⌥ Option" = "오른쪽 ⌥ Option";
 "Left ⌥ Option" = "왼쪽 ⌥ Option";
 "Right ⌃ Control" = "오른쪽 ⌃ Control";
-"Hold to talk" = "눌러서 말하기";
-"Toggle (press to start, press to stop)" = "토글 (눌러서 시작, 눌러서 중지)";
 "Paste (fast)" = "붙여넣기 (빠름)";
 "Type character-by-character" = "한 글자씩 입력";
 "None" = "없음";
@@ -313,3 +311,11 @@
 "Added “%@” — it’ll be fixed automatically next time." = "“%@” 추가됨 — 다음부터 자동으로 수정됩니다.";
 "Learn “%@”?" = "“%@”를 학습할까요?";
 "was “%@”" = "이전: “%@”";
+"Hold %@ to talk · tap twice to lock" = "%@ 를 누른 채 말하기 · 두 번 눌러 고정";
+"Hold to talk · tap twice to lock" = "누른 채 말하기 · 두 번 눌러 고정";
+"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "키를 누른 채 말한 다음 놓으면 삽입됩니다. 두 번 누르면 핸즈프리로 고정되어 아무것도 누르지 않아도 녹음이 계속되며, 한 번 누르면 멈추고 삽입합니다.";
+"Hold, speak, release — or tap twice to go hands-free" = "누르고, 말하고, 놓기 — 또는 두 번 눌러 핸즈프리로";
+"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "키를 누른 채 쓰고 싶은 내용을 말하고 놓으면 — Talkie가 입력 중인 곳에 텍스트를 넣어 줍니다. 급하신가요? 키를 두 번 눌러 녹음을 핸즈프리로 고정하고, 한 번 눌러 멈추세요.";
+"Listening, hands-free. Recording is locked — tap your key once to stop." = "핸즈프리로 듣는 중입니다. 녹음이 고정되었습니다 — 키를 한 번 누르면 멈춥니다.";
+"Hold your key to talk, or tap it twice to lock hands-free recording." = "키를 누른 채 말하거나, 두 번 눌러 핸즈프리 녹음을 고정하세요.";
+"Click here, then hold %@ and speak…" = "여기를 클릭한 다음 %@ 를 누른 채 말하세요…";

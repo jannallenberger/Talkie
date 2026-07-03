@@ -117,14 +117,13 @@ struct OnboardingView: View {
     }
 
     private var gesture: some View {
-        let hold = settings.activationMode == .holdToTalk
-        return VStack(spacing: 16) {
-            Text(hold ? "Hold, speak, release" : "Tap, speak, tap")
-                .font(.talkieDisplay(30))
+        VStack(spacing: 16) {
+            Text("Hold, speak, release — or tap twice to go hands-free")
+                .font(.talkieDisplay(27))
                 .foregroundStyle(Theme.ink)
-            Text(hold
-                 ? "Hold your key, say what you want to write, and let go. Talkie drops the text in wherever you're typing."
-                 : "Tap your key to start, say what you want to write, then tap again. Talkie drops the text in wherever you're typing.")
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop.")
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -200,8 +199,7 @@ struct OnboardingView: View {
     }
 
     private var ready: some View {
-        let hold = settings.activationMode == .holdToTalk
-        return VStack(spacing: 15) {
+        VStack(spacing: 15) {
             Text("You're ready")
                 .font(.talkieDisplay(30))
                 .foregroundStyle(Theme.ink)
@@ -212,7 +210,7 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 TextField(
-                    "Click here, then \(hold ? "hold" : "tap") \(settings.activationKey.displayName) and speak…",
+                    "Click here, then hold \(settings.activationKey.displayName) and speak…",
                     text: $tryText,
                     axis: .vertical
                 )
