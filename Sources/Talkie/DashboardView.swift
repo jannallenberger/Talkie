@@ -38,10 +38,13 @@ struct DashboardView: View {
 
                     BriefBanner(summary: contextSummary)
 
-                    // `.frame(maxHeight: .infinity, alignment: .top)` makes the
-                    // cards in each grid row equal-height and top-aligned —
-                    // otherwise LazyVGrid vertically centers the shorter card,
-                    // leaving an off-looking gap next to a taller neighbor.
+                    // Equal-height cards take two cooperating pieces: the outer
+                    // `.frame(maxHeight: .infinity, alignment: .top)` top-aligns
+                    // each LazyVGrid cell wrapper (so a short card sits at the top
+                    // of its row rather than vertically centered), while the inner
+                    // `talkieCard(fill: true)` stretches the *painted* surface to
+                    // fill that wrapper's height — so every card's background paints
+                    // to the same height as its tallest row neighbor.
                     LazyVGrid(columns: metricCols, alignment: .leading, spacing: Theme.Space.gridGap) {
                         GaugeCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                         FixesCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
@@ -349,7 +352,7 @@ private struct GaugeCard: View {
                 ComparisonLine(symbol: "trophy.fill", text: recordComparison)
             }
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 
     private var officeComparison: String {
@@ -441,7 +444,7 @@ private struct FixesCard: View {
             FixRow(label: "dictionary fixes", value: stats.dictionaryFixes, color: Theme.featherBlue)
             FixRow(label: "fillers removed", value: stats.fillersRemoved, color: Theme.featherGold)
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 }
 
@@ -489,7 +492,7 @@ private struct WordsCard: View {
             MiniStat(icon: "clock.fill", label: "Time spoken",
                      value: formatDuration(stats.totalDurationSec))
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 }
 
@@ -544,7 +547,7 @@ private struct UsageCard: View {
                 }
             }
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 }
 
@@ -626,7 +629,7 @@ private struct StreakCard: View {
                 Spacer()
             }
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 }
 
