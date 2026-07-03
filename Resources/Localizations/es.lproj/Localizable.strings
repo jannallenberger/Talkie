@@ -573,3 +573,10 @@
 "Cut Wi-Fi, then speak — it still works." = "Corta el Wi-Fi y habla — sigue funcionando.";
 "Told you. Nothing left this Mac." = "Te lo dije. Nada salió de este Mac.";
 "Your dictated words, offline" = "Tus palabras dictadas, sin conexión";
+
+// MARK: - Earned launch-at-login offer (H8)
+"3-day streak — start Talkie at login so dictation always works?" = "Racha de 3 días: ¿iniciar Talkie al iniciar sesión para que el dictado siempre funcione?";
+"Starts Talkie automatically at login so your hotkey is always ready." = "Inicia Talkie automáticamente al iniciar sesión para que tu atajo esté siempre listo.";
+"Talkie will start at login." = "Talkie se iniciará al iniciar sesión.";
+"Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "Tres días seguidos dictando. Activa Activar para iniciar Talkie al iniciar sesión y que tu atajo siempre funcione.";
+"Enable" = "Activar";

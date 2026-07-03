@@ -54,6 +54,13 @@ enum HUDPhase: Equatable {
     // dictionary for next time. NEVER edits the already-inserted text. Auto-dismisses;
     // ignoring it records nothing.
     case reviewLowConfidence(words: [String])
+    // The earned launch-at-login offer (H8): after three consecutive days of real
+    // use, offer once — in one tap — to start Talkie at login, so the hotkey stops
+    // dying silently after every reboot. An "Enable" chip flips the existing
+    // launchAtLogin setting (which registers the SMAppService login item).
+    // Auto-dismisses like the other offers; shown at most once ever (a resolved flag
+    // persists in UserDefaults), and it loses to every other interactive pill.
+    case launchOffer
     case error(String)
 }
 
@@ -100,12 +107,20 @@ final class HUDModel: ObservableObject {
     /// review chip (A12). The controller opens the correction popover; the hub's
     /// closure teaches the dictionary when the popover commits.
     var onReviewFix: (String) -> Void = { _ in }
+    /// Invoked when the user taps "Enable" on the earned launch-at-login offer (H8).
+    /// The hub's closure flips `settings.launchAtLogin` on (registering the login
+    /// item) and marks the once-ever offer resolved.
+    var onLaunchOfferEnable: () -> Void = {}
     /// How long the learned-correction ping stays up; the countdown ring depletes
     /// over exactly this window before the pill collapses.
     static let learnedDuration: TimeInterval = 5
     /// Bumped on each learned ping so the countdown ring restarts its animation
     /// from full even if two pings land back to back.
     @Published var learnedTick: Int = 0
+    /// Bumped when the earned launch-at-login offer (H8) is shown, so its countdown
+    /// ring restarts from full. Separate from `learnedTick` so the two never fight
+    /// over the ring's animation identity.
+    @Published var launchOfferTick: Int = 0
 
     /// System accessibility display preferences, mirrored so the SwiftUI pill can
     /// react to them. `highContrast` drives a fuller-opacity, brighter, ringed pill
@@ -194,7 +209,7 @@ final class HUDController {
     /// short delay for those.
     var isPresentingInteractivePill: Bool {
         switch model.phase {
-        case .commandPreview, .learned, .copyPrompt, .offerVibe, .reviewLowConfidence, .error:
+        case .commandPreview, .learned, .copyPrompt, .offerVibe, .reviewLowConfidence, .launchOffer, .error:
             return true
         default:
             return false
@@ -504,6 +519,66 @@ final class HUDController {
         // see the transient pill.
         announce(String(format: "Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss.".loc, repo))
         hide(after: HUDController.vibeOfferDuration)
+    }
+
+    /// How long the earned launch-at-login offer (H8) stays up. Matches the Vibe
+    /// offer's window — it's a question, not a passive confirmation, so it lingers a
+    /// touch longer than a learned ping, but stays bounded because a timeout means
+    /// "not now" (and here also "resolved" — it's offered at most once, ever).
+    static let launchOfferDuration: TimeInterval = 8
+
+    /// The earned launch-at-login offer (H8): after a 3-day streak of real use, offer
+    /// one tap to start Talkie at login so the hotkey stops dying silently after every
+    /// reboot. One "Enable" chip; auto-dismisses. Modeled on `showVibeOffer`. `onEnable`
+    /// is the hub's closure (flip `settings.launchAtLogin` on → registers the login
+    /// item). `onResolve` runs when the offer leaves the screen for ANY reason (tap OR
+    /// timeout OR a superseding pill) so the once-ever resolved flag is set either way;
+    /// it must be idempotent. The hub only calls this when no other interactive pill is
+    /// up and the streak/settings gates pass, so it never stacks or nags.
+    func showLaunchOffer(onEnable: @escaping () -> Void, onResolve: @escaping () -> Void) {
+        cancelHide()
+        let panel = ensurePanel()
+        model.onLaunchOfferEnable = { [weak self] in
+            self?.panel?.ignoresMouseEvents = true
+            // The tap itself resolves the offer; the enable closure flips the setting
+            // and marks it resolved, so the timeout-driven resolve below is a no-op.
+            onEnable()
+        }
+        model.launchOfferTick &+= 1        // restart the countdown ring from full
+        panel.ignoresMouseEvents = false   // let the user tap Enable
+        model.phase = .launchOffer
+        reposition()
+        panel.orderFrontRegardless()
+        // The offer auto-dismisses and its panel may never take focus, so spell it out
+        // for a VoiceOver user who can't see the transient pill.
+        announce("Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works.".loc)
+        // Resolve exactly once, whichever ends the offer first — the tap or this
+        // timeout. `onResolve` is idempotent, so a tap that already resolved makes this
+        // a harmless no-op.
+        hideLaunchOffer(after: HUDController.launchOfferDuration, onResolve: onResolve)
+    }
+
+    /// Auto-hide for the launch offer that also fires `onResolve` when the timeout
+    /// elapses (unless the pill was already replaced by another state). Mirrors
+    /// `hide(after:)` but threads the once-ever resolve through, so an ignored offer is
+    /// still marked resolved and never shown again.
+    private func hideLaunchOffer(after delay: TimeInterval, onResolve: @escaping () -> Void) {
+        hideTask?.cancel()
+        hideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            // Only resolve-by-timeout if the offer is still the thing on screen; if a
+            // superseding pill took over, THAT transition already resolved it (the hub
+            // resolves before showing anything that would preempt the offer).
+            if case .launchOffer = self.model.phase {
+                onResolve()
+                self.panel?.ignoresMouseEvents = true
+                self.model.handsFreeLocked = false
+                self.model.phase = .hidden
+                self.panel?.orderOut(nil)
+            }
+            self.hideTask = nil
+        }
     }
 
     /// How long the low-confidence review chip stays up before auto-dismissing.
@@ -904,6 +979,11 @@ private struct HUDView: View {
                 if case .learned = model.phase {
                     CountdownRing(duration: HUDModel.learnedDuration)
                         .id(model.learnedTick)
+                } else if case .launchOffer = model.phase {
+                    // H8: the earned launch-at-login offer drains the same coral ring
+                    // over its (longer) window — a wordless "this dismisses itself".
+                    CountdownRing(duration: HUDController.launchOfferDuration)
+                        .id(model.launchOfferTick)
                 }
             }
             .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
@@ -1250,6 +1330,32 @@ private struct HUDView: View {
                             fill: chipFill(0.18), ink: ink(0.72),
                             hint: "Opens a small box to correct the spelling for next time.".loc) {
                     model.onReviewFix(primary)
+                }
+            }
+            .transition(.blurReplace)
+            .accessibilityElement(children: .contain)
+        case .launchOffer:
+            // Earned launch-at-login offer (H8): a 3-day streak of real use has been
+            // reached, so offer one tap to start Talkie at login — the hotkey stops
+            // dying silently after every reboot. Same visual family as the vibe/learned
+            // pills: a power glyph, the honest line, and one "Enable" chip. A coral
+            // countdown ring (above) drains over the window; a timeout means "not now"
+            // (and resolves it — offered once, ever).
+            HStack(spacing: 8) {
+                Image(systemName: "power")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.coral)
+                    .accessibilityHidden(true)
+                Text("3-day streak — start Talkie at login so dictation always works?")
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.92))
+                    .lineLimit(2)
+                    .frame(maxWidth: 300, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                CommandChip(title: "Enable", prominent: true,
+                            fill: chipFill(0.18), ink: ink(0.72),
+                            hint: "Starts Talkie automatically at login so your hotkey is always ready.".loc) {
+                    model.onLaunchOfferEnable()
                 }
             }
             .transition(.blurReplace)

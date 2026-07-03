@@ -575,3 +575,10 @@
 "Cut Wi-Fi, then speak — it still works." = "Cut Wi-Fi, then speak — it still works.";
 "Told you. Nothing left this Mac." = "Told you. Nothing left this Mac.";
 "Your dictated words, offline" = "Your dictated words, offline";
+
+// MARK: - Earned launch-at-login offer (H8)
+"3-day streak — start Talkie at login so dictation always works?" = "3-day streak — start Talkie at login so dictation always works?";
+"Starts Talkie automatically at login so your hotkey is always ready." = "Starts Talkie automatically at login so your hotkey is always ready.";
+"Talkie will start at login." = "Talkie will start at login.";
+"Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works.";
+"Enable" = "Enable";

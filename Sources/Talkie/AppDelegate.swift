@@ -1985,6 +1985,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Suppressed for a Private app (I1): tapping "Fix" would teach the
                 // dictionary, and a Private app learns nothing from what you dictate.
                 if !neverStore { self.maybeOfferLowConfidenceReview(reviewFlagged) }
+                // H8 — once ever, after a 3-day streak of real use, offer to start
+                // Talkie at login (so the hotkey stops dying silently after a reboot).
+                // Queued LAST and with the longest settle, so it loses to the insertion
+                // pill and to the A9/A12 offers above; a resolved flag persists so an
+                // ignored offer never reappears. A no-op unless the streak/settings
+                // gates pass. Runs for Private apps too — it carries no transcript
+                // content and the streak was already recorded above (I1-safe).
+                self.maybeOfferLaunchAtLogin()
             case .leftOnClipboard(let reason):
                 // B9: the text is on the clipboard, NOT in the field — a caret-relative
                 // edit would corrupt whatever is focused, so clear the edit target.
@@ -2313,6 +2321,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: H8 — earned launch-at-login offer
+
+    /// After a successful dictation, offer ONCE — in one tap — to start Talkie at
+    /// login, but only once the user has actually earned it: three consecutive days of
+    /// real use (`activity.currentStreak >= 3`). The point is that after a reboot the
+    /// hotkey is dead until the user remembers Talkie exists; someone who's dictated
+    /// three days running clearly wants it around, so this is earned help, not a
+    /// growth-hack nag.
+    ///
+    /// Offered at most once, EVER: `LaunchAtLoginOffer.resolved` persists in
+    /// UserDefaults and is set whether the user enables it or ignores it, so an ignored
+    /// offer never reappears — including across relaunches. Users who already turned the
+    /// Behavior-card toggle on never see it (`!settings.launchAtLogin`). It fits the
+    /// single-phase HUD queue exactly like the A9/A12 offers: it waits out the brief
+    /// insert/learn pings, then shows ONLY if nothing interactive is on the notch — so a
+    /// learned pill, copy prompt, command preview, Vibe offer, or review chip all win,
+    /// and the offer simply waits for a later dictation (it hasn't been resolved yet, so
+    /// nothing is burned). A touch longer settle than the review chip so it loses to it.
+    private func maybeOfferLaunchAtLogin() {
+        // Cheap synchronous gate first — no point scheduling a task that will bail.
+        guard LaunchAtLoginOffer.shouldOffer(
+            launchAtLogin: settings.launchAtLogin,
+            resolved: LaunchAtLoginOffer.resolved,
+            currentStreak: activity.currentStreak
+        ) else { return }
+        Task { @MainActor in
+            // Let the insert/learn pings — and the A9/A12 offers that queue ahead of
+            // this — breathe and claim the notch first. A little longer than the review
+            // chip's 1.8s so this offer deterministically loses to it.
+            try? await Task.sleep(for: .seconds(2.2))
+            // Re-check on the freshest state (the same pure gate) AND that nothing
+            // interactive is up — a learned/copy/command/vibe/review pill all suppress
+            // it. Every gate fails safe toward NOT showing: an unearned or colliding
+            // offer is worse than none.
+            guard LaunchAtLoginOffer.shouldOffer(
+                    launchAtLogin: self.settings.launchAtLogin,
+                    resolved: LaunchAtLoginOffer.resolved,
+                    currentStreak: self.activity.currentStreak),
+                  !self.isDictating, !self.isProcessing,
+                  !self.hud.isPresentingInteractivePill else { return }
+            self.hud.showLaunchOffer(
+                onEnable: { [weak self] in
+                    guard let self else { return }
+                    // Flip the existing setting on — its didSet calls LaunchAtLogin.set,
+                    // registering the SMAppService login item — and resolve the offer so
+                    // it never appears again. A brief "Done" confirmation (the existing
+                    // non-interactive saved-pill primitive) closes the loop.
+                    self.settings.launchAtLogin = true
+                    LaunchAtLoginOffer.resolve()
+                    self.hud.showSaved("Talkie will start at login.".loc)
+                },
+                onResolve: { LaunchAtLoginOffer.resolve() }
+            )
+        }
+    }
+
     // MARK: Paste last transcript (⌥⌘V)
 
     /// The re-paste shortcut label for the current activation key (e.g. "⌃⌘V"),
@@ -2606,4 +2670,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension Notification.Name {
     static let talkieSettingsChanged = Notification.Name("talkieSettingsChanged")
+}
+
+/// One-shot persisted state for the earned launch-at-login offer (H8). This is NOT a
+/// preference — it's a "have we already offered?" latch — so it lives here as a plain
+/// UserDefaults flag rather than as an `AppSettings` property (which would imply a
+/// user-facing toggle). Set the first time the offer is shown-and-dismissed OR
+/// accepted, whichever comes first, and read before ever showing the offer, so it's
+/// surfaced at most once, ever — including across relaunches. Mirrors the `GestureHint`
+/// counter pattern: no setting, no other state, just a boolean in the plist.
+enum LaunchAtLoginOffer {
+    private static let resolvedKey = "launchAtLoginOfferResolved"
+
+    /// How many consecutive active days earn the offer. Three is deliberately a real
+    /// habit, not a first-session upsell: someone who's dictated three days running is
+    /// telling you Talkie belongs on this Mac, so offering to survive a reboot is
+    /// earned help, not a growth-hack nag.
+    static let requiredStreak = 3
+
+    /// The whole gate as a pure function: offer only when launch-at-login is still off,
+    /// the offer was never resolved, and the streak has been earned. Extracted so the
+    /// decision is unit-testable without the file system, UserDefaults, or the HUD —
+    /// `maybeOfferLaunchAtLogin` calls this for both its cheap pre-check and its
+    /// freshest-state re-check after the settle delay.
+    static func shouldOffer(launchAtLogin: Bool, resolved: Bool, currentStreak: Int) -> Bool {
+        !launchAtLogin && !resolved && currentStreak >= requiredStreak
+    }
+
+    /// Whether the offer has already been resolved (accepted or ignored) and must
+    /// never be shown again. Main-actor because it's only touched from the dictation
+    /// pipeline, so `UserDefaults` access stays on the main thread. `defaults` is
+    /// injectable purely so the persistence round-trip is unit-testable against a
+    /// throwaway suite instead of `.standard`.
+    @MainActor
+    static func isResolved(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: resolvedKey)
+    }
+
+    /// Convenience accessor for the production call sites (reads `.standard`).
+    @MainActor
+    static var resolved: Bool { isResolved() }
+
+    /// Mark the offer resolved. Idempotent — safe to call from both the tap path and
+    /// the timeout path (only the first write matters).
+    @MainActor
+    static func resolve(defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: resolvedKey)
+    }
 }

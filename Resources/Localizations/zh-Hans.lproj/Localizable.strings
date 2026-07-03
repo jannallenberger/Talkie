@@ -573,3 +573,10 @@
 "Cut Wi-Fi, then speak — it still works." = "断开 Wi-Fi 再说话 — 照样能用。";
 "Told you. Nothing left this Mac." = "看吧，什么都没离开这台 Mac。";
 "Your dictated words, offline" = "你离线口述的文字";
+
+// MARK: - Earned launch-at-login offer (H8)
+"3-day streak — start Talkie at login so dictation always works?" = "连续 3 天使用 — 登录时启动 Talkie，让听写始终可用？";
+"Starts Talkie automatically at login so your hotkey is always ready." = "登录时自动启动 Talkie，让快捷键随时可用。";
+"Talkie will start at login." = "Talkie 将在登录时启动。";
+"Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "已连续三天听写。执行“启用”即可让 Talkie 在登录时启动，快捷键随时可用。";
+"Enable" = "启用";

@@ -573,3 +573,10 @@
 "Cut Wi-Fi, then speak — it still works." = "Wi-Fi를 끄고 말해도 그대로 작동합니다.";
 "Told you. Nothing left this Mac." = "보셨죠. 아무것도 이 Mac을 떠나지 않았습니다.";
 "Your dictated words, offline" = "오프라인으로 받아쓴 내용";
+
+// MARK: - Earned launch-at-login offer (H8)
+"3-day streak — start Talkie at login so dictation always works?" = "3일 연속 사용 — 로그인 시 Talkie를 시작해 받아쓰기가 항상 작동하도록 할까요?";
+"Starts Talkie automatically at login so your hotkey is always ready." = "로그인 시 Talkie를 자동으로 시작해 단축키를 항상 사용할 수 있게 합니다.";
+"Talkie will start at login." = "로그인 시 Talkie가 시작됩니다.";
+"Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "3일 연속 받아쓰기했습니다. 사용을 실행하면 로그인 시 Talkie가 시작되어 단축키가 항상 작동합니다.";
+"Enable" = "사용";
