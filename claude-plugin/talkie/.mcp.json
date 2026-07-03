@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "talkie": {
+      "command": "/Applications/Talkie.app/Contents/MacOS/talkie-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}

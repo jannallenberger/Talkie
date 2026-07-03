@@ -108,6 +108,19 @@ are read, never file contents.
 > [docs/CLAUDE_DESIGN_PROMPT.md](docs/CLAUDE_DESIGN_PROMPT.md) for a ready-to-use
 > prompt to redesign the app with Claude.
 
+## Claude Code plugin
+
+With Talkie.app installed, give Claude Code read access to your meetings, daily
+brief, context graph, and dictation history — all on-device, nothing leaves your
+Mac. In Claude Code:
+
+```text
+/plugin marketplace add jannallenberger/Talkie
+/plugin install talkie@talkie
+```
+
+Then just ask *"what did I say about the updater?"* or run `/talkie:talkie-brief`.
+
 ## Transcribe files from the terminal
 
 Talkie ships a small `talkie` command inside the app bundle for transcribing
