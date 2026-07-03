@@ -20,13 +20,25 @@ struct OnboardingView: View {
     @ObservedObject var permissions: PermissionsModel
     let onRetryHotKey: () -> Bool
 
-    private enum Step: CaseIterable { case welcome, privacy, gesture, permissions, ready }
+    // Speak-first order (H5): the mic-only try-it comes BEFORE the privacy promise,
+    // the gesture, and — crucially — before Input Monitoring or Accessibility are ever
+    // mentioned. A new user speaks and sees their words within ~15s of first launch.
+    // The `ready` step keeps the real-hotkey try-it as the graduation moment.
+    // Room is deliberately left after `tryIt` for one more step later (the A-series
+    // profession packs) — adding a case here needs no other change.
+    private enum Step: CaseIterable { case welcome, tryIt, privacy, gesture, permissions, ready }
     private let steps = Step.allCases
     @State private var step = 0
+    // The final-step (`ready`) hotkey-driven try-it field (needs all permissions).
     @State private var tryText = ""
+    // The speak-first (`tryIt`) step: a read-only results field + record button,
+    // driven by a SEALED programmatic dictation (no clipboard/paste/History/stats).
+    @State private var tryItText = ""
+    @State private var tryItActive = false
+    @State private var tryItError: String?
 
     private var current: Step { steps[step] }
-    private var permissionsIndex: Int { steps.firstIndex(of: .permissions) ?? 3 }
+    private var permissionsIndex: Int { steps.firstIndex(of: .permissions) ?? 4 }
 
     var body: some View {
         ZStack {
@@ -77,6 +89,7 @@ struct OnboardingView: View {
     private var content: some View {
         switch current {
         case .welcome:     welcome
+        case .tryIt:       tryIt
         case .privacy:     privacy
         case .gesture:     gesture
         case .permissions: permissionsStep
@@ -95,6 +108,92 @@ struct OnboardingView: View {
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: Speak-first try-it (H5)
+
+    /// The mic-only first taste: a big record button and a read-only field the
+    /// dictated words land in. Tapping record triggers the SEALED try-it dictation
+    /// (`AppDelegate.toggleTryItDictation`) — the only permission it needs is the
+    /// microphone, requested inline by the system when recording starts. No Input
+    /// Monitoring, no Accessibility, and nothing the user says here is pasted,
+    /// copied, learned, or stored.
+    private var tryIt: some View {
+        VStack(spacing: 18) {
+            Text("Try it — just talk")
+                .font(.talkieDisplay(29))
+                .foregroundStyle(Theme.ink)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("No setup needed — click, speak, see your words.")
+                .font(.talkieHeading(14.5, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            TryItRecordButton(active: tryItActive) { toggleTryIt() }
+                .padding(.top, 2)
+
+            // Read-only results field — the words appear here as you speak. Never
+            // editable: this is a demo of recognition, not a place to type.
+            ScrollView {
+                Text(tryItResultsDisplay)
+                    .font(.talkieHeading(14, weight: .regular))
+                    .foregroundStyle(tryItText.isEmpty ? Theme.inkTertiary : Theme.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .multilineTextAlignment(.leading)
+                    .textSelection(.enabled)
+            }
+            .frame(minHeight: 64, maxHeight: 96)
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Your dictated words")
+            .accessibilityValue(tryItText.isEmpty ? "Empty" : tryItText)
+
+            if let tryItError {
+                Label(tryItError, systemImage: "exclamationmark.triangle")
+                    .font(.talkieHeading(11.5, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        // If the user walks away mid-recording (Back/Continue), stop the sealed
+        // session so no dictation is left running behind the onboarding.
+        .onDisappear { if tryItActive { AppDelegate.shared?.toggleTryItDictation(
+            onInterim: { _ in }, onFinal: { _ in }, onError: { _ in }, onEnded: {}) } }
+    }
+
+    /// Placeholder-or-content for the results field. The read-only field shows a
+    /// gentle prompt until the first words land.
+    private var tryItResultsDisplay: String {
+        if !tryItText.isEmpty { return tryItText }
+        return tryItActive
+            ? "Listening… say anything.".loc
+            : "Your words will appear here.".loc
+    }
+
+    private func toggleTryIt() {
+        guard let app = AppDelegate.shared else { return }
+        if tryItActive {
+            // Stop: the originally-installed onEnded resets `tryItActive`; the passed
+            // closures here are ignored by the toggle's stop branch.
+            app.toggleTryItDictation(
+                onInterim: { _ in }, onFinal: { _ in }, onError: { _ in }, onEnded: {})
+        } else {
+            tryItError = nil
+            tryItText = ""
+            // Only flip to the recording state if a session actually started — a busy
+            // engine or a synchronous refusal returns false (and surfaces its own error),
+            // so the button must stay idle rather than lie about recording.
+            let started = app.toggleTryItDictation(
+                onInterim: { tryItText = $0 },
+                onFinal: { tryItText = $0 },
+                onError: { tryItError = $0; tryItActive = false },
+                onEnded: { tryItActive = false }
+            )
+            tryItActive = started
         }
     }
 
@@ -156,10 +255,13 @@ struct OnboardingView: View {
 
     private var permissionsStep: some View {
         VStack(spacing: 15) {
-            Text("Three quick permissions")
+            // After the speak-first try-it, the mic is usually already granted, so the
+            // two remaining grants are the point of this step. Naming them honestly —
+            // and only them — keeps the ask small and non-alarming.
+            Text("Two more permissions")
                 .font(.talkieDisplay(27))
                 .foregroundStyle(Theme.ink)
-            Text("Talkie needs these to hear your key and place your text. Each is used only on this Mac.")
+            Text("To hear your dictation key and place your text into other apps, Talkie needs these two. Each is used only on this Mac.")
                 .font(.talkieHeading(14, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -167,7 +269,11 @@ struct OnboardingView: View {
                 OnboardPermissionRow(
                     icon: "IconMic",
                     title: "Microphone",
-                    why: "To hear you while you dictate.",
+                    // Reads as an already-done confirmation for anyone who used the
+                    // try-it; still tappable for those who skipped straight here.
+                    why: permissions.microphone
+                        ? "Granted while you tried it out."
+                        : "To hear you while you dictate.",
                     granted: permissions.microphone
                 ) { Task { await permissions.requestMicrophone() } }
                 OnboardPermissionRow(
@@ -282,6 +388,8 @@ struct OnboardingView: View {
                         .help("Jump straight to granting permissions")
                 }
                 Spacer()
+                // A `LocalizedStringKey` (not a plain `String`) so the label localizes
+                // — `Button(_: String)` would bypass the .strings lookup.
                 Button(primaryTitle, action: advance)
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.coral)
@@ -292,7 +400,7 @@ struct OnboardingView: View {
         .frame(maxWidth: 460)
     }
 
-    private var primaryTitle: String {
+    private var primaryTitle: LocalizedStringKey {
         switch current {
         case .welcome:     return "Get started"
         case .ready:       return "Start dictating"
@@ -358,6 +466,50 @@ private struct Keycap: View {
         .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.surfaceSunken))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.hairline))
+    }
+}
+
+/// The big record button on the speak-first try-it step. Click to start, click to
+/// stop. When recording, it turns to the live/recording feather tint and shows a
+/// pulsing dot (a self-contained level cue — the real `onLevel` plumbing feeds the
+/// HUD/bird, not this onboarding surface, so a dependency-free pulse is used here).
+private struct TryItRecordButton: View {
+    let active: Bool
+    let action: () -> Void
+    @State private var pulse = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(active ? Theme.featherRed.opacity(0.16) : Theme.coral.opacity(0.14))
+                    .frame(width: 76, height: 76)
+                if active {
+                    Circle()
+                        .stroke(Theme.featherRed.opacity(0.5), lineWidth: 2)
+                        .frame(width: 76, height: 76)
+                        .scaleEffect(pulse ? 1.12 : 0.96)
+                        .opacity(pulse ? 0 : 0.9)
+                }
+                Image(systemName: active ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(active ? Theme.featherRed : Theme.coral)
+            }
+        }
+        .buttonStyle(.plain)
+        .contentShape(Circle())
+        .accessibilityLabel(active ? "Stop recording" : "Start recording")
+        .accessibilityHint(active
+            ? "Stops the demo and shows what you said."
+            : "Records your voice and shows your words. Only the microphone is used.")
+        .onChange(of: active) { _, isActive in
+            pulse = false
+            if isActive {
+                withAnimation(.easeOut(duration: 1.0).repeatForever(autoreverses: false)) {
+                    pulse = true
+                }
+            }
+        }
     }
 }
 

@@ -120,6 +120,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sessionID = 0
     /// True only once audio is actually flowing into a live analyzer session.
     private var sessionLive = false
+
+    // MARK: Onboarding try-it sink (H5)
+
+    /// When set, a dictation is a SEALED, side-effect-free "try it" run for the
+    /// speak-first onboarding step: the normal engine + cleanup pipeline runs and
+    /// the styled final text is delivered HERE instead of to the frontmost app.
+    /// A try-it session must never touch the clipboard, paste/inject, route a
+    /// command, start learning, or land in History / stats / graph / dashboard —
+    /// `endDictation` checks this and short-circuits before any of that. Set by
+    /// `toggleTryItDictation`, cleared on EVERY completion/failure/teardown path
+    /// (guarded by the session-id pattern so a stale sink can never fire into a
+    /// later, normal dictation). This is a Private-app-grade guarantee: the sink
+    /// is the only place a try-it's words go, and it can't leak into a real session.
+    private var dictationSink: ((String) -> Void)?
+    /// Streams the live (interim) transcript to the onboarding field while you
+    /// speak, so words appear as you talk. Fed from `setupEngineHandler` alongside
+    /// the HUD's own live update. Cleared together with `dictationSink`.
+    private var dictationInterimSink: ((String) -> Void)?
+    /// Lifecycle reset for the try-it UI: invoked once when a try-it session ends
+    /// for ANY reason (final text delivered, mic declined, capture failure, an
+    /// abandoned/never-live session). Carries no content — it exists only so the
+    /// onboarding record button can flip back to its idle state, since the failure
+    /// teardown paths live in `beginDictation`/`handleCaptureFailure`, not just in
+    /// the successful `endDictation` finish. Set and cleared with the two sinks.
+    private var dictationTryItEnded: (() -> Void)?
+
+    /// True while a try-it sink is installed. The one predicate `endDictation` and
+    /// the teardown paths read, so "is this a sealed onboarding run?" has a single
+    /// source of truth.
+    private var isTryItDictation: Bool { dictationSink != nil }
+
+    /// Clear the try-it sinks and fire the one-shot end callback. Every teardown
+    /// path (success, mic-declined, capture failure, abandoned session) funnels
+    /// through here so the sink can never survive into the next dictation and the
+    /// onboarding button is always reset exactly once.
+    private func clearTryItSinks() {
+        let ended = dictationTryItEnded
+        dictationSink = nil
+        dictationInterimSink = nil
+        dictationTryItEnded = nil
+        micDeclinedTryItError = nil
+        ended?()
+    }
+
     /// When the current recording actually started flowing (for WPM/duration).
     private var recordingStartedAt: Date?
     /// The language currently used for live transcription (sticky; switches when
@@ -535,6 +579,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     guard !update.isComplete else { return }
                     AppDelegate.sharedHUD?.updateTranscribing(update.combined)
+                    // H5: when a sealed onboarding try-it is active, also stream the
+                    // live transcript into its results field so words appear as you
+                    // speak. The HUD pill still updates too (acceptable/good — the
+                    // pill during try-it is harmless). Reaches `self` (not the static
+                    // HUD proxy) since the sink is per-instance state.
+                    AppDelegate.shared?.dictationInterimSink?(update.combined)
                 }
             }
         }
@@ -1006,13 +1056,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let micOK = await AudioCapture.requestMicrophoneAccess()
             // The user may have released the key (or started a new session)
             // while we awaited the mic. Bail without starting anything.
-            guard self.isDictating, self.sessionID == myID else { return }
+            guard self.isDictating, self.sessionID == myID else {
+                // H5: a try-it whose session was abandoned during the mic await —
+                // clear its sink and reset the onboarding button (idempotent).
+                self.clearTryItSinks()
+                return
+            }
             guard micOK else {
                 self.isDictating = false
                 self.updateStatusUI()
                 self.birdBuddy.setActive(false)
                 self.hud.showError("Microphone access is needed to dictate.")
                 self.permissions.refresh()
+                // H5: declining the mic ends the try-it — surface the honest inline
+                // error in the onboarding field, then clear the sink and reset the
+                // button (clearTryItSinks fires onEnded). Flow stays continuable.
+                self.micDeclinedTryItError?("Microphone access is needed to try it — you can grant it and tap again.".loc)
+                self.clearTryItSinks()
                 return
             }
             do {
@@ -1028,6 +1088,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard self.isDictating, self.sessionID == myID else {
                     streaming?.cancel()
                     await engine.cancelSession()
+                    self.clearTryItSinks() // H5: abandoned try-it — reset its sink/UI.
                     return
                 }
                 try audio.start(
@@ -1067,6 +1128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard self.isDictating, self.sessionID == myID else {
                     streaming?.cancel()
                     await engine.cancelSession()
+                    self.clearTryItSinks() // H5: abandoned try-it — reset its sink/UI.
                     return
                 }
                 self.isDictating = false
@@ -1075,6 +1137,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.hud.showError(error.localizedDescription)
                 streaming?.cancel()
                 await engine.cancelSession()
+                // H5: engine/audio start failed for a try-it — clear the sink and
+                // reset the onboarding button; the HUD already shows the error.
+                self.clearTryItSinks()
             }
         }
     }
@@ -1100,6 +1165,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateStatusUI()
         birdBuddy.setActive(false)
         hud.showError(error.localizedDescription)
+        // H5: a mid-session capture failure ends a try-it too — clear the sink and
+        // reset the onboarding button (no text was ever delivered).
+        clearTryItSinks()
     }
 
     func endDictation() {
@@ -1124,6 +1192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // is never left ducked when a session ends.
             musicController.resumeAfterDictation()
             hud.hide()
+            // H5: a try-it stopped before audio went live (e.g. clicked stop during
+            // mic/model setup) — clear the sink and reset the onboarding button.
+            clearTryItSinks()
             return
         }
         sessionLive = false
@@ -1305,8 +1376,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // the model will actually run (else nothing to swap to), in paste
             // mode, for non-command dictation of modest length, and never on the
             // language-switch path (finalRaw only settles after re-transcribe).
+            // H5: a sealed try-it must NEVER inject — optimistic insertion pastes the
+            // interim text into the frontmost app before the seam below, so it's
+            // disabled whenever a try-it sink is installed.
             var optimistic: (count: Int, text: String)?
-            if optimisticEnabled, mode == .paste, cleanupEnabled, !languageSwitched,
+            if self.dictationSink == nil,
+               optimisticEnabled, mode == .paste, cleanupEnabled, !languageSwitched,
                !finalRaw.isEmpty, CleanupEngine.isAvailable {
                 let interimProcessed = TextProcessor.apply(
                     replacements: replacements, removeFillers: removeFillers,
@@ -1432,6 +1507,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             guard !finalText.isEmpty else {
+                // H5: an empty try-it (nothing intelligible said) still ends cleanly —
+                // deliver the empty result and reset the onboarding button. Nothing is
+                // ever inserted, and the gesture hint (a dictation-into-app affordance)
+                // is irrelevant to the sealed try-it, so it's skipped.
+                if let sink = self.dictationSink {
+                    self.hud.hide()
+                    sink(finalText)
+                    self.clearTryItSinks()
+                    return
+                }
                 // A lone quick tap that captured nothing usually means the user tapped
                 // instead of holding (or didn't know tap-tap locks). The first few
                 // times that happens, teach the gesture in the pill instead of just
@@ -1441,6 +1526,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } else {
                     self.hud.hide()
                 }
+                return
+            }
+
+            // H5 — the sealed onboarding try-it seam. When a try-it sink is installed,
+            // this dictation ran the normal engine + cleanup pipeline (so the user sees
+            // real, styled output) but must go NOWHERE ELSE: no command routing, no
+            // "note this" export, no clipboard/paste/injection, no learning-watch, and
+            // nothing written to History / stats / graph / app-usage / niche-harvest.
+            // We hand the finished `finalText` to the sink, reset the button, and
+            // return BEFORE any of that machinery runs. The `defer` above already
+            // released `isProcessing`. This is the Private-app-grade guarantee: a
+            // try-it's words only ever reach the onboarding field.
+            if let sink = self.dictationSink {
+                self.hud.hide()
+                sink(finalText)
+                self.clearTryItSinks()
                 return
             }
 
@@ -2210,6 +2311,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let afterTokens = b.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         return afterTokens.difference(from: beforeTokens).count
     }
+
+    // MARK: Onboarding try-it (H5)
+
+    /// Drive the speak-first onboarding try-it. Idle → install the sinks and start a
+    /// SEALED dictation (see `dictationSink`); active → stop it. The record button in
+    /// `OnboardingView` calls this on every tap; it's a toggle so the same button both
+    /// starts and stops.
+    ///
+    /// Mic permission is requested INLINE by the existing
+    /// `AudioCapture.requestMicrophoneAccess()` await inside `beginDictation` — that
+    /// system mic prompt is the try-it's ONLY prompt (no Input Monitoring, no
+    /// Accessibility). If the user declines, `beginDictation`'s mic-declined path
+    /// clears the sinks and fires `onEnded`, so `onError` + the reset both land and
+    /// the onboarding flow stays continuable.
+    ///
+    /// - Parameters:
+    ///   - onInterim: live transcript as you speak (streamed from the engine handler).
+    ///   - onFinal: the finished, styled text (what a real dictation would have typed).
+    ///   - onError: an honest inline message when the mic is unavailable/declined.
+    ///   - onEnded: fired exactly once when the session ends for ANY reason, so the
+    ///     button can return to idle (carries no content).
+    /// - Returns: `true` iff a new sealed try-it dictation was actually started, so the
+    ///   caller can set its recording state only on a real start (a stop, a busy nudge,
+    ///   or a synchronous refusal all return `false`).
+    @discardableResult
+    func toggleTryItDictation(
+        onInterim: @escaping (String) -> Void,
+        onFinal: @escaping (String) -> Void,
+        onError: @escaping (String) -> Void,
+        onEnded: @escaping () -> Void
+    ) -> Bool {
+        // Active try-it (or any in-flight dictation while a sink is installed) → stop.
+        if isTryItDictation {
+            endDictation()
+            return false
+        }
+        // Don't start a try-it over a real dictation/processing pass sharing the
+        // engine + audio; nudge the pill and bail (mirrors beginDictation's guard).
+        guard !isDictating, !isProcessing else {
+            hud.nudgeBusy()
+            return false
+        }
+        guard TranscriptionEngine.isAvailable else {
+            onError("On-device speech isn't available on this Mac.".loc)
+            return false
+        }
+        // Install the sinks FIRST, then begin — `beginDictation`'s async mic step and
+        // `endDictation`'s finish both read `dictationSink` to seal the session.
+        // `micDeclinedTryItError` bridges beginDictation's mic-declined branch to the
+        // onboarding field's inline error; all four closures are cleared together in
+        // `clearTryItSinks` on every teardown path.
+        dictationInterimSink = onInterim
+        dictationSink = onFinal
+        dictationTryItEnded = onEnded
+        micDeclinedTryItError = onError
+        beginDictation()
+        // `beginDictation` can refuse SYNCHRONOUSLY (e.g. a meeting is recording) and
+        // return before its async task — which is the only path that would otherwise
+        // clear the sinks. If it didn't take (`isDictating` still false), surface the
+        // reason inline and tear the sinks down now so they can never leak into a later
+        // real dictation. (`isDictating` becomes true synchronously at the top of a
+        // successful begin, before the async mic await.)
+        guard isDictating else {
+            onError("Talkie is busy right now — try again in a moment.".loc)
+            clearTryItSinks()
+            return false
+        }
+        return true
+    }
+
+    /// Bridges `beginDictation`'s mic-declined branch to the onboarding field's inline
+    /// error. Set by `toggleTryItDictation`, read once by the mic-declined path, and
+    /// cleared alongside the sinks. Kept separate from the content sinks because it
+    /// carries a user-facing message, not transcript text.
+    private var micDeclinedTryItError: ((String) -> Void)?
 
     // MARK: App Intents accessor
 

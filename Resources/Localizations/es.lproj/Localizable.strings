@@ -550,3 +550,18 @@
 "%d chars" = "%d caracteres";
 "%.0f ms" = "%.0f ms";
 "%.1f s" = "%.1f s";
+
+// MARK: - Speak-first onboarding (H5)
+"Try it — just talk" = "Pruébalo — solo habla";
+"No setup needed — click, speak, see your words." = "Sin configuración — haz clic, habla y verás tus palabras.";
+"Your words will appear here." = "Tus palabras aparecerán aquí.";
+"Listening… say anything." = "Escuchando… di algo.";
+"Two more permissions" = "Dos permisos más";
+"To hear your dictation key and place your text into other apps, Talkie needs these two. Each is used only on this Mac." = "Para oír tu tecla de dictado y colocar tu texto en otras apps, Talkie necesita estos dos. Cada uno se usa solo en este Mac.";
+"Granted while you tried it out." = "Concedido mientras lo probabas.";
+"Microphone access is needed to try it — you can grant it and tap again." = "Se necesita acceso al micrófono para probarlo — concédelo y toca de nuevo.";
+"On-device speech isn't available on this Mac." = "El reconocimiento de voz en el dispositivo no está disponible en este Mac.";
+"Get started" = "Empezar";
+"Continue" = "Continuar";
+"Start dictating" = "Empezar a dictar";
+"Talkie is busy right now — try again in a moment." = "Talkie está ocupado ahora mismo — inténtalo de nuevo en un momento.";

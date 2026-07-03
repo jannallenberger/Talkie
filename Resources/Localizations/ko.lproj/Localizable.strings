@@ -550,3 +550,18 @@
 "%d chars" = "%d자";
 "%.0f ms" = "%.0f ms";
 "%.1f s" = "%.1f초";
+
+// MARK: - Speak-first onboarding (H5)
+"Try it — just talk" = "사용해 보세요 — 그냥 말하면 됩니다";
+"No setup needed — click, speak, see your words." = "설정 필요 없음 — 클릭하고 말하면 단어가 나타납니다.";
+"Your words will appear here." = "말한 내용이 여기에 표시됩니다.";
+"Listening… say anything." = "듣고 있어요… 무엇이든 말해 보세요.";
+"Two more permissions" = "두 가지 권한만 더";
+"To hear your dictation key and place your text into other apps, Talkie needs these two. Each is used only on this Mac." = "받아쓰기 키를 감지하고 다른 앱에 텍스트를 입력하려면 Talkie에 이 두 가지가 필요합니다. 각각 이 Mac에서만 사용됩니다.";
+"Granted while you tried it out." = "사용해 보는 동안 이미 허용되었습니다.";
+"Microphone access is needed to try it — you can grant it and tap again." = "사용해 보려면 마이크 접근 권한이 필요합니다 — 허용한 뒤 다시 탭하세요.";
+"On-device speech isn't available on this Mac." = "이 Mac에서는 온디바이스 음성 인식을 사용할 수 없습니다.";
+"Get started" = "시작하기";
+"Continue" = "계속";
+"Start dictating" = "받아쓰기 시작";
+"Talkie is busy right now — try again in a moment." = "Talkie가 지금 사용 중입니다 — 잠시 후 다시 시도하세요.";
