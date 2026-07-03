@@ -564,3 +564,10 @@
 "Start dictating" = "ディクテーションを開始";
 "Talkie is busy right now — try again in a moment." = "Talkie は現在処理中です — 少し待ってからもう一度お試しください。";
 "When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "どのアプリでもマイクを使い始めると、Talkie が録音を提案します。ひとりでに録音することはありません。あるアプリの提案を 2 回却下すると、そのアプリには提案しなくなります（専用の会議アプリが無音化されることはありません）。"
+
+// MARK: - Airplane-mode proof moment (H6)
+"Don't take our word for it — turn off Wi-Fi and dictate." = "言葉だけで信じないで — Wi-Fi を切って話してみてください。";
+"Try it offline" = "オフラインで試す";
+"Cut Wi-Fi, then speak — it still works." = "Wi-Fi を切って話しても、ちゃんと動きます。";
+"Told you. Nothing left this Mac." = "ね？ 何もこの Mac から出ていません。";
+"Your dictated words, offline" = "オフラインで話した言葉";

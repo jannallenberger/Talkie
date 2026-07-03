@@ -564,3 +564,10 @@
 "Start dictating" = "Empezar a dictar";
 "Talkie is busy right now — try again in a moment." = "Talkie está ocupado ahora mismo — inténtalo de nuevo en un momento.";
 "When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Cuando cualquier app empieza a usar tu micrófono, Talkie se ofrece a grabar; nunca graba por su cuenta. Descarta la oferta de una app dos veces y Talkie deja de ofrecerlo para ella (tus apps de reuniones dedicadas nunca se silencian)."
+
+// MARK: - Airplane-mode proof moment (H6)
+"Don't take our word for it — turn off Wi-Fi and dictate." = "No nos creas sin más — apaga el Wi-Fi y dicta.";
+"Try it offline" = "Pruébalo sin conexión";
+"Cut Wi-Fi, then speak — it still works." = "Corta el Wi-Fi y habla — sigue funcionando.";
+"Told you. Nothing left this Mac." = "Te lo dije. Nada salió de este Mac.";
+"Your dictated words, offline" = "Tus palabras dictadas, sin conexión";
