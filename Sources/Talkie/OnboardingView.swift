@@ -18,7 +18,7 @@ import AppKit
 struct OnboardingView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
-    let onRetryHotKey: () -> Void
+    let onRetryHotKey: () -> Bool
 
     private enum Step: CaseIterable { case welcome, privacy, gesture, permissions, ready }
     private let steps = Step.allCases
@@ -175,7 +175,14 @@ struct OnboardingView: View {
                     title: "Input Monitoring",
                     why: "To notice your one dictation key — nothing else you type.",
                     granted: permissions.inputMonitoring
-                ) { permissions.requestInputMonitoring(); onRetryHotKey() }
+                ) {
+                    permissions.requestInputMonitoring()
+                    // If the grant is already live but the tap won't install yet,
+                    // surface a one-click relaunch instead of a dead hotkey.
+                    if !onRetryHotKey() && permissions.inputMonitoring {
+                        permissions.hotKeyNeedsRelaunch = true
+                    }
+                }
                 OnboardPermissionRow(
                     icon: "IconAccessibility",
                     title: "Accessibility",
@@ -185,17 +192,32 @@ struct OnboardingView: View {
             }
             .padding(.top, 2)
 
-            if permissions.allGranted {
+            // The rows flip to granted on their own as polling observes each grant —
+            // no manual "Re-check" needed. When the key grant lands but the tap
+            // can't install, offer a one-click relaunch (always the user's tap).
+            if permissions.hotKeyNeedsRelaunch {
+                VStack(spacing: 8) {
+                    Text("Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key.")
+                        .font(.talkieHeading(12.5, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Relaunch now") { permissions.relaunch() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.coral)
+                        .controlSize(.large)
+                }
+                .padding(.top, 2)
+            } else if permissions.allGranted {
                 Label("All set", systemImage: "checkmark.seal.fill")
                     .font(.talkieHeading(13, weight: .semibold))
                     .foregroundStyle(Theme.positive)
-            } else {
-                Button("Re-check") { permissions.refresh() }
-                    .buttonStyle(.plain)
-                    .font(.talkieHeading(12, weight: .medium))
-                    .foregroundStyle(Theme.inkSecondary)
             }
         }
+        // Poll only while this step is on screen; the rows above flip to granted
+        // live as System Settings changes land. Stopped on disappear so no loop
+        // runs once the user moves past permissions.
+        .onAppear { permissions.startPolling() }
+        .onDisappear { permissions.stopPolling() }
     }
 
     private var ready: some View {

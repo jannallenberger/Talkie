@@ -421,3 +421,8 @@
 "Fix the spelling of %@ for next time." = "为下次修正 %@ 的拼写。";
 "Added “%@” to dictionary" = "已将 “%@” 添加到词典";
 "Already learning “%@”" = "已在学习 “%@”";
+
+// H4 — live permission polling + one-click relaunch
+"Relaunch now" = "立即重新启动";
+"Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "已授予输入监控权限，但 Talkie 需要重新启动才能识别你的按键。";
+"Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "输入监控已开启，但 Talkie 需要快速重新启动才能识别你的按键。";

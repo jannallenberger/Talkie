@@ -421,3 +421,8 @@
 "Fix the spelling of %@ for next time." = "다음번을 위해 %@의 철자를 수정합니다.";
 "Added “%@” to dictionary" = "“%@”을(를) 사전에 추가함";
 "Already learning “%@”" = "이미 “%@”을(를) 학습 중입니다";
+
+// H4 — live permission polling + one-click relaunch
+"Relaunch now" = "지금 다시 시작";
+"Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "입력 모니터링은 허용되었지만, 키를 인식하려면 Talkie를 다시 시작해야 합니다.";
+"Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "입력 모니터링이 켜져 있지만, 키를 인식하려면 Talkie를 잠깐 다시 시작해야 합니다.";
