@@ -17,6 +17,17 @@ func talkieDebugLog(_ message: String) {
     }
 }
 
+/// One finalized recognizer segment with its audio-clock span (seconds from the
+/// session's audio start, which begins at 0 ≈ recording start). Emitted alongside
+/// the bare-text segment so callers that persist timings (meetings, imports) have a
+/// real start/end to stand on, while the dictation path — which only needs the text
+/// — ignores it. `start`/`end` are pre-guarded finite by the producer.
+struct TimedSegment: Sendable, Codable {
+    var text: String
+    var start: Double
+    var end: Double
+}
+
 /// A single in-flight transcript update, pushed to the UI as recognition progresses.
 struct TranscriptUpdate: Sendable {
     /// Text that the recognizer has committed (will not change).
@@ -79,6 +90,14 @@ actor TranscriptionEngine {
     /// Fired once per finalized segment (a "batch") so the caller can clean
     /// each one incrementally. Set per session.
     private var onSegment: (@Sendable (String) -> Void)?
+    /// Fired once per finalized segment WITH its audio-clock span (seconds), for
+    /// callers that persist timings (meetings, imports). Set per session; nil on
+    /// the dictation path, which needs only the text. Kept separate from `onSegment`
+    /// so the existing text-only callers are untouched.
+    private var onTimedSegment: (@Sendable (TimedSegment) -> Void)?
+    /// Each finalized segment's audio-clock span, in spoken order — the timed
+    /// mirror of `finalizedSegments`. Returned by `finishSessionDetailed`.
+    private var finalizedTimedSegments: [TimedSegment] = []
 
     init(localeIdentifier: String) {
         self.locale = Locale(identifier: localeIdentifier)
@@ -317,7 +336,8 @@ actor TranscriptionEngine {
     /// `AnalyzerInput` buffers into. Idempotent guard: a session must be finished
     /// before another begins.
     func beginSession(
-        segmentHandler: (@Sendable (String) -> Void)? = nil
+        segmentHandler: (@Sendable (String) -> Void)? = nil,
+        timedSegmentHandler: (@Sendable (TimedSegment) -> Void)? = nil
     ) async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation) {
         guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
 
@@ -334,11 +354,13 @@ actor TranscriptionEngine {
             self.transcriber = nil
         }
 
-        // Reset accumulators + bind the per-session segment handler.
+        // Reset accumulators + bind the per-session segment handlers.
         finalizedText = ""
         finalizedSegments = []
+        finalizedTimedSegments = []
         volatileText = ""
         onSegment = segmentHandler
+        onTimedSegment = timedSegmentHandler
 
         let loc = try await resolvedLocale()
         let transcriber = makeTranscriber(locale: loc)
@@ -369,7 +391,14 @@ actor TranscriptionEngine {
             do {
                 for try await result in transcriber.results {
                     let text = String(result.text.characters)
-                    await self.ingest(text: text, isFinal: result.isFinal)
+                    // Capture the finalized segment's audio-clock span (seconds).
+                    // Guard non-finite like the multilingual lanes do — a bad range
+                    // must degrade to a zero-length span at a sane time, never a NaN.
+                    var start = result.range.start.seconds
+                    var end = (result.range.start + result.range.duration).seconds
+                    if !start.isFinite { start = 0 }
+                    if !end.isFinite { end = start }
+                    await self.ingest(text: text, isFinal: result.isFinal, start: start, end: end)
                 }
             } catch is CancellationError {
                 // Expected on teardown.
@@ -385,12 +414,15 @@ actor TranscriptionEngine {
     /// Fold one recognizer result into the running transcript and notify the UI.
     /// When a segment finalizes, also emit it on its own so the caller can clean
     /// each batch incrementally (instead of one huge pass at the end).
-    private func ingest(text: String, isFinal: Bool) {
+    private func ingest(text: String, isFinal: Bool, start: Double = 0, end: Double = 0) {
         if isFinal {
             if !text.isEmpty {
                 finalizedText = appendCommitted(finalizedText, text)
                 finalizedSegments.append(text)
                 onSegment?(text)
+                let timed = TimedSegment(text: text, start: start, end: end)
+                finalizedTimedSegments.append(timed)
+                onTimedSegment?(timed)
             }
             volatileText = ""
         } else {
@@ -425,20 +457,24 @@ actor TranscriptionEngine {
         transcriber = nil
         resultsTask = nil
         onSegment = nil
+        onTimedSegment = nil
         // Surface as completion so the UI doesn't hang in "listening".
         volatileText = ""
         emit(isComplete: true)
     }
 
     /// Stop feeding audio, flush, and return the final transcript. Protocol
-    /// (`TranscriptionBackend`) entry point — delegates and drops the segment list.
+    /// (`TranscriptionBackend`) entry point — delegates and drops the segment lists.
     func finishSession() async -> String {
         await finishSessionDetailed().text
     }
 
     /// Like `finishSession`, but also returns the per-segment list so the caller
-    /// can de-seam pause boundaries (see `SentenceFlow`). Concrete-only.
-    func finishSessionDetailed() async -> (text: String, segments: [String]) {
+    /// can de-seam pause boundaries (see `SentenceFlow`), plus the audio-clock–timed
+    /// segments so meeting/import callers can persist real per-segment timings.
+    /// The plain `segments` shape is unchanged; `timedSegments` is purely additive.
+    /// Concrete-only.
+    func finishSessionDetailed() async -> (text: String, segments: [String], timedSegments: [TimedSegment]) {
         inputContinuation?.finish()
         inputContinuation = nil
 
@@ -457,25 +493,35 @@ actor TranscriptionEngine {
         resultsTask = nil
 
         // If finalization left a volatile tail (the finalize-throws path), route
-        // it to the segment handler too, so the assembler's combined output
-        // includes it. No-op on the happy path (volatileText already empty).
+        // it to the segment handlers too, so the assembler's combined output
+        // includes it. No-op on the happy path (volatileText already empty). The
+        // tail never finalized, so it has no real audio range — stamp a zero-length
+        // span continuing from the last timed segment's end so ordering is preserved
+        // and the value stays finite (we honestly don't claim a duration for it).
         if !volatileText.isEmpty {
             onSegment?(volatileText)
             finalizedSegments.append(volatileText)
+            let tailStart = finalizedTimedSegments.last?.end ?? 0
+            let tail = TimedSegment(text: volatileText, start: tailStart, end: tailStart)
+            finalizedTimedSegments.append(tail)
+            onTimedSegment?(tail)
         }
         let joiner = finalizedText.isEmpty || volatileText.isEmpty ? "" : " "
         let result = finalizedText + joiner + volatileText
         volatileText = ""
         let segments = finalizedSegments
         finalizedSegments = []
+        let timedSegments = finalizedTimedSegments
+        finalizedTimedSegments = []
 
         // Emit a terminal update so the HUD can dismiss cleanly.
         emit(isComplete: true)
 
         onSegment = nil
+        onTimedSegment = nil
         analyzer = nil
         transcriber = nil
-        return (result.trimmingCharacters(in: .whitespacesAndNewlines), segments)
+        return (result.trimmingCharacters(in: .whitespacesAndNewlines), segments, timedSegments)
     }
 
     /// Hard-cancel without producing a transcript (e.g. user aborted).
@@ -489,8 +535,10 @@ actor TranscriptionEngine {
         resultsTask = nil
         finalizedText = ""
         finalizedSegments = []
+        finalizedTimedSegments = []
         volatileText = ""
         onSegment = nil
+        onTimedSegment = nil
         analyzer = nil
         transcriber = nil
     }

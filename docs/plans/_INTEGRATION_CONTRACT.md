@@ -440,6 +440,15 @@ Hard rules:
 - `AppSettings.swift`, `DashboardView.swift`, `Meeting.swift`, the cores themselves,
   and `DesignSystem.swift` are READ-ONLY for all agents this pass.
 
+> **Correction (2026-07-03, D2):** the `Meeting.swift` READ-ONLY line above is a
+> stale earlier-pass artifact. The current implementation pipeline's file-conflict
+> matrix defines an explicit `Meeting.swift` EDIT order (F1→D2→A8→F3→…) — the
+> back-compat custom decoder exists precisely so packages can add optional fields.
+> D2 added `Meeting.segments: [MeetingSegment]?` (decoded with `decodeIfPresent`);
+> old JSON loads unchanged and older builds ignore the new key. `AppSettings.swift`
+> is likewise edited by A2/I2 per their specs. `DesignSystem.swift` remains
+> genuinely read-only.
+
 ---
 
 ## 6. RISKIEST COUPLING (call it out, mitigate it)

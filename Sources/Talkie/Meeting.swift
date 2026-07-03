@@ -2,6 +2,20 @@ import Foundation
 import FoundationModels
 import os
 
+/// One timed transcript segment of a meeting: who spoke, the audio-clock span
+/// (seconds from recording start), and the text. Lives only in the index JSON so
+/// captions / click-to-play / chapters have real timings to stand on — the rendered
+/// transcript string and the exported `.md` stay byte-identical without it. Optional
+/// per-meeting (`Meeting.segments`) so pre-D2 notes decode unchanged.
+struct MeetingSegment: Codable, Hashable, Sendable {
+    /// The speaker's raw label ("Me" / "Them" / "Imported"), matching `participants`.
+    var speaker: String
+    /// Audio-clock start/end in seconds from the recording's start.
+    var start: Double
+    var end: Double
+    var text: String
+}
+
 /// One recorded meeting: when, how long, the transcript, and an on-device summary.
 struct Meeting: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
@@ -17,14 +31,21 @@ struct Meeting: Codable, Identifiable, Hashable {
     var source: String = "talkie (mic-only)"
     /// The `.md` file written into ~/Talkie Meetings/.
     var fileName: String
+    /// Per-segment audio-clock timings (captions / click-to-play / chapters). Nil for
+    /// notes saved before D2 and for recovered/notes-only meetings that have no timed
+    /// transcript. Evicted with the meeting by the 200-entry retention cap, so this
+    /// never grows `meetings.json` unboundedly.
+    var segments: [MeetingSegment]? = nil
 
     var date: Date { Date(timeIntervalSince1970: startUnix) }
 }
 
 extension Meeting {
     /// Custom decode so notes saved before Phase 2 (no `participants` / `source`
-    /// keys) still load. Declared in an extension so the memberwise initializer is
-    /// still synthesized for callers.
+    /// keys) and before D2 (no `segments` key) still load — every added field uses
+    /// `decodeIfPresent`, so old JSON decodes unchanged and an older app build simply
+    /// ignores the newer key. Declared in an extension so the memberwise initializer
+    /// is still synthesized for callers.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -36,6 +57,7 @@ extension Meeting {
         participants = try c.decodeIfPresent([String].self, forKey: .participants) ?? ["Me"]
         source = try c.decodeIfPresent(String.self, forKey: .source) ?? "talkie (mic-only)"
         fileName = try c.decode(String.self, forKey: .fileName)
+        segments = try c.decodeIfPresent([MeetingSegment].self, forKey: .segments)
     }
 }
 

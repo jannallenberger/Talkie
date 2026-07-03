@@ -98,4 +98,18 @@ final class MeetingFinalizeTests: XCTestCase {
         // A blank fused result must not silently erase the notes.
         XCTAssertTrue(out.contains(notes), "blank fused must not wipe notes: \(out)")
     }
+
+    // MARK: D2 — segments are additive, back-compat
+
+    /// The D2 `segments` field is optional: a meeting built without it (recovered /
+    /// notes-only / pre-D2) has `segments == nil` and still encodes+decodes.
+    func testMeetingSegmentsDefaultNilAndRoundTrip() throws {
+        let m = Meeting(
+            title: "no segments", startUnix: 1, durationSec: 0,
+            transcript: "", summary: "", fileName: "f.md"
+        )
+        XCTAssertNil(m.segments)
+        let decoded = try JSONDecoder().decode(Meeting.self, from: JSONEncoder().encode(m))
+        XCTAssertNil(decoded.segments, "a nil-segments meeting must round-trip unchanged")
+    }
 }

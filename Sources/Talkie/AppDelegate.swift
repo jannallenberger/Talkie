@@ -916,7 +916,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // never permanently block the next dictation.
             defer { self.isProcessing = false }
             var trace = ProcessingTrace()
-            let (raw, segments) = await engine.finishSessionDetailed()
+            // Dictation inserts text; it never builds a Meeting, so the per-segment
+            // audio-clock timings (used by meetings/imports) are intentionally dropped.
+            let (raw, segments, _) = await engine.finishSessionDetailed()
             trace.stage("finalize")
 
             var finalRaw = raw

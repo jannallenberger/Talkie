@@ -172,9 +172,14 @@ final class MeetingRecorder: ObservableObject {
             if micMulti == nil {
                 await engine.setLocaleIdentifier(micLocale)
                 await engine.setContextualStrings(eventAttendees)
-                let session = try await engine.beginSession(segmentHandler: { segment in
-                    log.add(.me, segment)
-                    liveFeed?(.me, segment)
+                // Timed handler: stamp each finalized segment with its audio-clock
+                // span (seconds from session start ≈ recording start) so the meeting
+                // carries real per-segment timings and interleaves on the audio clock
+                // rather than lagged wall-clock arrival. The live feed still gets the
+                // bare text.
+                let session = try await engine.beginSession(timedSegmentHandler: { seg in
+                    log.add(.me, seg.text, at: seg.start, end: seg.end)
+                    liveFeed?(.me, seg.text)
                 })
                 try audio.start(targetFormat: session.format, continuation: session.continuation,
                                 bufferAudio: multiLang, bufferSeconds: 600,
@@ -220,9 +225,13 @@ final class MeetingRecorder: ObservableObject {
                 let far = TranscriptionEngine(localeIdentifier: locale)
                 do {
                     await far.setContextualStrings(eventAttendees)
-                    let farSession = try await far.beginSession(segmentHandler: { segment in
-                        log.add(.them, segment)
-                        liveFeed?(.them, segment)
+                    // Timed handler (see the mic stream above): the far-end audio clock
+                    // starts at 0 at ITS session start, seconds apart from the mic's, so
+                    // cross-stream ordering carries a small relative skew — fine for
+                    // interleaving, not promised sample-accurate.
+                    let farSession = try await far.beginSession(timedSegmentHandler: { seg in
+                        log.add(.them, seg.text, at: seg.start, end: seg.end)
+                        liveFeed?(.them, seg.text)
                     })
                     try systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
                                           bufferAudio: multiLang, bufferSeconds: 600)
@@ -361,8 +370,13 @@ final class MeetingRecorder: ObservableObject {
         startedAt = nil
         turnLog = nil
 
-        let transcript = MeetingTranscriptRenderer.render(log?.snapshot() ?? [])
+        let finalTurns = log?.snapshot() ?? []
+        let transcript = MeetingTranscriptRenderer.render(finalTurns)
         let clean = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Per-segment audio-clock timings for captions/click-to-play/chapters. Built
+        // from the SAME final snapshot as the transcript, so they never disagree; the
+        // rendered transcript and `.md` are unchanged (segments live only in the index).
+        let segments = MeetingTranscriptRenderer.segments(from: finalTurns)
         guard !clean.isEmpty else {
             // Nothing was transcribed — but if the user jotted notes, those are real
             // work and must not vanish. Persist a notes-only meeting before clearing,
@@ -423,7 +437,8 @@ final class MeetingRecorder: ObservableObject {
             summary: summary,
             participants: participants,
             source: wasFarEnd ? "talkie (mic + system audio)" : "talkie (mic-only)",
-            fileName: MeetingStore.fileName(for: start, id: id)
+            fileName: MeetingStore.fileName(for: start, id: id),
+            segments: segments
         )
         store.add(meeting)
         // The meeting is durably persisted only now — so the crash-partial can only
@@ -491,7 +506,7 @@ final class MeetingRecorder: ObservableObject {
     /// language span, so per-segment language and chronological interleaving survive.
     private func applyMergedSpans(_ spans: [StreamLanguageVoter.Span], speaker: MeetingSpeaker, log: TurnLog) {
         guard !spans.isEmpty else { return }
-        log.replace(speaker, withTimedTurns: spans.map { (elapsed: $0.start, text: $0.text) })
+        log.replace(speaker, withTimedTurns: spans.map { (elapsed: $0.start, text: $0.text, end: $0.end) })
     }
 
     private func correctStreamLanguage(
