@@ -276,3 +276,10 @@
 "%d imported" = "%d geïmporteerd";
 "%d skipped: %@" = "%d overgeslagen: %@";
 "your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "je meetinglijst houdt de recentste %d, dus oudere imports zijn uit de lijst gerold (hun notities staan nog op schijf).";
+
+/* App Intents (Shortcuts / Spotlight / Raycast) */
+"Toggle Dictation" = "Dicteren aan/uit";
+"Start dictating into whatever app is in front, or stop and insert what you said." = "Begin te dicteren in de app die vooraan staat, of stop en voeg in wat je zei.";
+"Get Last Dictation" = "Laatste dictaat ophalen";
+"Return the text of your most recent dictation." = "Geeft de tekst van je meest recente dictaat terug.";
+"Talkie isn’t running. Open Talkie, then try again." = "Talkie is niet actief. Open Talkie en probeer het opnieuw.";

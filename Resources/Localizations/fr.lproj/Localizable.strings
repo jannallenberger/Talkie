@@ -276,3 +276,10 @@
 "%d imported" = "%d importés";
 "%d skipped: %@" = "%d ignorés : %@";
 "your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "votre liste de réunions ne garde que les %d plus récentes ; les imports plus anciens sont donc sortis de la liste (leurs notes restent sur le disque).";
+
+/* App Intents (Shortcuts / Spotlight / Raycast) */
+"Toggle Dictation" = "Activer ou arrêter la dictée";
+"Start dictating into whatever app is in front, or stop and insert what you said." = "Commence à dicter dans l’app au premier plan, ou arrête et insère ce que tu as dit.";
+"Get Last Dictation" = "Obtenir la dernière dictée";
+"Return the text of your most recent dictation." = "Renvoie le texte de ta dictée la plus récente.";
+"Talkie isn’t running. Open Talkie, then try again." = "Talkie n’est pas lancé. Ouvre Talkie, puis réessaie.";

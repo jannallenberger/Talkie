@@ -276,3 +276,10 @@
 "%d imported" = "已导入 %d 个";
 "%d skipped: %@" = "已跳过 %d 个:%@";
 "your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "会议列表仅保留最近的 %d 个,较早的导入已滚出列表(其笔记仍保存在磁盘上)。";
+
+/* App Intents (Shortcuts / Spotlight / Raycast) */
+"Toggle Dictation" = "开关听写";
+"Start dictating into whatever app is in front, or stop and insert what you said." = "开始向最前面的应用听写，或停下并插入你说的内容。";
+"Get Last Dictation" = "获取最近一次听写";
+"Return the text of your most recent dictation." = "返回你最近一次听写的文本。";
+"Talkie isn’t running. Open Talkie, then try again." = "Talkie 尚未运行。请打开 Talkie 后重试。";

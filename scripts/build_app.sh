@@ -42,6 +42,44 @@ if [[ ! -f "$BIN" ]]; then
   exit 1
 fi
 
+# --- App Intents const-value emission (feeds the metadata step near the end) ---
+# Talkie's App Intents (Sources/Talkie/Intents/) only become discoverable in
+# Shortcuts / Spotlight / Raycast if the app bundle carries a Metadata.appintents
+# directory, which `appintentsmetadataprocessor` builds from Swift "const value"
+# sidecar files (*.swiftconstvalues). Xcode emits those via a build phase; we build
+# by hand, so we ask the compiler for them ourselves.
+#
+# `-emit-const-values` needs a protocol list telling the frontend which
+# conformances to extract. The canonical list Xcode uses ships in the toolchain
+# (SwiftConstantValues/AppIntents.json), but its `{version, constValueProtocols}`
+# shape is NOT what the `-const-gather-protocols-file` frontend flag reads — that
+# flag wants a *bare JSON array* of protocol names. We derive the array from the
+# canonical file (so we track Apple's list across Xcode updates instead of
+# hardcoding it) and re-run the app build to emit Talkie.swiftconstvalues. This is
+# incremental on top of the build above, so it only recompiles the app target.
+APPINTENTS_PROTO_SRC="$(xcrun --find swiftc >/dev/null 2>&1 && \
+  echo "$(dirname "$(dirname "$(xcrun --find swiftc)")")/share/swift/SwiftConstantValues/AppIntents.json")"
+CONST_PROTO_FILE=""
+if [[ -n "$APPINTENTS_PROTO_SRC" && -f "$APPINTENTS_PROTO_SRC" ]]; then
+  # The frontend reads the file's CONTENT, not its extension, so a plain mktemp
+  # path is fine (no ".json" suffix — appending one would orphan the mktemp file).
+  CONST_PROTO_FILE="$(mktemp -t talkie-appintents-protocols)"
+  # {version, constValueProtocols:[...]} → [...] (bare array the frontend expects)
+  python3 -c 'import json,sys; json.dump(json.load(open(sys.argv[1]))["constValueProtocols"], open(sys.argv[2],"w"))' \
+    "$APPINTENTS_PROTO_SRC" "$CONST_PROTO_FILE" 2>/dev/null || CONST_PROTO_FILE=""
+fi
+if [[ -n "$CONST_PROTO_FILE" ]]; then
+  echo "▶ Emitting App Intents const values…"
+  swift build -c "$CONFIG" --product Talkie \
+    -Xswiftc -emit-const-values \
+    -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file \
+    -Xswiftc -Xfrontend -Xswiftc "$CONST_PROTO_FILE"
+else
+  echo "⚠  Could not build the App Intents protocol list (SwiftConstantValues/AppIntents.json"
+  echo "   missing or python3 unavailable) — Metadata.appintents will be skipped and the"
+  echo "   Shortcuts/Spotlight/Raycast actions will NOT appear. See the metadata step below."
+fi
+
 echo "▶ Assembling ${APP}…"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -136,6 +174,58 @@ if [[ -d "$ROOT/Resources/AppIcon.icon" ]]; then
     --minimum-deployment-target 26.0 \
     --output-partial-info-plist /tmp/talkie_icon_partial.plist \
     --errors --warnings >/dev/null 2>&1 || echo "  (icon compile skipped)"
+fi
+
+# App Intents metadata (Contents/Resources/Metadata.appintents). This is the
+# whole point of the const-value emission near the top: without this bundle,
+# Talkie's intents exist in the binary but are invisible to Shortcuts, Spotlight,
+# and Raycast (which all read the system App Intents registry, populated from
+# this metadata). We run it AFTER every Resources file is in place and BEFORE
+# codesign so the outer signature seals it — an unsigned/altered Resources tree
+# would break the bundle seal.
+#
+# Deliberately unconditional + loud: if a toolchain change makes the processor
+# stop emitting the bundle, the build FAILS here rather than silently shipping an
+# app whose actions quietly vanished from Shortcuts. (Only skipped if the const
+# protocol list couldn't be built above — that path already warned.)
+CONST_VALS_FILE="$(find "$ROOT/.build" -path "*${CONFIG}*" -name "Talkie.swiftconstvalues" 2>/dev/null | head -1)"
+if [[ -n "$CONST_PROTO_FILE" ]]; then
+  echo "▶ Extracting App Intents metadata…"
+  if [[ -z "$CONST_VALS_FILE" || ! -f "$CONST_VALS_FILE" ]]; then
+    echo "✗ Talkie.swiftconstvalues not found under .build — the const-value emission" >&2
+    echo "  step didn't run or the build layout changed. App Intents metadata cannot be" >&2
+    echo "  produced, so Shortcuts/Spotlight/Raycast would not see Talkie's actions." >&2
+    exit 1
+  fi
+  APPINTENTS_SRC_LIST="$(mktemp -t talkie-appintents-sources)"
+  find "$ROOT/Sources/Talkie" -name "*.swift" > "$APPINTENTS_SRC_LIST"
+  APPINTENTS_CONST_LIST="$(mktemp -t talkie-appintents-constvals)"
+  echo "$CONST_VALS_FILE" > "$APPINTENTS_CONST_LIST"
+  # The processor CREATES a `Metadata.appintents` dir inside --output, so point
+  # --output at Contents/Resources to land Contents/Resources/Metadata.appintents.
+  APPINTENTS_TOOLCHAIN_DIR="$(dirname "$(dirname "$(xcrun --find swiftc)")")"
+  APPINTENTS_SDK_ROOT="$(xcrun --show-sdk-path --sdk macosx)"
+  APPINTENTS_XCODE_VERSION="$(xcodebuild -version | tail -1 | awk '{print $NF}')"
+  xcrun appintentsmetadataprocessor \
+    --output "$APP/Contents/Resources" \
+    --toolchain-dir "$APPINTENTS_TOOLCHAIN_DIR" \
+    --module-name Talkie \
+    --sdk-root "$APPINTENTS_SDK_ROOT" \
+    --xcode-version "$APPINTENTS_XCODE_VERSION" \
+    --platform-family macOS \
+    --deployment-target 26.0 \
+    --target-triple "$(uname -m)-apple-macosx26.0" \
+    --source-file-list "$APPINTENTS_SRC_LIST" \
+    --swift-const-vals-list "$APPINTENTS_CONST_LIST" \
+    --force
+  rm -f "$APPINTENTS_SRC_LIST" "$APPINTENTS_CONST_LIST" "$CONST_PROTO_FILE"
+  if [[ ! -d "$APP/Contents/Resources/Metadata.appintents" ]]; then
+    echo "✗ appintentsmetadataprocessor ran but Metadata.appintents was not produced." >&2
+    echo "  Talkie's actions would be invisible to Shortcuts/Spotlight/Raycast — failing" >&2
+    echo "  the build rather than shipping them broken." >&2
+    exit 1
+  fi
+  echo "  ✓ Metadata.appintents present"
 fi
 
 echo "▶ Signing (identity: $SIGN_ID)…"

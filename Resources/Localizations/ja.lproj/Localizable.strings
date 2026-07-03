@@ -276,3 +276,10 @@
 "%d imported" = "%d 件を読み込み";
 "%d skipped: %@" = "%d 件をスキップ: %@";
 "your meetings list keeps the most recent %d, so older imports rolled off the list (their notes are still on disk)." = "ミーティング一覧は最新の %d 件までを保持するため、古い読み込みは一覧から外れました(ノートはディスクに残っています)。";
+
+/* App Intents (Shortcuts / Spotlight / Raycast) */
+"Toggle Dictation" = "口述の開始・停止";
+"Start dictating into whatever app is in front, or stop and insert what you said." = "最前面のアプリへの口述を開始するか、停止して話した内容を挿入します。";
+"Get Last Dictation" = "直近の口述を取得";
+"Return the text of your most recent dictation." = "直近の口述のテキストを返します。";
+"Talkie isn’t running. Open Talkie, then try again." = "Talkie が起動していません。Talkie を開いてからもう一度お試しください。";
