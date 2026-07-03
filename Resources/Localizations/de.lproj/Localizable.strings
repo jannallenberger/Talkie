@@ -283,6 +283,16 @@
 "Get Last Dictation" = "Letztes Diktat abrufen";
 "Return the text of your most recent dictation." = "Gibt den Text deines jüngsten Diktats zurück.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie läuft nicht. Öffne Talkie und versuche es erneut.";
+/* G7 — App Intents: Search Memory / Meeting toggle + kind labels */
+"Search Memory" = "Gedächtnis durchsuchen";
+"Search what you've said, your meetings, and what Talkie has learned from them." = "Durchsuche, was du gesagt hast, deine Meetings und was Talkie daraus gelernt hat.";
+"Toggle Meeting Recording" = "Meeting-Aufnahme umschalten";
+"Start recording a meeting, or stop and save the notes for the one in progress." = "Starte eine Meeting-Aufnahme oder beende sie und sichere die Notizen der laufenden.";
+"Couldn’t start a meeting — Talkie may be busy dictating, or microphone or speech access isn’t available." = "Meeting konnte nicht gestartet werden — Talkie diktiert vielleicht gerade, oder der Mikrofon- oder Spracherkennungszugriff ist nicht verfügbar.";
+"No matches" = "Keine Treffer";
+"Dictation" = "Diktat";
+"Meeting" = "Meeting";
+"Note" = "Notiz";
 /* D3 — timestamped exports menu */
 "Subtitles (.srt)" = "Untertitel (.srt)";
 "Subtitles (.vtt)" = "Untertitel (.vtt)";

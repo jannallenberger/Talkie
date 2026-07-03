@@ -283,6 +283,16 @@
 "Get Last Dictation" = "Get Last Dictation";
 "Return the text of your most recent dictation." = "Return the text of your most recent dictation.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie isn’t running. Open Talkie, then try again.";
+/* G7 — App Intents: Search Memory / Meeting toggle + kind labels */
+"Search Memory" = "Search Memory";
+"Search what you've said, your meetings, and what Talkie has learned from them." = "Search what you've said, your meetings, and what Talkie has learned from them.";
+"Toggle Meeting Recording" = "Toggle Meeting Recording";
+"Start recording a meeting, or stop and save the notes for the one in progress." = "Start recording a meeting, or stop and save the notes for the one in progress.";
+"Couldn’t start a meeting — Talkie may be busy dictating, or microphone or speech access isn’t available." = "Couldn’t start a meeting — Talkie may be busy dictating, or microphone or speech access isn’t available.";
+"No matches" = "No matches";
+"Dictation" = "Dictation";
+"Meeting" = "Meeting";
+"Note" = "Note";
 /* D3 — timestamped exports menu */
 "Subtitles (.srt)" = "Subtitles (.srt)";
 "Subtitles (.vtt)" = "Subtitles (.vtt)";

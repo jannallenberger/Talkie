@@ -1586,6 +1586,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Toggle meeting recording from an App Intent (Shortcuts / Spotlight /
+    /// Raycast). `meetingRecorder` is `private`, so a new `Intents/` file can't
+    /// reach it to decide start-vs-stop; this one internal method keeps that
+    /// decision here, next to the recorder it owns, mirroring
+    /// `toggleDictationFromIntent()`. Never activates Talkie — the meeting pill
+    /// and system-audio capture run off-screen, same as dictation.
+    ///
+    /// `start()` returns `false` when it refuses (mic denied, speech
+    /// unavailable, a meeting/dictation already in flight); we translate that
+    /// into a thrown error so Shortcuts shows the user *why* nothing happened
+    /// instead of reporting a silent success. `stop()` is fire-and-forget from
+    /// the intent's point of view — it always ends the session.
+    func toggleMeetingRecordingFromIntent() async throws {
+        if meetingRecorder.isRecording {
+            await meetingRecorder.stop()
+        } else {
+            let started = await meetingRecorder.start()
+            if !started {
+                throw TalkieIntentError.meetingCouldNotStart
+            }
+        }
+    }
+
     // MARK: Shared accessor for C-callback bridges
 
     static weak var shared: AppDelegate?

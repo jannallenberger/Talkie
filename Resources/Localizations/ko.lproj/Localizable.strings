@@ -283,6 +283,16 @@
 "Get Last Dictation" = "최근 받아쓰기 가져오기";
 "Return the text of your most recent dictation." = "가장 최근 받아쓰기의 텍스트를 반환합니다.";
 "Talkie isn’t running. Open Talkie, then try again." = "Talkie가 실행 중이 아닙니다. Talkie를 연 다음 다시 시도하세요.";
+/* G7 — App Intents: Search Memory / Meeting toggle + kind labels */
+"Search Memory" = "메모리 검색";
+"Search what you've said, your meetings, and what Talkie has learned from them." = "지금까지 말한 내용, 회의, 그리고 Talkie가 거기서 배운 내용을 검색합니다.";
+"Toggle Meeting Recording" = "회의 녹음 전환";
+"Start recording a meeting, or stop and save the notes for the one in progress." = "회의 녹음을 시작하거나, 진행 중인 회의를 멈추고 메모를 저장합니다.";
+"Couldn’t start a meeting — Talkie may be busy dictating, or microphone or speech access isn’t available." = "회의를 시작할 수 없었습니다 — Talkie가 받아쓰기 중이거나 마이크 또는 음성 인식 접근이 불가능할 수 있습니다.";
+"No matches" = "일치 항목 없음";
+"Dictation" = "받아쓰기";
+"Meeting" = "회의";
+"Note" = "메모";
 /* D3 — timestamped exports menu */
 "Subtitles (.srt)" = "자막 (.srt)";
 "Subtitles (.vtt)" = "자막 (.vtt)";
