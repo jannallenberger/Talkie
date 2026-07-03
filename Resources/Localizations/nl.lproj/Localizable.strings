@@ -383,3 +383,22 @@
 "Indexing %@ — spoken filenames will snap to real files" = "%@ wordt geïndexeerd — uitgesproken bestandsnamen sluiten aan op echte bestanden";
 "Index" = "Indexeren";
 "Not now" = "Niet nu";
+
+
+// A6 — profession starter packs
+"Starter packs" = "Starterpakketten";
+"Work in a niche field? Install a pack of common terms so Talkie fixes close misses of them from your first dictation. It can't make the recognizer say a word it's never heard — it proofreads what you dictate and swaps a close-sounding mistake for the right term." = "Werk je in een vakgebied? Installeer een pakket met veelgebruikte termen, dan corrigeert Talkie de bijna-missers ervan vanaf je eerste dictaat. Het kan de herkenner geen woord laten zeggen dat die nooit heeft gehoord — het leest je dictaat na en vervangt een bijna gelijk klinkende fout door de juiste term.";
+"Preview what's inside before it's added — nothing is installed until you confirm." = "Bekijk vooraf wat erin zit — er wordt niets geïnstalleerd tot je bevestigt.";
+"Install" = "Installeren";
+"Talkie couldn't open that starter pack. Reinstalling Talkie should fix it." = "Talkie kon dat starterpakket niet openen. Talkie opnieuw installeren zou dit moeten oplossen.";
+"Preview and add the %@ pack" = "%@-pakket bekijken en toevoegen";
+"Tools, languages, and jargon — Kubernetes, SwiftPM, idempotent." = "Tools, talen en jargon — Kubernetes, SwiftPM, idempotent.";
+"Conditions, procedures, and common medications." = "Aandoeningen, ingrepen en veelgebruikte medicijnen.";
+"Litigation, contracts, and estates." = "Procesvoering, contracten en nalatenschappen.";
+"Statistics, methods, and math." = "Statistiek, methoden en wiskunde.";
+"Literary devices and the editorial workflow." = "Literaire technieken en de redactionele workflow.";
+"Developer" = "Ontwikkelaar";
+"Medicine" = "Geneeskunde";
+"Law" = "Recht";
+"Research" = "Onderzoek";
+"Writer" = "Schrijver";

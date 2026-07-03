@@ -1166,6 +1166,11 @@ private struct DictionarySettings: View {
     // exact same preview/merge sheet as a native .talkiepack — one code path.
     @State private var detectedApps: [CompetitorDictionaryImport.Detected] = []
 
+    // A6 — profession starter packs. Tapping a pack loads its bundled .talkiepack
+    // and stages the SAME preview/merge sheet as a file import (one code path). A
+    // missing/broken bundled resource is a packaging bug, surfaced calmly via the
+    // existing importError alert rather than crashing.
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -1205,6 +1210,12 @@ private struct DictionarySettings: View {
                     }
                 }
                 .talkieCard()
+
+                // A6 — profession starter packs. One tap installs 60–300 curated,
+                // guard-safe field terms so the corrector rescues close misses from
+                // day one. Install-only; each pack flows through the same preview
+                // sheet as a file import so nothing is added without a confirm.
+                starterPacksCard
 
                 // Learned vocabulary — jargon Talkie picked up from what you say and
                 // confirm, now correcting close misses on its own. Read-only; stays
@@ -1361,6 +1372,46 @@ private struct DictionarySettings: View {
         .help("Bring your dictionary over from VoiceInk, Superwhisper, or Wispr Flow")
     }
 
+    // MARK: Starter packs (A6)
+
+    /// The card offering one-tap install of a profession vocabulary. Each row opens
+    /// the pack's bundled `.talkiepack` in the same preview sheet as a file import,
+    /// so the user always confirms before anything is added (and a re-install of a
+    /// pack you already have shows every row dimmed and adds nothing).
+    private var starterPacksCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Eyebrow(text: "Starter packs")
+            // The honesty line — spelled out so expectations are calibrated: this
+            // fixes CLOSE misses, it can't teach the recognizer a brand-new word.
+            Text("Work in a niche field? Install a pack of common terms so Talkie fixes close misses of them from your first dictation. It can't make the recognizer say a word it's never heard — it proofreads what you dictate and swaps a close-sounding mistake for the right term.")
+                .font(.talkieHeading(13, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+            VStack(spacing: 10) {
+                ForEach(StarterPack.allCases) { pack in
+                    StarterPackRow(pack: pack) { installStarterPack(pack) }
+                }
+            }
+            Text("Preview what's inside before it's added — nothing is installed until you confirm.")
+                .font(.talkieHeading(11.5, weight: .regular))
+                .foregroundStyle(Theme.inkTertiary)
+        }
+        .talkieCard()
+    }
+
+    /// Load a bundled pack and stage its preview — writes nothing yet, exactly like
+    /// `openPack`. A missing/undecodable bundled resource is a packaging bug (the
+    /// copy block in `build_app.sh` didn't run); we surface it through the same calm
+    /// alert as a bad file rather than crashing.
+    private func installStarterPack(_ pack: StarterPack) {
+        do {
+            let loaded = try pack.load()
+            pendingPack = loaded
+            pendingPreview = dictionary.previewMerge(pack: loaded)
+        } catch {
+            importError = "Talkie couldn't open that starter pack. Reinstalling Talkie should fix it.".loc
+        }
+    }
+
     private func addTerm() {
         dictionary.addVocabularyTerm(newTerm)
         newTerm = ""
@@ -1514,6 +1565,40 @@ private struct DictionarySettings: View {
 private struct PreviewBox: Identifiable {
     let id = UUID()
     let preview: MergePreview
+}
+
+/// One row in the Starter-packs card (A6): a glyph, the pack's title + one-line
+/// description, and an Install button that opens its bundled `.talkiepack` in the
+/// shared preview sheet. Matches the calm `SettingsRow` feel without a new style.
+private struct StarterPackRow: View {
+    let pack: StarterPack
+    let onInstall: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: pack.systemImage)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Theme.coral)
+                .frame(width: 24, alignment: .center)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pack.title)
+                    .font(.talkieHeading(14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text(pack.shortDescription)
+                    .font(.talkieHeading(12, weight: .regular))
+                    .foregroundStyle(Theme.inkTertiary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button(action: onInstall) {
+                Label("Install", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.bordered)
+            .help(String(format: "Preview and add the %@ pack".loc, pack.title))
+        }
+        .padding(.vertical, 4)
+    }
 }
 
 private struct VocabChip: View {
