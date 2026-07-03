@@ -46,7 +46,9 @@ struct MeetingsView: View {
                             onReveal: { reveal(meeting) },
                             onCopy: { copy(meeting) },
                             onDelete: { store.delete(meeting) },
-                            onRegenerate: { await regenerateSummary(meeting) }
+                            onRegenerate: { await regenerateSummary(meeting) },
+                            onSaveTranscript: { edited in saveTranscript(meeting, edited: edited) },
+                            onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
                         )
                     }
                 }
@@ -365,6 +367,43 @@ struct MeetingsView: View {
         store.update(updated)
     }
 
+    /// Persist a hand-edited transcript back into the meeting (A8). `store.update`
+    /// replaces the entry in place, rewrites the `.md` file, and re-exports through
+    /// the user's destination — the same durable path a regenerated summary takes —
+    /// so the list, the note on disk, and MCP `get_meeting` all serve the edited text.
+    /// No-ops gracefully if the meeting was evicted by the retention cap (`update`
+    /// only touches an entry it still holds by id). The user's segment timings are
+    /// left untouched: hand-editing the prose doesn't invalidate the audio clock, and
+    /// re-aligning it is explicitly out of scope.
+    private func saveTranscript(_ meeting: Meeting, edited: String) {
+        guard edited != meeting.transcript else { return }
+        var updated = meeting
+        updated.transcript = edited
+        store.update(updated)
+    }
+
+    /// Route an accepted learn chip to BOTH stores, exactly like the live
+    /// field-watcher's confirm path in `AppDelegate.applyLearnedCorrection`: add the
+    /// dictionary rule (the always-on user-curated correction) AND record the niche
+    /// confirmation (the strongest signal that graduates the term for the post-hoc
+    /// corrector). Returns whether a NEW dictionary rule was added so the chip can
+    /// show a confirmation and latch. Editing Talkie's own transcript UI is not
+    /// AX-blind, so there's no reject/undo dance — the tap IS the explicit consent.
+    @discardableResult
+    private func learnCorrection(from: String, to: String, in meeting: Meeting) -> Bool {
+        guard let app = AppDelegate.shared else { return false }
+        let added = app.dictionary.addLearnedReplacement(from: from, to: to)
+        // Record the confirmation even if the dictionary rule already existed — a
+        // second explicit confirmation is still real evidence for the niche store.
+        app.nicheVocab.recordUserConfirmed(
+            to,
+            provenance: Provenance(source: .meeting, sourceID: meeting.id.uuidString,
+                                   dateUnix: Date().timeIntervalSince1970,
+                                   snippet: String(meeting.transcript.prefix(120)))
+        )
+        return added
+    }
+
     private func timeString(_ t: TimeInterval) -> String {
         let s = Int(t)
         return String(format: "%02d:%02d", s / 60, s % 60)
@@ -389,9 +428,19 @@ private struct MeetingRow: View {
     let onCopy: () -> Void
     let onDelete: () -> Void
     let onRegenerate: () async -> Void
+    /// Persist a hand-edited transcript (A8). Called on Save with the new text.
+    let onSaveTranscript: (String) -> Void
+    /// Accept a learn chip: add the dictionary rule + record the niche confirmation.
+    /// Returns whether a NEW rule was added (false if it was already known), so the
+    /// chip can show the right confirmation.
+    let onLearn: (_ from: String, _ to: String) -> Bool
     @State private var expanded = false
     @State private var hovering = false
     @State private var regenerating = false
+    /// A8 transcript edit mode: nil when viewing; the working draft while editing.
+    @State private var draft: String?
+    /// The learn chips offered after a save, and which have been accepted/added.
+    @State private var learnable: [LearnCandidate] = []
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; return f
@@ -418,6 +467,14 @@ private struct MeetingRow: View {
                         } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.plain)
                         .help("Regenerate summary")
+                    }
+                    // Edit the transcript (A8) — fixing a misrecognition here fixes the
+                    // note AND can teach the dictionary. Only for meetings that actually
+                    // have transcript text (recovered/notes-only entries have none).
+                    if !meeting.transcript.isEmpty {
+                        Button { beginEditing() } label: { Image(systemName: "pencil") }
+                            .buttonStyle(.plain)
+                            .help("Edit transcript")
                     }
                     Button(action: onCopy) { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("Copy transcript")
                     // Timestamped exports (D3) — only when this meeting actually has
@@ -449,12 +506,16 @@ private struct MeetingRow: View {
             }
 
             DisclosureGroup(isExpanded: $expanded) {
-                Text(meeting.transcript)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 4)
+                if draft != nil {
+                    transcriptEditor
+                } else {
+                    Text(meeting.transcript)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                }
             } label: {
                 Text(expanded ? "Hide transcript" : "Show transcript")
                     .font(.talkieEyebrow)
@@ -463,6 +524,113 @@ private struct MeetingRow: View {
         }
         .talkieCard(padding: 14)
         .onHover { hovering = $0 }
+    }
+
+    // MARK: Transcript edit mode (A8)
+
+    /// The inline editor shown in place of the read-only transcript: a `TextEditor`
+    /// bound to the working draft, Save / Cancel, and — after a save that found
+    /// respellings — a stack of "Learn …" chips. `⌘↩` saves, `esc` cancels. Bound to
+    /// the optional `draft` with a non-nil fallback; only rendered while editing, so
+    /// the fallback never actually shows.
+    @ViewBuilder
+    private var transcriptEditor: some View {
+        let editing = Binding(get: { draft ?? "" }, set: { draft = $0 })
+        VStack(alignment: .leading, spacing: 10) {
+            TextEditor(text: editing)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.ink)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 120, maxHeight: 320)
+                .padding(8)
+                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .onExitCommand { cancelEditing() }
+
+            HStack(spacing: 8) {
+                Text("Fixing a word here also teaches your dictionary.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.inkTertiary)
+                Spacer()
+                Button("Cancel") { cancelEditing() }
+                    .controlSize(.small)
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") { commitEditing(editing.wrappedValue) }
+                    .controlSize(.small)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(editing.wrappedValue == meeting.transcript)
+            }
+
+            if !learnable.isEmpty {
+                learnChips
+            }
+        }
+        .padding(.top, 6)
+    }
+
+    /// One chip per extracted respelling. Tapping "Learn" adds the rule; the chip
+    /// then shows a confirmation and is disabled. Honest copy names the exact term
+    /// and what accepting does — no auto-learn, no invented benefit.
+    private var learnChips: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(learnable) { candidate in
+                HStack(spacing: 8) {
+                    Image(systemName: candidate.added ? "checkmark.circle.fill" : "sparkles")
+                        .font(.system(size: 11))
+                        .foregroundStyle(candidate.added ? Theme.featherGreen : Theme.coral)
+                    if candidate.added {
+                        Text(String(format: "Added “%@” — it’ll be fixed automatically next time.".loc, candidate.to))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.inkSecondary)
+                    } else {
+                        Text(String(format: "Learn “%@”?".loc, candidate.to))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.ink)
+                        Text(String(format: "was “%@”".loc, candidate.from))
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.inkTertiary)
+                    }
+                    Spacer(minLength: 6)
+                    if !candidate.added {
+                        Button("Learn") { accept(candidate) }
+                            .controlSize(.small)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Theme.surfaceSunken))
+            }
+        }
+    }
+
+    private func beginEditing() {
+        expanded = true
+        learnable = []
+        draft = meeting.transcript
+    }
+
+    private func cancelEditing() {
+        draft = nil
+        learnable = []
+    }
+
+    /// Persist the edit, then offer a learn chip for each respelling the region
+    /// splitter found. Leaves edit mode but keeps the chips visible (the editor is
+    /// gone; the chips sit under the now-read-only transcript until dismissed by the
+    /// next edit or a collapse). Non-respelling edits produce no chips.
+    private func commitEditing(_ edited: String) {
+        onSaveTranscript(edited)
+        let found = TranscriptEditCorrections.extract(before: meeting.transcript, after: edited)
+        learnable = found.map { LearnCandidate(from: $0.from, to: $0.to) }
+        draft = nil
+    }
+
+    private func accept(_ candidate: LearnCandidate) {
+        _ = onLearn(candidate.from, candidate.to)
+        // Mark accepted regardless of whether the rule was brand-new: either way the
+        // term is now curated + confirmed, so the chip should read as done.
+        if let idx = learnable.firstIndex(where: { $0.id == candidate.id }) {
+            learnable[idx].added = true
+        }
     }
 
     // MARK: Timestamped export (D3)
@@ -528,6 +696,15 @@ private struct MeetingRow: View {
         let stem = (meeting.fileName as NSString).deletingPathExtension
         return stem.isEmpty ? NoteTemplate.slug(meeting.title) : stem
     }
+}
+
+/// One offered dictionary rule under the transcript editor (A8). Identifiable so the
+/// chip list animates cleanly and each chip latches its own accepted state.
+private struct LearnCandidate: Identifiable {
+    let id = UUID()
+    let from: String
+    let to: String
+    var added = false
 }
 
 /// A removable chip for one app in the meeting-detection allowlist. A glyph marks

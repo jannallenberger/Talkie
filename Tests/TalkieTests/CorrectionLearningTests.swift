@@ -149,3 +149,149 @@ final class CorrectionLearningTests: XCTestCase {
         XCTAssertTrue(result.isEmpty)
     }
 }
+
+/// A8 — the transcript editor learns from a whole-note edit, not a single live
+/// field change. `TranscriptEditCorrections.extract` segments the edit into
+/// contiguous changed regions and reuses `CorrectionExtractor.extract` on each, so
+/// a note fixed in several places at once teaches several rules — while the same
+/// respelling-only guards still reject deletions, rewrites, and prose edits.
+final class TranscriptEditCorrectionsTests: XCTestCase {
+
+    // MARK: The single-fix case still works
+
+    /// One respelling in a longer transcript → exactly one rule (the acceptance
+    /// criterion: "cloud MD" → "claude.md" offers exactly one learn chip).
+    func testSingleRespellingInTranscript() {
+        let before = "We talked about the cloud MD file and the deploy plan for next week."
+        let after = "We talked about the claude.md file and the deploy plan for next week."
+        let result = TranscriptEditCorrections.extract(before: before, after: after)
+        XCTAssertEqual(result.count, 1, "one changed region → one rule")
+        XCTAssertEqual(result.first?.from, "cloud MD")
+        XCTAssertEqual(result.first?.to, "claude.md")
+    }
+
+    /// A single-word respelling mid-transcript.
+    func testSingleWordRespelling() {
+        let result = TranscriptEditCorrections.extract(
+            before: "the correlate engine indexes everything",
+            after: "the coralate engine indexes everything"
+        )
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.from.lowercased(), "correlate")
+        XCTAssertEqual(result.first?.to.lowercased(), "coralate")
+    }
+
+    // MARK: The multi-fix case CorrectionExtractor alone cannot do
+
+    /// Two scattered fixes in one save. `CorrectionExtractor.extract` over the whole
+    /// string returns nothing (the middle spans both edits); the region splitter
+    /// teaches BOTH. This is the core reason A8 needs a splitter.
+    func testTwoScatteredRespellingsBothLearned() {
+        let before = "First we synced on cloud MD then reviewed the cubernetis rollout carefully."
+        let after = "First we synced on claude.md then reviewed the kubernetes rollout carefully."
+
+        // Baseline: the single-region extractor gives up on this shape.
+        XCTAssertTrue(
+            CorrectionExtractor.extract(before: before, after: after, inserted: before).isEmpty,
+            "whole-transcript extract can't isolate two scattered fixes")
+
+        let result = TranscriptEditCorrections.extract(before: before, after: after)
+        XCTAssertEqual(result.count, 2, "each changed region teaches its own rule")
+        let pairs = Dictionary(uniqueKeysWithValues: result.map { ($0.from.lowercased(), $0.to.lowercased()) })
+        XCTAssertEqual(pairs["cloud md"], "claude.md")
+        XCTAssertEqual(pairs["cubernetis"], "kubernetes")
+    }
+
+    /// Three fixes, in reading order.
+    func testThreeFixesInReadingOrder() {
+        let before = "alpha talked to correlate about cubernetis and the cloud MD doc"
+        let after = "alpha talked to coralate about kubernetes and the claude.md doc"
+        let result = TranscriptEditCorrections.extract(before: before, after: after)
+        XCTAssertEqual(result.map { $0.to.lowercased() },
+                       ["coralate", "kubernetes", "claude.md"],
+                       "rules come back in the order they appear in the transcript")
+    }
+
+    /// A merge fix ("Higgs field" → "Higgsfield") embedded in a transcript region.
+    func testMergeFixInTranscript() {
+        let before = "the Higgs field results were surprising to everyone on the call"
+        let after = "the Higgsfield results were surprising to everyone on the call"
+        let result = TranscriptEditCorrections.extract(before: before, after: after)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.from, "Higgs field")
+        XCTAssertEqual(result.first?.to, "Higgsfield")
+    }
+
+    // MARK: Non-respelling edits teach nothing (acceptance: delete a paragraph)
+
+    /// Deleting a whole sentence/paragraph is not a respelling → no rules.
+    func testDeletingParagraphTeachesNothing() {
+        let before = "Intro line here. This entire middle sentence gets removed. Closing line here."
+        let after = "Intro line here. Closing line here."
+        let result = TranscriptEditCorrections.extract(before: before, after: after)
+        XCTAssertTrue(result.isEmpty, "a deletion is not a respelling")
+    }
+
+    /// Inserting new words teaches nothing.
+    func testInsertingWordsTeachesNothing() {
+        let before = "we shipped the build"
+        let after = "we finally shipped the whole build today"
+        let result = TranscriptEditCorrections.extract(before: before, after: after)
+        XCTAssertTrue(result.isEmpty, "pure insertions aren't corrections")
+    }
+
+    /// Swapping to an unrelated word is rejected by the plausibility floor.
+    func testUnrelatedWordSwapRejected() {
+        let result = TranscriptEditCorrections.extract(
+            before: "the cat sat on the mat quietly",
+            after: "the dog sat on the mat quietly")
+        XCTAssertTrue(result.isEmpty, "an unrelated swap must not be learned")
+    }
+
+    /// A rewrite of a clause (multiple words changed with no 1↔N shape) teaches
+    /// nothing — each region fails the respelling guard.
+    func testClauseRewriteTeachesNothing() {
+        let before = "the meeting was about the quarterly budget numbers"
+        let after = "the meeting covered next year hiring plans instead"
+        let result = TranscriptEditCorrections.extract(before: before, after: after)
+        XCTAssertTrue(result.isEmpty, "a multi-word rewrite is not a respelling")
+    }
+
+    /// No change at all → nothing.
+    func testNoChange() {
+        let text = "nothing here changed at all between the two versions"
+        XCTAssertTrue(TranscriptEditCorrections.extract(before: text, after: text).isEmpty)
+    }
+
+    /// Duplicate identical fixes (same word mis-spelled twice, both corrected the
+    /// same way) collapse to one rule.
+    func testDuplicateFixesDeduped() {
+        let before = "cubernetis here and cubernetis there and cubernetis everywhere else"
+        let after = "kubernetes here and kubernetes there and kubernetes everywhere else"
+        let result = TranscriptEditCorrections.extract(before: before, after: after)
+        XCTAssertEqual(result.count, 1, "the same from→to fix is only offered once")
+        XCTAssertEqual(result.first?.to.lowercased(), "kubernetes")
+    }
+
+    /// The region cap bounds how many rules one save can yield. Eight distinct
+    /// respellings, each a lone changed word between unchanged anchor words (so the
+    /// splitter sees eight separate regions, not one rewrite); the cap is 5.
+    func testRegionCapBoundsResults() {
+        let before = "xx aaaa yy bbbb zz cccc qq dddd ww eeee rr ffff tt gggg pp hhhh vv"
+        let after  = "xx aaab yy bbbc zz cccd qq ddde ww eeef rr fffg tt gggh pp hhhi vv"
+        let result = TranscriptEditCorrections.extract(before: before, after: after)
+        XCTAssertEqual(result.count, TranscriptEditCorrections.maxRegions,
+                       "a huge rewrite can't spew more than the cap")
+    }
+
+    /// With no unchanged context BETWEEN two adjacent changed words, the edit reads
+    /// as one wide rewrite region (nothing to anchor on), so it teaches nothing —
+    /// the conservative, correct behavior. This documents the anchoring dependency.
+    func testAdjacentChangesWithoutAnchorTeachNothing() {
+        let result = TranscriptEditCorrections.extract(
+            before: "correlate cubernetis",
+            after: "coralate kubernetes")
+        XCTAssertTrue(result.isEmpty,
+                      "two adjacent fixes with no unchanged word between them can't be separated")
+    }
+}

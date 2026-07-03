@@ -288,3 +288,10 @@
 "Subtitles (.vtt)" = "字幕 (.vtt)";
 "Spreadsheet (.csv)" = "电子表格 (.csv)";
 "Data (.json)" = "数据 (.json)";
+
+/* A8 — transcript editor learn chips */
+"Edit transcript" = "编辑转录";
+"Fixing a word here also teaches your dictionary." = "在这里修正一个词，也会让你的词典学会它。";
+"Added “%@” — it’ll be fixed automatically next time." = "已添加“%@”——下次会自动修正。";
+"Learn “%@”?" = "学会“%@”？";
+"was “%@”" = "原为“%@”";

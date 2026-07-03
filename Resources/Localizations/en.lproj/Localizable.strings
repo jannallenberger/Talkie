@@ -288,3 +288,10 @@
 "Subtitles (.vtt)" = "Subtitles (.vtt)";
 "Spreadsheet (.csv)" = "Spreadsheet (.csv)";
 "Data (.json)" = "Data (.json)";
+
+/* A8 — transcript editor learn chips */
+"Edit transcript" = "Edit transcript";
+"Fixing a word here also teaches your dictionary." = "Fixing a word here also teaches your dictionary.";
+"Added “%@” — it’ll be fixed automatically next time." = "Added “%@” — it’ll be fixed automatically next time.";
+"Learn “%@”?" = "Learn “%@”?";
+"was “%@”" = "was “%@”";
