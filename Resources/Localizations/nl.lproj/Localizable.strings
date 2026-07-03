@@ -269,3 +269,10 @@
 "Forever" = "Voor altijd";
 "You're keeping 1 dictation right now." = "Je bewaart nu 1 dictaat.";
 "You're keeping %d dictations right now." = "Je bewaart nu %d dictaten.";
+
+/* App Intents (Shortcuts / Spotlight / Raycast) */
+"Toggle Dictation" = "Dicteren aan/uit";
+"Start dictating into whatever app is in front, or stop and insert what you said." = "Begin te dicteren in de app die vooraan staat, of stop en voeg in wat je zei.";
+"Get Last Dictation" = "Laatste dictaat ophalen";
+"Return the text of your most recent dictation." = "Geeft de tekst van je meest recente dictaat terug.";
+"Talkie isn’t running. Open Talkie, then try again." = "Talkie is niet actief. Open Talkie en probeer het opnieuw.";

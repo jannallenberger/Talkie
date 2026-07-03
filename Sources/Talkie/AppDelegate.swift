@@ -1511,6 +1511,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return afterTokens.difference(from: beforeTokens).count
     }
 
+    // MARK: App Intents accessor
+
+    /// Toggle dictation from an App Intent (Shortcuts / Spotlight / Raycast).
+    /// `isDictating` is `private`, so a new `Intents/` file can't read it to
+    /// decide begin-vs-end; this one internal method keeps that decision here,
+    /// where the flag lives, and mirrors a hotkey press. Never activates Talkie
+    /// — dictation targets the frontmost app (see `ToggleDictationIntent`).
+    func toggleDictationFromIntent() {
+        if isDictating {
+            endDictation()
+        } else {
+            beginDictation()
+        }
+    }
+
     // MARK: Shared accessor for C-callback bridges
 
     static weak var shared: AppDelegate?

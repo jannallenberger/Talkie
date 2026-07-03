@@ -269,3 +269,10 @@
 "Forever" = "계속 보관";
 "You're keeping 1 dictation right now." = "현재 받아쓰기 1개를 보관하고 있습니다.";
 "You're keeping %d dictations right now." = "현재 받아쓰기 %d개를 보관하고 있습니다.";
+
+/* App Intents (Shortcuts / Spotlight / Raycast) */
+"Toggle Dictation" = "받아쓰기 전환";
+"Start dictating into whatever app is in front, or stop and insert what you said." = "맨 앞에 있는 앱에 받아쓰기를 시작하거나, 멈추고 말한 내용을 삽입합니다.";
+"Get Last Dictation" = "최근 받아쓰기 가져오기";
+"Return the text of your most recent dictation." = "가장 최근 받아쓰기의 텍스트를 반환합니다.";
+"Talkie isn’t running. Open Talkie, then try again." = "Talkie가 실행 중이 아닙니다. Talkie를 연 다음 다시 시도하세요.";

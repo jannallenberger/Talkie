@@ -269,3 +269,10 @@
 "Forever" = "Forever";
 "You're keeping 1 dictation right now." = "You're keeping 1 dictation right now.";
 "You're keeping %d dictations right now." = "You're keeping %d dictations right now.";
+
+/* App Intents (Shortcuts / Spotlight / Raycast) */
+"Toggle Dictation" = "Toggle Dictation";
+"Start dictating into whatever app is in front, or stop and insert what you said." = "Start dictating into whatever app is in front, or stop and insert what you said.";
+"Get Last Dictation" = "Get Last Dictation";
+"Return the text of your most recent dictation." = "Return the text of your most recent dictation.";
+"Talkie isn’t running. Open Talkie, then try again." = "Talkie isn’t running. Open Talkie, then try again.";

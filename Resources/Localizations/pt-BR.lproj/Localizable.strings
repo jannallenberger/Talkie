@@ -269,3 +269,10 @@
 "Forever" = "Para sempre";
 "You're keeping 1 dictation right now." = "Você está mantendo 1 ditado agora.";
 "You're keeping %d dictations right now." = "Você está mantendo %d ditados agora.";
+
+/* App Intents (Shortcuts / Spotlight / Raycast) */
+"Toggle Dictation" = "Ativar ou parar o ditado";
+"Start dictating into whatever app is in front, or stop and insert what you said." = "Comece a ditar no app que estiver à frente, ou pare e insira o que você disse.";
+"Get Last Dictation" = "Obter o último ditado";
+"Return the text of your most recent dictation." = "Retorna o texto do seu ditado mais recente.";
+"Talkie isn’t running. Open Talkie, then try again." = "O Talkie não está em execução. Abra o Talkie e tente de novo.";

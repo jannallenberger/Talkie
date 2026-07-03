@@ -269,3 +269,10 @@
 "Forever" = "永久保留";
 "You're keeping 1 dictation right now." = "你当前保留了 1 条听写。";
 "You're keeping %d dictations right now." = "你当前保留了 %d 条听写。";
+
+/* App Intents (Shortcuts / Spotlight / Raycast) */
+"Toggle Dictation" = "开关听写";
+"Start dictating into whatever app is in front, or stop and insert what you said." = "开始向最前面的应用听写，或停下并插入你说的内容。";
+"Get Last Dictation" = "获取最近一次听写";
+"Return the text of your most recent dictation." = "返回你最近一次听写的文本。";
+"Talkie isn’t running. Open Talkie, then try again." = "Talkie 尚未运行。请打开 Talkie 后重试。";
