@@ -123,8 +123,6 @@
 "Right ⌥ Option" = "右 ⌥ Option";
 "Left ⌥ Option" = "左 ⌥ Option";
 "Right ⌃ Control" = "右 ⌃ Control";
-"Hold to talk" = "按住说话";
-"Toggle (press to start, press to stop)" = "切换（按一下开始，再按一下停止）";
 "Paste (fast)" = "粘贴（快速）";
 "Type character-by-character" = "逐字符输入";
 "None" = "无";
@@ -313,3 +311,11 @@
 "Added “%@” — it’ll be fixed automatically next time." = "已添加“%@”——下次会自动修正。";
 "Learn “%@”?" = "学会“%@”？";
 "was “%@”" = "原为“%@”";
+"Hold %@ to talk · tap twice to lock" = "按住 %@ 说话 · 点按两次锁定";
+"Hold to talk · tap twice to lock" = "按住说话 · 点按两次锁定";
+"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "按住按键说话，松开即可插入。点按两次可免手锁定——无需按住任何键即可持续录音；再点按一次即可停止并插入。";
+"Hold, speak, release — or tap twice to go hands-free" = "按住、说话、松开 — 或点按两次进入免手模式";
+"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "按住按键，说出你想写的内容，然后松开——Talkie 会把文字放到你正在输入的地方。赶时间？点按按键两次即可免手锁定录音，再点按一次即可停止。";
+"Listening, hands-free. Recording is locked — tap your key once to stop." = "正在免手聆听。录音已锁定——点按按键一次即可停止。";
+"Hold your key to talk, or tap it twice to lock hands-free recording." = "按住按键说话，或点按两次锁定免手录音。";
+"Click here, then hold %@ and speak…" = "点击这里，然后按住 %@ 说话…";

@@ -123,8 +123,6 @@
 "Right ⌥ Option" = "Right ⌥ Option";
 "Left ⌥ Option" = "Left ⌥ Option";
 "Right ⌃ Control" = "Right ⌃ Control";
-"Hold to talk" = "Hold to talk";
-"Toggle (press to start, press to stop)" = "Toggle (press to start, press to stop)";
 "Paste (fast)" = "Paste (fast)";
 "Type character-by-character" = "Type character-by-character";
 "None" = "None";
@@ -313,3 +311,11 @@
 "Added “%@” — it’ll be fixed automatically next time." = "Added “%@” — it’ll be fixed automatically next time.";
 "Learn “%@”?" = "Learn “%@”?";
 "was “%@”" = "was “%@”";
+"Hold %@ to talk · tap twice to lock" = "Hold %@ to talk · tap twice to lock";
+"Hold to talk · tap twice to lock" = "Hold to talk · tap twice to lock";
+"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.";
+"Hold, speak, release — or tap twice to go hands-free" = "Hold, speak, release — or tap twice to go hands-free";
+"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop.";
+"Listening, hands-free. Recording is locked — tap your key once to stop." = "Listening, hands-free. Recording is locked — tap your key once to stop.";
+"Hold your key to talk, or tap it twice to lock hands-free recording." = "Hold your key to talk, or tap it twice to lock hands-free recording.";
+"Click here, then hold %@ and speak…" = "Click here, then hold %@ and speak…";

@@ -123,8 +123,6 @@
 "Right ⌥ Option" = "⌥ Option droite";
 "Left ⌥ Option" = "⌥ Option gauche";
 "Right ⌃ Control" = "⌃ Contrôle droit";
-"Hold to talk" = "Maintenir pour parler";
-"Toggle (press to start, press to stop)" = "Bascule (appuyez pour démarrer, appuyez pour arrêter)";
 "Paste (fast)" = "Coller (rapide)";
 "Type character-by-character" = "Saisir caractère par caractère";
 "None" = "Aucun";
@@ -313,3 +311,11 @@
 "Added “%@” — it’ll be fixed automatically next time." = "« %@ » ajouté — sera corrigé automatiquement la prochaine fois.";
 "Learn “%@”?" = "Apprendre « %@ » ?";
 "was “%@”" = "était « %@ »";
+"Hold %@ to talk · tap twice to lock" = "Maintenez %@ pour parler · appuyez deux fois pour verrouiller";
+"Hold to talk · tap twice to lock" = "Maintenez pour parler · appuyez deux fois pour verrouiller";
+"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Maintenez la touche et parlez, puis relâchez pour insérer. Appuyez deux fois pour verrouiller en mains libres — l’enregistrement continue sans rien maintenir ; appuyez une fois pour arrêter et insérer.";
+"Hold, speak, release — or tap twice to go hands-free" = "Maintenez, parlez, relâchez — ou appuyez deux fois pour les mains libres";
+"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Maintenez votre touche, dites ce que vous voulez écrire, puis relâchez — Talkie insère le texte là où vous tapez. Pressé ? Appuyez deux fois sur la touche pour verrouiller l’enregistrement en mains libres, puis une fois pour l’arrêter.";
+"Listening, hands-free. Recording is locked — tap your key once to stop." = "À l’écoute, mains libres. L’enregistrement est verrouillé — appuyez une fois sur votre touche pour l’arrêter.";
+"Hold your key to talk, or tap it twice to lock hands-free recording." = "Maintenez votre touche pour parler, ou appuyez deux fois pour verrouiller l’enregistrement mains libres.";
+"Click here, then hold %@ and speak…" = "Cliquez ici, puis maintenez %@ et parlez…";

@@ -123,8 +123,6 @@
 "Right ⌥ Option" = "Rechte ⌥ Wahltaste";
 "Left ⌥ Option" = "Linke ⌥ Wahltaste";
 "Right ⌃ Control" = "Rechte ⌃ Ctrl-Taste";
-"Hold to talk" = "Zum Sprechen gedrückt halten";
-"Toggle (press to start, press to stop)" = "Umschalten (drücken zum Starten, drücken zum Stoppen)";
 "Paste (fast)" = "Einsetzen (schnell)";
 "Type character-by-character" = "Zeichen für Zeichen tippen";
 "None" = "Keine";
@@ -313,3 +311,11 @@
 "Added “%@” — it’ll be fixed automatically next time." = "„%@“ hinzugefügt — wird nächstes Mal automatisch korrigiert.";
 "Learn “%@”?" = "„%@“ lernen?";
 "was “%@”" = "war „%@“";
+"Hold %@ to talk · tap twice to lock" = "%@ halten zum Sprechen · zweimal tippen zum Sperren";
+"Hold to talk · tap twice to lock" = "Halten zum Sprechen · zweimal tippen zum Sperren";
+"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Halte die Taste gedrückt und sprich, dann loslassen, um den Text einzufügen. Tippe zweimal, um freihändig zu sperren – die Aufnahme läuft weiter, ohne dass du etwas hältst; einmal tippen zum Stoppen und Einfügen.";
+"Hold, speak, release — or tap twice to go hands-free" = "Halten, sprechen, loslassen – oder zweimal tippen für freihändig";
+"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Halte deine Taste gedrückt, sag, was du schreiben möchtest, und lass los – Talkie fügt den Text dort ein, wo du gerade tippst. In Eile? Tippe die Taste zweimal, um die Aufnahme freihändig zu sperren, und einmal zum Stoppen.";
+"Listening, hands-free. Recording is locked — tap your key once to stop." = "Höre zu, freihändig. Aufnahme ist gesperrt – tippe einmal auf deine Taste zum Stoppen.";
+"Hold your key to talk, or tap it twice to lock hands-free recording." = "Halte deine Taste zum Sprechen gedrückt oder tippe zweimal, um die freihändige Aufnahme zu sperren.";
+"Click here, then hold %@ and speak…" = "Hier klicken, dann %@ halten und sprechen …";

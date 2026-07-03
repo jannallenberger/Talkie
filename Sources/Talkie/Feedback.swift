@@ -9,6 +9,9 @@ enum Feedback {
     static func stop() { play("Pop") }
     static func done() { play("Morse") }
     static func abort() { play("Funk") }
+    /// A tap-tap latched recording hands-free — a distinct "it's locked, you can let
+    /// go" cue, kept clearly apart from the start/stop earcons so the lock is audible.
+    static func locked() { play("Bottle") }
     /// Distinct alert for when dictation couldn't be pasted (no editable field
     /// focused) — the text was left on the clipboard instead.
     static func notPasted() { play("Submarine") }

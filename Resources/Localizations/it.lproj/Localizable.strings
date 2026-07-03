@@ -123,8 +123,6 @@
 "Right ⌥ Option" = "⌥ Opzione destro";
 "Left ⌥ Option" = "⌥ Opzione sinistro";
 "Right ⌃ Control" = "⌃ Control destro";
-"Hold to talk" = "Tieni premuto per parlare";
-"Toggle (press to start, press to stop)" = "Attiva/disattiva (premi per iniziare, premi per fermare)";
 "Paste (fast)" = "Incolla (veloce)";
 "Type character-by-character" = "Digita carattere per carattere";
 "None" = "Nessuna";
@@ -313,3 +311,11 @@
 "Added “%@” — it’ll be fixed automatically next time." = "Aggiunto “%@” — sarà corretto automaticamente la prossima volta.";
 "Learn “%@”?" = "Imparare “%@”?";
 "was “%@”" = "era “%@”";
+"Hold %@ to talk · tap twice to lock" = "Tieni premuto %@ per parlare · tocca due volte per bloccare";
+"Hold to talk · tap twice to lock" = "Tieni premuto per parlare · tocca due volte per bloccare";
+"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Tieni premuto il tasto e parla, poi rilascia per inserire. Toccalo due volte per bloccare a mani libere: la registrazione prosegue senza tenere premuto nulla; tocca una volta per fermare e inserire.";
+"Hold, speak, release — or tap twice to go hands-free" = "Tieni premuto, parla, rilascia — o tocca due volte per le mani libere";
+"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Tieni premuto il tasto, di’ ciò che vuoi scrivere e rilascia: Talkie inserisce il testo dove stai scrivendo. Hai fretta? Tocca il tasto due volte per bloccare la registrazione a mani libere, poi una volta per fermarla.";
+"Listening, hands-free. Recording is locked — tap your key once to stop." = "In ascolto, a mani libere. La registrazione è bloccata: tocca il tasto una volta per fermarla.";
+"Hold your key to talk, or tap it twice to lock hands-free recording." = "Tieni premuto il tasto per parlare, oppure toccalo due volte per bloccare la registrazione a mani libere.";
+"Click here, then hold %@ and speak…" = "Fai clic qui, poi tieni premuto %@ e parla…";

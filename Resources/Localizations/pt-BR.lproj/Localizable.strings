@@ -123,8 +123,6 @@
 "Right ⌥ Option" = "⌥ Option direito";
 "Left ⌥ Option" = "⌥ Option esquerdo";
 "Right ⌃ Control" = "⌃ Control direito";
-"Hold to talk" = "Segure para falar";
-"Toggle (press to start, press to stop)" = "Alternar (pressione para iniciar, pressione para parar)";
 "Paste (fast)" = "Colar (rápido)";
 "Type character-by-character" = "Digitar caractere por caractere";
 "None" = "Nenhum";
@@ -313,3 +311,11 @@
 "Added “%@” — it’ll be fixed automatically next time." = "Adicionado “%@” — será corrigido automaticamente da próxima vez.";
 "Learn “%@”?" = "Aprender “%@”?";
 "was “%@”" = "era “%@”";
+"Hold %@ to talk · tap twice to lock" = "Segure %@ para falar · toque duas vezes para travar";
+"Hold to talk · tap twice to lock" = "Segure para falar · toque duas vezes para travar";
+"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Segure a tecla e fale, depois solte para inserir. Toque duas vezes para travar em mãos livres — a gravação continua sem manter nada pressionado; toque uma vez para parar e inserir.";
+"Hold, speak, release — or tap twice to go hands-free" = "Segure, fale, solte — ou toque duas vezes para mãos livres";
+"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Segure sua tecla, diga o que quer escrever e solte — o Talkie coloca o texto onde você está digitando. Com pressa? Toque na tecla duas vezes para travar a gravação em mãos livres e uma vez para parar.";
+"Listening, hands-free. Recording is locked — tap your key once to stop." = "Ouvindo, em mãos livres. A gravação está travada — toque na tecla uma vez para parar.";
+"Hold your key to talk, or tap it twice to lock hands-free recording." = "Segure sua tecla para falar ou toque duas vezes para travar a gravação em mãos livres.";
+"Click here, then hold %@ and speak…" = "Clique aqui, segure %@ e fale…";

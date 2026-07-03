@@ -72,6 +72,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindow: MainWindowController?
 
     private var isDictating = false
+    /// True while the current session is locked hands-free (a tap-tap put it in
+    /// locked mode). Purely presentational on the app side — the gesture machine in
+    /// HotKeyMonitor owns the real lock state; this mirrors it so begin/end can
+    /// reset the pill's lock glyph. Reset on every begin and end.
+    private var handsFreeLocked = false
     /// True from key-release until the transcript has been polished + inserted.
     /// Blocks a new session from overlapping the in-flight one (which shares the
     /// engine + audio); a re-press during this window just nudges the pill.
@@ -404,8 +409,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hintLine() -> String {
-        let mode = settings.activationMode == .holdToTalk ? "Hold" : "Tap"
-        return "\(mode) \(settings.activationKey.displayName) to dictate"
+        // One gesture for everyone: hold to talk, tap twice to lock hands-free.
+        return String(format: "Hold %@ to talk · tap twice to lock".loc, settings.activationKey.displayName)
     }
 
     private func updateStatusUI() {
@@ -439,13 +444,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Hotkey
 
-    private enum DictationEvent: Sendable { case begin, end }
+    private enum DictationEvent: Sendable { case begin, end, lock }
     private var eventTask: Task<Void, Never>?
 
     private func setupHotKey() {
-        // Funnel press/release edges through ONE ordered stream so a begin can
+        // Funnel press/release/lock edges through ONE ordered stream so a begin can
         // never be scheduled after its matching end (two independent Tasks have
-        // no FIFO guarantee on the MainActor executor).
+        // no FIFO guarantee on the MainActor executor). The gesture machine lives in
+        // HotKeyMonitor on the tap thread; it hands us already-decided begin/end/lock.
         let (stream, continuation) = AsyncStream<DictationEvent>.makeStream()
         eventTask = Task { @MainActor [weak self] in
             for await event in stream {
@@ -453,15 +459,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 switch event {
                 case .begin: self.beginDictation()
                 case .end: self.endDictation()
+                case .lock: self.lockDictation()
                 }
             }
         }
 
-        let config = HotKeyMonitor.Config(key: settings.activationKey, mode: settings.activationMode)
+        let config = HotKeyMonitor.Config(key: settings.activationKey)
         let monitor = HotKeyMonitor(
             config: config,
             onActivate: { continuation.yield(.begin) },
             onDeactivate: { continuation.yield(.end) },
+            onLock: { continuation.yield(.lock) },
             onPasteLast: { [weak self] in
                 Task { @MainActor in self?.pasteLastTranscript() }
             }
@@ -470,13 +478,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKey = monitor
     }
 
+    /// A tap-tap locked recording hands-free. Recording is already running (it
+    /// began on the first tap's key-down), so this only flips the presentation to
+    /// the hands-free/locked look: a lock glyph in the pill, a lock earcon, and the
+    /// bird's locked state. Guarded so a stray lock without a live session is inert.
+    private func lockDictation() {
+        guard isDictating, sessionLive else { return }
+        handsFreeLocked = true
+        hud.setHandsFreeLocked(true)
+        Feedback.locked()
+    }
+
     private func observeSettings() {
         // Re-bind the hotkey + sound prefs when settings change.
         settingsObservation = Task { @MainActor [weak self] in
             for await _ in NotificationCenter.default.notifications(named: .talkieSettingsChanged) {
                 guard let self else { return }
                 Feedback.enabled = self.settings.playSounds
-                self.hotKey?.update(config: .init(key: self.settings.activationKey, mode: self.settings.activationMode))
+                self.hotKey?.update(config: .init(key: self.settings.activationKey))
                 self.updateStatusUI()
 
                 // Show/hide the floating bird live when its toggle flips.
@@ -647,6 +666,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         learning.stopWatching()
 
         isDictating = true
+        handsFreeLocked = false
         sessionLive = false
         sessionID += 1
         let myID = sessionID
@@ -815,6 +835,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func handleCaptureFailure(_ error: Error, sessionID: Int) {
         guard isDictating, self.sessionID == sessionID else { return }
         isDictating = false
+        handsFreeLocked = false
+        hud.setHandsFreeLocked(false)
         sessionLive = false
         recordingStartedAt = nil
         Feedback.stop()
@@ -832,6 +854,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func endDictation() {
         guard isDictating else { return }
         isDictating = false
+        // The session is ending — clear the hands-free lock so the next pill doesn't
+        // inherit a stale lock glyph (the pill moves to processing/insert below).
+        let wasHandsFreeLocked = handsFreeLocked
+        handsFreeLocked = false
+        hud.setHandsFreeLocked(false)
         updateStatusUI()
         // Key released — mic stops, so the bird drops back to its calm idle look.
         birdBuddy.setActive(false)
@@ -851,6 +878,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionLive = false
         let duration = Date().timeIntervalSince(recordingStartedAt ?? Date())
         recordingStartedAt = nil
+        // A "lone quick tap" is a session that was never locked hands-free and whose
+        // live capture was shorter than the tap threshold — i.e. the user tapped once
+        // (maybe not realizing it's hold-to-talk) rather than holding or tap-tapping.
+        // Used only to decide whether to surface the one-time gesture hint when such a
+        // tap yields nothing. Threshold matches the gesture machine's tap window.
+        let wasLoneShortTap = !wasHandsFreeLocked && duration < ActivationGesture.tapThreshold
 
         Feedback.stop()
         audio.stop()
@@ -1102,7 +1135,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             guard !finalText.isEmpty else {
-                self.hud.hide()
+                // A lone quick tap that captured nothing usually means the user tapped
+                // instead of holding (or didn't know tap-tap locks). The first few
+                // times that happens, teach the gesture in the pill instead of just
+                // vanishing; after that, stay quiet (the counter caps it).
+                if wasLoneShortTap, GestureHint.shouldShowEmptyTapHint() {
+                    self.hud.showGestureHint()
+                } else {
+                    self.hud.hide()
+                }
                 return
             }
 
