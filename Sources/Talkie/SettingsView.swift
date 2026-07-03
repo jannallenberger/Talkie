@@ -61,10 +61,22 @@ final class SettingsRouter: ObservableObject {
 
 /// The app's main window (Dock app). A Claude-style sidebar shell hosting the
 /// dashboard, history, and settings panes.
+///
+/// It is the window's `NSWindowDelegate` so it can tell `AppDelegate` when the
+/// user *genuinely* closes the window (not merely miniaturizes it, and not while
+/// a sheet is up). On a genuine close the app drops its Dock icon and lives on as
+/// a menu-bar item (H7) — the window is the whole toggle, fully reversible by
+/// reopening from the status menu or Spotlight/Finder.
 @MainActor
-final class MainWindowController {
+final class MainWindowController: NSObject, NSWindowDelegate {
     private let window: NSWindow
     private let router = SettingsRouter()
+
+    /// Called from `windowWillClose` on a genuine close (no attached sheet).
+    /// `AppDelegate` sets this to flip the activation policy to `.accessory`
+    /// (Dock icon disappears; status item + hotkey remain). Never fires for a
+    /// miniaturize (that isn't a close) or while a sheet like `NSOpenPanel` is up.
+    var onGenuineClose: (() -> Void)?
 
     init(
         settings: AppSettings,
@@ -132,12 +144,29 @@ final class MainWindowController {
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("TalkieMainWindow")
         window.center()
+        super.init()
+        // Observe close so the app can vanish into the menu bar (H7). The window
+        // outlives the close (`isReleasedWhenClosed = false`) and this controller
+        // is retained by `AppDelegate`, so reopening reuses the same instance.
+        window.delegate = self
     }
 
     func show(tab: SettingsTab) {
         router.selectedTab = tab
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: NSWindowDelegate
+
+    /// Fires on a genuine window close. We guard against a sheet being up
+    /// (`NSOpenPanel`/`NSSavePanel` attach as `attachedSheet`) — closing while a
+    /// sheet is presented shouldn't strip the Dock icon. A miniaturize never routes
+    /// here (it isn't a close), so no extra guard is needed for that. `AppDelegate`
+    /// does the actual `.accessory` flip via `onGenuineClose`.
+    func windowWillClose(_ notification: Notification) {
+        guard window.attachedSheet == nil else { return }
+        onGenuineClose?()
     }
 }
 
