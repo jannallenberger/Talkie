@@ -261,6 +261,31 @@ final class AppProfileResolveTests: XCTestCase {
                             bundleID: "com.apple.Notes", category: .notes).autoCapitalize,
             "Faithful only suppresses capitalization in terminal/coding apps")
     }
+
+    /// End-to-end acceptance: the deterministic post-processing the pipeline runs
+    /// when the model didn't rewrite the text (`removeFillers: !aiHandledFillers`,
+    /// i.e. always-on here). "um" is stripped in BOTH a faithful Terminal and Notes;
+    /// only Notes gains a leading capital, because a dictated shell command must not.
+    func testDeterministicCleanupCapitalizesNotesButNotFaithfulTerminal() {
+        let terminal = ResolvedProfile(cleanupStyle: .faithful, insertionMode: .paste,
+                                       bundleID: "com.apple.Terminal", category: .terminal)
+        let notes = ResolvedProfile(cleanupStyle: .faithful, insertionMode: .paste,
+                                    bundleID: "com.apple.Notes", category: .notes)
+
+        // The model didn't run, so fillers strip deterministically (`!aiHandledFillers`
+        // == true) and capitalization follows the resolved rule.
+        let inTerminal = TextProcessor.apply(
+            replacements: [], removeFillers: true, autoCapitalize: terminal.autoCapitalize,
+            to: "um git status")
+        XCTAssertEqual(inTerminal.text, "git status",
+                       "Terminal/Faithful: 'um' stripped, and no leading capital on the command")
+
+        let inNotes = TextProcessor.apply(
+            replacements: [], removeFillers: true, autoCapitalize: notes.autoCapitalize,
+            to: "um remember to call mom")
+        XCTAssertEqual(inNotes.text, "Remember to call mom",
+                       "Notes: 'um' stripped and the first letter capitalized")
+    }
 }
 
 /// Locks the H2 one-time migration that folds the deleted cleanup *intensity level*
