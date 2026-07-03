@@ -583,3 +583,9 @@
 "Keep audio with meeting notes" = "회의 메모와 함께 오디오 보관";
 "Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "각 녹음의 오디오를 저장하여 대화 기록의 어느 줄이든 클릭해 바로 그 순간을 들을 수 있습니다.";
 "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "기본값은 꺼짐. 보관된 오디오는 메모 옆의 ~/Talkie Meetings/에 남아 Mac을 벗어나지 않으며 회의와 함께 삭제됩니다. 통화의 각 방향당 시간당 약 30 MB. 받아쓰기 오디오는 보관되지 않습니다.";
+// MARK: - Earned launch-at-login offer (H8)
+"3-day streak — start Talkie at login so dictation always works?" = "3일 연속 사용 — 로그인 시 Talkie를 시작해 받아쓰기가 항상 작동하도록 할까요?";
+"Starts Talkie automatically at login so your hotkey is always ready." = "로그인 시 Talkie를 자동으로 시작해 단축키를 항상 사용할 수 있게 합니다.";
+"Talkie will start at login." = "로그인 시 Talkie가 시작됩니다.";
+"Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "3일 연속 받아쓰기했습니다. 사용을 실행하면 로그인 시 Talkie가 시작되어 단축키가 항상 작동합니다.";
+"Enable" = "사용";

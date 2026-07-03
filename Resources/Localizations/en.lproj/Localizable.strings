@@ -585,3 +585,9 @@
 "Keep audio with meeting notes" = "Keep audio with meeting notes";
 "Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.";
 "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept.";
+// MARK: - Earned launch-at-login offer (H8)
+"3-day streak — start Talkie at login so dictation always works?" = "3-day streak — start Talkie at login so dictation always works?";
+"Starts Talkie automatically at login so your hotkey is always ready." = "Starts Talkie automatically at login so your hotkey is always ready.";
+"Talkie will start at login." = "Talkie will start at login.";
+"Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works.";
+"Enable" = "Enable";

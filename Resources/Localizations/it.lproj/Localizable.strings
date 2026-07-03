@@ -583,3 +583,9 @@
 "Keep audio with meeting notes" = "Conserva l’audio con le note della riunione";
 "Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "Salva l’audio di ogni registrazione così puoi fare clic su qualsiasi riga della trascrizione per ascoltare quel momento esatto.";
 "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "Disattivato per impostazione predefinita. L’audio conservato resta in ~/Talkie Meetings/ accanto alla nota, non lascia mai il tuo Mac e viene eliminato con la riunione. Circa 30 MB all’ora per ciascun lato della chiamata. L’audio della dettatura non viene mai conservato.";
+// MARK: - Earned launch-at-login offer (H8)
+"3-day streak — start Talkie at login so dictation always works?" = "3 giorni di fila — avviare Talkie all’accesso così la dettatura funziona sempre?";
+"Starts Talkie automatically at login so your hotkey is always ready." = "Avvia Talkie automaticamente all’accesso, così la tua scorciatoia è sempre pronta.";
+"Talkie will start at login." = "Talkie si avvierà all’accesso.";
+"Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "Tre giorni di dettatura di fila. Attiva Abilita per avviare Talkie all’accesso, così la tua scorciatoia funziona sempre.";
+"Enable" = "Abilita";

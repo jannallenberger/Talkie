@@ -583,3 +583,9 @@
 "Keep audio with meeting notes" = "会議メモと一緒に音声を保存";
 "Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "各録音の音声を保存し、文字起こしの任意の行をクリックしてその瞬間を再生できるようにします。";
 "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "デフォルトはオフ。保存した音声はノートの隣の ~/Talkie Meetings/ に残り、Mac の外に出ることはなく、会議とともに削除されます。通話の各方向につき1時間あたり約30 MB。ディクテーションの音声は保存されません。";
+// MARK: - Earned launch-at-login offer (H8)
+"3-day streak — start Talkie at login so dictation always works?" = "3日連続で使用中 — ログイン時に Talkie を起動して、いつでも音声入力できるようにしますか？";
+"Starts Talkie automatically at login so your hotkey is always ready." = "ログイン時に Talkie を自動起動し、ショートカットをいつでも使えるようにします。";
+"Talkie will start at login." = "ログイン時に Talkie を起動します。";
+"Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "3日連続で音声入力しています。「有効にする」を実行すると、ログイン時に Talkie が起動し、ショートカットがいつでも使えます。";
+"Enable" = "有効にする";

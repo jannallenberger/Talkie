@@ -583,3 +583,9 @@
 "Keep audio with meeting notes" = "将音频与会议记录一起保存";
 "Save each recording’s audio so you can click any line of the transcript to hear that exact moment." = "保存每次录音的音频，让你可以点击转录中的任意一行来聆听那一刻。";
 "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept." = "默认关闭。保留的音频存放在笔记旁的 ~/Talkie Meetings/ 中，绝不离开你的 Mac，并会随会议一起删除。通话每一方每小时约 30 MB。听写音频永不保留。";
+// MARK: - Earned launch-at-login offer (H8)
+"3-day streak — start Talkie at login so dictation always works?" = "连续 3 天使用 — 登录时启动 Talkie，让听写始终可用？";
+"Starts Talkie automatically at login so your hotkey is always ready." = "登录时自动启动 Talkie，让快捷键随时可用。";
+"Talkie will start at login." = "Talkie 将在登录时启动。";
+"Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works." = "已连续三天听写。执行“启用”即可让 Talkie 在登录时启动，快捷键随时可用。";
+"Enable" = "启用";
