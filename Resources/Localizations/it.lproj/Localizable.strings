@@ -427,3 +427,15 @@
 "Relaunch now" = "Riavvia ora";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "Il monitoraggio input è concesso, ma Talkie deve riavviarsi per sentire il tuo tasto.";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "Il monitoraggio input è attivo, ma Talkie deve riavviarsi un attimo per sentire il tuo tasto.";
+/* K8 — Improve Talkie: one-click redacted bug bundle */
+"Improve Talkie" = "Migliora Talkie";
+"Builds a diagnostic bundle — version, this Mac's setup, your settings, and a redacted tail of the debug log — so a bug report has what it needs. You see the whole thing before anything is copied, and your name, dictionary, history, and dictated words are never included." = "Crea un pacchetto diagnostico — versione, configurazione di questo Mac, le tue impostazioni e una parte oscurata del log di debug — così una segnalazione di bug ha ciò che serve. Vedi tutto prima che venga copiato qualcosa, e il tuo nome, dizionario, cronologia e parole dettate non sono mai inclusi.";
+"Diagnostic bundle" = "Pacchetto diagnostico";
+"Review it in full, then copy — nothing is copied until you do" = "Leggilo per intero, poi copia: nulla viene copiato finché non lo fai";
+"Review…" = "Rivedi…";
+"Report a bug" = "Segnala un bug";
+"Opens Talkie's GitHub in your browser to file an issue" = "Apre il GitHub di Talkie nel browser per aprire una segnalazione";
+"Open GitHub" = "Apri GitHub";
+"This is exactly what will be copied — read it first. Nothing has been copied yet." = "È esattamente ciò che verrà copiato: leggilo prima. Non è ancora stato copiato nulla.";
+"Close" = "Chiudi";
+"Copy" = "Copia";

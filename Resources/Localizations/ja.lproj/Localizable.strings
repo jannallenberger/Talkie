@@ -427,3 +427,15 @@
 "Relaunch now" = "今すぐ再起動";
 "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "入力監視は許可されていますが、キーを認識するには Talkie の再起動が必要です。";
 "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "入力監視は有効ですが、キーを認識するには Talkie を一度再起動してください。";
+/* K8 — Improve Talkie: one-click redacted bug bundle */
+"Improve Talkie" = "Talkie を改善";
+"Builds a diagnostic bundle — version, this Mac's setup, your settings, and a redacted tail of the debug log — so a bug report has what it needs. You see the whole thing before anything is copied, and your name, dictionary, history, and dictated words are never included." = "バージョン、この Mac の構成、設定、デバッグログの秘匿処理済みの末尾をまとめた診断バンドルを作成し、バグ報告に必要な情報をそろえます。コピーされる前に全体を確認でき、あなたの名前・辞書・履歴・口述した言葉が含まれることはありません。";
+"Diagnostic bundle" = "診断バンドル";
+"Review it in full, then copy — nothing is copied until you do" = "全文を確認してからコピー — それまで何もコピーされません";
+"Review…" = "確認…";
+"Report a bug" = "バグを報告";
+"Opens Talkie's GitHub in your browser to file an issue" = "ブラウザで Talkie の GitHub を開いて issue を作成します";
+"Open GitHub" = "GitHub を開く";
+"This is exactly what will be copied — read it first. Nothing has been copied yet." = "これがコピーされる内容そのものです。まずお読みください。まだ何もコピーされていません。";
+"Close" = "閉じる";
+"Copy" = "コピー";

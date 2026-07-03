@@ -39,6 +39,12 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
+    <!-- Talkie's public repository base URL. Read at runtime by Brand.repoURL and
+         used only to hand a "report a bug" link to the user's browser (never
+         fetched in-process). Config, not a user setting; kept out of Swift source
+         so the on-device core carries no https:// literal (check-no-network.sh). -->
+    <key>TalkieRepoURL</key>
+    <string>https://github.com/jannallenberger/Talkie</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>ATSApplicationFontsPath</key>
