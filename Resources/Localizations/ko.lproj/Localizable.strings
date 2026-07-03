@@ -369,3 +369,12 @@
 "Delete this meeting?" = "이 회의를 삭제할까요?";
 "Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "받아쓰기 기록과 Talkie의 메모리가 거기서 추출한 모든 것을 삭제합니다. 직접 가르친 사전 규칙은 유지됩니다. Talkie는 삭제하기 전에 파일을 덮어씁니다. Mac을 분실하거나 압수당했을 때를 대비해 FileVault를 켜 두세요.";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "이 회의의 전사본과 Talkie의 메모리가 거기서 추출한 모든 것을 삭제합니다. Talkie는 삭제하기 전에 파일을 덮어씁니다. Mac을 분실하거나 압수당했을 때를 대비해 FileVault를 켜 두세요.";
+/* A9 — Vibe Coding in-context offer */
+"Index %@ filenames?" = "%@의 파일 이름을 인덱싱할까요?";
+"Index the project %@ so spoken filenames snap to its real files?" = "말한 파일 이름이 실제 파일에 맞춰지도록 프로젝트 %@를 인덱싱할까요?";
+"Turns on Vibe Coding and indexes this project's filenames." = "Vibe Coding을 켜고 이 프로젝트의 파일 이름을 인덱싱합니다.";
+"Dismisses the offer for this project." = "이 프로젝트에 대한 제안을 닫습니다.";
+"Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss." = "Talkie가 프로젝트 %@를 찾았습니다. 말한 파일 이름을 실제 파일에 맞추려면 '인덱싱'을, 닫으려면 '나중에'를 선택하세요.";
+"Indexing %@ — spoken filenames will snap to real files" = "%@ 인덱싱 중 — 말한 파일 이름이 실제 파일에 맞춰집니다";
+"Index" = "인덱싱";
+"Not now" = "나중에";

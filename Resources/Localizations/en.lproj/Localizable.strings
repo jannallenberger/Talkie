@@ -369,3 +369,12 @@
 "Delete this meeting?" = "Delete this meeting?";
 "Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.";
+/* A9 — Vibe Coding in-context offer */
+"Index %@ filenames?" = "Index %@ filenames?";
+"Index the project %@ so spoken filenames snap to its real files?" = "Index the project %@ so spoken filenames snap to its real files?";
+"Turns on Vibe Coding and indexes this project's filenames." = "Turns on Vibe Coding and indexes this project's filenames.";
+"Dismisses the offer for this project." = "Dismisses the offer for this project.";
+"Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss." = "Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss.";
+"Indexing %@ — spoken filenames will snap to real files" = "Indexing %@ — spoken filenames will snap to real files";
+"Index" = "Index";
+"Not now" = "Not now";

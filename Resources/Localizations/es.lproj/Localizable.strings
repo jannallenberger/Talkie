@@ -369,3 +369,12 @@
 "Delete this meeting?" = "¿Eliminar esta reunión?";
 "Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Borra tu historial de dictados y todo lo que la memoria de Talkie extrajo de él. Las reglas del diccionario que enseñaste se conservan. Talkie sobrescribe el archivo antes de eliminarlo. Para protegerte si pierden o incautan tu Mac, mantén FileVault activado.";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Borra la transcripción y todo lo que la memoria de Talkie extrajo de esta reunión. Talkie sobrescribe el archivo antes de eliminarlo. Para protegerte si pierden o incautan tu Mac, mantén FileVault activado.";
+/* A9 — Vibe Coding in-context offer */
+"Index %@ filenames?" = "¿Indexar los nombres de archivo de %@?";
+"Index the project %@ so spoken filenames snap to its real files?" = "¿Indexar el proyecto %@ para que los nombres de archivo dictados se ajusten a sus archivos reales?";
+"Turns on Vibe Coding and indexes this project's filenames." = "Activa Vibe Coding e indexa los nombres de archivo de este proyecto.";
+"Dismisses the offer for this project." = "Descarta la oferta para este proyecto.";
+"Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss." = "Talkie encontró el proyecto %@. Activa «Indexar» para ajustar los nombres de archivo dictados a sus archivos reales, o «Ahora no» para descartar.";
+"Indexing %@ — spoken filenames will snap to real files" = "Indexando %@: los nombres de archivo dictados se ajustarán a los archivos reales";
+"Index" = "Indexar";
+"Not now" = "Ahora no";
