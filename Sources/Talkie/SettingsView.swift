@@ -86,7 +86,7 @@ final class MainWindowController {
         nicheVocab: NicheVocabStore,
         commandRouter: CommandRouter,
         hud: HUDController,
-        onRetryHotKey: @escaping () -> Void
+        onRetryHotKey: @escaping () -> Bool
     ) {
         let root = MainView(
             settings: settings,
@@ -160,7 +160,7 @@ struct MainView: View {
     let commandRouter: CommandRouter
     let hud: HUDController
     @ObservedObject var router: SettingsRouter
-    let onRetryHotKey: () -> Void
+    let onRetryHotKey: () -> Bool
 
     var body: some View {
         Group {
@@ -284,7 +284,7 @@ private struct SettingsHome: View {
     @ObservedObject var contextGraph: ContextGraphStore
     @ObservedObject var history: HistoryStore
     @ObservedObject var router: SettingsRouter
-    let onRetryHotKey: () -> Void
+    let onRetryHotKey: () -> Bool
 
     var body: some View {
         ScrollView {
@@ -1840,7 +1840,7 @@ private struct PrivacyAndPermissionsSettings: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
     @ObservedObject var history: HistoryStore
-    let onRetryHotKey: () -> Void
+    let onRetryHotKey: () -> Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -1854,7 +1854,7 @@ private struct PrivacyAndPermissionsSettings: View {
 /// Privacy & Permissions page above.
 private struct PermissionsSection: View {
     @ObservedObject var permissions: PermissionsModel
-    let onRetryHotKey: () -> Void
+    let onRetryHotKey: () -> Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -1876,7 +1876,12 @@ private struct PermissionsSection: View {
                     granted: permissions.inputMonitoring,
                     action: {
                         permissions.requestInputMonitoring()
-                        onRetryHotKey()
+                        // The grant may already be live but the tap can still fail
+                        // to install in this process — surface a one-click relaunch
+                        // rather than a silent granted-but-dead hotkey.
+                        if !onRetryHotKey() && permissions.inputMonitoring {
+                            permissions.hotKeyNeedsRelaunch = true
+                        }
                     },
                     openSettings: permissions.openInputMonitoringSettings
                 )
@@ -1890,9 +1895,31 @@ private struct PermissionsSection: View {
                 )
             }
 
+            // When the grant landed but the tap still can't install, promote a
+            // prominent one-click relaunch — the only reliable fix for the TCC
+            // quirk, and always the user's tap (never automatic).
+            if permissions.hotKeyNeedsRelaunch {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.arrow.circlepath")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Theme.warning)
+                    Text("Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key.")
+                        .font(.talkieHeading(13, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("Relaunch now") { permissions.relaunch() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.coral)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.warning.opacity(0.10)))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.warning.opacity(0.30)))
+            }
+
             HStack {
-                Button("Re-check") { permissions.refresh() }
-                Button("Quit & Reopen") { relaunch() }
+                Button("Quit & Reopen") { permissions.relaunch() }
                 Spacer()
                 if permissions.allGranted {
                     HStack(spacing: 7) {
@@ -1905,16 +1932,10 @@ private struct PermissionsSection: View {
             }
             .padding(.horizontal, 4)
         }
-        .onAppear { permissions.refresh() }
-    }
-
-    private func relaunch() {
-        let path = Bundle.main.bundlePath
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "sleep 0.4; open \"\(path)\""]
-        try? task.run()
-        NSApp.terminate(nil)
+        // Poll live so a grant made in System Settings reflects here within ~1s;
+        // stop when the card leaves the screen so no loop runs unobserved.
+        .onAppear { permissions.startPolling() }
+        .onDisappear { permissions.stopPolling() }
     }
 }
 

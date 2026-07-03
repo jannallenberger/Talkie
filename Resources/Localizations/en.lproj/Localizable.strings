@@ -421,3 +421,8 @@
 "Fix the spelling of %@ for next time." = "Fix the spelling of %@ for next time.";
 "Added “%@” to dictionary" = "Added “%@” to dictionary";
 "Already learning “%@”" = "Already learning “%@”";
+
+// H4 — live permission polling + one-click relaunch
+"Relaunch now" = "Relaunch now";
+"Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key.";
+"Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key.";

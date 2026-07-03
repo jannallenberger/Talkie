@@ -421,3 +421,8 @@
 "Fix the spelling of %@ for next time." = "Die Schreibweise von %@ für das nächste Mal korrigieren.";
 "Added “%@” to dictionary" = "„%@“ zum Wörterbuch hinzugefügt";
 "Already learning “%@”" = "„%@“ wird bereits gelernt";
+
+// H4 — live permission polling + one-click relaunch
+"Relaunch now" = "Jetzt neu starten";
+"Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "Eingabeüberwachung ist erteilt, aber Talkie muss neu gestartet werden, um deine Taste zu hören.";
+"Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "Eingabeüberwachung ist aktiv, aber Talkie muss kurz neu starten, um deine Taste zu hören.";

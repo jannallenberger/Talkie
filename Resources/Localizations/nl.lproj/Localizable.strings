@@ -421,3 +421,8 @@
 "Fix the spelling of %@ for next time." = "Corrigeer de spelling van %@ voor de volgende keer.";
 "Added “%@” to dictionary" = "‘%@’ toegevoegd aan woordenboek";
 "Already learning “%@”" = "‘%@’ wordt al geleerd";
+
+// H4 — live permission polling + one-click relaunch
+"Relaunch now" = "Nu opnieuw starten";
+"Input Monitoring is granted, but Talkie needs a relaunch to start hearing your key." = "Invoercontrole is verleend, maar Talkie moet opnieuw starten om je toets te horen.";
+"Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key." = "Invoercontrole staat aan, maar Talkie moet even opnieuw starten om je toets te horen.";

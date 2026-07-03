@@ -347,8 +347,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func appBecameActive() {
         permissions.refresh()
-        // If Input Monitoring was just granted, the tap can now install.
-        if hotKey?.start() == true { updateStatusUI() }
+        // If Input Monitoring was just granted, the tap can now install. When the
+        // grant is present but start() still fails (the TCC quirk where an existing
+        // process can't create the tap until it relaunches), flag that so the UI can
+        // offer a one-click relaunch instead of leaving a silent granted-but-dead state.
+        let started = hotKey?.start() ?? false
+        if started { updateStatusUI() }
+        if permissions.inputMonitoring && !started {
+            permissions.hotKeyNeedsRelaunch = true
+        } else if started {
+            permissions.hotKeyNeedsRelaunch = false
+        }
         updateStatusUI()
     }
 
@@ -1910,7 +1919,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 nicheVocab: nicheVocab,
                 commandRouter: commandRouter,
                 hud: hud,
-                onRetryHotKey: { [weak self] in _ = self?.hotKey?.start() }
+                onRetryHotKey: { [weak self] in self?.hotKey?.start() ?? false }
             )
         }
         mainWindow?.show(tab: tab)
