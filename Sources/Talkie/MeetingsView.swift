@@ -381,15 +381,8 @@ struct MeetingsView: View {
         SettingsCard(header: "Live pill") {
             SettingsToggleRow(
                 title: "Show the meeting pill".loc,
-                subtitle: "A small indicator under the camera while recording, with a live timer.".loc,
+                subtitle: "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident.".loc,
                 isOn: $settings.showMeetingPill)
-            if settings.showMeetingPill {
-                SettingsDivider()
-                SettingsToggleRow(
-                    title: "Show the live topic".loc,
-                    subtitle: "Surfaces what’s being discussed right now — shown only when Talkie is confident.".loc,
-                    isOn: $settings.meetingLiveTopic)
-            }
         }
 
         allowlistCard
