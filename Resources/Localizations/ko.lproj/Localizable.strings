@@ -445,3 +445,54 @@
 "Dictation works here, but Talkie keeps no history and learns nothing." = "여기서도 받아쓰기는 되지만, Talkie는 기록을 남기지 않고 아무것도 학습하지 않습니다.";
 "Private" = "비공개";
 "Private app — kept no history, learned nothing." = "비공개 앱 — 기록을 남기지 않았고, 아무것도 학습하지 않았습니다.";
+
+// L2-a — dashboard Scratchpad (notes/tasks + failed-insertion rescue)
+"Scratchpad" = "스크래치패드";
+"Jot a note or a task here — type “- ” for a checkbox. Anything Talkie can’t paste lands here too, so it’s never lost." = "메모나 할 일을 여기에 적으세요 — “- ”를 입력하면 체크박스가 됩니다. Talkie가 붙여넣지 못한 내용도 여기에 남으므로 사라지지 않습니다.";
+"Add a note or task…" = "메모나 할 일 추가…";
+"Mark as done" = "완료로 표시";
+"Mark as not done" = "미완료로 표시";
+"Delete this line" = "이 줄 삭제";
+" · saved to your Scratchpad" = " · 스크래치패드에 저장됨";
+"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "받아쓰기 기록과 Talkie의 메모리가 거기서 추출한 모든 것을 삭제합니다. 직접 가르친 사전 규칙과 스크래치패드에 작성한 메모는 유지됩니다. Talkie는 삭제하기 전에 파일을 덮어씁니다. Mac을 분실하거나 압수당할 경우를 대비해 FileVault를 켜 두세요.";
+
+// L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
+"Plumage" = "깃털";
+"Milestones" = "이정표";
+"Just getting started" = "이제 막 시작했어요";
+"%1$@ words spoken · %2$@ of talking" = "%1$@ 단어 발화 · %2$@ 동안 말함";
+"The ladder" = "사다리";
+"Next milestone" = "다음 이정표";
+"%1$@ / %2$@ words" = "%1$@ / %2$@ 단어";
+"You’ve reached the top of the ladder. Every word from here is legend." = "사다리 꼭대기에 도달했어요. 여기서부터는 한 마디 한 마디가 전설입니다.";
+"≈ %@ of talking at your pace to go" = "≈ 당신의 속도로 %@ 더 말하면 도달";
+"Personal bests" = "개인 최고 기록";
+"Fastest pace" = "가장 빠른 속도";
+"%d wpm" = "%d wpm";
+"Longest streak" = "최장 연속 기록";
+"%d days" = "%d일";
+"You’re here" = "현재 위치";
+"Words you say most" = "가장 많이 하는 말";
+"Keep dictating — the words and phrases you reach for most will show up here." = "계속 받아쓰기하세요 — 가장 자주 쓰는 단어와 문구가 여기에 표시됩니다.";
+"Phrases you reach for" = "자주 쓰는 문구";
+"Top of the ladder — see your plumage" = "사다리 꼭대기 — 당신의 깃털 보기";
+"You crossed %@ words" = "%@ 단어를 넘었어요";
+"See your milestones" = "이정표 보기";
+"First Feathers" = "첫 깃털";
+"Fledgling" = "새끼 새";
+"Finding Your Voice" = "목소리 찾기";
+"Full Plumage" = "완전한 깃털";
+"Storyteller" = "이야기꾼";
+"Silver Tongue" = "은빛 혀";
+"Golden Voice" = "황금 목소리";
+"Legendary" = "전설급";
+"Mythical" = "신화급";
+"≈ 5 TED talks, or 37× the Gettysburg Address" = "≈ TED 강연 5회, 또는 게티즈버그 연설의 37배";
+"≈ Alice’s Adventures in Wonderland (~27,000 words)" = "≈ 이상한 나라의 앨리스 (~27,000단어)";
+"≈ The Great Gatsby (~47,000) — a whole NaNoWriMo novel" = "≈ 위대한 개츠비 (~47,000) — NaNoWriMo 소설 한 편 분량";
+"≈ To Kill a Mockingbird (~100,000)" = "≈ 앵무새 죽이기 (~100,000)";
+"≈ Moby-Dick (~209,000) with Gatsby stacked on top" = "≈ 모비 딕 (~209,000)에 개츠비를 얹은 분량";
+"≈ closing in on War and Peace (~560,000)" = "≈ 전쟁과 평화에 근접 (~560,000)";
+"≈ the King James Bible (~783,000)" = "≈ 킹 제임스 성경 (~783,000)";
+"≈ the entire Harry Potter saga (~1.08 million words)" = "≈ 해리 포터 전편 (~108만 단어)";
+"≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ 해리 포터 전편의 두 배; 지금까지의 얼음과 불의 노래 (~170만)";

@@ -11,9 +11,14 @@ enum SpeedBenchmark {
     static let worldRecord = 212.0
 }
 
-private enum BriefRoute: Hashable { case detail }
-
 // MARK: - Dashboard
+
+/// A Dashboard navigation route. Currently just the milestones ("Plumage")
+/// subpage — a `navigationDestination` value so Plumage is a pushed subpage of
+/// the Dashboard, not an eighth sidebar tab.
+enum MilestoneRoute: Hashable {
+    case plumage
+}
 
 struct DashboardView: View {
     @ObservedObject var settings: AppSettings
@@ -21,8 +26,18 @@ struct DashboardView: View {
     @ObservedObject var history: HistoryStore
     @ObservedObject var activity: ActivityStore
     @ObservedObject var appUsage: AppUsageStore
-    @ObservedObject var contextSummary: ContextSummaryStore
+    @ObservedObject var scratchpad: ScratchpadStore
+    /// L5-a: lifetime word/phrase frequency, threaded through to the Plumage
+    /// subpage's "words you say most" card.
+    @ObservedObject var wordFreq: WordFrequencyStore
     @ObservedObject var router: SettingsRouter
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The highest milestone tier the user has already been congratulated for.
+    /// Persisted so the crossing banner fires ONCE per tier, never on relaunch.
+    /// A raw threshold value (0 = none celebrated yet); we compare tiers by index.
+    @AppStorage("milestoneCelebratedThreshold") private var celebratedThreshold = 0
 
     // Adaptive columns reflow with the window width — no fixed widths to overflow.
     // 220 lets the three metric cards sit 3-up at the default width and fall to
@@ -36,12 +51,23 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: Theme.Space.section) {
                     header
 
-                    BriefBanner(summary: contextSummary)
+                    if let banner = pendingCelebration {
+                        MilestoneCelebrationBanner(
+                            tierIndex: banner,
+                            reduceMotion: reduceMotion,
+                            onDismiss: { celebratedThreshold = MilestoneLadder.thresholds[banner] }
+                        )
+                    }
 
-                    // `.frame(maxHeight: .infinity, alignment: .top)` makes the
-                    // cards in each grid row equal-height and top-aligned —
-                    // otherwise LazyVGrid vertically centers the shorter card,
-                    // leaving an off-looking gap next to a taller neighbor.
+                    ScratchpadCard(scratchpad: scratchpad)
+
+                    // Equal-height cards take two cooperating pieces: the outer
+                    // `.frame(maxHeight: .infinity, alignment: .top)` top-aligns
+                    // each LazyVGrid cell wrapper (so a short card sits at the top
+                    // of its row rather than vertically centered), while the inner
+                    // `talkieCard(fill: true)` stretches the *painted* surface to
+                    // fill that wrapper's height — so every card's background paints
+                    // to the same height as its tallest row neighbor.
                     LazyVGrid(columns: metricCols, alignment: .leading, spacing: Theme.Space.gridGap) {
                         GaugeCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                         FixesCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
@@ -51,6 +77,7 @@ struct DashboardView: View {
                     LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
                         UsageCard(appUsage: appUsage).frame(maxHeight: .infinity, alignment: .top)
                         StreakCard(activity: activity).frame(maxHeight: .infinity, alignment: .top)
+                        MilestoneEntryCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                     }
                 }
                 .padding(28)
@@ -58,10 +85,26 @@ struct DashboardView: View {
             }
             .background(LiveBackground(mood: .ambient))
             .scrollContentBackground(.hidden)
-            .navigationDestination(for: BriefRoute.self) { _ in
-                BriefDetailView(summary: contextSummary, history: history)
+            .navigationDestination(for: MilestoneRoute.self) { route in
+                switch route {
+                case .plumage:
+                    MilestonesView(stats: stats, activity: activity, wordFreq: wordFreq)
+                }
             }
         }
+    }
+
+    /// The tier to celebrate right now, or nil. We celebrate whenever the tier the
+    /// user's CURRENT total sits on is higher than the highest tier we've already
+    /// congratulated them for. Comparing by tier index means a total that leapt
+    /// several rungs shows one banner for the highest — and once dismissed (which
+    /// writes that rung's threshold), it won't fire again. Below the first rung, or
+    /// once caught up, this is nil.
+    private var pendingCelebration: Int? {
+        guard let reached = MilestoneLadder.tier(for: stats.totalWords) else { return nil }
+        let celebratedTier = MilestoneLadder.tier(for: celebratedThreshold) // nil if 0
+        if let celebratedTier, celebratedTier >= reached { return nil }
+        return reached
     }
 
     private var header: some View {
@@ -105,213 +148,131 @@ private struct Wordmark: View {
     }
 }
 
-// MARK: - Today's Brief — stylized banner → detail subpage
+// MARK: - Milestone entry card (→ Plumage subpage)
 
-private struct BriefBanner: View {
-    @ObservedObject var summary: ContextSummaryStore
+/// The dashboard's doorway to the Plumage milestones page: current tier name, a
+/// mini progress bar toward the next rung, and a chevron. A `NavigationLink`
+/// carrying `MilestoneRoute.plumage`, resolved by the Dashboard's
+/// `navigationDestination`.
+private struct MilestoneEntryCard: View {
+    @ObservedObject var stats: StatsStore
+
+    private var tierName: String {
+        guard let tier = MilestoneLadder.tier(for: stats.totalWords),
+              let copy = MilestoneCopy.tier(tier) else {
+            return "First Feathers".loc // the rung they're working toward
+        }
+        return copy.name
+    }
 
     var body: some View {
-        NavigationLink(value: BriefRoute.detail) {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles").font(.system(size: 11, weight: .semibold))
-                        Text("TODAY'S BRIEF").font(.talkieEyebrow).tracking(0.8)
+        NavigationLink(value: MilestoneRoute.plumage) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Eyebrow(text: "Milestones")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.inkTertiary)
+                }
+                HStack(spacing: 9) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Theme.featherCoral)
+                    Text(tierName)
+                        .font(.talkieHeading(17, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+
+                if let next = MilestoneLadder.next(after: stats.totalWords) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Theme.surfaceSunken)
+                            Capsule().fill(Theme.featherCoral)
+                                .frame(width: max(6, geo.size.width * next.progress))
+                        }
                     }
-                    .foregroundStyle(.white.opacity(0.75))
-                    Text(headline)
-                        .font(.talkieDisplay(22))
-                        .foregroundStyle(.white)
-                    Text(subline)
-                        .font(.talkieHeading(13, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.72))
-                        .lineLimit(2)
+                    .frame(height: 7)
+                    Text(String(format: "%1$@ / %2$@ words".loc,
+                                stats.totalWords.formatted(), next.threshold.formatted()))
+                        .font(.talkieHeading(12, weight: .medium))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .monospacedDigit()
+                } else {
+                    Text("Top of the ladder — see your plumage".loc)
+                        .font(.talkieHeading(12, weight: .medium))
+                        .foregroundStyle(Theme.inkSecondary)
                 }
-                Spacer(minLength: 16)
-                // Clay-feather wings as a clean inline accent (generated brand art).
-                if let wings = Brand.image("FeatherWings") {
-                    Image(nsImage: wings)
-                        .resizable().scaledToFit()
-                        .frame(height: 82)
-                        .opacity(0.95)
-                        .accessibilityHidden(true)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.4))
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(bannerBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 10)
+            .talkieCard(fill: true)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
-
-    private var bannerBackground: some View {
-        LinearGradient(
-            colors: [Color(nsColor: NSColor(hex: 0x16181D)), Color(nsColor: NSColor(hex: 0x0B0C0F))],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-    }
-
-    private var headline: String {
-        if !summary.isAvailable { return "Make sense of your day" }
-        return summary.summary.isEmpty ? "Catch up on your day" : "Your day, briefed"
-    }
-
-    private var subline: String {
-        if !summary.isAvailable { return "Turn on Apple Intelligence for an on-device brief." }
-        if summary.summary.isEmpty { return "Generate a private brief of everything you dictated." }
-        if let at = summary.generatedAt {
-            let f = RelativeDateTimeFormatter(); f.unitsStyle = .short
-            return "Updated \(f.localizedString(for: at, relativeTo: Date())) · tap to read"
-        }
-        return "Tap to read your brief"
-    }
 }
 
-/// Full-page brief (pushed from the banner).
-private struct BriefDetailView: View {
-    @ObservedObject var summary: ContextSummaryStore
-    @ObservedObject var history: HistoryStore
+// MARK: - Crossing celebration banner
 
-    /// Which "Save to notes" state the button is showing. Idle → the save action;
-    /// saving → a spinner; saved/failed → a brief inline confirmation that reverts
-    /// to idle. Purely local UI feedback (the dashboard has no HUD pill), mirroring
-    /// the honest, low-key confirmations used elsewhere.
-    private enum SaveState: Equatable { case idle, saving, saved(String), failed }
-    @State private var saveState: SaveState = .idle
+/// A dismissible banner shown when the user's total has just cleared a new
+/// milestone rung. Names the rung's word count and its equivalence, links into
+/// Plumage, and its × writes the rung so it shows once per tier. Any entrance
+/// animation is gated on `reduceMotion`.
+private struct MilestoneCelebrationBanner: View {
+    let tierIndex: Int
+    let reduceMotion: Bool
+    let onDismiss: () -> Void
+
+    @State private var appeared = false
+
+    private var threshold: Int { MilestoneLadder.thresholds[tierIndex] }
+    private var equivalence: String { MilestoneCopy.tier(tierIndex)?.equivalence ?? "" }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Today's Brief")
-                            .font(.talkieDisplay(26))
-                            .foregroundStyle(Theme.ink)
-                        Text(subtitle)
-                            .font(.talkieHeading(13, weight: .regular))
-                            .foregroundStyle(Theme.inkSecondary)
-                    }
-                    Spacer()
-                    // "Save to notes" writes the brief to the export destination as
-                    // {date}-brief.md — one file per day (a re-save overwrites). Only
-                    // meaningful once a brief exists; hidden until then so the header
-                    // isn't cluttered on the empty state.
-                    if !summary.summary.isEmpty {
-                        saveButton
-                    }
-                    Button {
-                        Task { await summary.refresh(from: history) }
-                    } label: {
-                        if summary.isGenerating {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("Regenerate", systemImage: "arrow.clockwise")
-                        }
-                    }
-                    .disabled(summary.isGenerating || !summary.isAvailable)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Theme.featherGold)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(format: "You crossed %@ words".loc, threshold.formatted()))
+                    .font(.talkieHeading(15, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                if !equivalence.isEmpty {
+                    Text(equivalence)
+                        .font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-
-                content
+                NavigationLink(value: MilestoneRoute.plumage) {
+                    Text("See your milestones".loc)
+                        .font(.talkieHeading(12, weight: .semibold))
+                        .foregroundStyle(Theme.featherCoral)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 1)
             }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 8)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
         }
-        .background(Theme.canvas)
-        .navigationTitle("")
-    }
-
-    /// The "Save to notes" control, reflecting `saveState`. Kept plain (a
-    /// `Label`/text button, no invented styling) so it sits beside "Regenerate"
-    /// consistently.
-    @ViewBuilder
-    private var saveButton: some View {
-        switch saveState {
-        case .idle:
-            Button { saveBrief() } label: { Label("Save to notes", systemImage: "square.and.arrow.down") }
-        case .saving:
-            ProgressView().controlSize(.small)
-        case .saved(let where_):
-            Label(where_, systemImage: "checkmark")
-                .font(.talkieHeading(12, weight: .medium))
-                .foregroundStyle(Theme.positive)
-        case .failed:
-            Button { saveBrief() } label: {
-                Label("Couldn't save — retry", systemImage: "exclamationmark.triangle")
-            }
-            .foregroundStyle(.orange)
-        }
-    }
-
-    /// Compose the brief note (pure) and write it through the resolved export
-    /// destination on a detached task, with the same never-throw fallback the
-    /// meeting/dictation writers use (resolved destination → default Talkie folder
-    /// on throw). Reflects the outcome in `saveState`; the "saved" confirmation
-    /// reverts to idle after a moment so a second same-day save is easy.
-    private func saveBrief() {
-        let text = summary.summary
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        saveState = .saving
-        let note = NoteComposers.briefNote(summary: text, date: summary.generatedAt ?? Date())
-        let destination = ExportPreferences.shared.resolvedDestination()
-        let savedMessage = String(format: "Saved to %@".loc, destination.displayName)
-        Task {
-            var ok = true
-            do {
-                _ = try await destination.write(note)
-            } catch {
-                do { _ = try await TalkieFolderDestination().write(note) }
-                catch { ok = false }
-            }
-            await MainActor.run {
-                saveState = ok ? .saved(savedMessage) : .failed
-            }
-            if ok {
-                try? await Task.sleep(for: .seconds(2.4))
-                await MainActor.run { if case .saved = saveState { saveState = .idle } }
-            }
-        }
-    }
-
-    private var subtitle: String {
-        guard let at = summary.generatedAt, !summary.summary.isEmpty else {
-            return "An on-device summary of what you worked on."
-        }
-        let f = RelativeDateTimeFormatter(); f.unitsStyle = .full
-        return "Generated \(f.localizedString(for: at, relativeTo: Date()))."
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if !summary.isAvailable {
-            EmptyHint(icon: "sparkles",
-                      text: "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to get an on-device brief of your day.")
-        } else if summary.summary.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                EmptyHint(icon: "text.append",
-                          text: history.entries.isEmpty
-                          ? "Dictate through your day, then generate a brief of what you worked on."
-                          : "Generate a brief from your recent dictations.")
-                Button {
-                    Task { await summary.refresh(from: history) }
-                } label: { Label("Generate brief", systemImage: "sparkles") }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
-                    .disabled(history.entries.isEmpty || summary.isGenerating)
-            }
-            .talkieCard()
-        } else {
-            MarkdownText(markdown: summary.summary, bulletColor: Theme.coral)
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.ink)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .talkieCard()
+        .talkieCard()
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .strokeBorder(Theme.featherGold.opacity(0.4), lineWidth: 1)
+        )
+        .opacity(appeared || reduceMotion ? 1 : 0)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 0.35)) { appeared = true }
         }
     }
 }
@@ -349,7 +310,7 @@ private struct GaugeCard: View {
                 ComparisonLine(symbol: "trophy.fill", text: recordComparison)
             }
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 
     private var officeComparison: String {
@@ -441,7 +402,7 @@ private struct FixesCard: View {
             FixRow(label: "dictionary fixes", value: stats.dictionaryFixes, color: Theme.featherBlue)
             FixRow(label: "fillers removed", value: stats.fillersRemoved, color: Theme.featherGold)
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 }
 
@@ -489,7 +450,7 @@ private struct WordsCard: View {
             MiniStat(icon: "clock.fill", label: "Time spoken",
                      value: formatDuration(stats.totalDurationSec))
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 }
 
@@ -544,7 +505,7 @@ private struct UsageCard: View {
                 }
             }
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 }
 
@@ -626,7 +587,7 @@ private struct StreakCard: View {
                 Spacer()
             }
         }
-        .talkieCard()
+        .talkieCard(fill: true)
     }
 }
 

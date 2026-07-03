@@ -265,7 +265,7 @@ enum DoctorReport {
         // "count" to decode, or the shape isn't load-bearing for the receipt).
         for name in ["macros.json", "app_profiles.json", "stats.json", "activity.json",
                      "appusage.json", "context_summary.json", "project_index.json",
-                     "export_prefs.json"] {
+                     "export_prefs.json", "wordfreq.json"] {
             lines.append(fileLine(paths.support.appendingPathComponent(name), detail: nil))
         }
         // niche vocabulary store (nested)

@@ -445,3 +445,54 @@
 "Dictation works here, but Talkie keeps no history and learns nothing." = "Dicteren werkt hier, maar Talkie bewaart geen geschiedenis en leert niets.";
 "Private" = "Privé";
 "Private app — kept no history, learned nothing." = "Privé-app — geen geschiedenis bewaard, niets geleerd.";
+
+// L2-a — dashboard Scratchpad (notes/tasks + failed-insertion rescue)
+"Scratchpad" = "Kladblok";
+"Jot a note or a task here — type “- ” for a checkbox. Anything Talkie can’t paste lands here too, so it’s never lost." = "Noteer hier een notitie of taak — typ “- ” voor een selectievakje. Wat Talkie niet kan plakken belandt hier ook, zodat het nooit verloren gaat.";
+"Add a note or task…" = "Een notitie of taak toevoegen…";
+"Mark as done" = "Markeren als voltooid";
+"Mark as not done" = "Markeren als niet voltooid";
+"Delete this line" = "Deze regel verwijderen";
+" · saved to your Scratchpad" = " · opgeslagen in je Kladblok";
+"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Verwijdert je dicteergeschiedenis en alles wat Talkies geheugen eruit heeft afgeleid. Woordenboekregels die je hebt aangeleerd, en notities die je in je Kladblok schreef, blijven behouden. Talkie overschrijft het bestand voordat het wordt verwijderd. Houd FileVault aan ter bescherming als je Mac verloren of in beslag genomen wordt.";
+
+// L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
+"Plumage" = "Verenkleed";
+"Milestones" = "Mijlpalen";
+"Just getting started" = "Je bent net begonnen";
+"%1$@ words spoken · %2$@ of talking" = "%1$@ woorden gesproken · %2$@ gepraat";
+"The ladder" = "De ladder";
+"Next milestone" = "Volgende mijlpaal";
+"%1$@ / %2$@ words" = "%1$@ / %2$@ woorden";
+"You’ve reached the top of the ladder. Every word from here is legend." = "Je hebt de top van de ladder bereikt. Elk woord vanaf hier is legendarisch.";
+"≈ %@ of talking at your pace to go" = "≈ nog %@ praten op jouw tempo";
+"Personal bests" = "Persoonlijke records";
+"Fastest pace" = "Snelste tempo";
+"%d wpm" = "%d wpm";
+"Longest streak" = "Langste reeks";
+"%d days" = "%d dagen";
+"You’re here" = "Je bent hier";
+"Words you say most" = "Woorden die je het vaakst zegt";
+"Keep dictating — the words and phrases you reach for most will show up here." = "Blijf dicteren — de woorden en zinnen die je het vaakst gebruikt verschijnen hier.";
+"Phrases you reach for" = "Zinnen die je vaak gebruikt";
+"Top of the ladder — see your plumage" = "Top van de ladder — bekijk je verenkleed";
+"You crossed %@ words" = "Je bent %@ woorden gepasseerd";
+"See your milestones" = "Bekijk je mijlpalen";
+"First Feathers" = "Eerste veren";
+"Fledgling" = "Jong vogeltje";
+"Finding Your Voice" = "Je stem vinden";
+"Full Plumage" = "Volledig verenkleed";
+"Storyteller" = "Verteller";
+"Silver Tongue" = "Zilveren tong";
+"Golden Voice" = "Gouden stem";
+"Legendary" = "Legendarisch";
+"Mythical" = "Mythisch";
+"≈ 5 TED talks, or 37× the Gettysburg Address" = "≈ 5 TED-talks, of 37× de Gettysburg Address";
+"≈ Alice’s Adventures in Wonderland (~27,000 words)" = "≈ Alice in Wonderland (~27.000 woorden)";
+"≈ The Great Gatsby (~47,000) — a whole NaNoWriMo novel" = "≈ The Great Gatsby (~47.000) — een hele NaNoWriMo-roman";
+"≈ To Kill a Mockingbird (~100,000)" = "≈ Spaar de spotvogel (~100.000)";
+"≈ Moby-Dick (~209,000) with Gatsby stacked on top" = "≈ Moby-Dick (~209.000) met Gatsby erbovenop";
+"≈ closing in on War and Peace (~560,000)" = "≈ bijna Oorlog en vrede (~560.000)";
+"≈ the King James Bible (~783,000)" = "≈ de King James-Bijbel (~783.000)";
+"≈ the entire Harry Potter saga (~1.08 million words)" = "≈ de hele Harry Potter-saga (~1,08 miljoen woorden)";
+"≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ twee keer de Harry Potter-saga; Het Lied van IJs en Vuur tot nu toe (~1,7 miljoen)";

@@ -445,3 +445,54 @@
 "Dictation works here, but Talkie keeps no history and learns nothing." = "在这里也能听写，但 Talkie 不保留任何历史记录，也不会学习任何内容。";
 "Private" = "隐私";
 "Private app — kept no history, learned nothing." = "隐私应用 — 未保留历史记录，未学习任何内容。";
+
+// L2-a — dashboard Scratchpad (notes/tasks + failed-insertion rescue)
+"Scratchpad" = "便签";
+"Jot a note or a task here — type “- ” for a checkbox. Anything Talkie can’t paste lands here too, so it’s never lost." = "在此记下笔记或任务 — 输入“- ”可创建复选框。Talkie 无法粘贴的内容也会落在这里，因此绝不会丢失。";
+"Add a note or task…" = "添加笔记或任务…";
+"Mark as done" = "标记为已完成";
+"Mark as not done" = "标记为未完成";
+"Delete this line" = "删除此行";
+" · saved to your Scratchpad" = " · 已保存到你的便签";
+"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "删除你的听写历史以及 Talkie 记忆从中提取的一切。你教过的词典规则，以及你在便签中写下的笔记，都会保留。Talkie 会在删除前覆盖该文件。为防止你的 Mac 丢失或被扣押，请保持 FileVault 开启。";
+
+// L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
+"Plumage" = "羽翼";
+"Milestones" = "里程碑";
+"Just getting started" = "才刚刚开始";
+"%1$@ words spoken · %2$@ of talking" = "已说 %1$@ 个词 · 说了 %2$@";
+"The ladder" = "阶梯";
+"Next milestone" = "下一个里程碑";
+"%1$@ / %2$@ words" = "%1$@ / %2$@ 个词";
+"You’ve reached the top of the ladder. Every word from here is legend." = "你已登上阶梯之巅。从此每一个词都是传奇。";
+"≈ %@ of talking at your pace to go" = "≈ 按你的语速还需说 %@";
+"Personal bests" = "个人最佳";
+"Fastest pace" = "最快语速";
+"%d wpm" = "%d 词/分";
+"Longest streak" = "最长连续天数";
+"%d days" = "%d 天";
+"You’re here" = "你在这里";
+"Words you say most" = "你最常说的词";
+"Keep dictating — the words and phrases you reach for most will show up here." = "继续口述——你最常用的词语和短语会显示在这里。";
+"Phrases you reach for" = "你常用的短语";
+"Top of the ladder — see your plumage" = "阶梯之巅——查看你的羽翼";
+"You crossed %@ words" = "你已越过 %@ 个词";
+"See your milestones" = "查看你的里程碑";
+"First Feathers" = "初生羽毛";
+"Fledgling" = "雏鸟";
+"Finding Your Voice" = "找到自己的声音";
+"Full Plumage" = "羽翼丰满";
+"Storyteller" = "讲故事的人";
+"Silver Tongue" = "银舌";
+"Golden Voice" = "金嗓";
+"Legendary" = "传奇";
+"Mythical" = "神话";
+"≈ 5 TED talks, or 37× the Gettysburg Address" = "≈ 5 场 TED 演讲，或 37 遍葛底斯堡演说";
+"≈ Alice’s Adventures in Wonderland (~27,000 words)" = "≈《爱丽丝梦游仙境》（约 27,000 词）";
+"≈ The Great Gatsby (~47,000) — a whole NaNoWriMo novel" = "≈《了不起的盖茨比》（约 47,000）——一整部 NaNoWriMo 小说";
+"≈ To Kill a Mockingbird (~100,000)" = "≈《杀死一只知更鸟》（约 100,000）";
+"≈ Moby-Dick (~209,000) with Gatsby stacked on top" = "≈《白鲸》（约 209,000）再加上一部《盖茨比》";
+"≈ closing in on War and Peace (~560,000)" = "≈ 逼近《战争与和平》（约 560,000）";
+"≈ the King James Bible (~783,000)" = "≈《钦定版圣经》（约 783,000）";
+"≈ the entire Harry Potter saga (~1.08 million words)" = "≈ 整套《哈利·波特》（约 108 万词）";
+"≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ 两套《哈利·波特》；或目前的《冰与火之歌》（约 170 万）";

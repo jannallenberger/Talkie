@@ -445,3 +445,54 @@
 "Dictation works here, but Talkie keeps no history and learns nothing." = "O ditado funciona aqui, mas o Talkie não guarda histórico e não aprende nada.";
 "Private" = "Privado";
 "Private app — kept no history, learned nothing." = "App privado — nenhum histórico guardado, nada aprendido.";
+
+// L2-a — dashboard Scratchpad (notes/tasks + failed-insertion rescue)
+"Scratchpad" = "Bloco de rascunho";
+"Jot a note or a task here — type “- ” for a checkbox. Anything Talkie can’t paste lands here too, so it’s never lost." = "Anote uma nota ou tarefa aqui — digite “- ” para uma caixa de seleção. O que o Talkie não conseguir colar também vai parar aqui, então nunca se perde.";
+"Add a note or task…" = "Adicionar uma nota ou tarefa…";
+"Mark as done" = "Marcar como concluída";
+"Mark as not done" = "Marcar como não concluída";
+"Delete this line" = "Excluir esta linha";
+" · saved to your Scratchpad" = " · salvo no seu Bloco de rascunho";
+"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Exclui seu histórico de ditados e tudo o que a memória do Talkie extraiu dele. As regras do dicionário que você ensinou, e as notas que você escreveu no seu Bloco de rascunho, permanecem. O Talkie sobrescreve o arquivo antes de excluí-lo. Para proteção caso seu Mac seja perdido ou apreendido, mantenha o FileVault ativado.";
+
+// L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
+"Plumage" = "Plumagem";
+"Milestones" = "Marcos";
+"Just getting started" = "Você está só começando";
+"%1$@ words spoken · %2$@ of talking" = "%1$@ palavras ditas · %2$@ de fala";
+"The ladder" = "A escada";
+"Next milestone" = "Próximo marco";
+"%1$@ / %2$@ words" = "%1$@ / %2$@ palavras";
+"You’ve reached the top of the ladder. Every word from here is legend." = "Você chegou ao topo da escada. Cada palavra daqui em diante é lenda.";
+"≈ %@ of talking at your pace to go" = "≈ faltam %@ de fala no seu ritmo";
+"Personal bests" = "Recordes pessoais";
+"Fastest pace" = "Ritmo mais rápido";
+"%d wpm" = "%d ppm";
+"Longest streak" = "Maior sequência";
+"%d days" = "%d dias";
+"You’re here" = "Você está aqui";
+"Words you say most" = "Palavras que você mais fala";
+"Keep dictating — the words and phrases you reach for most will show up here." = "Continue ditando — as palavras e frases que você mais usa aparecerão aqui.";
+"Phrases you reach for" = "Frases que você mais usa";
+"Top of the ladder — see your plumage" = "Topo da escada — veja sua plumagem";
+"You crossed %@ words" = "Você passou de %@ palavras";
+"See your milestones" = "Veja seus marcos";
+"First Feathers" = "Primeiras penas";
+"Fledgling" = "Filhote";
+"Finding Your Voice" = "Encontrando sua voz";
+"Full Plumage" = "Plumagem completa";
+"Storyteller" = "Contador de histórias";
+"Silver Tongue" = "Língua de prata";
+"Golden Voice" = "Voz de ouro";
+"Legendary" = "Lendário";
+"Mythical" = "Mítico";
+"≈ 5 TED talks, or 37× the Gettysburg Address" = "≈ 5 palestras TED, ou 37× o Discurso de Gettysburg";
+"≈ Alice’s Adventures in Wonderland (~27,000 words)" = "≈ Alice no País das Maravilhas (~27.000 palavras)";
+"≈ The Great Gatsby (~47,000) — a whole NaNoWriMo novel" = "≈ O Grande Gatsby (~47.000) — um romance inteiro de NaNoWriMo";
+"≈ To Kill a Mockingbird (~100,000)" = "≈ O Sol é para Todos (~100.000)";
+"≈ Moby-Dick (~209,000) with Gatsby stacked on top" = "≈ Moby Dick (~209.000) com Gatsby por cima";
+"≈ closing in on War and Peace (~560,000)" = "≈ quase Guerra e Paz (~560.000)";
+"≈ the King James Bible (~783,000)" = "≈ a Bíblia do Rei Jaime (~783.000)";
+"≈ the entire Harry Potter saga (~1.08 million words)" = "≈ toda a saga Harry Potter (~1,08 milhão de palavras)";
+"≈ twice the Harry Potter saga; A Song of Ice and Fire so far (~1.7 million)" = "≈ o dobro da saga Harry Potter; As Crônicas de Gelo e Fogo até agora (~1,7 milhão)";
