@@ -1138,6 +1138,13 @@ private struct DictionarySettings: View {
     @State private var mergeResult: MergeSummary?
     @State private var isTargetedForDrop = false
 
+    // A7 — import from another dictation app (VoiceInk / Superwhisper / Wispr Flow).
+    // Auto-detected apps (those with a dictionary file on disk) are offered directly;
+    // every app also gets a "Choose a file…" picker so an export saved elsewhere still
+    // imports. The parsed competitor file becomes a TalkiePack and flows through the
+    // exact same preview/merge sheet as a native .talkiepack — one code path.
+    @State private var detectedApps: [CompetitorDictionaryImport.Detected] = []
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -1237,6 +1244,10 @@ private struct DictionarySettings: View {
         )
         .onChange(of: dictionary.replacements) { _, _ in dictionary.save() }
         .onChange(of: dictionary.vocabulary) { _, _ in dictionary.save() }
+        // A7 — check which other dictation apps have a dictionary on disk so the
+        // "Import from another app" menu can offer them directly. Cheap fileExists
+        // checks only; runs when the pane appears.
+        .onAppear { detectedApps = CompetitorDictionaryImport.detectInstalledApps() }
         // Drag a .talkiepack onto the Dictionary tab to import it.
         .onDrop(of: [.fileURL], isTargeted: $isTargetedForDrop) { providers in
             loadDroppedPack(providers)
@@ -1281,6 +1292,8 @@ private struct DictionarySettings: View {
             .buttonStyle(.bordered)
             .help("Import a .talkiepack file — preview what's inside before adding it")
 
+            importFromAnotherAppMenu
+
             Button { presentExportPanel() } label: {
                 Label("Export…", systemImage: "square.and.arrow.up")
             }
@@ -1288,6 +1301,43 @@ private struct DictionarySettings: View {
             .disabled(dictionary.vocabulary.isEmpty && dictionary.replacementsSnapshot().isEmpty)
             .help("Save your whole dictionary to a shareable .talkiepack file")
         }
+    }
+
+    /// A7 — "Import from another app". A menu, not a button, because there are two axes:
+    /// which app, and (detected file vs. pick-your-own). Detected apps get a one-tap
+    /// entry that reads the file we found; every app also gets a "Choose a file…" item
+    /// for exports saved elsewhere. Whatever the source, the parsed file lands in the
+    /// same preview sheet as a native pack.
+    private var importFromAnotherAppMenu: some View {
+        Menu {
+            if detectedApps.isEmpty {
+                Text("No dictation apps detected on this Mac")
+            } else {
+                ForEach(detectedApps) { detected in
+                    Button {
+                        importFromCompetitor(app: detected.app, at: detected.fileURL)
+                    } label: {
+                        Label(String(format: "Import from %@".loc, detected.app.displayName),
+                              systemImage: "checkmark.circle")
+                    }
+                }
+            }
+            Divider()
+            // Picker fallback for every supported app, so an export saved anywhere still
+            // imports even when auto-detect found nothing.
+            ForEach(CompetitorDictionaryImport.App.allCases, id: \.rawValue) { app in
+                Button {
+                    presentCompetitorImportPanel(app: app)
+                } label: {
+                    Text(String(format: "Choose a %@ file…".loc, app.displayName))
+                }
+            }
+        } label: {
+            Label("Import from another app", systemImage: "arrow.down.doc")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Bring your dictionary over from VoiceInk, Superwhisper, or Wispr Flow")
     }
 
     private func addTerm() {
@@ -1362,6 +1412,40 @@ private struct DictionarySettings: View {
             pendingPreview = dictionary.previewMerge(pack: pack)
         } catch {
             importError = "That doesn't look like a Talkie dictionary (.talkiepack).".loc
+        }
+    }
+
+    // MARK: Import from another app (A7)
+
+    /// Read a detected competitor file and stage its preview — writes nothing yet. Same
+    /// contract as `openPack`: a malformed/unreadable file shows a calm error and changes
+    /// nothing. The produced pack is stamped "Imported from <App>" so the preview shows
+    /// provenance.
+    private func importFromCompetitor(app: CompetitorDictionaryImport.App, at url: URL) {
+        let needsScope = url.startAccessingSecurityScopedResource()
+        defer { if needsScope { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let pack = try CompetitorDictionaryImport.readPack(app: app, from: url)
+            pendingPack = pack
+            pendingPreview = dictionary.previewMerge(pack: pack)
+        } catch {
+            importError = String(format: "Talkie couldn't read that %@ file.".loc, app.displayName)
+        }
+    }
+
+    /// Open a file picker for a specific competitor app (the "Choose a file…" fallback),
+    /// then parse the chosen file with that app's parser. We don't constrain the picker to
+    /// one extension — competitor exports use varied names/extensions — so the user can
+    /// point at whatever they exported; the parser decides if it's readable.
+    private func presentCompetitorImportPanel(app: CompetitorDictionaryImport.App) {
+        let panel = NSOpenPanel()
+        panel.title = String(format: "Import from %@".loc, app.displayName)
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            importFromCompetitor(app: app, at: url)
         }
     }
 

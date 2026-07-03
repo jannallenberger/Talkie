@@ -227,6 +227,16 @@
 "Talkie couldn't open that file." = "Talkie 无法打开该文件。";
 "That doesn't look like a Talkie dictionary (.talkiepack)." = "这看起来不是 Talkie 词典（.talkiepack）。";
 
+/* A7 — import a competitor app's dictionary (VoiceInk / Superwhisper / Wispr Flow) */
+"Import from another app" = "从其他应用导入";
+"Bring your dictionary over from VoiceInk, Superwhisper, or Wispr Flow" = "从 VoiceInk、Superwhisper 或 Wispr Flow 迁移你的词典";
+"No dictation apps detected on this Mac" = "未在此 Mac 上检测到听写应用";
+"Import from %@" = "从 %@ 导入";
+"Choose a %@ file…" = "选择 %@ 文件…";
+"Talkie couldn't read that %@ file." = "Talkie 无法读取该 %@ 文件。";
+"Imported from %@" = "从 %@ 导入";
+"%@ dictionary" = "%@ 词典";
+
 "Added “%@” — from your Claude Code prompt" = "已添加“%@”——来自你的 Claude Code 提示词";
 "Claude added “%@” to dictionary" = "Claude 将“%@”添加到词典";
 "Claude added “%@” → “%@” to dictionary" = "Claude 将“%@”→“%@”添加到词典";
