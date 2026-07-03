@@ -500,6 +500,8 @@
 
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "Kurzbefehl “%@” ausgeführt";
+"Scratched" = "Gestrichen";
+"Replaced “%@” with “%@”" = "“%@” durch “%@” ersetzt";
 "No shortcut named “%@”" = "Kein Kurzbefehl namens “%@”";
 "Couldn't run the shortcut “%@”" = "Kurzbefehl “%@” konnte nicht ausgeführt werden";
 "After saving" = "Nach dem Speichern";

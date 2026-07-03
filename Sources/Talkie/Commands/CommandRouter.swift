@@ -43,7 +43,33 @@ final class CommandRouter {
     /// like "spell it out for the team" still fails the parse and falls through to
     /// normal dictation. It runs always-on (no flag): it's fully deterministic and
     /// on-device, touches no selection, and can't fire mid-sentence.
-    func intent(for spoken: String, meetings: MeetingSnapshot = .empty, crossSurfaceEnabled: Bool = false) -> (any CommandIntent)? {
+    func intent(
+        for spoken: String,
+        meetings: MeetingSnapshot = .empty,
+        crossSurfaceEnabled: Bool = false,
+        lastInserted: DictationEntry? = nil
+    ) -> (any CommandIntent)? {
+        // Edit-of-just-inserted-text (B9) is checked FIRST, ahead of macros — but ONLY
+        // when an eligible last dictation exists (`lastInserted != nil`, already gated
+        // by `ImplicitSelectionGate` + last-outcome-`.inserted` at the dispatch site).
+        // That gate is what makes shadowing a same-named macro safe and deliberate: if
+        // a user taught a macro literally triggered "scratch that", the edit only wins
+        // in the narrow window where there's freshly-dictated text to scratch (same
+        // app, ≤45s); otherwise `lastInserted` is nil, this whole block is skipped, and
+        // the macro matches normally below. `replace X with Y` additionally requires X
+        // to literally occur (case-insensitive, word-bounded) in that text — the
+        // false-positive kill switch — so absent that, it falls through to dictation.
+        if let last = lastInserted, let request = EditCommandParser.parse(spoken) {
+            switch request {
+            case .scratch:
+                return ScratchThatIntent(original: last.text)
+            case .replace(let find, let replacement):
+                if EditCommandParser.contains(find, in: last.text) {
+                    return ReplaceWordIntent(original: last.text, find: find, replacement: replacement)
+                }
+                // X absent from the just-dictated text → not an edit. Fall through.
+            }
+        }
         if let expansion = macros.match(spoken) { return MacroIntent(expansion: expansion) }
         if let spelled = SpellingParser.parse(spoken) { return SpellingIntent(output: spelled) }
         // "run [the] shortcut <name>" (G8). Placed after the macro match (a user macro
@@ -71,15 +97,19 @@ final class CommandRouter {
         target: TargetApp,
         graph: ContextGraphSnapshot,
         meetings: MeetingSnapshot = .empty,
-        crossSurfaceEnabled: Bool = false
+        crossSurfaceEnabled: Bool = false,
+        lastInserted: DictationEntry? = nil
     ) async -> CommandResult? {
-        guard let intent = intent(for: spoken, meetings: meetings, crossSurfaceEnabled: crossSurfaceEnabled) else { return nil }
+        guard let intent = intent(for: spoken, meetings: meetings,
+                                  crossSurfaceEnabled: crossSurfaceEnabled,
+                                  lastInserted: lastInserted) else { return nil }
         let ctx = CommandContext(
             spokenCommand: spoken,
             selection: selection,
             target: target,
             graph: graph,
-            summarizer: summarizer
+            summarizer: summarizer,
+            lastInserted: lastInserted
         )
         return await intent.run(ctx)
     }

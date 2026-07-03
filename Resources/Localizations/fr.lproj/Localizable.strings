@@ -500,6 +500,8 @@
 
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "Raccourci “%@” exécuté";
+"Scratched" = "Effacé";
+"Replaced “%@” with “%@”" = "“%@” remplacé par “%@”";
 "No shortcut named “%@”" = "Aucun raccourci nommé “%@”";
 "Couldn't run the shortcut “%@”" = "Impossible d’exécuter le raccourci “%@”";
 "After saving" = "Après l’enregistrement";

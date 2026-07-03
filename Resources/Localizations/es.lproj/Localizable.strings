@@ -500,6 +500,8 @@
 
 // Run-shortcut command + on-save Shortcut (G8)
 "Ran shortcut “%@”" = "Atajo “%@” ejecutado";
+"Scratched" = "Descartado";
+"Replaced “%@” with “%@”" = "Se reemplazó “%@” por “%@”";
 "No shortcut named “%@”" = "No hay ningún atajo llamado “%@”";
 "Couldn't run the shortcut “%@”" = "No se pudo ejecutar el atajo “%@”";
 "After saving" = "Después de guardar";

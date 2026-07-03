@@ -116,6 +116,32 @@ enum TextInjector {
         return .inserted
     }
 
+    /// Delete the `graphemeCount` characters immediately before the caret, by
+    /// selecting them (⇧←×count) and pressing Delete over the selection. The
+    /// backspace-over-a-selection deletes the whole run in one keystroke, so this can't
+    /// leave a partial delete the way `graphemeCount` separate backspaces could if a
+    /// keystroke were dropped. Paste-mode only and gated by the SAME secure-input /
+    /// Accessibility-trust / editable-focus guards as `replaceBackward` — a delete is
+    /// as destructive as a replace, so it fails closed identically: when it can't run
+    /// safely it does nothing (returns `.empty`) rather than blindly firing Delete keys
+    /// into whatever is focused.
+    ///
+    /// Used by B9's "scratch that" to remove the text you just dictated. Same inherent
+    /// caret-position fragility as `replaceBackward` (if the caret moved since the
+    /// insertion the backward selection covers the wrong range); the caller gates this
+    /// on the 45-second / same-app `ImplicitSelectionGate` plus a best-effort
+    /// AX end-of-field check, and offers an immediate Undo.
+    @discardableResult
+    static func deleteBackward(graphemeCount: Int, mode: InsertionMode) -> Outcome {
+        guard mode == .paste, graphemeCount > 0 else { return .empty }
+        if IsSecureEventInputEnabled() { return .empty }
+        guard ensureTrusted(prompt: false) else { return .empty }
+        guard hasEditableFocus() else { return .empty }
+        selectBackward(graphemeCount)
+        postDelete()
+        return .inserted
+    }
+
     /// Extend the selection left by `n` characters from the caret (⇧←×n).
     private static func selectBackward(_ n: Int) {
         let source = CGEventSource(stateID: .privateState)
@@ -289,6 +315,22 @@ enum TextInjector {
         down?.flags = .maskCommand
         let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
         up?.flags = [] // clear ⌘ on key-up so no stray modifier latches
+        down?.post(tap: .cgSessionEventTap)
+        up?.post(tap: .cgSessionEventTap)
+    }
+
+    /// Synthesize a single Delete (backspace) keystroke over the current selection —
+    /// the same `.privateState` source as `postCommandV` so it doesn't inherit ambient
+    /// hardware modifiers. `kVK_Delete` (51) is the top-row Delete/Backspace that
+    /// deletes the selection (or the char to the caret's left when nothing is selected),
+    /// which is exactly what B9's `deleteBackward` wants after a ⇧←×n selection.
+    private static func postDelete() {
+        let source = CGEventSource(stateID: .privateState)
+        let del = CGKeyCode(kVK_Delete) // 51
+        let down = CGEvent(keyboardEventSource: source, virtualKey: del, keyDown: true)
+        down?.flags = []
+        let up = CGEvent(keyboardEventSource: source, virtualKey: del, keyDown: false)
+        up?.flags = []
         down?.post(tap: .cgSessionEventTap)
         up?.post(tap: .cgSessionEventTap)
     }
