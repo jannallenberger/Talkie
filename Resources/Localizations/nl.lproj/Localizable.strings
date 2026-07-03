@@ -288,3 +288,10 @@
 "Subtitles (.vtt)" = "Ondertitels (.vtt)";
 "Spreadsheet (.csv)" = "Spreadsheet (.csv)";
 "Data (.json)" = "Gegevens (.json)";
+
+/* D4 — export gap: note-this dictation + save Brief to notes */
+"Saved to %@" = "Opgeslagen in %@";
+"Nothing to note yet — dictate something first." = "Nog niets om te noteren — dicteer eerst iets.";
+"Couldn't save that note." = "Kon die notitie niet opslaan.";
+"Save to notes" = "Opslaan in notities";
+"Couldn't save — retry" = "Opslaan mislukt — opnieuw";

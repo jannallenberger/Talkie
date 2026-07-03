@@ -288,3 +288,10 @@
 "Subtitles (.vtt)" = "Subtitles (.vtt)";
 "Spreadsheet (.csv)" = "Spreadsheet (.csv)";
 "Data (.json)" = "Data (.json)";
+
+/* D4 — export gap: note-this dictation + save Brief to notes */
+"Saved to %@" = "Saved to %@";
+"Nothing to note yet — dictate something first." = "Nothing to note yet — dictate something first.";
+"Couldn't save that note." = "Couldn't save that note.";
+"Save to notes" = "Save to notes";
+"Couldn't save — retry" = "Couldn't save — retry";
