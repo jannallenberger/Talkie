@@ -47,7 +47,6 @@
 "Off" = "Off";
 "On" = "On";
 "Open Settings" = "Open Settings";
-"Open Talkie" = "Open Talkie";
 "Polishing…" = "Polishing…";
 "Private by design" = "Private by design";
 "Quit & Reopen" = "Quit & Reopen";
@@ -194,8 +193,6 @@
 "Error: %@" = "Error: %@";
 "Cleanup style: %@." = "Cleanup style: %@.";
 "Double-tap to cycle to the next cleanup style." = "Double-tap to cycle to the next cleanup style.";
-"Talkie is listening." = "Talkie is listening.";
-"Talkie dictation indicator. Hold your dictation key and speak." = "Talkie dictation indicator. Hold your dictation key and speak.";
 /* export destinations */
 "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags.";
 "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)";
@@ -371,7 +368,6 @@
 "unsigned build (no cdhash)" = "unsigned build (no cdhash)";
 "Version" = "Version";
 "Taken" = "Taken";
-"Talkie — Nothing leaves this Mac." = "Talkie — Nothing leaves this Mac.";
 "Entitlements: none readable (un-signed build)" = "Entitlements: none readable (un-signed build)";
 "Entitlements: %@" = "Entitlements: %@";
 "Signature: %@" = "Signature: %@";
@@ -669,7 +665,6 @@
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
 "What Claude can do" = "What Claude can do";
 "asks first" = "asks first";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.";
 
 /* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
 "Context awareness" = "Context awareness";
@@ -774,3 +769,21 @@
 "~/Library/Application Support/Talkie — settings and history." = "~/Library/Application Support/Talkie — settings and history.";
 "~/Talkie Meetings — your recordings and transcripts, in plain folders you own." = "~/Talkie Meetings — your recordings and transcripts, in plain folders you own.";
 "Run these against the app on your own Mac. They read the live signature, grep the source, and watch the wire — the same checks the diagnostic report gathers for you." = "Run these against the app on your own Mac. They read the live signature, grep the source, and watch the wire — the same checks the diagnostic report gathers for you.";
+
+/* L8 — one-constant display name (chrome %@-format keys) + L6c meetings-settings key fix. */
+"About %@" = "About %@";
+"Hide %@" = "Hide %@";
+"Quit %@" = "Quit %@";
+"Open %@" = "Open %@";
+"%@ — hold your key to dictate" = "%@ — hold your key to dictate";
+"%@ is listening." = "%@ is listening.";
+"%@ dictation indicator. Hold your dictation key and speak." = "%@ dictation indicator. Hold your dictation key and speak.";
+"%@ — Nothing leaves this Mac." = "%@ — Nothing leaves this Mac.";
+"%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.";
+"Detect meetings & offer to record" = "Detect meetings & offer to record";
+"When a call app starts using your mic, Talkie offers to record. It never records on its own." = "When a call app starts using your mic, Talkie offers to record. It never records on its own.";
+"Show the meeting pill" = "Show the meeting pill";
+"Talkie offers to record when one of these apps starts using your microphone." = "Talkie offers to record when one of these apps starts using your microphone.";
+"Browse installed apps…" = "Browse installed apps…";
+"No apps yet — browse your installed apps above." = "No apps yet — browse your installed apps above.";
+"You dismissed these enough times that Talkie stopped offering. Tap to un-mute." = "You dismissed these enough times that Talkie stopped offering. Tap to un-mute.";

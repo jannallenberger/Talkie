@@ -213,6 +213,42 @@ enum Brand {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// The app's user-facing display name — the SINGLE source of truth for every
+    /// chrome-tier surface (menu bar, About/Quit, window title, dashboard wordmark,
+    /// proof card, bird-buddy labels, connector copy). Reads `CFBundleDisplayName`
+    /// from `Bundle.main`, so a rebrand is a one-line Info.plist change that every
+    /// display site follows — see `docs/REBRAND.md`.
+    ///
+    /// The `"Talkie"` fallback is load-bearing: a bare `swift test` run (or any
+    /// context without the assembled app bundle) has no Info.plist, and without the
+    /// fallback these strings would render empty. It is NOT a second brand constant —
+    /// it only backstops the plist read.
+    ///
+    /// This is the DISPLAY name only. Every load-bearing identifier — the bundle id
+    /// `com.coralate.talkie`, the executable `Contents/MacOS/Talkie`, the MCP
+    /// protocol id `"talkie"`, the support/meetings directories, the `.talkiepack`
+    /// UTType, the keychain service, the repo slug — is deliberately FROZEN and must
+    /// never be derived from this value. See the FREEZE list in `docs/REBRAND.md`.
+    @MainActor static var displayName: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+            ?? "Talkie"
+    }
+
+    /// The marketing / project home URL. Today the product's home IS its public
+    /// GitHub repository, so this is a documented alias of `repoURL` (same
+    /// Info.plist-sourced value, kept out of Swift source so `check-no-network.sh`
+    /// stays green). Kept as a distinct accessor so a future marketing site can be
+    /// pointed at its own Info.plist key without touching call sites.
+    @MainActor static var marketingURL: String? { repoURL }
+
+    /// The name to show for the on-device MCP connector in user-facing copy — a
+    /// documented alias of `displayName`. The MCP *protocol* id stays the frozen
+    /// literal `"talkie"` (see `MCPServer.swift` serverInfo and `BrandMirror`);
+    /// only the human-readable label follows the display name.
+    @MainActor static var mcpDisplayName: String { displayName }
+
     /// Decoded-once cache. Without it, `image(_:)` re-read the PNG from the
     /// bundle on every SwiftUI `body` pass, handing `Image` a fresh `NSImage`
     /// each time — so a hover-driven re-render re-decoded the bitmap and the tile

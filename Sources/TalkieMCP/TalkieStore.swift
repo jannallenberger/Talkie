@@ -91,7 +91,7 @@ struct TalkieStore {
             kind: "vocabulary", op: "add", term: trimmed, from: nil, to: nil, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued “\(trimmed)” — it’ll appear in Talkie with an Undo the moment you confirm it. Nothing changes your recognition until then.")
+                     ok: "Queued “\(trimmed)” — it’ll appear in \(BrandMirror.displayName) with an Undo the moment you confirm it. Nothing changes your recognition until then.")
     }
 
     /// Queue an "add this from→to replacement rule" suggestion for confirmation.
@@ -103,7 +103,7 @@ struct TalkieStore {
             kind: "replacement", op: "add", term: nil, from: f, to: t, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued “\(f)” → “\(t)” — it’ll appear in Talkie with an Undo the moment you confirm it. Nothing changes your recognition until then.")
+                     ok: "Queued “\(f)” → “\(t)” — it’ll appear in \(BrandMirror.displayName) with an Undo the moment you confirm it. Nothing changes your recognition until then.")
     }
 
     // MARK: L15 — dictionary/jargon MANAGEMENT (edit + remove), same inbox handshake
@@ -120,7 +120,7 @@ struct TalkieStore {
             kind: "replacement", op: "removeReplacement", term: nil, from: f, to: t, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued removal of “\(f)” → “\(t)” — Talkie will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+                     ok: "Queued removal of “\(f)” → “\(t)” — \(BrandMirror.displayName) will ask you to confirm it, with an Undo. Nothing changes until you accept.")
     }
 
     /// Queue an "update this replacement rule's target" suggestion: the rule matched
@@ -135,7 +135,7 @@ struct TalkieStore {
             kind: "replacement", op: "updateReplacement", term: nil, from: f, to: t, newTo: n, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued a change to “\(f)” → “\(n)” (was “\(t)”) — Talkie will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+                     ok: "Queued a change to “\(f)” → “\(n)” (was “\(t)”) — \(BrandMirror.displayName) will ask you to confirm it, with an Undo. Nothing changes until you accept.")
     }
 
     /// Queue a "remove this vocabulary term" suggestion. Same confirm-with-Undo
@@ -147,7 +147,7 @@ struct TalkieStore {
             kind: "vocabulary", op: "removeVocabularyTerm", term: trimmed, from: nil, to: nil, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued removal of “\(trimmed)” — Talkie will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+                     ok: "Queued removal of “\(trimmed)” — \(BrandMirror.displayName) will ask you to confirm it, with an Undo. Nothing changes until you accept.")
     }
 
     /// Write one suggestion as an atomic, uuid-named JSON file. Deterministic key

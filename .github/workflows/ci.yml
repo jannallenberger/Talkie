@@ -76,6 +76,15 @@ jobs:
       - name: MCP drift gate
         run: ./scripts/check-mcp-drift.sh
 
+      # Rebrand-readiness guard (L8). Plain bash + POSIX awk (no BSD-only idioms),
+      # so it belongs on the cheap ubuntu gates job beside the other grep gates — it
+      # reads source text and needs no Swift build. It FAILS if any file's count of
+      # "Talkie"-bearing string literals grows past scripts/brand-literal-allowlist.txt
+      # (comments excluded), freezing the brand-literal footprint so a future display
+      # rename stays a one-constant change. See docs/REBRAND.md.
+      - name: Brand-literal guard
+        run: bash scripts/check-brand-literals.sh
+
       # Lint the workflow files themselves. We download a pinned actionlint
       # release binary rather than depending on a third-party marketplace action,
       # keeping CI's own dependency surface as small as the app's.

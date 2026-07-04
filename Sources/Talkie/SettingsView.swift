@@ -163,7 +163,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Talkie"
+        window.title = Brand.displayName
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
@@ -755,7 +755,7 @@ private struct MCPConnectorCard: View {
     var body: some View {
         SettingsCard(
             header: "Connect to Claude",
-            footer: "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc
+            footer: String(format: "%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc, Brand.mcpDisplayName)
         ) {
             if let path {
                 // (a) Claude Desktop — one double-click via the bundled .mcpb.

@@ -523,16 +523,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
         appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "About Talkie",
+        appMenu.addItem(withTitle: String(format: "About %@".loc, Brand.displayName),
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         let settingsItem = appMenu.addItem(withTitle: "Settings…",
                                            action: #selector(openSettingsMenu), keyEquivalent: ",")
         settingsItem.target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Talkie",
+        appMenu.addItem(withTitle: String(format: "Hide %@".loc, Brand.displayName),
                         action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit Talkie",
+        appMenu.addItem(withTitle: String(format: "Quit %@".loc, Brand.displayName),
                         action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let editItem = NSMenuItem()
@@ -563,16 +563,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
-            if let image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Talkie") {
+            if let image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: Brand.displayName) {
                 image.isTemplate = true
                 button.image = image
             }
             // Guarantee the item is visible even if the SF Symbol fails to load —
             // an image-less, title-less status item is zero-width (invisible).
             if button.image == nil {
-                button.title = "Talkie"
+                button.title = Brand.displayName
             }
-            button.toolTip = "Talkie — hold your key to dictate"
+            button.toolTip = String(format: "%@ — hold your key to dictate".loc, Brand.displayName)
         }
         item.menu = buildMenu()
         statusItem = item
@@ -585,7 +585,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // H7: after a genuine close the Dock icon is gone, so the window is only
         // reachable from here — keep "Open Talkie" at the very top, one click away.
         // (It also restores the Dock icon via `openSettings`.)
-        menu.addItem(withTitle: "Open Talkie".loc, action: #selector(openMain), keyEquivalent: "")
+        menu.addItem(withTitle: String(format: "Open %@".loc, Brand.displayName), action: #selector(openMain), keyEquivalent: "")
             .target = self
         menu.addItem(.separator())
 
@@ -605,16 +605,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .target = self
 
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Talkie", action: #selector(quit), keyEquivalent: "q")
+        menu.addItem(withTitle: String(format: "Quit %@".loc, Brand.displayName), action: #selector(quit), keyEquivalent: "q")
             .target = self
 
         return menu
     }
 
     private func statusLine() -> String {
-        if !TranscriptionEngine.isAvailable { return "Talkie — speech unavailable" }
-        if !permissions.allGranted { return "Talkie — needs permissions" }
-        return isDictating ? "Talkie — listening…" : "Talkie — ready"
+        // Pure menu-bar chrome — the brand name is interpolated verbatim (these
+        // short status lines are deliberately unlocalized). `Brand.displayName`
+        // keeps them following a rebrand; the "— …" tail stays as-is.
+        if !TranscriptionEngine.isAvailable { return "\(Brand.displayName) — speech unavailable" }
+        if !permissions.allGranted { return "\(Brand.displayName) — needs permissions" }
+        return isDictating ? "\(Brand.displayName) — listening…" : "\(Brand.displayName) — ready"
     }
 
     private func hintLine() -> String {
@@ -629,7 +632,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if menu.items.indices.contains(2) { menu.items[2].title = statusLine() }
         if menu.items.indices.contains(3) { menu.items[3].title = hintLine() }
         let symbol = isDictating ? "waveform" : "mic.fill"
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Talkie")
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: Brand.displayName)
         image?.isTemplate = true
         statusItem?.button?.image = image
         statusItem?.button?.contentTintColor = isDictating ? .systemRed : nil

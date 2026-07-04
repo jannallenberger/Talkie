@@ -137,9 +137,24 @@ public final class AppUpdater: ObservableObject {
 
     // MARK: - Internals
 
+    /// MIRROR: Sources/Talkie/DesignSystem.swift (enum Brand.displayName).
+    /// TalkieUpdater is a separate module that can't import the app target, but in
+    /// the dev flavor it compiles INTO the app, so `Bundle.main` here IS the app
+    /// bundle and its CFBundleDisplayName is the live display name. The `"Talkie"`
+    /// fallback backstops a missing plist. DISPLAY only — every load-bearing
+    /// identifier this module validates (bundle id `com.coralate.talkie`, the
+    /// `Contents/MacOS/Talkie` executable, the repo slug, the keychain service)
+    /// stays frozen. See `docs/REBRAND.md`.
+    private var brandName: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+            ?? "Talkie"
+    }
+
     private func promptInstall(_ release: UpdateRelease) {
         let alert = NSAlert()
-        alert.messageText = "Talkie build \(release.build) is available"
+        alert.messageText = "\(brandName) build \(release.build) is available"
         alert.informativeText = release.notes.isEmpty
             ? "You're on build \(currentBuild). Update now?"
             : release.notes

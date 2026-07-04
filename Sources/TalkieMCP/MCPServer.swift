@@ -168,8 +168,8 @@ struct MCPServer {
             // other reads); each degrades to a friendly line when its store file is
             // absent/empty. Descriptions stay one sentence — every tool is loaded into
             // every Claude session's context.
-            spec("get_stats", "The user's lifetime Talkie dictation stats — words, dictations, speaking time, average/best WPM, fixes Talkie made, and current/longest daily streak — on-device (totals survive the 7-day history prune).", [:]),
-            spec("get_dictionary", "List the user's Talkie dictionary — vocabulary terms and spoken→written replacement rules (learned rules tagged) — on-device; call this BEFORE add_vocabulary_term or add_replacement so you don't suggest something they already have.", [:]),
+            spec("get_stats", "The user's lifetime \(BrandMirror.displayName) dictation stats — words, dictations, speaking time, average/best WPM, fixes \(BrandMirror.displayName) made, and current/longest daily streak — on-device (totals survive the 7-day history prune).", [:]),
+            spec("get_dictionary", "List the user's \(BrandMirror.displayName) dictionary — vocabulary terms and spoken→written replacement rules (learned rules tagged) — on-device; call this BEFORE add_vocabulary_term or add_replacement so you don't suggest something they already have.", [:]),
             spec("list_dictations", "List the user's recent dictations newest-first (timestamp, app, opening text) from the retained history window — a recent window, not an archive: Talkie prunes history per the user's retention setting (default 7 days).",
                  ["limit": numProp("Max dictations to return (default 20)."),
                   "app": strProp("Filter to dictations whose app name contains this substring."),
