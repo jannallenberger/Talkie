@@ -35,7 +35,8 @@
     { "name": "add_replacement", "description": "Suggest a spoken→written replacement rule for the user's dictionary — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
     { "name": "remove_replacement", "description": "Remove a spoken→written replacement rule (by its exact from → to) from the user's dictionary — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
     { "name": "update_replacement", "description": "Change an existing replacement rule's target (the rule matched by from/to should produce new_to) — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
-    { "name": "remove_vocabulary_term", "description": "Remove a niche/jargon vocabulary term from the user's dictionary — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." }
+    { "name": "remove_vocabulary_term", "description": "Remove a niche/jargon vocabulary term from the user's dictionary — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
+    { "name": "retitle_meeting", "description": "Rename a meeting in the user's meeting history (matched by id or 8-char prefix) — queued for the user to confirm with a one-tap Undo (never applied silently)." }
   ],
   "compatibility": {
     "platforms": ["darwin"]

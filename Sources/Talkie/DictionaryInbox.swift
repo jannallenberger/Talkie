@@ -25,6 +25,10 @@ import Foundation
 final class DictionaryInbox {
     private let dictionary: DictionaryStore
     private let nicheVocab: NicheVocabStore
+    /// L15-b: the meeting store, for the meeting-notes management ops (retitle).
+    /// Optional so tests that exercise only the dictionary path can omit it; a meeting
+    /// op with no store present is a graceful no-op.
+    private let meetingStore: MeetingStore?
     private let directory: URL
 
     /// How a confirmed suggestion is surfaced. In the app this is
@@ -67,8 +71,9 @@ final class DictionaryInbox {
 
     /// App-facing init: surfaces suggestions through the live HUD.
     convenience init(dictionary: DictionaryStore, nicheVocab: NicheVocabStore, hud: HUDController,
+                     meetingStore: MeetingStore? = nil,
                      directory: URL = AppPaths.supportDirectory().appendingPathComponent("inbox", isDirectory: true)) {
-        self.init(dictionary: dictionary, nicheVocab: nicheVocab, directory: directory,
+        self.init(dictionary: dictionary, nicheVocab: nicheVocab, meetingStore: meetingStore, directory: directory,
                   presentPill: { message, onUndo in hud.showLearned(message, onUndo: onUndo) },
                   presentReverted: { hud.showReverted() })
     }
@@ -76,10 +81,11 @@ final class DictionaryInbox {
     /// Designated init with the pill presentation injected — tests pass a spy and a
     /// temporary directory so the ingest logic is hermetic (no HUD panel, no real
     /// support dir).
-    init(dictionary: DictionaryStore, nicheVocab: NicheVocabStore, directory: URL,
-         presentPill: @escaping PillPresenter, presentReverted: @escaping @MainActor () -> Void) {
+    init(dictionary: DictionaryStore, nicheVocab: NicheVocabStore, meetingStore: MeetingStore? = nil,
+         directory: URL, presentPill: @escaping PillPresenter, presentReverted: @escaping @MainActor () -> Void) {
         self.dictionary = dictionary
         self.nicheVocab = nicheVocab
+        self.meetingStore = meetingStore
         self.directory = directory
         self.presentPill = presentPill
         self.presentReverted = presentReverted
@@ -247,6 +253,9 @@ final class DictionaryInbox {
             return applyUpdateReplacement(from: s.from, to: s.to, newTo: s.newTo)
         case ("vocabulary", .removeVocabularyTerm):
             return applyRemoveVocabulary(s.term)
+        // L15-b — meeting-notes management.
+        case ("meeting", .retitleMeeting):
+            return applyRetitleMeeting(idOrPrefix: s.meetingID, title: s.to)
         default:
             // A well-formed op on the wrong kind (e.g. removeVocabularyTerm on a
             // "replacement" file) — reject rather than guess.
@@ -356,6 +365,31 @@ final class DictionaryInbox {
         presentPill(String(format: "Claude removed “%@” from dictionary".loc, stored)) { [weak self] in
             guard let self else { return }
             self.dictionary.restoreVocabularyTerm(stored)
+            self.presentReverted()
+        }
+        return .appliedPillShown
+    }
+
+    // MARK: Apply — L15-b meeting-notes management
+
+    /// Retitle a meeting (matched by id or 8-char prefix) behind the same confirm-with-
+    /// Undo pill. No niche bookkeeping — a meeting title isn't dictionary jargon. A
+    /// missing store/meeting, a blank/over-long title, or an unchanged title is a
+    /// graceful no-op (file consumed, nothing shown).
+    private func applyRetitleMeeting(idOrPrefix rawID: String?, title rawTitle: String?) -> Outcome {
+        guard let store = meetingStore,
+              let id = rawID?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty,
+              let title = rawTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,
+              title.count <= 200 else {
+            return .consumedNoPill
+        }
+        guard let result = store.retitle(idOrPrefix: id, to: title) else {
+            talkieDebugLog("DictionaryInbox: retitle meeting \"\(id)\" → \"\(title)\" — no match or no change, no-op")
+            return .consumedNoPill
+        }
+        presentPill(String(format: "Claude retitled a meeting to “%@”".loc, title)) { [weak self] in
+            guard let self, let store = self.meetingStore else { return }
+            store.restoreTitle(id: result.id, to: result.oldTitle)
             self.presentReverted()
         }
         return .appliedPillShown
@@ -472,6 +506,9 @@ struct TalkieMCPSuggestion: Codable {
     var to: String?
     /// For `updateReplacement` only: the new target the rule should produce.
     var newTo: String?
+    /// L15-b: for `kind == "meeting"` — the meeting id (or 8-char prefix) to act on.
+    /// (The new title travels in `to`, reusing the existing field.)
+    var meetingID: String?
     var note: String?
     var createdUnix: Double
     var version: Int
@@ -483,6 +520,7 @@ struct TalkieMCPSuggestion: Codable {
         case removeReplacement
         case updateReplacement
         case removeVocabularyTerm
+        case retitleMeeting
     }
 
     /// The decoded op, defaulting to `.add` when the field is absent, and nil when

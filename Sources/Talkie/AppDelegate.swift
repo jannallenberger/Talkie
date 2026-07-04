@@ -336,7 +336,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Watch the MCP inbox for Claude-queued dictionary suggestions and surface
         // each with an Undo pill. Started here so a suggestion written while the app
         // was closed is scanned and pinged at launch — never applied silently.
-        let inbox = DictionaryInbox(dictionary: dictionary, nicheVocab: nicheVocab, hud: hud)
+        let inbox = DictionaryInbox(dictionary: dictionary, nicheVocab: nicheVocab, hud: hud, meetingStore: meetingStore)
         inbox.start()
         dictionaryInbox = inbox
 

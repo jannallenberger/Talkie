@@ -472,6 +472,35 @@ final class MeetingStore: ObservableObject {
         save()
     }
 
+    /// L15-b: rename a meeting, matched by full id or an 8-char id prefix (how the MCP
+    /// tools surface ids). `fileName` is stored (not title-derived), so this rewrites
+    /// the SAME `.md` with the new title in its content — no orphaned files. Returns
+    /// the id + prior title so the confirm-with-Undo pill can restore it; nil when no
+    /// meeting matches, the title is blank, or it's unchanged (a graceful no-op).
+    func retitle(idOrPrefix: String, to newTitle: String) -> (id: UUID, oldTitle: String)? {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let key = idOrPrefix.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty, let index = meetings.firstIndex(where: {
+            let u = $0.id.uuidString.lowercased()
+            return u == key || u.hasPrefix(key)
+        }) else { return nil }
+        let old = meetings[index].title
+        guard old != trimmed else { return nil }
+        meetings[index].title = trimmed
+        writeMarkdown(meetings[index])
+        save()
+        return (meetings[index].id, old)
+    }
+
+    /// Restore a meeting's title — the Undo of `retitle`. No-op if the meeting is gone.
+    func restoreTitle(id: UUID, to oldTitle: String) {
+        guard let index = meetings.firstIndex(where: { $0.id == id }) else { return }
+        meetings[index].title = oldTitle
+        writeMarkdown(meetings[index])
+        save()
+    }
+
     /// Keep full data for only the most-recent `maxRetainedMeetings`, evicting the
     /// oldest beyond that from the in-memory/on-disk index. Sorting by date first
     /// makes "most recent N" well-defined regardless of insertion order.

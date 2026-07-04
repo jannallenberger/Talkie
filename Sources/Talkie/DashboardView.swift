@@ -799,7 +799,7 @@ private struct TaughtWordsCard: View {
 
             let top = stats.topTaughtWords(limit: 5)
             if top.isEmpty {
-                Text("The terms Talkie learns to spell right for you will show up here.")
+                Text("The terms you teach it to spell right show up here.")
                     .font(.talkieHeading(13, weight: .regular))
                     .foregroundStyle(Theme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)

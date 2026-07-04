@@ -743,6 +743,7 @@ private struct MCPConnectorCard: View {
         .init(name: "remove_replacement", write: true),
         .init(name: "update_replacement", write: true),
         .init(name: "remove_vocabulary_term", write: true),
+        .init(name: "retitle_meeting", write: true),
     ]
 
     @State private var copiedConfig = false

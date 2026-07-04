@@ -68,6 +68,10 @@ struct TalkieStore {
         /// For `updateReplacement` ONLY: the new canonical spelling the rule should
         /// produce (the rule keeps its `from`; its target changes `to` → `newTo`).
         var newTo: String?
+        /// L15-b: for `kind == "meeting"` — the meeting id (or 8-char prefix) to act
+        /// on (the new title travels in `to`). Defaulted so the dictionary writers
+        /// above construct unchanged. MIRROR: `TalkieMCPSuggestion.meetingID`.
+        var meetingID: String? = nil
         /// Optional free-text note from Claude (why it's suggesting this). Surfaced
         /// nowhere yet; carried for provenance/inspection.
         var note: String?
@@ -148,6 +152,25 @@ struct TalkieStore {
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
                      ok: "Queued removal of “\(trimmed)” — \(BrandMirror.displayName) will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+    }
+
+    // MARK: L15-b — meeting-notes MANAGEMENT (retitle), same inbox handshake
+
+    /// Queue a "retitle this meeting" suggestion — the meeting matched by `id` (or its
+    /// 8-char prefix, as list_meetings / get_meeting surface it) should be renamed to
+    /// `title`. Same confirm-with-Undo contract as the dictionary ops: nothing changes
+    /// until the user accepts it in Talkie, and the Undo restores the prior title.
+    /// No-ops gracefully if the meeting is gone at apply time.
+    func queueRetitleMeeting(id: String, title: String) -> String {
+        let mid = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !mid.isEmpty, !t.isEmpty else { return "Error: both id and title are required." }
+        let suggestion = DictionarySuggestion(
+            kind: "meeting", op: "retitleMeeting", term: nil, from: nil, to: t, newTo: nil,
+            meetingID: mid, note: nil,
+            createdUnix: Date().timeIntervalSince1970, version: 1)
+        return write(suggestion,
+                     ok: "Queued a retitle to “\(t)” — \(BrandMirror.displayName) will ask you to confirm it, with an Undo. Nothing changes until you accept.")
     }
 
     /// Write one suggestion as an atomic, uuid-named JSON file. Deterministic key

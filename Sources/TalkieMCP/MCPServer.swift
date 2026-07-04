@@ -110,6 +110,11 @@ struct MCPServer {
         case "remove_vocabulary_term":
             guard let term = strArg("term") else { return toolErr(id, "remove_vocabulary_term requires term") }
             text = store.queueRemoveVocabularyTerm(term, note: strArg("note"))
+        case "retitle_meeting":
+            guard let mid = strArg("id"), let title = strArg("title") else {
+                return toolErr(id, "retitle_meeting requires id and title")
+            }
+            text = store.queueRetitleMeeting(id: mid, title: title)
         default:
             return err(id, -32602, "Unknown tool: \(name)")
         }
@@ -211,6 +216,14 @@ struct MCPServer {
                  ["term": strProp("The exact vocabulary term to remove, as get_dictionary shows it."),
                   "note": strProp("Optional: why you're suggesting the removal (kept for the user's provenance).")],
                  required: ["term"], mutating: true),
+            // L15-b meeting-notes MANAGEMENT (retitle). Same queued confirm-with-Undo
+            // contract as the dictionary writers: MUTATING but never a direct write —
+            // one atomic inbox file, applied only behind the app's Undo pill.
+            spec("retitle_meeting", "Rename a meeting in the user's \(BrandMirror.displayName) history (matched by its id or 8-char id prefix from list_meetings / get_meeting). QUEUED for the user to confirm in \(BrandMirror.displayName) with a one-tap Undo — it does NOT take effect until they accept it, and the Undo restores the previous title. Call list_meetings or get_meeting first to get the id.",
+                 ["id": strProp("The meeting's id, or its 8-char prefix, exactly as list_meetings / get_meeting shows it."),
+                  "title": strProp("The new title for the meeting."),
+                  "note": strProp("Optional: why you're suggesting the rename (kept for the user's provenance).")],
+                 required: ["id", "title"], mutating: true),
         ]
     }
 
