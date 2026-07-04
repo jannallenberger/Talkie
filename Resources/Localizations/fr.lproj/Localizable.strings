@@ -666,3 +666,12 @@
 "What Claude can do" = "Ce que Claude peut faire";
 "asks first" = "demande d'abord";
 "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie fournit un petit serveur local pour que Claude puisse lire vos réunions, votre briefing, vos engagements, le contexte, les statistiques, votre dictionnaire et vos notes — sur l'appareil, rien ne quitte votre Mac. Claude peut aussi gérer votre dictionnaire — ajouter, modifier ou supprimer des entrées et des règles — mais chaque changement attend votre confirmation en un geste, avec annulation. Fourni avec l'app : aucun téléchargement ni build séparé.";
+
+/* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
+"Context awareness" = "Conscience du contexte";
+"Use the app I'm dictating into for context" = "Utiliser l'app dans laquelle je dicte comme contexte";
+"Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only. Also powers Vibe-coding offers and the Prompt cleanup style, which stay quiet while this is off." = "Talkie lit les noms déjà à l'écran — à qui vous écrivez, le fichier que vous avez ouvert — et oriente la reconnaissance pour bien les orthographier. Local et en lecture seule. Alimente aussi les propositions de Vibe-coding et le style de nettoyage Prompt, qui restent silencieux tant que ceci est désactivé.";
+"Learning" = "Apprentissage";
+"Learn from my edits" = "Apprendre de mes corrections";
+"Auto-improve the dictionary." = "Améliore le dictionnaire automatiquement.";
+"When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "Quand vous corrigez un mot juste après l'avoir dicté, Talkie retient la correction. Les règles ajoutées automatiquement sont signalées dans l'onglet Dictionnaire — retirez celles que vous ne voulez pas.";

@@ -666,3 +666,12 @@
 "What Claude can do" = "Wat Claude kan doen";
 "asks first" = "vraagt eerst";
 "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie levert een kleine lokale server zodat Claude je vergaderingen, briefing, toezeggingen, context, statistieken, je woordenboek en notities kan lezen — op het apparaat, er verlaat niets je Mac. Claude kan je woordenboek ook beheren — vermeldingen en regels toevoegen, wijzigen of verwijderen — maar elke wijziging wacht op je bevestiging met één tik en een Ongedaan maken. Meegeleverd met de app: geen aparte download of build.";
+
+/* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
+"Context awareness" = "Contextbewustzijn";
+"Use the app I'm dictating into for context" = "De app waarin ik dicteer als context gebruiken";
+"Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only. Also powers Vibe-coding offers and the Prompt cleanup style, which stay quiet while this is off." = "Talkie leest de namen die al op het scherm staan — aan wie je een bericht stuurt, het bestand dat je open hebt — en stemt de herkenning erop af zodat ze goed worden gespeld. Lokaal en alleen-lezen. Voedt ook de Vibe-coding-suggesties en de Prompt-opschoonstijl, die stil blijven zolang dit uit staat.";
+"Learning" = "Leren";
+"Learn from my edits" = "Leren van mijn correcties";
+"Auto-improve the dictionary." = "Verbetert het woordenboek automatisch.";
+"When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "Als je een woord meteen na het dicteren corrigeert, onthoudt Talkie de correctie. Automatisch toegevoegde regels zijn gemarkeerd op het tabblad Woordenboek — verwijder wat je niet wilt.";
