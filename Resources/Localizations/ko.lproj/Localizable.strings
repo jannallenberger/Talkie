@@ -815,3 +815,12 @@
 "I need microphone access to hear you." = "당신의 말을 들으려면 마이크 접근 권한이 필요해요.";
 "Couldn't run that command — the on-device model may be unavailable." = "그 명령을 실행하지 못했어요 — 기기 내 모델을 사용할 수 없을 수 있어요.";
 "Nothing to paste yet — dictate something first." = "아직 붙여넣을 것이 없어요 — 먼저 무언가 받아쓰게 해 주세요.";
+
+/* K3 — Honest personal records (HUD chip + Dashboard card) */
+"Personal best — %@ words today" = "개인 최고 기록 — 오늘 %@단어";
+"Personal best — %d WPM" = "개인 최고 기록 — %d WPM";
+"Personal best — longest yet at %@ words" = "개인 최고 기록 — 지금까지 가장 긴 %@단어";
+"Personal records" = "개인 기록";
+"Fastest speed" = "최고 속도";
+"Longest dictation" = "가장 긴 받아쓰기";
+"Biggest word day" = "가장 많은 단어의 날";

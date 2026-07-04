@@ -817,3 +817,12 @@
 "I need microphone access to hear you." = "I need microphone access to hear you.";
 "Couldn't run that command — the on-device model may be unavailable." = "Couldn't run that command — the on-device model may be unavailable.";
 "Nothing to paste yet — dictate something first." = "Nothing to paste yet — dictate something first.";
+
+/* K3 — Honest personal records (HUD chip + Dashboard card) */
+"Personal best — %@ words today" = "Personal best — %@ words today";
+"Personal best — %d WPM" = "Personal best — %d WPM";
+"Personal best — longest yet at %@ words" = "Personal best — longest yet at %@ words";
+"Personal records" = "Personal records";
+"Fastest speed" = "Fastest speed";
+"Longest dictation" = "Longest dictation";
+"Biggest word day" = "Biggest word day";

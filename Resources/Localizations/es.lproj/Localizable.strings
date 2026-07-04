@@ -815,3 +815,12 @@
 "I need microphone access to hear you." = "Necesito acceso al micrófono para oírte.";
 "Couldn't run that command — the on-device model may be unavailable." = "No se pudo ejecutar ese comando: puede que el modelo en el dispositivo no esté disponible.";
 "Nothing to paste yet — dictate something first." = "Aún no hay nada que pegar: dicta algo primero.";
+
+/* K3 — Honest personal records (HUD chip + Dashboard card) */
+"Personal best — %@ words today" = "Récord personal — %@ palabras hoy";
+"Personal best — %d WPM" = "Récord personal — %d PPM";
+"Personal best — longest yet at %@ words" = "Récord personal — el más largo hasta ahora con %@ palabras";
+"Personal records" = "Récords personales";
+"Fastest speed" = "Velocidad máxima";
+"Longest dictation" = "Dictado más largo";
+"Biggest word day" = "Día con más palabras";

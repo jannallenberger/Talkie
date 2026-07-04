@@ -38,8 +38,11 @@ final class ActivityStore: ObservableObject {
         return c
     }()
 
-    init() {
-        fileURL = AppPaths.supportDirectory().appendingPathComponent("activity.json")
+    /// `directory` defaults to the real support dir; tests pass a temp dir so they
+    /// neither read the developer's real `activity.json` (non-deterministic) nor let
+    /// `save()` clobber it. Mirrors `HistoryStore(directory:)`.
+    init(directory: URL? = nil) {
+        fileURL = (directory ?? AppPaths.supportDirectory()).appendingPathComponent("activity.json")
         load()
     }
 
@@ -53,6 +56,58 @@ final class ActivityStore: ObservableObject {
         stat.dictations += 1
         days[key] = stat
         save()
+    }
+
+    /// Lifetime dictation count needed before a broken biggest-word-day earns a HUD
+    /// chip (K3). Mirrors `StatsStore.recordMinLifetimeDictations` so all three
+    /// records share one honesty floor — day-one use never triggers confetti.
+    static let recordMinLifetimeDictations = 10
+
+    /// Record one dictation's words for today AND report the new all-time daily word
+    /// total when today's running total FIRST crosses the previous all-time max —
+    /// the "biggest word day" personal record (K3). Returns nil when no record broke
+    /// (the common case).
+    ///
+    /// HONESTY GUARD (matching `StatsStore.record`): a crossing counts only when
+    /// there was already a prior non-zero daily max on some OTHER day to beat AND the
+    /// user has at least `recordMinLifetimeDictations` lifetime dictations behind
+    /// them. So the very first busy day, and day-one use in general, never celebrates.
+    /// "First crosses" means we compare today's total AFTER this dictation against the
+    /// best of all previous days: a second big dictation the same day won't re-fire
+    /// unless it pushes past the old max for the first time (today already held the
+    /// max on the earlier call, so the previous-days max is unchanged and the
+    /// strict `>` fails).
+    @discardableResult
+    func recordAndCheckBiggestDay(words: Int, at date: Date = Date()) -> Int? {
+        guard words > 0 else { return nil }
+        let key = Self.key(for: date, calendar: calendar)
+        // Best word total across every day EXCEPT today, and the lifetime dictation
+        // count — both measured BEFORE this dictation lands.
+        let priorOtherDaysMax = days.filter { $0.key != key }.values.map(\.words).max() ?? 0
+        let priorTodayWords = days[key]?.words ?? 0
+        let priorLifetimeDictations = days.values.reduce(0) { $0 + $1.dictations }
+
+        record(words: words, at: date)
+
+        let newTodayWords = priorTodayWords + words
+        let eligible = priorLifetimeDictations >= Self.recordMinLifetimeDictations
+        // Only a genuine crossing: today must NOT have already been at/above the old
+        // max (else it wasn't "first crossing" — the record was already ours), and it
+        // must clear a real, non-zero prior max with enough history behind it.
+        guard eligible,
+              priorOtherDaysMax > 0,
+              priorTodayWords <= priorOtherDaysMax,
+              newTodayWords > priorOtherDaysMax
+        else { return nil }
+        return newTodayWords
+    }
+
+    /// The most words ever dictated in a single day — the "biggest word day"
+    /// personal record, surfaced on the Dashboard's Records card (K3). Zero until
+    /// the first active day. A pure read over `days`; detection of a *newly broken*
+    /// record lives in `recordAndCheckBiggestDay`.
+    var biggestWordDay: Int {
+        days.values.map(\.words).max() ?? 0
     }
 
     func reset() {

@@ -815,3 +815,12 @@
 "I need microphone access to hear you." = "あなたの声を聞くにはマイクへのアクセスが必要です。";
 "Couldn't run that command — the on-device model may be unavailable." = "そのコマンドを実行できませんでした — デバイス上のモデルが利用できない可能性があります。";
 "Nothing to paste yet — dictate something first." = "まだ貼り付けるものがありません — まず何か話してください。";
+
+/* K3 — Honest personal records (HUD chip + Dashboard card) */
+"Personal best — %@ words today" = "自己ベスト — 本日 %@ 語";
+"Personal best — %d WPM" = "自己ベスト — %d WPM";
+"Personal best — longest yet at %@ words" = "自己ベスト — %@ 語で過去最長";
+"Personal records" = "自己ベスト";
+"Fastest speed" = "最速";
+"Longest dictation" = "最長の口述";
+"Biggest word day" = "最多語数の日";

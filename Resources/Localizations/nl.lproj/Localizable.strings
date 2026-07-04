@@ -815,3 +815,12 @@
 "I need microphone access to hear you." = "Ik heb microfoontoegang nodig om je te horen.";
 "Couldn't run that command — the on-device model may be unavailable." = "Kon die opdracht niet uitvoeren — het model op het apparaat is mogelijk niet beschikbaar.";
 "Nothing to paste yet — dictate something first." = "Nog niets om te plakken — dicteer eerst iets.";
+
+/* K3 — Honest personal records (HUD chip + Dashboard card) */
+"Personal best — %@ words today" = "Persoonlijk record — %@ woorden vandaag";
+"Personal best — %d WPM" = "Persoonlijk record — %d WPM";
+"Personal best — longest yet at %@ words" = "Persoonlijk record — langste tot nu toe met %@ woorden";
+"Personal records" = "Persoonlijke records";
+"Fastest speed" = "Hoogste snelheid";
+"Longest dictation" = "Langste dictaat";
+"Biggest word day" = "Meeste woorden op een dag";

@@ -99,6 +99,7 @@ struct DashboardView: View {
                         SpeedCard(latency: latency).frame(maxHeight: .infinity, alignment: .top)
                         FixesCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                         WordsCard(stats: stats, history: history).frame(maxHeight: .infinity, alignment: .top)
+                        RecordsCard(stats: stats, activity: activity).frame(maxHeight: .infinity, alignment: .top)
                     }
 
                     LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
@@ -732,6 +733,43 @@ private struct WordsCard: View {
                      value: formatDuration(stats.totalDurationSec))
         }
         .talkieCard(fill: true)
+    }
+}
+
+// MARK: - Personal records card
+
+/// K3 — "your only competitor is yourself." The three honest personal records:
+/// fastest WPM, longest single dictation, and biggest word day. Each reuses the
+/// same honesty guard as the WPM gauge — a zero value shows an em dash, not a
+/// bogus "0", so day-one use reads as "no record yet" rather than a hollow score.
+private struct RecordsCard: View {
+    @ObservedObject var stats: StatsStore
+    @ObservedObject var activity: ActivityStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Personal records")
+
+            MiniStat(icon: "speedometer", label: "Fastest speed",
+                     value: stats.bestWPM > 0 ? "\(Int(stats.bestWPM.rounded())) WPM" : "—")
+            MiniStat(icon: "text.alignleft", label: "Longest dictation",
+                     value: longestDictationValue)
+            MiniStat(icon: "calendar", label: "Biggest word day",
+                     value: activity.biggestWordDay > 0
+                         ? activity.biggestWordDay.formatted() + " words"
+                         : "—")
+        }
+        .talkieCard(fill: true)
+    }
+
+    /// "N words (M:SS)" once there's a real longest dictation, else an em dash.
+    /// The duration is only meaningful alongside the word count, so both share the
+    /// same zero-guard.
+    private var longestDictationValue: String {
+        guard stats.longestDictationWords > 0 else { return "—" }
+        let words = stats.longestDictationWords.formatted()
+        let dur = formatDuration(stats.longestDictationDurationSec)
+        return "\(words) words (\(dur))"
     }
 }
 

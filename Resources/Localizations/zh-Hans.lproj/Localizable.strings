@@ -815,3 +815,12 @@
 "I need microphone access to hear you." = "我需要麦克风权限才能听到你说话。";
 "Couldn't run that command — the on-device model may be unavailable." = "无法运行该命令 — 设备端模型可能不可用。";
 "Nothing to paste yet — dictate something first." = "还没有可粘贴的内容 — 请先口述一些内容。";
+
+/* K3 — Honest personal records (HUD chip + Dashboard card) */
+"Personal best — %@ words today" = "个人最佳 — 今天 %@ 个词";
+"Personal best — %d WPM" = "个人最佳 — %d WPM";
+"Personal best — longest yet at %@ words" = "个人最佳 — 迄今最长，共 %@ 个词";
+"Personal records" = "个人纪录";
+"Fastest speed" = "最快速度";
+"Longest dictation" = "最长口述";
+"Biggest word day" = "字数最多的一天";

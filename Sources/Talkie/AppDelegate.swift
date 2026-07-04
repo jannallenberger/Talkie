@@ -2046,14 +2046,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Aggregate word counts run for EVERY app, Private or not: they carry no
             // transcript content and no app identity, so the lifetime WPM gauge and
             // the daily streak stay honest even when the app is marked Private (I1).
-            self.stats.record(words: words, durationSec: duration)
+            // K3: `record` reports the fastest-WPM / longest-dictation records this
+            // dictation broke (honesty-guarded); `recordAndCheckBiggestDay` reports a
+            // new biggest-word-day. Collected here (record detection lives in the
+            // stores), surfaced as ONE chip on the `.inserted` path below.
+            var brokenRecords = self.stats.record(words: words, durationSec: duration)
             self.stats.recordFixes(
                 dictionary: processed.replacementHits + biasApplied.count + nicheFixes.count + fileFixes,
                 fillers: processed.fillersRemoved,
                 aiWords: aiWordsChanged
             )
             // Per-day activity (streak + heatmap) — also a pure aggregate word count.
-            self.activity.record(words: words)
+            if let biggestDay = self.activity.recordAndCheckBiggestDay(words: words) {
+                brokenRecords.append(.biggestWordDay(biggestDay))
+            }
 
             // Everything below RECORDS CONTENT or APP IDENTITY, or arms learning from
             // it — the history entry, the "where your words went" app-usage record, the
@@ -2195,6 +2201,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Feedback.done()
                 self.hud.showInserting(replacedWords: replacedWords, privateSession: neverStore)
                 self.hud.hide(after: replacedWords.isEmpty ? 0.4 : 1.4)
+                // K3 — if this dictation broke a personal record, show ONE quiet
+                // "personal best" chip, queued behind the insertion pill so it never
+                // delays or replaces the copy/paste path (records ping only on
+                // `.inserted`). Detection already happened in the stores above; this
+                // just picks the single highest-priority record and displays it.
+                self.maybeShowRecordChip(brokenRecords)
                 // Self-healing insertion (B2): a paste that returned `.inserted` did so
                 // optimistically — the ⌘V may never have landed (some apps swallow it).
                 // When the resolved mode was paste, ask the verifier whether our text
@@ -2629,6 +2641,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.learnFromReviewChip(heardWord: heardWord, fixed: fixed)
                 }
             }
+        }
+    }
+
+    // MARK: K3 — personal-best chip
+
+    /// A personal record just broke this dictation — show ONE quiet "personal best"
+    /// chip in the notch (never more than one, per the one-honest-event-tier cap).
+    /// `broken` is everything that broke; `PersonalRecord.chipPick` resolves the
+    /// single winner by priority (biggest word day > fastest WPM > longest
+    /// dictation). A no-op when nothing broke — the common case — and honesty is
+    /// already enforced upstream (the stores suppress first-ever values and require
+    /// ≥10 lifetime dictations), so anything that reaches here is a genuine record.
+    ///
+    /// Queued exactly like `maybeOfferLowConfidenceReview`: sleep briefly so the
+    /// insertion pill breathes, then claim the notch only if nothing interactive is
+    /// on screen — the chip is a quiet celebration, not something that fights an
+    /// Undo or a copy prompt. The line is localized via `.loc` (K1 pattern).
+    private func maybeShowRecordChip(_ broken: [PersonalRecord]) {
+        guard let record = PersonalRecord.chipPick(from: broken) else { return }
+        let message: String
+        switch record {
+        case .biggestWordDay(let words):
+            message = String(format: "Personal best — %@ words today".loc, words.formatted())
+        case .fastestWPM(let wpm):
+            message = String(format: "Personal best — %d WPM".loc, Int(wpm.rounded()))
+        case .longestDictation(let words):
+            message = String(format: "Personal best — longest yet at %@ words".loc, words.formatted())
+        }
+        Task { @MainActor in
+            // Let the insert/learn pings breathe before the chip claims the notch —
+            // it loses to anything interactive (a learned Undo, a copy prompt).
+            try? await Task.sleep(for: .seconds(1.8))
+            guard !self.isDictating, !self.isProcessing,
+                  !self.hud.isPresentingInteractivePill else { return }
+            self.hud.showRecord(message)
         }
     }
 

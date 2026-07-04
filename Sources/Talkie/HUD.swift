@@ -41,6 +41,7 @@ enum HUDPhase: Equatable {
     case commandReverted        // brief "Reverted" confirmation (mirrors .copied)
     case learned(String)        // "Added 'X' to dictionary" ping, with an Undo chip
     case saved(String)          // brief "Saved to <destination>" confirmation (mirrors .copied)
+    case record(String)         // K3: brief "Personal best — …" chip (mirrors .copied); non-interactive
     // A one-time teaching pill shown when a lone quick tap captured nothing —
     // spells out the gesture ("Hold to talk · tap twice to lock") instead of just
     // vanishing. Non-interactive; auto-hides.
@@ -703,6 +704,25 @@ final class HUDController {
         // would otherwise never hear that (and where) their note was saved.
         announce(message)
         hide(after: 1.8)
+    }
+
+    /// K3: a personal record just broke — show a brief, non-interactive "personal
+    /// best" chip (e.g. "Personal best — 168 WPM"). Mirrors `.copied`/`.saved`:
+    /// nothing to tap, auto-hides after 3 s. No sound — K2 owns audio cues, and a
+    /// record is a quiet celebration, not an event that demands the ear. `message`
+    /// is the full localized line the hub composed. Detection lives in the stores;
+    /// the HUD only displays what it's told.
+    func showRecord(_ message: String) {
+        cancelHide()
+        let panel = ensurePanel()
+        panel.ignoresMouseEvents = true   // nothing to tap here
+        model.phase = .record(message)
+        reposition()
+        panel.orderFrontRegardless()
+        // Announce it: the pill is transient and non-focusable, so a VoiceOver user
+        // would otherwise never hear their personal best.
+        announce(message)
+        hide(after: 3)
     }
 
     // MARK: - Cleanup-style switcher (feature 14)
@@ -1369,6 +1389,24 @@ private struct HUDView: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.positive)
+                    .accessibilityHidden(true)
+                Text(message)
+                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                    .foregroundStyle(ink(0.85))
+                    .lineLimit(1)
+                    .frame(maxWidth: 300, alignment: .leading)
+            }
+            .transition(.blurReplace)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(message)
+        case .record(let message):
+            // K3: a personal best just broke — a brief, non-interactive celebration
+            // (mirrors `.saved`). A gold trophy + the "Personal best — …" line the
+            // hub composed, shown verbatim so the pill stays record-agnostic.
+            HStack(spacing: 6) {
+                Image(systemName: "trophy.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.featherGold)
                     .accessibilityHidden(true)
                 Text(message)
                     .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
