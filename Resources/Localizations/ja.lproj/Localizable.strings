@@ -682,3 +682,7 @@
 "Copy prompt" = "プロンプトをコピー";
 "Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Claude にあなたの用語を Talkie へ教えてもらいましょう。このプロンプトを Claude に貼り付けると（Talkie コネクターを有効に）、あなたが実際どう話しかけているか—名前、製品、用語—を読み取り、Talkie が聞き違えそうなものを提案します。どの提案も Talkie 上でのワンタップ確認（取り消し可）を待ちます。Claude が勝手に辞書を変更することはありません。";
 "Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Talkie コネクターが必要です — 「一般 ▸ Claude に接続」で設定してください。";
+
+/* L6b — Languages: selected strip + All-languages subpage */
+"Pick every language you speak; Talkie auto-detects which." = "話すすべての言語を選んでください。Talkie がどれかを自動で判別します。";
+"See every language" = "すべての言語を表示";

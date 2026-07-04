@@ -405,12 +405,14 @@ private struct SettingsHome: View {
                         ContextSettings(settings: settings)
                     }
                     // ── 3. Languages ─────────────────────────────────────────────
-                    // L6b REPLACES the full grid with a compact selected-strip plus an
-                    // "All languages" push (`SettingsPage.allLanguages`, wired in the
-                    // NavigationStack below). For now the whole grid renders inline.
+                    // L6b: the root shows a compact horizontal strip of the languages
+                    // you speak (+ a couple of suggestions), ending in an "All
+                    // languages ›" tile that pushes the full flag grid
+                    // (`SettingsPage.allLanguages`, resolved in the NavigationStack
+                    // below by `AllLanguagesPage`). Both surfaces write the same
+                    // `spokenLanguages` via `toggleSpokenLanguage`.
                     section("Languages",
                             subtitle: "Which languages you speak; Talkie auto-detects.") {
-                        // ⇥ L6b slot: selected-strip + NavigationLink(value: SettingsPage.allLanguages).
                         LanguageSettings(settings: settings)
                     }
                     // ── 4. Apps ──────────────────────────────────────────────────
@@ -475,10 +477,9 @@ private struct SettingsHome: View {
             .navigationDestination(for: SettingsPage.self) { page in
                 switch page {
                 case .allLanguages:
-                    // L6b fills this in with the full picker.
-                    SubpagePlaceholder(
-                        title: "All languages",
-                        subtitle: "The full language picker will live here.")
+                    // L6b — the full flag-grid picker (the root shows only the
+                    // compact selected strip). Same toggle semantics as the strip.
+                    AllLanguagesPage(settings: settings)
                 case .meetings:
                     // L6c fills this in with the Meetings settings pane.
                     SubpagePlaceholder(
@@ -1414,123 +1415,6 @@ private struct CleanupSettings: View {
                                  tone: Theme.inkTertiary)
                 }
             }
-        }
-    }
-}
-
-private struct LanguageSettings: View {
-    @ObservedObject var settings: AppSettings
-
-    private let columns = [GridItem(.adaptive(minimum: 176, maximum: 220), spacing: 12)]
-
-    /// Toggle a language, keeping at least one always selected.
-    private func toggle(_ id: String) {
-        var langs = settings.spokenLanguages
-        if langs.contains(id) {
-            guard langs.count > 1 else { return }
-            langs.removeAll { $0 == id }
-        } else {
-            langs.append(id)
-        }
-        settings.spokenLanguages = langs
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(talkieLanguageCatalog) { lang in
-                    LanguageCard(
-                        language: lang,
-                        selected: settings.spokenLanguages.contains(lang.id),
-                        locked: settings.spokenLanguages == [lang.id]
-                    ) { toggle(lang.id) }
-                }
-            }
-            Text(settings.spokenLanguages.count > 1
-                 ? "Talkie auto-detects which of these you're speaking each time."
-                 : "Pick more than one to have Talkie auto-detect your language.")
-                .font(.callout)
-                .foregroundStyle(Theme.inkTertiary)
-                .padding(.horizontal, 4)
-                .padding(.top, 2)
-        }
-    }
-}
-
-/// A tappable language tile: flag, language + country, and a check that fills the
-/// corner when selected. Selected tiles wear the brand wash + ring.
-private struct LanguageCard: View {
-    let language: TalkieLanguage
-    let selected: Bool
-    /// True when this is the *only* selected language — tapping it is a no-op
-    /// (Talkie always needs at least one), so the tile reads as locked-on.
-    let locked: Bool
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 13) {
-                // The flag is the hero — large, centered, with the selection check
-                // as a badge on its corner.
-                flag
-                    .frame(width: 96, height: 96)
-                    .overlay(alignment: .bottomTrailing) {
-                        if selected { checkBadge.offset(x: 5, y: 5) }
-                    }
-                VStack(spacing: 1) {
-                    Text(language.gridTitle)
-                        .font(.talkieHeading(14.5, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(1)
-                    Text(language.regionName)
-                        .font(.talkieHeading(11.5, weight: .regular))
-                        .foregroundStyle(Theme.inkSecondary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
-            .padding(.horizontal, 12)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .fill(selected ? Theme.coralWash : Theme.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .strokeBorder(selected ? Theme.coral : Color.clear, lineWidth: 2)
-            )
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.06), radius: 14, x: 0, y: 7)
-            .scaleEffect(hovering ? 1.015 : 1)
-            .animation(.easeOut(duration: 0.12), value: hovering)
-            .animation(.easeOut(duration: 0.14), value: selected)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help(locked ? "Talkie keeps at least one language"
-                     : (selected ? "Tap to remove" : "Tap to add"))
-    }
-
-    private var flag: some View {
-        Group {
-            if let region = Locale(identifier: language.id).region?.identifier,
-               let img = Brand.image("Flag\(region)") {
-                Image(nsImage: img).resizable().scaledToFit()
-            } else {
-                Text(language.flag).font(.system(size: 64))
-            }
-        }
-    }
-
-    private var checkBadge: some View {
-        ZStack {
-            Circle().fill(Theme.coral)
-                .overlay(Circle().strokeBorder(selected ? Theme.coralWash : Theme.surface, lineWidth: 3))
-                .frame(width: 26, height: 26)
-            Image(systemName: "checkmark")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
         }
     }
 }

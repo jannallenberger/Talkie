@@ -682,3 +682,7 @@
 "Copy prompt" = "Copiar prompt";
 "Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Deja que Claude enseñe tu jerga a Talkie. Pega este prompt en Claude (con el conector de Talkie activado) y leerá cómo hablas realmente con él — tus nombres, productos y términos — y sugerirá los que Talkie oiría mal. Cada sugerencia espera tu confirmación con un toque en Talkie, con opción de deshacer. Claude nunca cambia tu diccionario por su cuenta.";
 "Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Requiere el conector de Talkie: configúralo en General ▸ Conectar con Claude.";
+
+/* L6b — Languages: selected strip + All-languages subpage */
+"Pick every language you speak; Talkie auto-detects which." = "Elige cada idioma que hablas; Talkie detecta cuál automáticamente.";
+"See every language" = "Ver todos los idiomas";
