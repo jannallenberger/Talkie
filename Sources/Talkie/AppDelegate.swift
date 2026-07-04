@@ -2092,16 +2092,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                            dateUnix: nowUnix,
                                            snippet: String(finalText.prefix(120)))
                 )
-                // L2-b (LOG-ONLY / PREVIEW — writes NOTHING to the Scratchpad). For each
-                // commitment this dictation surfaced, record what the "added by Chirp"
-                // auto-add gate WOULD decide, so Jann can calibrate the threshold from
-                // real logs before the live lane ships. This runs ONLY inside
-                // `!neverStore`, so a Private app (I1) produces zero preview records —
-                // the gate never even sees it. The live-dictation path uses the Stage-1
-                // heuristic extractor (`GraphLLMExtractor` is meeting-only, so `.heuristic`
-                // here); the gate applies its stricter second-person/future check to those.
-                // Records carry `dictationID` so they join the true-delete cascade.
-                let existingScratchpadLines = self.scratchpad.lines.map(\.text)
+                // L2-b (LIVE). For each commitment this dictation surfaced, the pure
+                // AutoAddGate decides whether it's worth suggesting; when it says so, the
+                // line is added to the Scratchpad marked `addedByAI` — visibly "by Chirp",
+                // user-deletable, and purged with its dictation via `sourceDictationID`,
+                // so it's a suggestion you can see and remove, never a silent write. Every
+                // attempt is still recorded in the calibration log so the false-negative
+                // rate stays visible. Runs ONLY inside `!neverStore`, so a Private app (I1)
+                // auto-adds nothing — the gate never even sees it. The live-dictation path
+                // uses the Stage-1 heuristic extractor (`GraphLLMExtractor` is meeting-only
+                // → `.heuristic`), so the gate applies its stricter second-person/future
+                // check. `existingScratchpadLines` is grown as we add so two near-duplicate
+                // commitments from the SAME dictation can't both land.
+                var existingScratchpadLines = self.scratchpad.lines.map(\.text)
                 for commitment in ContextGraphExtractor.commitments(in: finalText) {
                     let decision = AutoAddGate.shouldSuggest(
                         commitmentText: commitment,
@@ -2117,6 +2120,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         sourceDictationID: dictationID.uuidString,
                         nowUnix: nowUnix
                     )
+                    if decision.suggest {
+                        self.scratchpad.addLine(
+                            commitment,
+                            sourceDictationID: dictationID.uuidString,
+                            addedByAI: true,
+                            nowUnix: nowUnix
+                        )
+                        existingScratchpadLines.append(commitment)
+                    }
                 }
                 // Harvest niche-vocabulary candidates from the same transcript — proper
                 // nouns, identifiers, filenames — as a frequency signal (batched once per
