@@ -248,7 +248,7 @@ private struct Wordmark: View {
             Image(nsImage: Brand.logo)
                 .resizable()
                 .frame(width: 26, height: 26)
-            Text("Talkie")
+            Text(verbatim: Brand.displayName)
                 .font(.talkieDisplay(20))
                 .foregroundStyle(Theme.ink)
         }

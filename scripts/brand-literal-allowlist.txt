@@ -1,0 +1,63 @@
+# brand-literal-allowlist.txt — the frozen budget for scripts/check-brand-literals.sh (L8).
+#
+# Format:  <max-count> <repo-relative-swift-path>
+# Meaning: that file may contain AT MOST <max-count> string literals whose text
+#          contains "Talkie" (comments excluded; see the guard for the exact rule).
+#
+# Seeded from the tree at L8 landing time, AFTER the chrome-tier conversion to
+# Brand.displayName / BrandMirror.displayName / the updater's brandName. These are
+# the surviving long-tail literals (functional messages, doctor-report receipts,
+# onboarding copy, MCP tool descriptions, frozen path/identifier strings). The
+# guard FAILS if any file's count grows or a new file appears with brand literals.
+#
+# This doubles as the burn-down ledger: when a later package converts one of these
+# literals to the constant, LOWER that file's number here in the same commit so the
+# guard holds the new floor. Never RAISE a number without a note explaining why the
+# literal is unavoidable (e.g. a frozen on-disk path that must read "Talkie").
+#
+# Frozen-identifier note: many of these literals are DELIBERATELY "Talkie" forever
+# (bundle-id fragments, "Application Support/Talkie", "~/Talkie Meetings", the
+# updater's validation of Contents/MacOS/Talkie, the repo slug). Those must NOT be
+# converted — see the FREEZE list in docs/REBRAND.md.
+#
+4 Sources/Talkie/AppDelegate.swift
+2 Sources/Talkie/AppPaths.swift
+1 Sources/Talkie/BugBundle.swift
+1 Sources/Talkie/CommandsView.swift
+1 Sources/Talkie/DashboardView.swift
+3 Sources/Talkie/DesignSystem.swift
+2 Sources/Talkie/DevTools.swift
+1 Sources/Talkie/DictionaryStore.swift
+1 Sources/Talkie/Export/ObsidianVaultDestination.swift
+1 Sources/Talkie/Export/TalkieFolderDestination.swift
+7 Sources/Talkie/HUD.swift
+3 Sources/Talkie/Intents/TalkieIntents.swift
+2 Sources/Talkie/JargonInstallPrompt.swift
+1 Sources/Talkie/LaunchAtLogin.swift
+3 Sources/Talkie/Meetings/FileImport.swift
+9 Sources/Talkie/MeetingsView.swift
+3 Sources/Talkie/Memory/MemoryView.swift
+1 Sources/Talkie/Niche/BiasABTestView.swift
+7 Sources/Talkie/OnboardingView.swift
+10 Sources/Talkie/Privacy/DoctorReport.swift
+1 Sources/Talkie/Scratchpad/ScratchpadCard.swift
+4 Sources/Talkie/Settings/AppProfilesSettings.swift
+2 Sources/Talkie/Settings/CalendarSettings.swift
+7 Sources/Talkie/Settings/ExportDestinationsSettings.swift
+7 Sources/Talkie/Settings/LanguageSettings.swift
+9 Sources/Talkie/Settings/MeetingsSettings.swift
+10 Sources/Talkie/Settings/PrivacySettings.swift
+39 Sources/Talkie/SettingsView.swift
+3 Sources/Talkie/SystemAudioCapture.swift
+2 Sources/Talkie/TalkiePack.swift
+2 Sources/Talkie/VibeCodingView.swift
+2 Sources/Talkie/main.swift
+1 Sources/TalkieCLI/HistoryReader.swift
+1 Sources/TalkieMCP/BrandMirror.swift
+8 Sources/TalkieMCP/MCPServer.swift
+3 Sources/TalkieMCP/SemanticSelfTest.swift
+12 Sources/TalkieMCP/TalkieStore.swift
+2 Sources/TalkieUpdater/AppUpdater.swift
+1 Sources/TalkieUpdater/GitHubReleases.swift
+4 Sources/TalkieUpdater/UpdateInstaller.swift
+2 Sources/TalkieUpdater/UpdaterSupport.swift

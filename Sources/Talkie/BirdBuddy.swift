@@ -176,13 +176,13 @@ private struct BirdBuddyView: View {
                 // Alternate the beat direction each frame for the flapping rhythm.
                 flapSign *= -1
             }
-            .help("Talkie — hold your dictation key and speak")
+            .help(String(format: "%@ — hold your dictation key and speak".loc, Brand.displayName))
             // The macaw's color/grayscale state is the whole signal, invisible to a
             // VoiceOver user — so name it, and state whether it's currently
             // listening, rather than exposing a bare, unlabeled image.
             .accessibilityElement()
             .accessibilityLabel(model.active
-                ? "Talkie is listening.".loc
-                : "Talkie dictation indicator. Hold your dictation key and speak.".loc)
+                ? String(format: "%@ is listening.".loc, Brand.displayName)
+                : String(format: "%@ dictation indicator. Hold your dictation key and speak.".loc, Brand.displayName))
     }
 }

@@ -47,7 +47,6 @@
 "Off" = "Désactivé";
 "On" = "Activé";
 "Open Settings" = "Ouvrir les Réglages";
-"Open Talkie" = "Ouvrir Talkie";
 "Polishing…" = "Peaufinage…";
 "Private by design" = "Confidentiel par conception";
 "Quit & Reopen" = "Quitter et rouvrir";
@@ -194,8 +193,6 @@
 "Error: %@" = "Erreur : %@";
 "Cleanup style: %@." = "Style de nettoyage : %@.";
 "Double-tap to cycle to the next cleanup style." = "Touche deux fois pour passer au style de nettoyage suivant.";
-"Talkie is listening." = "Talkie est à l’écoute.";
-"Talkie dictation indicator. Hold your dictation key and speak." = "Indicateur de dictée Talkie. Maintiens ta touche de dictée et parle.";
 /* export destinations */
 "Obsidian vault detected — notes will include front-matter, [[wikilinks]] and #tags." = "Coffre Obsidian détecté — les notes incluront le front-matter, les [[wikilinks]] et les #tags.";
 "Plain Markdown. (Tip: pick a vault folder and Talkie formats for Obsidian automatically.)" = "Markdown simple. (Astuce : choisissez un dossier de coffre et Talkie met en forme pour Obsidian automatiquement.)";
@@ -371,7 +368,6 @@
 "unsigned build (no cdhash)" = "version non signée (pas de cdhash)";
 "Version" = "Version";
 "Taken" = "Prise le";
-"Talkie — Nothing leaves this Mac." = "Talkie — Rien ne quitte ce Mac.";
 "Entitlements: none readable (un-signed build)" = "Autorisations : aucune lisible (version non signée)";
 "Entitlements: %@" = "Autorisations : %@";
 "Signature: %@" = "Signature : %@";
@@ -667,7 +663,6 @@
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
 "What Claude can do" = "Ce que Claude peut faire";
 "asks first" = "demande d'abord";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie fournit un petit serveur local pour que Claude puisse lire vos réunions, votre briefing, vos engagements, le contexte, les statistiques, votre dictionnaire et vos notes — sur l'appareil, rien ne quitte votre Mac. Claude peut aussi gérer votre dictionnaire — ajouter, modifier ou supprimer des entrées et des règles — mais chaque changement attend votre confirmation en un geste, avec annulation. Fourni avec l'app : aucun téléchargement ni build séparé.";
 
 /* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
 "Context awareness" = "Conscience du contexte";
@@ -772,3 +767,21 @@
 "~/Library/Application Support/Talkie — settings and history." = "~/Library/Application Support/Talkie — réglages et historique.";
 "~/Talkie Meetings — your recordings and transcripts, in plain folders you own." = "~/Talkie Meetings — vos enregistrements et transcriptions, dans de simples dossiers qui vous appartiennent.";
 "Run these against the app on your own Mac. They read the live signature, grep the source, and watch the wire — the same checks the diagnostic report gathers for you." = "Exécutez-les contre l’app sur votre propre Mac. Ils lisent la signature en direct, parcourent le code source et observent le trafic réseau — les mêmes vérifications que le rapport de diagnostic rassemble pour vous.";
+
+/* L8 — one-constant display name (chrome %@-format keys) + L6c meetings-settings key fix. */
+"About %@" = "À propos de %@";
+"Hide %@" = "Masquer %@";
+"Quit %@" = "Quitter %@";
+"Open %@" = "Ouvrir %@";
+"%@ — hold your key to dictate" = "%@ — maintiens ta touche pour dicter";
+"%@ is listening." = "%@ est à l’écoute.";
+"%@ dictation indicator. Hold your dictation key and speak." = "Indicateur de dictée %@. Maintiens ta touche de dictée et parle.";
+"%@ — Nothing leaves this Mac." = "%@ — Rien ne quitte ce Mac.";
+"%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ fournit un petit serveur local pour que Claude puisse lire vos réunions, votre briefing, vos engagements, le contexte, les statistiques, votre dictionnaire et vos notes — sur l'appareil, rien ne quitte votre Mac. Claude peut aussi gérer votre dictionnaire — ajouter, modifier ou supprimer des entrées et des règles — mais chaque changement attend votre confirmation en un geste, avec annulation. Fourni avec l'app : aucun téléchargement ni build séparé.";
+"Detect meetings & offer to record" = "Détecter les réunions et proposer d’enregistrer";
+"When a call app starts using your mic, Talkie offers to record. It never records on its own." = "Quand une app d’appel utilise ton micro, Talkie propose d’enregistrer. Il n’enregistre jamais de lui-même.";
+"Show the meeting pill" = "Afficher la pastille de réunion";
+"Talkie offers to record when one of these apps starts using your microphone." = "Talkie propose d’enregistrer quand l’une de ces apps utilise ton microphone.";
+"Browse installed apps…" = "Parcourir les apps installées…";
+"No apps yet — browse your installed apps above." = "Aucune app pour l’instant — parcours tes apps installées ci-dessus.";
+"You dismissed these enough times that Talkie stopped offering. Tap to un-mute." = "Tu les as ignorées assez souvent pour que Talkie arrête de proposer. Touche pour réactiver.";

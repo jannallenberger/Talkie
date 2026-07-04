@@ -99,7 +99,7 @@ struct ProofCard: View {
         HStack(alignment: .center, spacing: 11) {
             ClayIcon(name: "IconShield", size: 30)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Talkie")
+                Text(verbatim: Brand.displayName)
                     .font(.talkieEyebrow)
                     .tracking(0.8)
                     .foregroundStyle(Theme.inkSecondary)
@@ -253,7 +253,7 @@ enum ProofCardExporter {
     /// The plain-text twin of the card — the same real values, greppable.
     static func plainText(_ data: ProofCardData) -> String {
         var lines: [String] = []
-        lines.append("Talkie — Nothing leaves this Mac.".loc)
+        lines.append(String(format: "%@ — Nothing leaves this Mac.".loc, Brand.displayName))
         lines.append(data.socketLine)                                                          // talkie:no-network(self-inspection)
         if data.entitlements.isEmpty {
             lines.append("Entitlements: none readable (un-signed build)".loc)
