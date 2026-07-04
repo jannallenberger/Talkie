@@ -681,3 +681,6 @@
 "Copy prompt" = "Copy prompt";
 "Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own.";
 "Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Needs the Talkie connector — set it up under General ▸ Connect to Claude.";
+/* L6d — Verify our claims: root row + subpage intro */
+"See the live entitlement list, the commands to check it yourself, and where your data lives." = "See the live entitlement list, the commands to check it yourself, and where your data lives.";
+"Every value below is read from this Mac right now — nothing is typed in." = "Every value below is read from this Mac right now — nothing is typed in.";

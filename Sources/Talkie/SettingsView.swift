@@ -485,10 +485,10 @@ private struct SettingsHome: View {
                         title: "Meetings",
                         subtitle: "Meeting recording and transcription settings will live here.")
                 case .verifyClaims:
-                    // L6d fills this in with the zero-network proof surface.
-                    SubpagePlaceholder(
-                        title: "Verify our claims",
-                        subtitle: "The on-device, zero-network proof will live here.")
+                    // L6d — the full zero-network proof detail: the three
+                    // verify-yourself commands, the live entitlement list, and the
+                    // data-locations bullets, relocated off the root intact.
+                    VerifyClaimsSubpage()
                 }
             }
         }
