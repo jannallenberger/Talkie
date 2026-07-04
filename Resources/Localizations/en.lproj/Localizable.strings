@@ -261,6 +261,9 @@
 "Copy config" = "Copy config";
 "Or from the terminal" = "Or from the terminal";
 "Copy command" = "Copy command";
+"Or let Claude set it up" = "Or let Claude set it up";
+"Paste this into Claude and it connects the server itself" = "Paste this into Claude and it connects the server itself";
+"Copy setup prompt" = "Copy setup prompt";
 "What Claude can read" = "What Claude can read";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step.";
 "Opened in Claude Desktop" = "Opened in Claude Desktop";
