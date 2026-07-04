@@ -136,26 +136,40 @@ exactly as offline as it claims to be.
 
 Talkie's whole promise is that nothing leaves your Mac. An update mechanism is
 the one place a "private" app most plausibly phones home, so we've drawn the line
-clearly:
+clearly. There are exactly three build flavors, and only one of them is what you
+install here:
 
-- **The build you install here is the default, zero-network flavor.** It contains
-  **no in-app updater** and no networking code at all. You update it the way you
-  installed it — `brew upgrade`, or downloading the next release — both of which
-  are *you* reaching out, never the app.
+- **default** — the **zero-network flavor**, and the only one CI ever releases.
+  It links **no updater** and contains no networking code at all. You update it
+  the way you installed it — `brew upgrade`, or downloading the next release —
+  both of which are *you* reaching out, never the app. This is the build this
+  page sets up.
 
-- **In-app auto-update is a separate, opt-in "Connected" flavor.** We may publish
-  a build that includes [Sparkle](https://sparkle-project.org) (a standard,
-  open-source macOS updater) so the app can offer to update itself. Sparkle works
-  by fetching a version list over the network — i.e. it *does* phone home — so it
-  lives only in the Connected flavor, never the default one. Even there it is
-  **off by default**: it checks only when you click "Check for Updates…", or after
-  you flip a Settings toggle on. When it checks, it makes a single HTTPS request
-  to read the published version list and sends nothing about you — never your
-  dictation, your meetings, or your context.
+- **dev-tools** (`TALKIE_DEV_TOOLS=1`) — a build for collaborators, with the
+  in-app updater (`TalkieUpdater`) compiled in. It follows the **dev-`N` channel
+  only** (it can never offer a public release) and is **consent-gated**: the first
+  time it would contact GitHub, it asks once, in Developer ▸ App updates. Until
+  you say yes, it makes **zero** outbound connections — no launch-time check, not
+  even a `gh auth status` probe. See "Staying current on a dev build" above.
+
+- **Connected** — reserved for the opt-in Claude bridge (`TalkieBridge`), the only
+  module allowed to summarize over the network. **Not shipped today.** When it
+  exists it will be its own clearly-labelled flavor, off by default and gated
+  behind a consent step that discloses exactly what bytes would leave.
+
+**On the updater specifically: there is no Sparkle.** Talkie's updater is
+`TalkieUpdater` — a hand-rolled, **zero-dependency** module that reads the private
+repo's `dev-*` releases through your own `gh` login or token. Adding Sparkle would
+be Talkie's *first* external dependency, and it is rejected under the
+zero-dependency policy. `TalkieUpdater` is the only updater there is, and it never
+ships in the default build — `Package.swift` links it solely when
+`TALKIE_DEV_TOOLS=1`, so the released app carries no update or network code to
+begin with.
 
 If you want a build that *cannot* reach the network, install the default flavor
-(the one this page sets up) and update by hand. If you'd rather the app keep
-itself current, the Connected flavor exists for exactly that — and it tells you,
-in plain words, every time it's about to touch the network.
+(the one this page sets up) and update by hand. If you're a collaborator who'd
+rather stay on the newest dev build, the dev-tools flavor exists for exactly that
+— and it asks, in plain words, before its first contact and tells you every time
+it's about to check.
 
 Either way, the choice is yours and it's visible. That's the point.

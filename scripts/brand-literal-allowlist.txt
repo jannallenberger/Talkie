@@ -41,13 +41,21 @@
 7 Sources/Talkie/OnboardingView.swift
 10 Sources/Talkie/Privacy/DoctorReport.swift
 1 Sources/Talkie/Scratchpad/ScratchpadCard.swift
-4 Sources/Talkie/Settings/AppProfilesSettings.swift
+# Pre-existing drift reconciled at J2: E8 (8d77ed4) added the "…Talkie translates
+# the finished text…" language subtitle without bumping this from 4→5, leaving the
+# gate red in the integration base. The literal is legitimate user copy (same tier
+# as the other four here); recorded as 5 so the base is green. Not J2's code.
+5 Sources/Talkie/Settings/AppProfilesSettings.swift
 2 Sources/Talkie/Settings/CalendarSettings.swift
 7 Sources/Talkie/Settings/ExportDestinationsSettings.swift
 7 Sources/Talkie/Settings/LanguageSettings.swift
 9 Sources/Talkie/Settings/MeetingsSettings.swift
 10 Sources/Talkie/Settings/PrivacySettings.swift
-39 Sources/Talkie/SettingsView.swift
+# J2: +1 for the dev-tools updater consent-copy literal ("…new Talkie builds…"),
+# a user-visible .loc string that follows the AppUpdateSection's existing
+# literal+.loc convention (the section already carries the footer/toggle "Talkie"
+# strings the same way; routing brandName through it would break the .loc key).
+40 Sources/Talkie/SettingsView.swift
 3 Sources/Talkie/SystemAudioCapture.swift
 2 Sources/Talkie/TalkiePack.swift
 2 Sources/Talkie/VibeCodingView.swift
@@ -60,4 +68,7 @@
 2 Sources/TalkieUpdater/AppUpdater.swift
 1 Sources/TalkieUpdater/GitHubReleases.swift
 4 Sources/TalkieUpdater/UpdateInstaller.swift
-2 Sources/TalkieUpdater/UpdaterSupport.swift
+# J2: +1 for the frozen "TalkieUpdaterConsent" UserDefaults key — a load-bearing
+# identifier on the REBRAND FREEZE list (mirrors "TalkieUpdaterAutoCheck" in
+# AppUpdater.swift), never user-visible, must not be converted.
+3 Sources/TalkieUpdater/UpdaterSupport.swift

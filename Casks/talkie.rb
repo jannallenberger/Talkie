@@ -7,8 +7,9 @@
 # This cask installs the *default* (zero-network) Talkie build: there is no
 # in-app updater and nothing phones home. You update by running `brew upgrade`,
 # which is your shell reaching out on your behalf — the app process never does.
-# (If a "Connected" flavor with opt-in Sparkle auto-update ships later, it would
-# add `auto_updates true` here so `brew upgrade` defers to the in-app updater.)
+# The in-app updater (the hand-rolled, zero-dependency `TalkieUpdater` — there is
+# no Sparkle) is compiled ONLY into the dev-tools flavor, never this default cask
+# build, so no `auto_updates true` line belongs here.
 #
 # ── How release.yml fills in the placeholders ────────────────────────────────
 # `version` and `sha256` below are placeholders. On a `v*` tag, the release

@@ -44,7 +44,11 @@ public final class AppUpdater: ObservableObject {
             UserDefaults.standard.set(true, forKey: Self.autoKey)
         }
         autoCheckOnLaunch = UserDefaults.standard.bool(forKey: Self.autoKey)
-        refreshAuth()
+        // NOTE: `refreshAuth()` is deliberately NOT called here. It spawns
+        // `gh auth status`, which can itself reach the GitHub API — a network
+        // touch. So it stays behind the consent gate: the settings card refreshes
+        // auth after consent is granted (or when a build that already has consent
+        // opens the card), never at construction time.
     }
 
     public var isBusy: Bool {
@@ -78,6 +82,14 @@ public final class AppUpdater: ObservableObject {
     /// user to open settings.
     public func check(announce: Bool = false) async {
         guard !isBusy else { return }
+        // Consent gate (fail-closed): no ReleaseFetcher call — nor the `gh auth
+        // status` probe inside refreshAuth — until the collaborator has said yes
+        // in the App-updates card. Existing collaborators (key absent) read as
+        // `.unasked` and land here.
+        guard UpdaterConsent.current == .granted else {
+            state = .failed("Update checks are off — enable them in this card first.")
+            return
+        }
         state = .checking
         await refreshAuthAwait()
         guard auth != .none else {

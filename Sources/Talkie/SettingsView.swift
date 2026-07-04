@@ -1042,35 +1042,109 @@ private struct BugBundlePreviewSheet: View {
 private struct AppUpdateSection: View {
     @ObservedObject private var updater = AppUpdater.shared
     @State private var tokenField = ""
+    /// The one-time consent state, read once on appear and updated in place when
+    /// the collaborator answers. Drives which face of the card shows: the consent
+    /// prompt (`unasked`), a single quiet re-enable row (`declined`), or the full
+    /// updater UI (`granted`). Fail-closed: `UpdaterConsent.current` reads an
+    /// absent key as `.unasked`, so existing collaborators see the prompt first.
+    @State private var consent: UpdaterConsent.State = UpdaterConsent.current
 
     var body: some View {
         SettingsCard(
             header: "App updates",
             footer: "Pulls the newest Talkie published to GitHub, swaps this app in place, and relaunches — so you always have the latest without rebuilding. This updater is compiled only into dev builds; the public build ships no update or network code."
         ) {
-            SettingsRow(title: "This build", subtitle: "Version \(updater.currentVersion)") {
-                Text("build \(updater.currentBuild)")
-                    .font(.talkieHeading(13, weight: .semibold))
-                    .foregroundStyle(Theme.inkSecondary)
+            switch consent {
+            case .unasked:
+                consentPrompt
+            case .declined:
+                reEnableRow
+            case .granted:
+                grantedBody
             }
-            SettingsDivider()
-            statusRow
-            if updater.auth == .none {
-                SettingsDivider()
-                tokenSetup
-            }
-            SettingsDivider()
-            SettingsToggleRow(
-                title: "Check for updates when Talkie launches",
-                subtitle: "Offers the newest build a few seconds after you open Talkie.",
-                isOn: $updater.autoCheckOnLaunch
-            )
         }
         .onAppear {
+            // Refresh consent from defaults (it may have changed in another window).
+            consent = UpdaterConsent.current
+            guard consent == .granted else { return }
+            // Consent is granted, so we may touch the network. `refreshAuth()` —
+            // which used to run in `AppUpdater.init()` and is now gated — populates
+            // `auth` so the card knows whether to show the token-setup UI. Then,
+            // exactly as before, we auto-check only when already authenticated and
+            // idle (an unauthenticated auto-check would just surface a failure; the
+            // user sets up a token first, which triggers its own check).
+            updater.refreshAuth()
             if updater.auth != .none, case .idle = updater.state {
                 Task { await updater.check() }
             }
         }
+    }
+
+    /// The full updater UI, shown once consent is granted.
+    @ViewBuilder private var grantedBody: some View {
+        SettingsRow(title: "This build", subtitle: "Version \(updater.currentVersion)") {
+            Text("build \(updater.currentBuild)")
+                .font(.talkieHeading(13, weight: .semibold))
+                .foregroundStyle(Theme.inkSecondary)
+        }
+        SettingsDivider()
+        statusRow
+        if updater.auth == .none {
+            SettingsDivider()
+            tokenSetup
+        }
+        SettingsDivider()
+        SettingsToggleRow(
+            title: "Check for updates when Talkie launches",
+            subtitle: "Offers the newest build a few seconds after you open Talkie.",
+            isOn: $updater.autoCheckOnLaunch
+        )
+    }
+
+    /// First-run consent row: plain, calm, factual — a dev-tools courtesy, not a
+    /// warning. Shown FIRST in the card while consent is `unasked`. "Enable"
+    /// records `granted`, refreshes auth, and runs the first check; "Not now"
+    /// records `declined` and collapses the card to a single re-enable row.
+    @ViewBuilder private var consentPrompt: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("This developer build can check GitHub for new Talkie builds. One HTTPS request to list releases; nothing about you or your dictation is sent. The public build contains no network code at all.".loc)
+                .font(.callout)
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button("Enable update checks".loc) { grantConsent() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+                Button("Not now".loc) { declineConsent() }
+                    .buttonStyle(.bordered)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+
+    /// The collapsed face after "Not now": one quiet row that re-opens the gate.
+    @ViewBuilder private var reEnableRow: some View {
+        SettingsRow(
+            title: "Update checks are off".loc,
+            subtitle: "This build won't contact GitHub. Turn checks on whenever you want the latest.".loc
+        ) {
+            Button("Enable update checks".loc) { grantConsent() }
+                .buttonStyle(.bordered)
+        }
+    }
+
+    private func grantConsent() {
+        UpdaterConsent.set(.granted)
+        consent = .granted
+        updater.refreshAuth()
+        Task { await updater.check() }
+    }
+
+    private func declineConsent() {
+        UpdaterConsent.set(.declined)
+        consent = .declined
     }
 
     @ViewBuilder private var statusRow: some View {

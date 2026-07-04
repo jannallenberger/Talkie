@@ -793,3 +793,9 @@
 "As spoken" = "Como se dijo";
 "As spoken — no translation." = "Como se dijo: sin traducción.";
 "Translated to %@ before inserting." = "Traducido al %@ antes de insertar.";
+
+/* J2 — dev-tools updater consent gate (dev flavor only) */
+"This developer build can check GitHub for new Talkie builds. One HTTPS request to list releases; nothing about you or your dictation is sent. The public build contains no network code at all." = "Esta versión de desarrollo puede consultar GitHub para buscar nuevas versiones de Talkie. Una sola petición HTTPS para listar las publicaciones; no se envía nada sobre ti ni sobre tu dictado. La versión pública no contiene ningún código de red.";
+"Enable update checks" = "Activar la búsqueda de actualizaciones";
+"Update checks are off" = "La búsqueda de actualizaciones está desactivada";
+"This build won't contact GitHub. Turn checks on whenever you want the latest." = "Esta versión no contactará con GitHub. Activa la búsqueda cuando quieras tener lo último.";

@@ -793,3 +793,9 @@
 "As spoken" = "말한 그대로";
 "As spoken — no translation." = "말한 그대로 — 번역 없음.";
 "Translated to %@ before inserting." = "삽입하기 전에 %@로 번역합니다.";
+
+/* J2 — dev-tools updater consent gate (dev flavor only) */
+"This developer build can check GitHub for new Talkie builds. One HTTPS request to list releases; nothing about you or your dictation is sent. The public build contains no network code at all." = "이 개발 빌드는 GitHub에서 새로운 Talkie 빌드를 확인할 수 있습니다. 릴리스 목록을 가져오기 위한 HTTPS 요청 한 번만 보내며, 사용자나 받아쓰기에 관한 정보는 전혀 전송되지 않습니다. 공개 빌드에는 네트워크 코드가 전혀 없습니다.";
+"Enable update checks" = "업데이트 확인 사용";
+"Update checks are off" = "업데이트 확인이 꺼져 있습니다";
+"This build won't contact GitHub. Turn checks on whenever you want the latest." = "이 빌드는 GitHub에 연결하지 않습니다. 최신 버전이 필요할 때 확인을 켜세요.";

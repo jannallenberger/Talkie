@@ -22,9 +22,11 @@
 #   APPLE_APP_PASSWORD         app-specific password for that Apple ID
 #   KEYCHAIN_PASSWORD          any throwaway string for the temp CI keychain
 #
-# NOTE (privacy / feature 15): this ships the DEFAULT zero-network flavor — no
-# Sparkle is compiled in, so the released app contains no update/network code.
-# Auto-update is a separate, opt-in "Connected" flavor (see docs/INSTALL.md).
+# NOTE (privacy / feature 15): this ships the DEFAULT zero-network flavor — the
+# in-app updater (the hand-rolled, zero-dependency TalkieUpdater; there is no
+# Sparkle) is NOT compiled in, so the released app contains no update/network
+# code. The updater exists only in the dev-tools flavor (TALKIE_DEV_TOOLS=1) and
+# is consent-gated there (see docs/INSTALL.md).
 
 name: Release
 

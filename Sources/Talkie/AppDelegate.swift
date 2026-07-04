@@ -460,7 +460,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// collaborator on the latest without ever opening Settings. Off the default
     /// public build entirely (the updater module isn't even linked there).
     private func scheduleLaunchUpdateCheck() {
-        guard AppUpdater.shared.autoCheckOnLaunch else { return }
+        // Fail-closed: fire only when the collaborator has BOTH granted the
+        // one-time consent AND left the launch-check toggle on. Absent consent
+        // (the default for every existing collaborator) means silence at launch —
+        // no dialog, no nag, no network touch. They enable it in Developer ▸ App
+        // updates the first time. `mayAutoCheck` is the pure policy this mirrors.
+        guard UpdaterConsent.mayAutoCheck(
+            consent: UpdaterConsent.current,
+            autoCheckOn: AppUpdater.shared.autoCheckOnLaunch
+        ) else { return }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             await AppUpdater.shared.check(announce: true)

@@ -115,17 +115,31 @@ for why). So here is the accurate description of the wall, with no overclaiming:
    because you can verify every layer yourself.
 
 3. **Module separation — the structural lock.** The network wall is enforced by
-   the build system, not by good intentions. The only place in the entire repo
-   allowed to touch the network is a separate module, **`Sources/TalkieBridge`**,
-   which is the opt-in Claude bridge. The default Talkie build **does not link or
-   import it** — the app core depends on a protocol (`Summarizer`), never on the
-   bridge module. Anything networked lives in `TalkieBridge`, compiles only into
-   the clearly-labelled **"Talkie (Connected)"** flavor, ships **off by default**,
-   and is gated behind a deliberate consent step that discloses exactly what
-   bytes would leave. This is why `scripts/check-no-network.sh` scans
-   `Sources/Talkie` and `Sources/TalkieMCP` but deliberately **excludes**
-   `Sources/TalkieBridge`: the bridge is *expected* to contain network code, and
-   the wall's job is to keep that code from ever reaching the core.
+   the build system, not by good intentions. Every module allowed to touch the
+   network is kept separate from the app core, and none is linked into the default
+   build. The primary one is **`Sources/TalkieBridge`**, the opt-in Claude bridge.
+   The default Talkie build **does not link or import it** — the app core depends
+   on a protocol (`Summarizer`), never on the bridge module. Anything networked
+   lives in `TalkieBridge`, compiles only into the clearly-labelled **"Talkie
+   (Connected)"** flavor, ships **off by default**, and is gated behind a
+   deliberate consent step that discloses exactly what bytes would leave.
+
+   A second network-allowed module is held to the same lock:
+   **`Sources/TalkieUpdater`**, the in-app "update from GitHub" feature. It
+   compiles into the app **only** in the dev-tools flavor (`TALKIE_DEV_TOOLS=1`),
+   never the default public build, and the app core never imports it — so the
+   released app still ships zero update/network code. Even in a dev build it is
+   **consent-gated**: before its first-ever contact with GitHub (the launch-time
+   check, or the `gh auth status` probe behind it) it asks once, in Developer ▸
+   App updates; absent an explicit "yes" it makes no outbound connection at all.
+   And to be explicit: the updater is **hand-rolled and zero-dependency** — there
+   is **no Sparkle** anywhere in the tree. Adding it would be Talkie's first
+   external dependency and is rejected under the zero-dependency policy.
+
+   This is why `scripts/check-no-network.sh` scans `Sources/Talkie` and
+   `Sources/TalkieMCP` but deliberately **excludes** both `Sources/TalkieBridge`
+   and `Sources/TalkieUpdater`: those modules are *expected* to contain network
+   code, and the wall's job is to keep that code from ever reaching the core.
 
 ### Why not the full App Sandbox?
 
