@@ -655,6 +655,13 @@
 "The on-device, zero-network proof will live here." = "Het lokale bewijs zonder netwerk komt hier.";
 "This settings page is coming soon." = "Deze instellingenpagina komt binnenkort.";
 
+/* L7 — profile picture (opt-in, in-app only) */
+"Add a photo" = "Een foto toevoegen";
+"Change your photo" = "Je foto wijzigen";
+"Choose" = "Kiezen";
+"Choose a photo" = "Kies een foto";
+"Choose photo…" = "Foto kiezen…";
+"Remove photo" = "Foto verwijderen";
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
 "What Claude can do" = "Wat Claude kan doen";
 "asks first" = "vraagt eerst";

@@ -36,6 +36,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// a NON-secure-input failure appends the transcript here instead of leaving it
     /// only on the clipboard to be lost on the next copy.
     let scratchpad = ScratchpadStore()
+    /// L7: the user's optional profile picture (`profile.png` in Application Support).
+    /// Photo-only and opt-in — no default avatar. Shown in-app on the dashboard header
+    /// and meeting rows; never written into exports. Its `clear()` joins the
+    /// "Clear everything" cascade in `MemoryView`.
+    let profileImage = ProfileImageStore()
     /// L2-b (LOG-ONLY / PREVIEW): a calibration log of what the "added by Chirp"
     /// auto-add gate WOULD do for each extracted commitment. It writes ONLY to its own
     /// `scratchpad_ai_preview.json` — never to the Scratchpad, never to the UI — so
@@ -2716,6 +2721,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 latency: latency,
                 systemPressure: systemPressure,
                 scratchpad: scratchpad,
+                profileImage: profileImage,
                 autoAddPreviewLog: autoAddPreviewLog,
                 projectIndex: projectIndex,
                 contextSummary: contextSummary,

@@ -38,6 +38,10 @@ struct MemoryView: View {
     /// coinage can't outlive the inputs it was made from. Defaulted so previews/tests
     /// that don't wire it still compile.
     var jobTitle: JobTitleStore? = nil
+    /// L7: the user's profile picture is personal data on disk, so a full wipe removes
+    /// it too — "Clear everything" calls `clear()`, deleting `profile.png`. Defaulted so
+    /// previews/tests that don't wire it still compile.
+    var profileImage: ProfileImageStore? = nil
 
     @State private var query = ""
     /// Drives the "Clear everything" confirmation — clearing history also erases what
@@ -127,6 +131,9 @@ struct MemoryView: View {
         // eventually rewrites it. (A delete of a single dictation ages out via that
         // rebuild; a full clear shouldn't have to wait for the debounce.)
         searchEngine.clearSidecar()
+        // L7: a full wipe removes the profile picture too — it's personal data on disk.
+        // Deletes `profile.png` and clears every surface instantly.
+        profileImage?.clear()
     }
 
     private var searchField: some View {

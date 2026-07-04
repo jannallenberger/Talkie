@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Real-world typing benchmarks the speed gauge compares you against. Honest:
 /// Talkie is offline, so there's no percentile of other users — we anchor to
@@ -34,6 +35,10 @@ struct DashboardView: View {
     @ObservedObject var activity: ActivityStore
     @ObservedObject var appUsage: AppUsageStore
     @ObservedObject var scratchpad: ScratchpadStore
+    /// L7: the optional profile picture, shown leading the welcome title (and only
+    /// when a photo is set). The header's photo menu IS the setting — there is no
+    /// Settings row.
+    @ObservedObject var profileImage: ProfileImageStore
     /// L5-a: lifetime word/phrase frequency, threaded through to the Plumage
     /// subpage's "words you say most" card.
     @ObservedObject var wordFreq: WordFrequencyStore
@@ -50,6 +55,10 @@ struct DashboardView: View {
     @ObservedObject var router: SettingsRouter
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// L7: true while the pointer is over the welcome header. Drives the reveal of the
+    /// "Add a photo" affordance when no photo is set (a set photo shows regardless).
+    @State private var headerHovered = false
 
     /// The highest milestone tier the user has already been congratulated for.
     /// Persisted so the crossing banner fires ONCE per tier, never on relaunch.
@@ -133,7 +142,14 @@ struct DashboardView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
+        HStack(alignment: .top, spacing: headerAvatarSpacing) {
+            // L7: the profile picture leads the welcome title. When a photo is set it
+            // always shows; when none is set the slot collapses to zero width at rest —
+            // so the header is pixel-identical to pre-L7 — and only reveals a dashed
+            // "Add a photo" affordance when the header is hovered. This control IS the
+            // setting (photo menu on click + drag-drop); there is no Settings row.
+            DashboardAvatar(profileImage: profileImage, headerHovered: headerHovered)
+                .padding(.top, 4)
             VStack(alignment: .leading, spacing: 4) {
                 // H1: the dedicated Settings ▸ Profile "Name" field is gone. The
                 // dashboard title IS the name editor now — click it to type your name
@@ -147,6 +163,17 @@ struct DashboardView: View {
             Spacer()
             Wordmark()
         }
+        // Hovering anywhere on the header reveals the "Add a photo" affordance when no
+        // photo is set; a set photo ignores this (it's always shown).
+        .onHover { headerHovered = $0 }
+        .animation(.easeInOut(duration: 0.15), value: headerHovered)
+    }
+
+    /// The leading gap before the title: 14 pt once the avatar slot is occupying
+    /// space (photo set, or the affordance is revealed), and 0 when the slot is
+    /// collapsed — so an empty header sits exactly where it did before L7.
+    private var headerAvatarSpacing: CGFloat {
+        (profileImage.image != nil || headerHovered) ? 14 : 0
     }
 
     private var greeting: String {
@@ -225,6 +252,113 @@ private struct Wordmark: View {
                 .font(.talkieDisplay(20))
                 .foregroundStyle(Theme.ink)
         }
+    }
+}
+
+// MARK: - Dashboard profile avatar (opt-in, photo-only)
+
+/// L7 — the profile-picture control in the dashboard header. This IS the entire
+/// profile-photo setting (no Settings row, per the post-H1 IA + no-new-toggles rule):
+///
+///   • Photo set   → a 34-pt `AvatarView`, always visible; click opens a menu with
+///                   "Choose photo…" and "Remove photo".
+///   • No photo    → nothing at rest (the header looks identical to pre-L7); on hover
+///                   a dashed "Add a photo" circle fades in. Click opens the picker.
+///   • Either way  → dropping an image file onto the control sets the photo.
+///
+/// The picker is a plain `NSOpenPanel` restricted to `[.image]` — deliberately NOT a
+/// PhotosPicker, so there is zero photo-library permission surface; the panel grants
+/// exactly the one file the user chooses.
+private struct DashboardAvatar: View {
+    @ObservedObject var profileImage: ProfileImageStore
+    /// Whether the pointer is over the header (owned by `DashboardView`). When no photo
+    /// is set, the "Add a photo" affordance only appears while this is true; otherwise
+    /// the slot collapses to zero width so the header matches its pre-L7 layout.
+    let headerHovered: Bool
+    @State private var dropTargeting = false
+
+    private let size: CGFloat = 34
+
+    /// Whether the affordance should be shown when no photo is set (hovering the header
+    /// or a drag hovering the slot). A set photo ignores this — it's always shown.
+    private var revealed: Bool { headerHovered || dropTargeting }
+
+    var body: some View {
+        control
+            // Collapse to zero width when there's no photo and nothing to reveal, so the
+            // title sits exactly where it did before L7; otherwise reserve the avatar.
+            .frame(width: (profileImage.image != nil || revealed) ? size : 0, height: size)
+            .contentShape(Circle())
+            .dropDestination(for: URL.self) { urls, _ in
+                guard let url = urls.first(where: Self.isImageFile) else { return false }
+                return profileImage.setImage(fromFile: url)
+            } isTargeted: { dropTargeting = $0 }
+            .animation(.easeInOut(duration: 0.15), value: revealed)
+            .animation(.easeInOut(duration: 0.15), value: dropTargeting)
+    }
+
+    @ViewBuilder
+    private var control: some View {
+        if profileImage.image != nil {
+            // A set photo: the avatar with a click menu to replace or remove it.
+            Menu {
+                Button("Choose photo…".loc, action: choosePhoto)
+                Button("Remove photo".loc, role: .destructive) { profileImage.clear() }
+            } label: {
+                AvatarView(store: profileImage, size: size)
+                    .overlay(dropTargeting ? Circle().strokeBorder(Theme.coral, lineWidth: 2) : nil)
+            }
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .menuStyle(.borderlessButton)
+            .help("Change your photo".loc)
+        } else {
+            // No photo: an "add a photo" affordance revealed while the header is hovered
+            // (or while a drag is over the slot). Clicking opens the picker directly —
+            // there's nothing to remove yet, so no menu.
+            Button(action: choosePhoto) {
+                Circle()
+                    .strokeBorder(
+                        revealed ? Theme.coral : Theme.hairline,
+                        style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
+                    )
+                    .background(Circle().fill(Theme.surfaceSunken.opacity(0.6)))
+                    .overlay(
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(revealed ? Theme.coral : Theme.inkTertiary)
+                    )
+                    .opacity(revealed ? 1 : 0)
+            }
+            .buttonStyle(.plain)
+            .help("Add a photo".loc)
+            .accessibilityLabel(Text("Add a photo".loc))
+            // Keep the affordance reachable/clipped to the reserved circle even as the
+            // enclosing frame animates between 0 and full width.
+            .frame(width: size, height: size)
+            .clipped()
+        }
+    }
+
+    /// Open a file picker restricted to images, and import the chosen file. Runs on
+    /// the main actor; `NSOpenPanel` is modal so the result is available synchronously.
+    private func choosePhoto() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = "Choose".loc
+        panel.message = "Choose a photo".loc
+        if panel.runModal() == .OK, let url = panel.url {
+            profileImage.setImage(fromFile: url)
+        }
+    }
+
+    /// Whether a dropped URL is an image file we can take (extension → UTType).
+    private static func isImageFile(_ url: URL) -> Bool {
+        guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+        return type.conforms(to: .image)
     }
 }
 

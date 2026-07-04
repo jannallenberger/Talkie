@@ -655,6 +655,13 @@
 "The on-device, zero-network proof will live here." = "La prueba local, sin red, aparecerá aquí.";
 "This settings page is coming soon." = "Esta página de ajustes llegará pronto.";
 
+/* L7 — profile picture (opt-in, in-app only) */
+"Add a photo" = "Añadir una foto";
+"Change your photo" = "Cambiar tu foto";
+"Choose" = "Elegir";
+"Choose a photo" = "Elige una foto";
+"Choose photo…" = "Elegir foto…";
+"Remove photo" = "Quitar foto";
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
 "What Claude can do" = "Lo que Claude puede hacer";
 "asks first" = "pregunta antes";
