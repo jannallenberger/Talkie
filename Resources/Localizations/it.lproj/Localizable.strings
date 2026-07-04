@@ -505,7 +505,6 @@
 
 // L5-b — Invented job title (on-device, playful label — never a real profession)
 "Your invented title" = "Il tuo titolo inventato";
-"Regenerate" = "Rigenera";
 "Coining your title…" = "Sto coniando il tuo titolo…";
 "A playful label, not a real job — invented on your Mac from where your words go. It never leaves this device." = "Un’etichetta giocosa, non un lavoro vero — inventata sul tuo Mac in base a dove vanno le tue parole. Non lascia mai questo dispositivo.";
 // Fallback titles + sentences, one per app category (used when Apple Intelligence is off)

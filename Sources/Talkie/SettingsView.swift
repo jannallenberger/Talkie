@@ -602,6 +602,10 @@ private struct SubpagePlaceholder: View {
 private struct DeveloperSettings: View {
     @ObservedObject var settings: AppSettings
     @State private var replaying = false
+    // A14 dark flag (`Dev.llmJargonRepair`). Bound to the same defaults key so the
+    // measurement prototype is toggleable here instead of via `defaults write`.
+    // Lives ONLY in the (dev-gated) Developer section — it is not a user setting.
+    @AppStorage(Dev.llmJargonRepairKey) private var llmJargonRepair = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -634,6 +638,25 @@ private struct DeveloperSettings: View {
             // contextualStrings biasing actually move recognition? Test it by talking.
             if BiasABProbe.isAvailable {
                 BiasABTestView()
+            }
+
+            // A14 (DARK): the on-device LLM jargon-repair spike. OFF by default and
+            // unproven — it runs an extra on-device model pass after the phonetic
+            // corrector to rescue badly-mangled jargon, admitting ONLY changes that
+            // insert a known term (diff kill-switch; worst case a no-op). Leaving it
+            // off keeps dictation output byte-identical. Live wiring awaits a
+            // jargon-corpus WER benchmark, so this is for measurement only.
+            SettingsCard(
+                header: "LLM jargon repair (experimental)",
+                footer: "Runs an extra on-device model pass to fix badly-mangled jargon the phonetic corrector can't catch (e.g. \"cloud MD\" → \"Claude.md\"). It can only insert your known terms — never rewrite anything else. Off by default; unproven, for measurement."
+            ) {
+                SettingsToggleRow(
+                    title: "Repair mangled jargon with the on-device LLM",
+                    subtitle: LLMJargonRepair.isAvailable
+                        ? "Post-hoc, after the phonetic corrector. Guarded so it can only swap in your saved terms."
+                        : "Needs Apple Intelligence to be on.",
+                    isOn: $llmJargonRepair
+                )
             }
         }
     }

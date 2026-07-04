@@ -1679,6 +1679,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 nicheFixTargets = nicheFixes
             }
 
+            // A14 (DARK — `Dev.llmJargonRepair`, default OFF): an on-device LLM repair
+            // pass that catches badly-mangled novel jargon the PURELY PHONETIC
+            // `NicheCorrector` above structurally cannot ("claude.md" heard as "cloud
+            // MD" diverges too far in skeleton distance). It runs AFTER the phonetic
+            // corrector on the same known-term list, and its diff kill-switch admits a
+            // rewrite ONLY when every change is inserting one of those terms — worst
+            // case it's a no-op. This is a measurement prototype; wiring it live is
+            // gated on a jargon-corpus WER benchmark that has not been recorded. With
+            // the flag OFF this branch is skipped and `cleaned` is byte-identical to a
+            // build without A14 — the property the whole spike is built around.
+            if Dev.llmJargonRepair, !nicheTerms.isEmpty, LLMJargonRepair.isAvailable {
+                cleaned = await LLMJargonRepair().repair(cleaned, knownTerms: nicheTerms)
+            }
+
             // Spoken numbers → digits (deterministic, runs in every cleanup mode):
             // version/decimal patterns always ("Seedance two point zero" → "Seedance
             // 2.0", "two point zero point one" → "2.0.1"); standalone cardinals only
