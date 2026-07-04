@@ -2348,6 +2348,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     text: finalText, message: message,
                     shortcut: self.pasteLastShortcutDisplay
                 )
+                // The Bird Buddy glances at the clipboard — we couldn't paste, so it
+                // tucked your words there instead (K4).
+                self.birdBuddy.perform(.glance)
             case .empty:
                 // B9: nothing landed — no valid edit target.
                 self.lastInsertedDictationID = nil
@@ -2390,6 +2393,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let message = AppDelegate.learnedPingMessage(
             parrotName: self.settings.parrotName, to: to, source: source
         )
+        // A satisfied gulp — the Bird Buddy just swallowed a new word (K4).
+        self.birdBuddy.perform(.gulp)
         self.hud.showLearned(message) { [weak self] in
             guard let self else { return }
             self.dictionary.removeLearnedReplacement(from: from, to: to)
@@ -2681,6 +2686,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard !self.isDictating, !self.isProcessing,
                   !self.hud.isPresentingInteractivePill else { return }
             self.hud.showRecord(message)
+            // A proud little preen from the Bird Buddy — a real record just broke (K4).
+            self.birdBuddy.perform(.preen)
         }
     }
 
@@ -2710,6 +2717,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         // Ping with an Undo that reverses both the rule and the niche signal —
         // same undo contract as the edit-watcher's learned ping.
+        self.birdBuddy.perform(.gulp)
         self.hud.showLearned(String(format: "Added \u{201c}%@\u{201d} to dictionary".loc, fixed)) { [weak self] in
             guard let self else { return }
             self.dictionary.removeLearnedReplacement(from: heardWord, to: fixed)
@@ -2856,6 +2864,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .leftOnClipboard(let reason):
             Feedback.notPasted()
             hud.showCopyPrompt(text: text, message: reason, shortcut: pasteLastShortcutDisplay)
+            birdBuddy.perform(.glance)
         case .empty:
             hud.hide()
         }
