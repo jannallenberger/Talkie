@@ -485,29 +485,8 @@ final class NoteComposersTests: XCTestCase {
         XCTAssertFalse(note.suggestedFileName.isEmpty, "a filename is always produced")
     }
 
-    func testBriefNoteFixedDailyFileName() {
-        let note = NoteComposers.briefNote(
-            summary: "## Today\n\n- shipped D4",
-            date: Date(timeIntervalSince1970: 1_700_000_000))
-        XCTAssertEqual(note.kind, .brief, "the Brief note is kind .brief")
-        XCTAssertTrue(note.suggestedFileName.hasSuffix("-brief"),
-                      "the Brief filename is {date}-brief (one per day); got \(note.suggestedFileName)")
-        XCTAssertFalse(note.suggestedFileName.contains(":"),
-                       "no time component in the daily brief name, so a re-save overwrites the same file")
-        XCTAssertTrue(note.links.isEmpty, "the Brief is not a per-entity node — no links")
-        XCTAssertTrue(note.bodyMarkdown.contains("shipped D4"), "the Brief body is the summary Markdown")
-    }
-
-    func testBriefNoteSameDayProducesSameFileName() {
-        // Two instants a few minutes apart — trivially the same civil day in any
-        // timezone, so this asserts the intended invariant (no time token in the
-        // brief name → same-day re-save overwrites) without a day-boundary flake.
-        let base = 1_700_000_000.0
-        let earlier = NoteComposers.briefNote(summary: "earlier brief",
-                                              date: Date(timeIntervalSince1970: base))
-        let later = NoteComposers.briefNote(summary: "later brief",
-                                            date: Date(timeIntervalSince1970: base + 600))
-        XCTAssertEqual(earlier.suggestedFileName, later.suggestedFileName,
-                       "two saves the same day resolve to the same file so the later overwrites the earlier")
-    }
+    // NOTE: the Brief-save composer (`NoteComposers.briefNote`) and its two tests
+    // were removed on 2026-07-04 — L2-a replaced Today's Brief with the adaptive
+    // dashboard Scratchpad, so the Brief-save producer became dead code (D4
+    // reconciliation). Nothing constructs a `.brief` note anymore.
 }

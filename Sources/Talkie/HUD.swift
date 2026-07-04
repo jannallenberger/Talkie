@@ -687,9 +687,9 @@ final class HUDController {
         hide(after: 0.9)
     }
 
-    /// A note was written to the export destination (a "note this …" dictation, or
-    /// Today's Brief saved from the dashboard) — a brief, non-interactive
-    /// confirmation that mirrors `.copied`. `message` is the full localized line
+    /// A note was written to the export destination (a "note this …" dictation) —
+    /// a brief, non-interactive confirmation that mirrors `.copied`. `message` is
+    /// the full localized line
     /// ("Saved to Talkie Meetings folder") the caller composed, so this method
     /// stays destination-agnostic. Nothing to tap; auto-hides.
     func showSaved(_ message: String) {

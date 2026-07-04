@@ -1,11 +1,17 @@
 import Foundation
 
-/// Pure `ExportableNote` builders for the two on-demand export producers D4 adds:
-/// a dictation filed by voice ("note this …") and Today's Brief saved with one
-/// click. They are the dictation/brief analogue of `MeetingStore.writeMarkdown`'s
-/// inline meeting-note construction — the ONLY other place an `ExportableNote` is
-/// produced — but factored out as free functions so they can be exhaustively unit
-/// tested without Core Audio, a model, or disk I/O (the offline-core invariant).
+/// Pure `ExportableNote` builder for the on-demand export producer D4 adds: a
+/// dictation filed by voice ("note this …"). It is the dictation analogue of
+/// `MeetingStore.writeMarkdown`'s inline meeting-note construction — the ONLY other
+/// place an `ExportableNote` is produced — but factored out as free functions so
+/// they can be exhaustively unit tested without Core Audio, a model, or disk I/O
+/// (the offline-core invariant).
+///
+/// A `.brief` producer once lived here too (Today's Brief → one-click save), but
+/// L2-a replaced Today's Brief with the adaptive dashboard Scratchpad, so the
+/// Brief-save feature — and its `briefNote` composer — was superseded and removed
+/// (reconciled 2026-07-04). The `.brief` `NoteKind` case survives for any note
+/// historically written with it and for future reuse; nothing constructs one now.
 ///
 /// Nothing here writes a file or resolves a destination: a composer's whole job is
 /// to turn text (+ context) into the neutral note shape. The caller routes the
@@ -132,38 +138,6 @@ enum NoteComposers {
         )
         return note.withSuggestedFileName(
             NoteTemplate.fileName("{datetime}-note", for: note, existing: [])
-        )
-    }
-
-    // MARK: Brief
-
-    /// Build the note for Today's Brief.
-    ///
-    /// - `summary`: the already-composed Markdown brief (`ContextSummaryStore.summary`).
-    /// - `date`: the brief's date — drives both the `{date}` filename token and the
-    ///   note date. The filename is a FIXED `{date}-brief` (no time, no de-collision
-    ///   token authored here) so re-saving the same day overwrites the same file
-    ///   rather than accumulating one per save — plan 10's rolling-brief intent.
-    ///
-    /// Kind is `.brief`; there are no `links` (the brief already names its entities
-    /// inline and isn't a per-entity node). Title is a plain "Today's Brief" so the
-    /// `{title}` token and sidebar read well if a destination uses them.
-    static func briefNote(summary: String, date: Date) -> ExportableNote {
-        let body = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let note = ExportableNote(
-            kind: .brief,
-            title: "Today's Brief",
-            date: date,
-            bodyMarkdown: body,
-            suggestedFileName: ""
-        )
-        // A fixed name (no `{datetime}`, empty `existing` so no `-2` is ever
-        // appended) → one file per day; a same-day re-save writes over it via the
-        // destination's `.atomic` write. See the deviation note in the PR: this
-        // holds for the default Talkie folder / any destination that honours
-        // `suggestedFileName`; a vault destination renders its own template.
-        return note.withSuggestedFileName(
-            NoteTemplate.fileName("{date}-brief", for: note, existing: [])
         )
     }
 
