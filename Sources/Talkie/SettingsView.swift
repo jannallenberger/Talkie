@@ -1344,6 +1344,11 @@ struct SettingsToggleRow: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
+        // K9: the visible title/subtitle live in a sibling VStack while the switch is
+        // `.labelsHidden()`, so on its own VoiceOver would read a nameless switch.
+        // Combining the row folds the title (and subtitle) into the switch's spoken
+        // label while keeping it operable.
+        .accessibilityElement(children: .combine)
     }
 }
 

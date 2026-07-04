@@ -95,17 +95,28 @@ struct DashboardView: View {
                     // fill that wrapper's height — so every card's background paints
                     // to the same height as its tallest row neighbor.
                     LazyVGrid(columns: metricCols, alignment: .leading, spacing: Theme.Space.gridGap) {
+                        // K9: each read-only stat card reads as ONE combined VoiceOver
+                        // element (its eyebrow + values as a single phrase) instead of
+                        // a stream of disconnected fragments.
                         GaugeCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
+                            .accessibilityElement(children: .combine)
                         SpeedCard(latency: latency).frame(maxHeight: .infinity, alignment: .top)
+                            .accessibilityElement(children: .combine)
                         FixesCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
+                            .accessibilityElement(children: .combine)
                         WordsCard(stats: stats, history: history).frame(maxHeight: .infinity, alignment: .top)
+                            .accessibilityElement(children: .combine)
                         RecordsCard(stats: stats, activity: activity).frame(maxHeight: .infinity, alignment: .top)
+                            .accessibilityElement(children: .combine)
                         TaughtWordsCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
+                            .accessibilityElement(children: .combine)
                     }
 
                     LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
                         UsageCard(appUsage: appUsage).frame(maxHeight: .infinity, alignment: .top)
+                            .accessibilityElement(children: .combine)
                         StreakCard(activity: activity).frame(maxHeight: .infinity, alignment: .top)
+                            .accessibilityElement(children: .combine)
                         MilestoneEntryCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                     }
                 }
