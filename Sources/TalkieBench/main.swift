@@ -85,7 +85,37 @@
 //        --warmup  <n>       discard the first n files' timings (model warm-up)
 //        --limit   <n>       cap the number of files (0 = no cap)
 //        --json    <path>    also write per-file raw results as JSON
+//        --lead-trim-ms <n>  drop the first n ms of every clip before recognition
+//                            (0 = off); adds a first-word-error-rate (FWER) column
 //        --quiet             only print the final summary table
+//
+// -----------------------------------------------------------------------------
+// FIRST-PHONEME (FWER) MEASUREMENT — the `--lead-trim-ms` recipe (work pkg C3b)
+// -----------------------------------------------------------------------------
+// Live dictation eats the first word or two while its analyzer warms up. This
+// harness reads files, so it cannot observe that mic-init loss directly — but it
+// can SIMULATE it: `--lead-trim-ms N` drops the first N ms of every clip before
+// recognition, and the results table then reports a first-word error rate (FWER):
+// the fraction of clips whose first reference word never made it into the
+// transcript head. Run the SAME corpus at 0 and at N and the FWER delta is the
+// first-phoneme cost the hotkey-down pre-roll (C3a) is meant to recover:
+//
+//        talkie-bench --corpus ./plosive-clips --lead-trim-ms 0
+//        talkie-bench --corpus ./plosive-clips --lead-trim-ms 350
+//
+// The trim window N should bracket the measured keyDown→analyzer-ready gap
+// (~200 ms built-in mic, up to 1–2 s on just-connected AirPods).
+//
+// The leading-plosive corpus (build it yourself; the repo ships no audio):
+//   • Record a handful of SHORT self-spoken clips that START on a plosive or on
+//     jargon whose first phoneme is easy to clip — "put the file back", "take two
+//     of those", "claude.md is the source", "brief Lars on it". A plosive first
+//     sound (p/t/k/b/d/g) is the worst case for a clipped head, which is the point.
+//   • Save each clip as `<stem>.wav` (or flac/m4a/caf — anything AVAudioFile reads)
+//     with a `<stem>.txt` sidecar holding its exact reference transcript. The
+//     sidecar loader (CorpusLoader) pairs them by stem — no index file needed.
+//   • Keep them out of the repo (self-recorded; can share Jann's gate-two niche
+//     recording session). Point --corpus at the local folder.
 //
 // METHODOLOGY (kept honest)
 // -------------------------
@@ -212,10 +242,17 @@ if !args.quiet {
 }
 
 // Run the benchmark. This is the only async hop — everything else is sync.
+// `--lead-trim-ms` (C3b) drops each clip's head before recognition so the FWER
+// column below reports the first-phoneme loss the pre-roll fix is meant to recover.
+if args.leadTrimMs > 0 && !args.quiet {
+    print("Lead-trim mode: dropping the first \(args.leadTrimMs) ms of every clip "
+          + "(simulates the lost warm-up window). FWER measures the first-word cost.\n")
+}
 let outcome = await BenchRunner.run(items: items,
                                     localeIdentifier: args.locale,
                                     warmupCount: args.warmup,
-                                    quiet: args.quiet)
+                                    quiet: args.quiet,
+                                    leadTrimMs: args.leadTrimMs)
 
 // Print the results table + the honesty footer.
 print(ResultsTable.render(outcome, corpus: corpus, locale: args.locale))

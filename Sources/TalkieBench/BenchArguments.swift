@@ -28,6 +28,12 @@ struct BenchArguments {
     /// A phrase file (same one-per-line format as `--bias`). When set, the harness
     /// appends a per-term recall table after any run (live OR hypotheses).
     var termsFile: URL?
+    /// Milliseconds to drop from the HEAD of every clip before recognition (C3b).
+    /// Simulates the warm-up window live dictation loses before its analyzer is
+    /// ready, so the first-word-error-rate (FWER) column shows the first-phoneme
+    /// cost the hotkey-down pre-roll (C3a) is meant to recover. 0 = no trim (the
+    /// standard, unmodified corpus run).
+    var leadTrimMs: Int = 0
 
     static let usage = """
     talkie-bench — on-device speech-recognition benchmark (Apple SpeechAnalyzer)
@@ -59,6 +65,14 @@ struct BenchArguments {
                         as --bias). Appends a per-term recall table (reference
                         occurrences vs normalized hypothesis hits, recall %) after
                         any run — live transcription OR --hypotheses.
+      --lead-trim-ms <n> Drop the first n milliseconds of every clip before
+                        recognition (default: 0 = no trim). Simulates the warm-up
+                        window live dictation loses before its analyzer is ready.
+                        The results table then reports a first-word error rate
+                        (FWER): the fraction of clips whose first reference word is
+                        missing from the transcript head. Run it at 0 vs e.g. 350
+                        on a leading-plosive corpus to measure the first-phoneme
+                        loss the hotkey-down pre-roll is meant to recover.
       --markdown        After the human table, print ONE pipe-delimited Markdown
                         row summarising the run (date, machine, macOS, locale,
                         corpus, WER, CER, RTFx, median/p90 latency) for pasting
@@ -116,6 +130,8 @@ struct BenchArguments {
                 if let v = nextValue(arg) {
                     out.termsFile = URL(fileURLWithPath: v, relativeTo: cwd).standardizedFileURL
                 }
+            case "--lead-trim-ms":
+                if let v = nextValue(arg), let n = Int(v), n >= 0 { out.leadTrimMs = n }
             case "--markdown":
                 out.markdown = true
             case "--quiet":

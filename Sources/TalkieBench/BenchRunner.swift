@@ -18,6 +18,11 @@ struct FileResult: Sendable, Codable {
     let referenceWords: Int
     let charErrors: Int
     let referenceChars: Int
+    /// C3b: did the first reference word survive into the transcript head? (See
+    /// FirstWordError.) `firstWordScorable` is false when the reference has no
+    /// words, so the corpus FWER can exclude it rather than count a free hit.
+    let firstWordHit: Bool
+    let firstWordScorable: Bool
 
     /// RTFx = audio processed per wall-clock second (higher is faster).
     var rtfx: Double { wallSeconds > 0 ? audioSeconds / wallSeconds : 0 }
@@ -30,6 +35,10 @@ struct BenchOutcome: Sendable {
     let warmupCount: Int
     let skippedDecode: Int          // files that failed to decode/transcribe
     let startedAt: Date
+    /// C3b: the head-trim applied to every clip this run (ms). 0 = standard run.
+    /// Recorded so the table can label an FWER number with the trim that produced
+    /// it — a first-word rate is meaningless without the window it was measured at.
+    let leadTrimMs: Int
 }
 
 enum BenchRunner {
@@ -37,13 +46,14 @@ enum BenchRunner {
         items: [CorpusItem],
         localeIdentifier: String,
         warmupCount: Int,
-        quiet: Bool
+        quiet: Bool,
+        leadTrimMs: Int = 0
     ) async -> BenchOutcome {
         let startedAt = Date()
 
         guard FileTranscriber.isAvailable else {
             FileHandle.standardError.write(Data("error: on-device SpeechTranscriber is not available on this Mac.\n".utf8))
-            return BenchOutcome(measured: [], warmupCount: 0, skippedDecode: 0, startedAt: startedAt)
+            return BenchOutcome(measured: [], warmupCount: 0, skippedDecode: 0, startedAt: startedAt, leadTrimMs: leadTrimMs)
         }
 
         let engine = FileTranscriber(localeIdentifier: localeIdentifier)
@@ -55,7 +65,7 @@ enum BenchRunner {
             try await engine.prepare()
         } catch {
             FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8))
-            return BenchOutcome(measured: [], warmupCount: 0, skippedDecode: 0, startedAt: startedAt)
+            return BenchOutcome(measured: [], warmupCount: 0, skippedDecode: 0, startedAt: startedAt, leadTrimMs: leadTrimMs)
         }
 
         let targetFormat: AVAudioFormat
@@ -63,7 +73,7 @@ enum BenchRunner {
             targetFormat = try await engine.preferredAudioFormat()
         } catch {
             FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8))
-            return BenchOutcome(measured: [], warmupCount: 0, skippedDecode: 0, startedAt: startedAt)
+            return BenchOutcome(measured: [], warmupCount: 0, skippedDecode: 0, startedAt: startedAt, leadTrimMs: leadTrimMs)
         }
 
         var measured: [FileResult] = []
@@ -74,9 +84,13 @@ enum BenchRunner {
             let isWarmup = index < warmupCount
 
             // Decode + resample (NOT timed — only recognition is the benchmark).
+            // `leadTrimMs` drops the head here so the recognizer never sees the
+            // warm-up window (C3b) — the trim is part of decode, not the timed call.
             let loaded: (buffers: [AVAudioPCMBuffer], durationSeconds: Double)
             do {
-                loaded = try AudioFileLoader.buffers(from: item.audioURL, target: targetFormat)
+                loaded = try AudioFileLoader.buffers(from: item.audioURL,
+                                                     target: targetFormat,
+                                                     leadTrimMs: leadTrimMs)
             } catch {
                 skipped += 1
                 if !quiet {
@@ -101,6 +115,7 @@ enum BenchRunner {
 
             let word = WER.score(reference: item.reference, hypothesis: hypothesis)
             let char = WER.scoreCharacters(reference: item.reference, hypothesis: hypothesis)
+            let fw = FirstWordError.item(reference: item.reference, hypothesis: hypothesis)
 
             let result = FileResult(
                 id: item.id,
@@ -111,7 +126,9 @@ enum BenchRunner {
                 wordErrors: word.totalErrors,
                 referenceWords: word.referenceLength,
                 charErrors: char.totalErrors,
-                referenceChars: char.referenceLength
+                referenceChars: char.referenceLength,
+                firstWordHit: fw.hit,
+                firstWordScorable: fw.scorable
             )
 
             if isWarmup {
@@ -133,7 +150,8 @@ enum BenchRunner {
             measured: measured,
             warmupCount: min(warmupCount, total),
             skippedDecode: skipped,
-            startedAt: startedAt
+            startedAt: startedAt,
+            leadTrimMs: leadTrimMs
         )
     }
 }

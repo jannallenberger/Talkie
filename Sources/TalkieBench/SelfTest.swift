@@ -6,6 +6,8 @@
 // standards forbid for this worker — so the check lives in-process.)
 
 import Foundation
+import AVFoundation   // AVAudioFrameCount, for the head-trim frame-math self-tests
+import TalkieFileKit  // AudioFileLoader.trimFrameCount (the C3b head-trim window)
 
 enum SelfTest {
     /// Returns true if every case passes. Prints a PASS/FAIL line per case.
@@ -183,6 +185,94 @@ enum SelfTest {
             hypLoaderOK = false
         }
         check("hypothesis loader finds sidecar by stem, reports missing", hypLoaderOK)
+
+        // ---------------------------------------------------------------------
+        // First-word error rate (FirstWordError) — the C3b first-phoneme metric.
+        // Matched after the SAME TextNormalizer WER uses, so a first-word "hit"
+        // here can never contradict the corpus number.
+        // ---------------------------------------------------------------------
+
+        // 17. First reference word present at slot 0 → hit.
+        check("first word at head is a hit",
+              FirstWordError.firstWordHit(reference: "put the file back",
+                                          hypothesis: "put the file back"))
+
+        // 18. First reference word eaten (clipped head) → miss. This is the exact
+        //     failure --lead-trim-ms induces: "put …" transcribes as "the …".
+        check("eaten first word is a miss",
+              !FirstWordError.firstWordHit(reference: "put the file back",
+                                           hypothesis: "the file back"))
+
+        // 19. Head window tolerates a prepended filler / split token: the word
+        //     survived, just not in slot 0. Default window is 3.
+        check("first word within head window still a hit",
+              FirstWordError.firstWordHit(reference: "claude dot md is the source",
+                                          hypothesis: "um claude dot md is the source"))
+
+        // 20. …but a word pushed PAST the window is a miss (window is not infinite).
+        check("first word past the head window is a miss",
+              !FirstWordError.firstWordHit(reference: "put the file back",
+                                           hypothesis: "well then okay put the file back",
+                                           headWindow: 3))
+
+        // 21. Normalization parity: casing/punctuation fold exactly like WER, so a
+        //     capitalised, punctuated first word still matches its lowercased ref.
+        check("first-word match folds case + punctuation like WER",
+              FirstWordError.firstWordHit(reference: "Put, the file back",
+                                          hypothesis: "put the file back"))
+
+        // 22. Empty hypothesis (said something, got nothing) → miss, not a hit.
+        check("empty hypothesis is a first-word miss",
+              !FirstWordError.firstWordHit(reference: "put the file back", hypothesis: ""))
+
+        // 23. Empty reference has no first word to lose → treated as a hit and
+        //     excluded from the scorable denominator (never flatters the rate).
+        let emptyRefItem = FirstWordError.item(reference: "", hypothesis: "anything")
+        check("empty reference is non-scorable (excluded from FWER)",
+              emptyRefItem.hit && !emptyRefItem.scorable,
+              "hit \(emptyRefItem.hit), scorable \(emptyRefItem.scorable)")
+
+        // 24. Corpus FWER: 2 of 4 scorable clips miss → 0.50. A non-scorable clip
+        //     (empty ref) in the mix must NOT change the denominator.
+        let fwer = FirstWordError.rate(
+            hits:     [true, false, true, false, true],   // last is the empty-ref clip
+            scorable: [true, true,  true, true,  false])   //  → denom 4, misses 2
+        check("corpus FWER excludes non-scorable clips = 0.50",
+              fwer != nil && approx(fwer!, 0.5), "got \(String(describing: fwer))")
+
+        // 25. All references empty → no denominator → nil (n/a), never a fake 0.
+        let fwerNil = FirstWordError.rate(hits: [true, true], scorable: [false, false])
+        check("FWER is nil (n/a) when nothing is scorable", fwerNil == nil,
+              "got \(String(describing: fwerNil))")
+
+        // ---------------------------------------------------------------------
+        // Head-trim frame math (AudioFileLoader.trimFrameCount) — the C3b
+        // --lead-trim-ms window, exercised as pure integer math (no audio needed).
+        // ---------------------------------------------------------------------
+
+        // 26. 350 ms at 16 kHz = 5 600 frames.
+        check("350ms @ 16kHz = 5600 frames",
+              AudioFileLoader.trimFrameCount(leadTrimMs: 350, sampleRate: 16_000,
+                                             availableFrames: 100_000) == 5_600,
+              "got \(AudioFileLoader.trimFrameCount(leadTrimMs: 350, sampleRate: 16_000, availableFrames: 100_000))")
+
+        // 27. The default 0 ms trim is an exact no-op (the standard-corpus path).
+        check("0ms trim drops nothing (byte-identical run)",
+              AudioFileLoader.trimFrameCount(leadTrimMs: 0, sampleRate: 16_000,
+                                             availableFrames: 100_000) == 0)
+
+        // 28. The window is clamped to the buffer — never ask to drop more than
+        //     exists (a short clip trimmed by a long window loses only what it has).
+        check("trim clamps to available frames",
+              AudioFileLoader.trimFrameCount(leadTrimMs: 10_000, sampleRate: 16_000,
+                                             availableFrames: 8_000) == 8_000,
+              "got \(AudioFileLoader.trimFrameCount(leadTrimMs: 10_000, sampleRate: 16_000, availableFrames: 8_000))")
+
+        // 29. A sub-frame window (rounds to 0 frames at this rate) drops nothing —
+        //     no spurious 1-frame trim from rounding.
+        check("sub-frame trim window rounds to 0",
+              AudioFileLoader.trimFrameCount(leadTrimMs: 0, sampleRate: 48_000,
+                                             availableFrames: 10) == 0)
 
         print("")
         print(allPassed ? "  All self-tests passed." : "  SELF-TESTS FAILED.")

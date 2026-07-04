@@ -33,12 +33,21 @@ public enum AudioFileLoaderError: LocalizedError {
 
 public enum AudioFileLoader {
     /// Decode `url`, resample to `target`, and return chunked PCM buffers plus the
-    /// audio's duration in seconds (computed from the source file, before resample,
-    /// so RTFx reflects real audio length regardless of the analyzer's rate).
+    /// duration in seconds of the audio ACTUALLY handed to the recognizer.
+    ///
+    /// With the default `leadTrimMs == 0` this is byte-for-byte the original
+    /// behaviour and `durationSeconds` is the source file's real length. When
+    /// `leadTrimMs > 0`, the first N milliseconds of the resampled audio are
+    /// dropped (bench work package C3b): this simulates the warm-up window that
+    /// live dictation loses before its analyzer is ready, so `talkie-bench
+    /// --lead-trim-ms` can measure the first-word cost head-on. The reported
+    /// duration then reflects the trimmed audio (what was transcribed), keeping
+    /// RTFx honest.
     public static func buffers(
         from url: URL,
         target: AVAudioFormat,
-        chunkFrames: AVAudioFrameCount = 16_000
+        chunkFrames: AVAudioFrameCount = 16_000,
+        leadTrimMs: Int = 0
     ) throws -> (buffers: [AVAudioPCMBuffer], durationSeconds: Double) {
         guard let file = try? AVAudioFile(forReading: url) else {
             throw AudioFileLoaderError.cannotOpen(url)
@@ -58,9 +67,11 @@ public enum AudioFileLoader {
         }
         try file.read(into: sourceBuffer)
 
-        // Fast path: already in the target format — just chunk it.
+        // Fast path: already in the target format — just (trim then) chunk it.
         if formatsMatch(sourceFormat, target) {
-            return (chunk(sourceBuffer, into: target, chunkFrames: chunkFrames), durationSeconds)
+            let trimmed = trimHead(sourceBuffer, into: target, leadTrimMs: leadTrimMs)
+            return (chunk(trimmed.buffer, into: target, chunkFrames: chunkFrames),
+                    adjustedDuration(durationSeconds, target: target, trimmedFrames: trimmed.droppedFrames))
         }
 
         // Resample to the analyzer's required format.
@@ -89,7 +100,81 @@ public enum AudioFileLoader {
             throw AudioFileLoaderError.conversionFailed(error?.localizedDescription ?? "unknown")
         }
 
-        return (chunk(output, into: target, chunkFrames: chunkFrames), durationSeconds)
+        // Trim AFTER resample so the dropped window is an exact count of target
+        // frames (N ms at the analyzer's own sample rate, not the source rate).
+        let trimmed = trimHead(output, into: target, leadTrimMs: leadTrimMs)
+        return (chunk(trimmed.buffer, into: target, chunkFrames: chunkFrames),
+                adjustedDuration(durationSeconds, target: target, trimmedFrames: trimmed.droppedFrames))
+    }
+
+    // MARK: - Head trim (C3b: simulate the lost warm-up window)
+
+    /// Number of target-format frames a `leadTrimMs` window covers, clamped to the
+    /// buffer's own length so we never ask to drop more audio than exists. Pure and
+    /// integer-only so the bench self-test can pin the math without any audio.
+    /// A non-positive `leadTrimMs` (the default) yields 0 — the no-op path.
+    public static func trimFrameCount(
+        leadTrimMs: Int,
+        sampleRate: Double,
+        availableFrames: AVAudioFrameCount
+    ) -> AVAudioFrameCount {
+        guard leadTrimMs > 0, sampleRate > 0 else { return 0 }
+        let wanted = Int((Double(leadTrimMs) / 1000.0) * sampleRate)
+        guard wanted > 0 else { return 0 }
+        return AVAudioFrameCount(min(wanted, Int(availableFrames)))
+    }
+
+    /// Drop the first `leadTrimMs` of `buffer` (a target-format buffer), returning
+    /// a fresh buffer with the head removed plus how many frames were dropped.
+    /// `leadTrimMs <= 0` returns the buffer untouched (0 dropped) — the fast, exact
+    /// no-op that keeps the standard corpus run byte-identical.
+    private static func trimHead(
+        _ buffer: AVAudioPCMBuffer,
+        into format: AVAudioFormat,
+        leadTrimMs: Int
+    ) -> (buffer: AVAudioPCMBuffer, droppedFrames: AVAudioFrameCount) {
+        let drop = trimFrameCount(leadTrimMs: leadTrimMs,
+                                  sampleRate: format.sampleRate,
+                                  availableFrames: buffer.frameLength)
+        guard drop > 0 else { return (buffer, 0) }
+
+        let remaining = buffer.frameLength - drop
+        // Trimming the whole clip away would feed the analyzer nothing; keep an
+        // empty buffer of the right format (the run still scores it — a fully
+        // absent first word — rather than crashing).
+        guard remaining > 0,
+              let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: remaining) else {
+            let empty = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1) ?? buffer
+            empty.frameLength = 0
+            return (empty, buffer.frameLength)
+        }
+        out.frameLength = remaining
+
+        let bytesPerFrame = Int(format.streamDescription.pointee.mBytesPerFrame)
+        if let src = buffer.floatChannelData, let dst = out.floatChannelData {
+            for ch in 0..<Int(format.channelCount) {
+                memcpy(dst[ch], src[ch] + Int(drop), Int(remaining) * MemoryLayout<Float>.size)
+            }
+        } else if let src = buffer.int16ChannelData, let dst = out.int16ChannelData {
+            for ch in 0..<Int(format.channelCount) {
+                memcpy(dst[ch], src[ch] + Int(drop), Int(remaining) * MemoryLayout<Int16>.size)
+            }
+        } else if let srcData = buffer.audioBufferList.pointee.mBuffers.mData,
+                  let dstData = out.audioBufferList.pointee.mBuffers.mData {
+            memcpy(dstData, srcData.advanced(by: Int(drop) * bytesPerFrame), Int(remaining) * bytesPerFrame)
+        }
+        return (out, drop)
+    }
+
+    /// The audio duration after trimming: original length minus the dropped window
+    /// (converted from target frames back to seconds). Never negative.
+    private static func adjustedDuration(
+        _ original: Double,
+        target: AVAudioFormat,
+        trimmedFrames: AVAudioFrameCount
+    ) -> Double {
+        guard trimmedFrames > 0, target.sampleRate > 0 else { return original }
+        return max(0, original - Double(trimmedFrames) / target.sampleRate)
     }
 
     /// Split one big buffer into analyzer-friendly chunks (so we feed the input

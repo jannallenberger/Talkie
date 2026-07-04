@@ -30,6 +30,14 @@ enum ResultsTable {
         let medianFileWER: Double
         let medianLatencySeconds: Double
         let p90LatencySeconds: Double
+        /// C3b first-word error rate: fraction of scorable clips whose first
+        /// reference word is missing from the transcript head. `nil` when no clip
+        /// is scorable (every reference empty) — printed as "n/a", never a fake 0.
+        let firstWordErrorRate: Double?
+        /// Scorable clip count behind `firstWordErrorRate` (its denominator), shown
+        /// so the FWER row carries its own sample size — a rate over 3 clips and a
+        /// rate over 300 are not equally trustworthy, and the reader must see which.
+        let firstWordScorableCount: Int
 
         /// Corpus throughput in audio minutes processed per wall-clock minute.
         /// (RTFx expressed as min/min — identical ratio, friendlier unit for the
@@ -63,6 +71,11 @@ enum ResultsTable {
             let perFileWERs = results.map(\.wer).sorted()
             medianFileWER = ResultsTable.percentile(perFileWERs, 0.50)
 
+            // C3b first-word error rate over the scorable (non-empty-reference) set.
+            firstWordErrorRate = FirstWordError.rate(hits: results.map(\.firstWordHit),
+                                                     scorable: results.map(\.firstWordScorable))
+            firstWordScorableCount = results.filter(\.firstWordScorable).count
+
             fileCount = results.count
         }
     }
@@ -90,6 +103,12 @@ enum ResultsTable {
         out += row("  Word Error Rate (WER)", pct(agg.corpusWER))
         out += row("  Character Error Rate (CER)", pct(agg.corpusCER))
         out += row("  Median per-file WER", pct(agg.medianFileWER))
+        // C3b: first-word error rate, labelled with the head-trim it was measured
+        // at (a first-word rate is only meaningful against its trim window).
+        let fwerLabel = outcome.leadTrimMs > 0
+            ? "  First-word error (trim \(outcome.leadTrimMs)ms)"
+            : "  First-word error (no trim)"
+        out += row(fwerLabel, fwerCell(agg))
         out += "\n"
 
         out += "  SPEED (higher RTFx is better)\n"
@@ -113,7 +132,7 @@ enum ResultsTable {
     /// One pipe-delimited Markdown table row summarising a whole run, for pasting
     /// into BENCHMARKS.md. Columns (exactly, in order):
     ///
-    ///   | date | machine | macOS | locale | corpus (files/min) | WER | CER | RTFx | median lat | p90 lat |
+    ///   | date | machine | macOS | locale | corpus (files/min) | WER | CER | RTFx | median lat | p90 lat | trim | FWER |
     ///
     /// Every number comes from the SAME `Aggregate` the human table prints, so the
     /// row and the table can never drift. Returns `nil` when nothing was measured
@@ -122,6 +141,8 @@ enum ResultsTable {
     ///
     /// The "corpus (files/min)" cell records what was measured: the corpus name,
     /// the file count, and the audio minutes covered — e.g. `test-clean 87f/13.2m`.
+    /// The trailing `trim`/`FWER` cells (C3b) carry the head-trim window and the
+    /// first-word error rate at it, so a 0-vs-N pair of rows is self-documenting.
     static func markdownRow(outcome: BenchOutcome, corpus: URL, locale: String) -> String? {
         guard let agg = Aggregate(outcome) else { return nil }
 
@@ -134,6 +155,9 @@ enum ResultsTable {
         // The corpus cell: name + files measured + audio-minutes covered.
         let corpusCell = "\(corpus.lastPathComponent) \(agg.fileCount)f/\(fmt(agg.audioMinutes, 1))m"
 
+        // FWER cell for the row: percentage or "n/a" — same source as the table.
+        let fwerCell = agg.firstWordErrorRate.map { pct($0) } ?? "n/a"
+
         let cells: [String] = [
             date,
             Provenance.machine,
@@ -145,6 +169,8 @@ enum ResultsTable {
             "\(fmt(agg.corpusRTFx, 1))×",
             "\(fmt(agg.medianLatencySeconds, 3)) s",
             "\(fmt(agg.p90LatencySeconds, 3)) s",
+            "\(outcome.leadTrimMs)ms",
+            fwerCell,
         ]
         return "| " + cells.joined(separator: " | ") + " |"
     }
@@ -165,6 +191,10 @@ enum ResultsTable {
         lines.append("    locale     : \(locale)")
         lines.append("    warm-up    : \(outcome.warmupCount) file(s) discarded; timings are warm")
         lines.append("    measured   : raw recognition only — NO cleanup, NO dictionary biasing")
+        if outcome.leadTrimMs > 0 {
+            lines.append("    lead-trim  : first \(outcome.leadTrimMs) ms dropped from every clip (simulates the")
+            lines.append("                 warm-up window live dictation loses — see FWER above)")
+        }
         lines.append("")
         lines.append("  Note: LibriSpeech test-clean is clean read speech — its WER is a")
         lines.append("  floor, not your live dictation accuracy. For a Whisper Large V3")
@@ -174,6 +204,14 @@ enum ResultsTable {
     }
 
     // MARK: - Layout helpers
+
+    /// The FWER cell: `12.50% (n=48)`, or `n/a (no scorable clips)` when every
+    /// reference was empty. The sample size travels with the number so a rate over
+    /// a handful of clips can't be mistaken for a corpus-scale one.
+    static func fwerCell(_ agg: Aggregate) -> String {
+        guard let rate = agg.firstWordErrorRate else { return "n/a (no scorable clips)" }
+        return "\(pct(rate)) (n=\(agg.firstWordScorableCount))"
+    }
 
     private static func row(_ label: String, _ value: String) -> String {
         let labelWidth = 34
@@ -206,6 +244,9 @@ extension BenchOutcome {
             let date: String
             let warmupCount: Int
             let skippedDecode: Int
+            /// C3b: the head-trim (ms) applied to every clip, so a re-scored run
+            /// knows the window its per-file `firstWordHit` flags were measured at.
+            let leadTrimMs: Int
             let results: [FileResult]
         }
         let iso = ISO8601DateFormatter()
@@ -216,6 +257,7 @@ extension BenchOutcome {
             date: iso.string(from: startedAt),
             warmupCount: warmupCount,
             skippedDecode: skippedDecode,
+            leadTrimMs: leadTrimMs,
             results: measured
         )
         let encoder = JSONEncoder()
