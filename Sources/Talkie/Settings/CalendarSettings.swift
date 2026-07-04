@@ -25,20 +25,20 @@ struct CalendarSettings: View {
             // visible owner instead of reading as a stray, un-headed list.
             SettingsCard(
                 header: "Calendar context",
-                footer: "Read-only. Talkie reads the event you’re in to title the note and bias attendee names — it never creates, edits, or deletes anything on your calendar. Everything stays on your Mac."
+                footer: "Read-only — Talkie never creates, edits, or deletes anything on your calendar, and it all stays on your Mac.".loc
             ) {
                 SettingsRow(
-                    title: "Calendar access",
+                    title: "Calendar access".loc,
                     subtitle: statusSubtitle
                 ) {
                     statusTrailing
                 }
                 SettingsDivider(leadingInset: 0)
-                BulletNote(icon: "textformat", text: "Titles a recording with the meeting’s real name instead of a timestamp.")
+                BulletNote(icon: "textformat", text: "Titles a recording with the meeting’s real name instead of a timestamp.".loc)
                 SettingsDivider(leadingInset: 0)
-                BulletNote(icon: "person.2", text: "Biases recognition toward attendee names so they’re spelled correctly.")
+                BulletNote(icon: "person.2", text: "Biases recognition toward attendee names so they’re spelled correctly.".loc)
                 SettingsDivider(leadingInset: 0)
-                BulletNote(icon: "lock", text: "Falls back to the timestamp title whenever access is off — nothing breaks.")
+                BulletNote(icon: "lock", text: "Falls back to the timestamp title whenever access is off — nothing breaks.".loc)
             }
         }
         .onAppear { status = CalendarMeetingContext.authorizationStatus }
@@ -46,11 +46,11 @@ struct CalendarSettings: View {
 
     private var statusSubtitle: String {
         switch status {
-        case .fullAccess: return "Connected"
-        case .denied, .restricted: return "Denied in System Settings"
-        case .writeOnly: return "Write-only — Talkie needs read access"
-        case .notDetermined: return "Off"
-        @unknown default: return "Off"
+        case .fullAccess: return "Connected".loc
+        case .denied, .restricted: return "Denied in System Settings".loc
+        case .writeOnly: return "Write-only — Talkie needs read access".loc
+        case .notDetermined: return "Off".loc
+        @unknown default: return "Off".loc
         }
     }
 

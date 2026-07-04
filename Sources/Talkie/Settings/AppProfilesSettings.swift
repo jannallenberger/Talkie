@@ -30,11 +30,11 @@ struct AppProfilesSettings: View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Customized apps",
-                footer: "Anything not listed here follows your global Settings. Add an app to give it a different personality — faithful in your terminal, friendly in Messages."
+                footer: "Anything not listed here follows your global Settings. Add an app to give it its own personality — faithful in your terminal, friendly in Messages.".loc
             ) {
                 if sortedProfiles.isEmpty {
                     SettingsNote(
-                        text: "No per-app rules yet. Talkie behaves the same in every app.",
+                        text: "No per-app rules yet. Talkie behaves the same in every app.".loc,
                         tone: Theme.inkTertiary
                     )
                 } else {
@@ -267,9 +267,9 @@ private struct AppProfileEditor: View {
                 VStack(alignment: .leading, spacing: 18) {
                     SettingsCard(
                         header: "Cleanup",
-                        footer: "“Inherit” follows the style for this app's category in Settings. Override it to give just this app its own style."
+                        footer: "“Inherit” follows the style for this app's category in Settings. Override it to give just this app its own style.".loc
                     ) {
-                        SettingsRow(title: "Style", subtitle: styleSubtitle) {
+                        SettingsRow(title: "Style".loc, subtitle: styleSubtitle) {
                             Picker("", selection: cleanupStyle) {
                                 Text("Inherit").tag(CleanupStyle?.none)
                                 ForEach(CleanupStyle.allCases) { Text($0.displayName).tag(CleanupStyle?.some($0)) }
@@ -285,7 +285,7 @@ private struct AppProfileEditor: View {
                         // verifiably failed to land in it (Talkie switched it
                         // automatically). Pick "Inherit" to go back to the paste default
                         // and let it re-learn.
-                        SettingsRow(title: "Insert text by", subtitle: insertionSubtitle) {
+                        SettingsRow(title: "Insert text by".loc, subtitle: insertionSubtitle) {
                             Picker("", selection: insertionMode) {
                                 Text("Inherit").tag(InsertionMode?.none)
                                 ForEach(InsertionMode.allCases) { Text($0.displayName).tag(InsertionMode?.some($0)) }
@@ -300,7 +300,7 @@ private struct AppProfileEditor: View {
                     // `app_profiles.json` — an all-off profile is still dropped as empty.
                     SettingsCard(
                         header: "Privacy",
-                        footer: "Turn this on for anything sensitive — a password manager, a private journal, a therapy note. Talkie still types what you say; it just never keeps a copy or learns from it. Your lifetime word count and streak still tick up (no content, no app name)."
+                        footer: "Turn this on for anything sensitive — a password manager, a private journal, a therapy note. Talkie still types what you say; it just never keeps a copy or learns from it. Your lifetime word count and streak still tick up (no content, no app name).".loc
                     ) {
                         // `SettingsToggleRow` renders its title/subtitle as plain
                         // `Text(String)`, which does NOT auto-localize a `String`
@@ -319,10 +319,10 @@ private struct AppProfileEditor: View {
                     if !dictionaryVocab.isEmpty {
                         SettingsCard(
                             header: "Vocabulary",
-                            footer: "By default this app is biased toward your whole dictionary. Narrow it to keep, say, contact names out of your terminal."
+                            footer: "By default this app is biased toward your whole dictionary. Narrow it to keep, say, contact names out of your terminal.".loc
                         ) {
                             SettingsRow(
-                                title: "Bias toward",
+                                title: "Bias toward".loc,
                                 subtitle: vocabularyFilterSummary
                             ) {
                                 Menu("Choose…") {
@@ -372,8 +372,8 @@ private struct AppProfileEditor: View {
     }
 
     private var vocabularyFilterSummary: String {
-        guard let filter = profile.vocabularyFilter, !filter.isEmpty else { return "All terms" }
-        return filter.count == 1 ? "1 term" : "\(filter.count) terms"
+        guard let filter = profile.vocabularyFilter, !filter.isEmpty else { return "All terms".loc }
+        return filter.count == 1 ? "1 term".loc : String(format: "%d terms".loc, filter.count)
     }
 
     private func toggleTerm(_ term: String) {

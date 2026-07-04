@@ -1295,6 +1295,65 @@ struct SettingsNote: View {
     }
 }
 
+/// An in-card "How this works" disclosure row (L6g). A quiet, chevron-led tap
+/// target that expands, in place, to one short plain-language paragraph explaining
+/// the mechanism behind a setting — so the card's title/subtitle can stay honest
+/// and one-line while the "why" waits a tap away.
+///
+/// Deliberately unpersisted: the expanded/collapsed state is view-local `@State`,
+/// defaults to collapsed on every appearance, and writes NO settings key (nothing
+/// to migrate, nothing to sync). VoiceOver announces it as a disclosure so the row
+/// reads as expand/collapse, not a navigation link. The label defaults to "How
+/// this works"; `title`/`text` are plain `String`s routed through `.loc` at the
+/// call site (the `SettingsCard`/`SettingsRow` house rule — see PrivacySettings).
+struct LearnMoreRow: View {
+    /// The tappable summary line. Defaults to the shared "How this works" label.
+    var title: String = "How this works".loc
+    /// The paragraph revealed on expand — one short, plain-language explanation.
+    /// (Named `text`, not `body`, so it never shadows the SwiftUI `View.body`.)
+    let text: String
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeOut(duration: 0.16)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.coral)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                    Text(title)
+                        .font(.talkieHeading(13, weight: .medium))
+                        .foregroundStyle(Theme.coral)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(title)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityValue(expanded ? "Expanded".loc : "Collapsed".loc)
+            .accessibilityHint("Shows a short explanation of how this works.".loc)
+
+            if expanded {
+                Text(text)
+                    .font(.callout)
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+}
+
 private struct MicrophoneSettings: View {
     @ObservedObject var settings: AppSettings
     @State private var devices: [AudioInputDevice] = []
@@ -1303,9 +1362,9 @@ private struct MicrophoneSettings: View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Microphone",
-                footer: "Automatic picks a real microphone for you — handy when a Bluetooth speaker is your audio output but has no mic. Pick a specific device to pin it."
+                footer: "Leave it on Automatic and Talkie picks a working mic for you. Choose a device to pin it.".loc
             ) {
-                SettingsRow(title: "Input device") {
+                SettingsRow(title: "Input device".loc) {
                     Picker("", selection: $settings.preferredInputDeviceUID) {
                         Text("Automatic (recommended)").tag(String?.none)
                         ForEach(devices) { device in
@@ -1314,14 +1373,22 @@ private struct MicrophoneSettings: View {
                     }
                     .labelsHidden().fixedSize()
                 }
+                SettingsDivider(leadingInset: 0)
+                LearnMoreRow(
+                    text: "Automatic prefers a real microphone — handy when your audio output is a Bluetooth speaker that has no mic of its own, which would otherwise leave you with nothing to record. Pin a specific device here if you'd rather Talkie always use the same one.".loc
+                )
             }
 
             SettingsCard(
                 header: "Music",
-                footer: "Pauses Apple Music or Spotify while you dictate, then resumes it when you stop — and best-effort pauses anything else that's actually playing (browsers, podcasts). macOS will ask for permission to control Music/Spotify the first time."
+                footer: "Pauses your music while you dictate and picks it back up when you stop.".loc
             ) {
-                SettingsToggleRow(title: "Pause music while dictating",
+                SettingsToggleRow(title: "Pause music while dictating".loc,
                                   isOn: $settings.pauseMusicWhileDictating)
+                SettingsDivider(leadingInset: 0)
+                LearnMoreRow(
+                    text: "Talkie pauses Apple Music or Spotify, and does its best to pause anything else that's actually playing (a browser video, a podcast). The first time, macOS will ask for permission to control Music or Spotify — that's the standard prompt for automating another app.".loc
+                )
             }
         }
         .onAppear { devices = AudioDevices.inputDevices() }
@@ -1341,7 +1408,7 @@ private struct ActivationSettings: View {
                 // in the front app.
                 footer: activationFooter
             ) {
-                SettingsRow(title: "Dictation key") {
+                SettingsRow(title: "Dictation key".loc) {
                     Picker("", selection: $settings.activationKey) {
                         ForEach(ActivationKey.allCases) { key in
                             if let symbol = key.symbolName {
@@ -1361,12 +1428,26 @@ private struct ActivationSettings: View {
                 // construction). The one remaining knob is optimistic insertion.
                 // Re-paste still works with the key combo below; the copy-prompt pill
                 // still shows it whenever a dictation couldn't find a field to paste into.
-                footer: "Talkie pastes instantly and retries with typing if a paste doesn't land, learning the winner per app — no Paste/Type switch needed. Press \(settings.activationKey.pasteShortcut.display) any time to re-paste your most recent transcript into the focused field."
+                // Footer is dynamic: the re-paste shortcut is derived from the live
+                // activation key, so it stays correct when the key changes.
+                footer: insertionFooter
             ) {
+                // The optimistic-insertion knob, in plain words (Jann flagged the old
+                // "Insert instantly, polish in place" as opaque). The subtitle promises
+                // the behavior; the LearnMoreRow explains the swap for anyone curious.
                 SettingsToggleRow(
-                    title: "Insert instantly, polish in place",
-                    subtitle: "Experimental — pastes your raw words the moment you stop, then swaps in the cleaned version. May misfire if you keep typing right after.",
+                    title: "Show your words the moment you stop".loc,
+                    subtitle: "See your raw words right away, then Talkie quietly tidies them in place.".loc,
                     isOn: $settings.optimisticInsertion
+                )
+                SettingsDivider(leadingInset: 0)
+                LearnMoreRow(
+                    text: "Normally Talkie waits for its cleanup pass before inserting anything. With this on, it drops your unpolished words in the instant you stop talking, then swaps in the tidied version a moment later — so you see progress sooner. The trade-off: if you start typing in that field before the swap lands, the replacement can misfire, so leave it off where you type right away.".loc
+                )
+                SettingsDivider(leadingInset: 0)
+                LearnMoreRow(
+                    title: "How text gets into the field".loc,
+                    text: "Talkie pastes your words in, and if a paste doesn't land it retries by typing them. It remembers which one worked for each app, so there's no Paste-or-Type switch to set — it just uses the method that lands.".loc
                 )
             }
         }
@@ -1383,6 +1464,16 @@ private struct ActivationSettings: View {
         let note = "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software).".loc
         return base + "\n\n" + note
     }
+
+    /// The Insertion card's footer. DYNAMIC: the re-paste shortcut is derived from
+    /// the live `activationKey`, so switching the dictation key updates this line —
+    /// verify by changing the key and watching the shortcut here follow. The dense
+    /// paste/type mechanism moved into a "How text gets into the field" expander, so
+    /// this stays a single honest line about the one thing you can act on.
+    private var insertionFooter: String {
+        String(format: "Press %@ any time to re-paste your most recent transcript into the field you're in.".loc,
+               settings.activationKey.pasteShortcut.display)
+    }
 }
 
 private struct CleanupSettings: View {
@@ -1398,10 +1489,15 @@ private struct CleanupSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsCard(header: "Smart cleanup",
-                         footer: "A style per kind of app — friendly for Messages, professional for Mail, faithful for code and terminals. The style is the whole story: Off inserts exactly what you said, Faithful only fixes slips, and the others rewrite for tone and clarity.") {
+                         footer: "Pick a voice for each kind of app — friendly for Messages, professional for Mail, faithful for code and terminals.".loc) {
                 ForEach(Array(AppCategory.allCases.enumerated()), id: \.element) { index, category in
                     if index > 0 { SettingsDivider() }
-                    SettingsRow(title: category.label) {
+                    // The selected style's own one-line `detail` (localized, from
+                    // CleanupStyle) is the row subtitle — so the category row says, in
+                    // plain words, what its current style actually does. Zero new keys
+                    // for these descriptions; they already ship with each style.
+                    SettingsRow(title: category.label,
+                                subtitle: settings.cleanupStyle(for: category).detail) {
                         Picker("", selection: styleBinding(category)) {
                             ForEach(CleanupStyle.allCases) { Text($0.displayName).tag($0) }
                         }
@@ -1409,11 +1505,12 @@ private struct CleanupSettings: View {
                     }
                 }
                 SettingsDivider(leadingInset: 0)
+                LearnMoreRow(
+                    text: "The style is the whole story — there's no separate intensity to set. Off inserts exactly what you said, Faithful only fixes obvious slips (best for code and terminals), and the others rewrite for tone and clarity. Every style runs entirely on your Mac and fixes spoken self-corrections and grammar; nothing leaves the device.".loc
+                )
                 if let warning = CleanupEngine.unavailableMessage {
+                    SettingsDivider(leadingInset: 0)
                     SettingsNote(text: warning, tone: Theme.warning, icon: "exclamationmark.triangle.fill")
-                } else {
-                    SettingsNote(text: "Resolves spoken self-corrections and fixes grammar. Runs entirely on your Mac; nothing leaves the device.",
-                                 tone: Theme.inkTertiary)
                 }
             }
         }
@@ -1461,12 +1558,12 @@ private struct BehaviorSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsCard {
-                SettingsToggleRow(title: "Play sounds", isOn: $settings.playSounds)
+                SettingsToggleRow(title: "Play sounds".loc, isOn: $settings.playSounds)
                 SettingsDivider()
-                SettingsToggleRow(title: "Open Talkie at login", isOn: $settings.launchAtLogin)
+                SettingsToggleRow(title: "Open Talkie at login".loc, isOn: $settings.launchAtLogin)
                 SettingsDivider()
-                SettingsToggleRow(title: "Show floating bird",
-                                  subtitle: "A draggable macaw that pulses while you dictate",
+                SettingsToggleRow(title: "Show floating bird".loc,
+                                  subtitle: "A draggable macaw that pulses while you dictate.".loc,
                                   isOn: $settings.showBirdBuddy)
             }
         }

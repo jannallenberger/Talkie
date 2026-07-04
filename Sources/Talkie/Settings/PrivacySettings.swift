@@ -296,11 +296,11 @@ struct VerifyClaimsSubpage: View {
             // de-duplicated (L6d) — it now lives once, as step 1 below.
             SettingsCard(
                 header: "Entitlements (read from the signature)",
-                footer: "Read live from this build’s code signature, not from text we typed. The exact command to confirm it yourself is step 1 below."
+                footer: "Read live from this build’s code signature, not from text we typed. The exact command to confirm it yourself is step 1 below.".loc
             ) {
                 if entitlements.isEmpty {
                     SettingsNote(
-                        text: "No entitlements detected — typical of an un-signed debug build. The shipped, notarized build requests exactly one: microphone access.",
+                        text: "No entitlements detected — typical of an un-signed debug build. The shipped, notarized build requests exactly one: microphone access.".loc,
                         tone: Theme.inkTertiary
                     )
                 } else {
@@ -312,12 +312,12 @@ struct VerifyClaimsSubpage: View {
                 SettingsDivider(leadingInset: 0)
                 if hasNetwork {
                     SettingsNote(
-                        text: "A network entitlement is present on a build labelled “Talkie”. That’s a bug — the shipping build has none.",
+                        text: "A network entitlement is present on a build labelled “Talkie”. That’s a bug — the shipping build has none.".loc,
                         tone: Theme.danger, icon: "exclamationmark.octagon.fill"
                     )
                 } else {
                     SettingsNote(
-                        text: "No com.apple.security.network.client — Talkie cannot be granted network access.",
+                        text: "No com.apple.security.network.client — Talkie cannot be granted network access.".loc,
                         tone: Theme.positive, icon: "checkmark.seal.fill"
                     )
                 }
@@ -326,22 +326,22 @@ struct VerifyClaimsSubpage: View {
             // How to verify it yourself — the three shell commands, relocated intact.
             SettingsCard(
                 header: "Verify it yourself",
-                footer: "Run these against the app on your own Mac. They read the live signature, grep the source, and watch the wire — the same checks the diagnostic report gathers for you." // talkie:no-network(self-inspection)
+                footer: "Run these against the app on your own Mac. They read the live signature, grep the source, and watch the wire — the same checks the diagnostic report gathers for you.".loc // talkie:no-network(self-inspection)
             ) {
-                VerifyRow(number: "1", title: "Read the permissions",
+                VerifyRow(number: "1", title: "Read the permissions".loc,
                           command: "codesign -d --entitlements - /Applications/Talkie.app")
                 SettingsDivider()
-                VerifyRow(number: "2", title: "Grep the source",
+                VerifyRow(number: "2", title: "Grep the source".loc,
                           command: "./scripts/check-no-network.sh")
                 SettingsDivider()
-                VerifyRow(number: "3", title: "Watch the wire",
+                VerifyRow(number: "3", title: "Watch the wire".loc,
                           command: "nettop -p $(pgrep Talkie)")
             }
 
             SettingsCard(header: "Where your data lives") {
-                BulletRow(text: "~/Library/Application Support/Talkie — settings and history.")
+                BulletRow(text: "~/Library/Application Support/Talkie — settings and history.".loc)
                 SettingsDivider(leadingInset: 0)
-                BulletRow(text: "~/Talkie Meetings — your recordings and transcripts, in plain folders you own.")
+                BulletRow(text: "~/Talkie Meetings — your recordings and transcripts, in plain folders you own.".loc)
             }
         }
         .onAppear(perform: loadEntitlements)
