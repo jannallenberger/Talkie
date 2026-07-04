@@ -210,6 +210,14 @@ private struct AppProfileEditor: View {
     // Each override is modeled as an optional binding the picker maps to "Inherit".
     private var cleanupStyle: Binding<CleanupStyle?> { $profile.cleanupStyle }
     private var insertionMode: Binding<InsertionMode?> { $profile.insertionMode }
+    /// E8 "Insert in": nil = as spoken; a base code ("en") = translate to it. The
+    /// setter normalizes an empty pick back to nil so the field stays sparse.
+    private var outputLanguageCode: Binding<String?> {
+        Binding(
+            get: { profile.outputLanguageCode },
+            set: { profile.outputLanguageCode = ($0?.isEmpty ?? true) ? nil : $0 }
+        )
+    }
 
     /// This app's coarse category, from its bundle id + name — the key the cleanup
     /// style inherits through (matches the pipeline's `AppCategory.classify`).
@@ -294,6 +302,35 @@ private struct AppProfileEditor: View {
                         }
                     }
 
+                    // "Insert in" (E8): translate this app's finished dictation
+                    // on-device into a chosen language just before it's inserted, so you
+                    // can dictate in your native language and have Talkie draft, say,
+                    // English Slack messages. "As spoken" (nil, the default) inserts the
+                    // text in the language you spoke — no translation, no cost. Only the
+                    // languages you speak are offered; a monolingual user sees only the
+                    // default. Justified new surface: it's a per-app field on the
+                    // existing override sheet, not a new global toggle — only the user
+                    // knows which apps want which language.
+                    if outputLanguageOptions.count > 1 {
+                        SettingsCard(
+                            header: "Output language",
+                            footer: "Dictate in any language you speak; Talkie translates the finished text into the language you pick here before inserting it — entirely on-device. Code, file names, and product names are kept as-is.".loc
+                        ) {
+                            SettingsRow(
+                                title: "Insert in".loc,
+                                subtitle: outputLanguageSubtitle
+                            ) {
+                                Picker("", selection: outputLanguageCode) {
+                                    Text("As spoken".loc).tag(String?.none)
+                                    ForEach(outputLanguageOptions, id: \.code) { option in
+                                        Text(option.name).tag(String?.some(option.code))
+                                    }
+                                }
+                                .labelsHidden().fixedSize()
+                            }
+                        }
+                    }
+
                     // "Private app" (I1): dictation still works, but Talkie stores and
                     // learns NOTHING from what you say here. The binding writes `true`
                     // when on and `nil` when off so the field stays sparse in
@@ -374,6 +411,39 @@ private struct AppProfileEditor: View {
     private var vocabularyFilterSummary: String {
         guard let filter = profile.vocabularyFilter, !filter.isEmpty else { return "All terms".loc }
         return filter.count == 1 ? "1 term".loc : String(format: "%d terms".loc, filter.count)
+    }
+
+    /// One "Insert in" target option: a base language code and its localized name.
+    private struct LanguageOption { let code: String; let name: String }
+
+    /// The languages the user speaks, distinct by base code, as translate targets.
+    /// The first element is a synthetic "As spoken" placeholder so the count check
+    /// (`> 1`) reads as "there's at least one real language to offer". Names are
+    /// localized into the app's current UI language ("de" → "German" / "Deutsch").
+    private var outputLanguageOptions: [LanguageOption] {
+        var seen = Set<String>()
+        var options: [LanguageOption] = [LanguageOption(code: "", name: "As spoken".loc)]
+        for id in settings.spokenLanguages {
+            guard let code = LanguageDetector.languageCode(of: id),
+                  seen.insert(code).inserted else { continue }
+            let name = Locale.current.localizedString(forLanguageCode: code)?.capitalized
+                ?? LanguageDetector.displayName(forLanguageCode: code)
+                ?? code
+            options.append(LanguageOption(code: code, name: name))
+        }
+        return options
+    }
+
+    /// Subtitle under the "Insert in" row: names the resolved behaviour so the row
+    /// reads on its own — "As spoken (no translation)" or "Translated to German".
+    private var outputLanguageSubtitle: String {
+        guard let code = profile.outputLanguageCode, !code.isEmpty else {
+            return "As spoken — no translation.".loc
+        }
+        let name = outputLanguageOptions.first { $0.code == code }?.name
+            ?? Locale.current.localizedString(forLanguageCode: code)?.capitalized
+            ?? code
+        return String(format: "Translated to %@ before inserting.".loc, name)
     }
 
     private func toggleTerm(_ term: String) {

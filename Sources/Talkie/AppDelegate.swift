@@ -1444,6 +1444,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Aggregate word counts (lifetime stats + streak) still increment because they
         // carry no content and no app identity, keeping the WPM dashboard honest.
         let neverStore = resolved.neverStore
+        // E8: the per-app "Insert in" language, snapshotted at session start like every
+        // other resolved field. When set, `endDictation` translates the finished text
+        // on-device into this language just before insertion (see the translate hook
+        // below), and optimistic insertion is disabled for the session so the user never
+        // watches the spoken-language interim swap to the translated text at stop.
+        let outputLanguageCode = resolved.outputLanguageCode
         let optimisticEnabled = settings.optimisticInsertion
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
@@ -1602,6 +1608,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var optimistic: (count: Int, text: String)?
             if self.dictationSink == nil,
                optimisticEnabled, mode == .paste, cleanupEnabled, !languageSwitched,
+               // E8: never optimistically insert for an output-language override app —
+               // the interim is the SPOKEN language, and the stop-time translate pass
+               // would then make the user watch e.g. German swap to English. The
+               // translated final is inserted once, cleanly, below.
+               outputLanguageCode == nil,
                !finalRaw.isEmpty, CleanupEngine.isAvailable {
                 let interimProcessed = TextProcessor.apply(
                     replacements: replacements, removeFillers: removeFillers,
@@ -1960,6 +1971,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
+            // E8 — Dictate-in-L1, insert-in-L2. When this app carries an "Insert in"
+            // override, translate the finished (cleaned, niche-corrected, file-snapped)
+            // text on-device into that language just before it's inserted. Runs AFTER
+            // command routing declined (commands are spoken and executed in the input
+            // language — never translated) and BEFORE the content-recording block below,
+            // so History / the context graph / insertion all agree on the inserted
+            // (translated) text, exactly as they do today. Four guards inside
+            // `OutputTranslator` all fall back to the UNtranslated `finalText`:
+            // (a) the output must read as the target language, (b) never insert a model
+            // refusal, (c) dictionary/niche jargon ("claude.md", "Higgsfield") must
+            // survive verbatim, (d) skip the model entirely when the speech is already
+            // in the target language. `cleanupLangCode` is the session's pinned input
+            // language — we do NOT re-detect it. Latency: one extra on-device pass at
+            // stop, and only for a mismatched-language utterance in an override app.
+            var translated = false
+            if let outputLanguageCode {
+                var mustSurvive = nicheTerms
+                mustSurvive.append(contentsOf: replacements.map(\.to))
+                let result = await OutputTranslator.translate(
+                    finalText, to: outputLanguageCode,
+                    inputCode: cleanupLangCode, mustSurvive: mustSurvive
+                )
+                finalText = result.text
+                translated = result.translated
+            }
+
             // Which replacements to surface (HUD pings + fix tally). The recognizer
             // is biased toward replacement *targets*, so a respelling like
             // "correlate"→"coralate" often arrives already corrected in the raw
@@ -2185,7 +2222,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // "Private app" (I1) learns nothing, so the watcher (and the Claude
                 // Code transcript scan it schedules) never arms — fixing a word right
                 // after dictating into a Private app adds nothing to the dictionary.
-                if self.settings.learnFromEdits, !neverStore {
+                // E8: also skip the watcher when the inserted text was TRANSLATED — a
+                // user edit to translated output is not a recognition correction (they
+                // spoke L1; we inserted L2), so feeding it to `CorrectionExtractor`
+                // would poison the dictionary with bogus L1→L2 "fixes".
+                if self.settings.learnFromEdits, !neverStore, !translated {
                     let fixTargets = nicheFixTargets
                     // Shared per-insertion latch: the AX watcher and the Claude Code
                     // scan run side by side (the scan only matters where the watcher

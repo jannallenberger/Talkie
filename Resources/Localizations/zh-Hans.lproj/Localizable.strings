@@ -785,3 +785,11 @@
 "Browse installed apps…" = "浏览已安装的应用…";
 "No apps yet — browse your installed apps above." = "还没有应用——在上方浏览你已安装的应用。";
 "You dismissed these enough times that Talkie stopped offering. Tap to un-mute." = "你多次忽略这些，Talkie 已停止提议。点按以重新开启。";
+
+/* E8 — Dictate-in-L1, insert-in-L2 (per-app output language) */
+"Output language" = "输出语言";
+"Insert in" = "插入语言";
+"Dictate in any language you speak; Talkie translates the finished text into the language you pick here before inserting it — entirely on-device. Code, file names, and product names are kept as-is." = "用你会说的任何语言口述；Talkie 会在插入前把完成的文本翻译成你在这里选择的语言——全部在你的 Mac 上完成。代码、文件名和产品名称保持原样。";
+"As spoken" = "按口述";
+"As spoken — no translation." = "按口述——不翻译。";
+"Translated to %@ before inserting." = "插入前翻译为%@。";

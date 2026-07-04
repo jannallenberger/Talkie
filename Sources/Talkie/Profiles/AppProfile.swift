@@ -43,6 +43,18 @@ struct AppProfile: Codable, Identifiable, Sendable, Hashable {
     /// files that predate it decode cleanly (absent ⇒ off).
     var neverStore: Bool?
 
+    /// The language this app's finished dictation is *inserted* in (E8). A base
+    /// language code — "en", "de", … — that, when set, makes Talkie translate the
+    /// finished text ON-DEVICE into that language just before insertion, so a
+    /// German speaker can draft an English Slack message by voice. `nil` (the
+    /// default and the common case) inserts the text in the language it was spoken.
+    /// Commands are still spoken and executed in the input language; only the
+    /// dictated body is translated (`OutputTranslator`). Kept optional so the
+    /// field stays sparse in `app_profiles.json` — a profile carrying only this
+    /// is NOT `isEmpty`, and files written before it existed decode cleanly
+    /// (absent ⇒ insert as spoken).
+    var outputLanguageCode: String?
+
     init(
         bundleID: String,
         displayName: String,
@@ -50,7 +62,8 @@ struct AppProfile: Codable, Identifiable, Sendable, Hashable {
         insertionMode: InsertionMode? = nil,
         vocabularyFilter: [String]? = nil,
         activeMacroIDs: [String]? = nil,
-        neverStore: Bool? = nil
+        neverStore: Bool? = nil,
+        outputLanguageCode: String? = nil
     ) {
         self.bundleID = bundleID
         self.displayName = displayName
@@ -59,17 +72,21 @@ struct AppProfile: Codable, Identifiable, Sendable, Hashable {
         self.vocabularyFilter = vocabularyFilter
         self.activeMacroIDs = activeMacroIDs
         self.neverStore = neverStore
+        self.outputLanguageCode = outputLanguageCode
     }
 
     /// True when this profile overrides nothing — the row can be dropped so the
     /// list never accumulates no-op entries. `neverStore` counts as an override
     /// (only when actually `true`) so a Private-app row survives the drop even when
-    /// the user changed nothing else.
+    /// the user changed nothing else. `outputLanguageCode` counts as an override
+    /// only when it's a non-empty code, so an output-language-only row survives too
+    /// (and a picker set back to "Insert as spoken" writes nil and drops cleanly).
     var isEmpty: Bool {
         cleanupStyle == nil && insertionMode == nil
             && (vocabularyFilter?.isEmpty ?? true)
             && (activeMacroIDs?.isEmpty ?? true)
             && !(neverStore ?? false)
+            && (outputLanguageCode?.isEmpty ?? true)
     }
 }
 
@@ -99,6 +116,16 @@ struct ResolvedProfile: Sendable, Equatable {
     /// streak) still increment — they carry no content and no app identity, so the WPM
     /// dashboard stays honest. Resolved from `AppProfile.neverStore` (absent ⇒ false).
     var neverStore: Bool = false
+
+    /// The language the finished dictation is *inserted* in for this app (E8), or
+    /// `nil` to insert it as spoken (the default, and the only value for an app with
+    /// no per-app rule). When non-nil, `endDictation` runs the on-device
+    /// `OutputTranslator` over the finished text just before insertion. Resolved
+    /// from `AppProfile.outputLanguageCode` (absent/empty ⇒ nil). Snapshotted at
+    /// `beginDictation` like every other field, so a mid-session change can't flip
+    /// an in-flight dictation, and so the optimistic-insertion skip below can read it
+    /// off the pinned session profile without re-resolving.
+    var outputLanguageCode: String? = nil
 
     /// Whether to auto-capitalize the first letter. A smart, always-on default now
     /// that the per-app toggle is gone: capitalize everywhere EXCEPT a dictated

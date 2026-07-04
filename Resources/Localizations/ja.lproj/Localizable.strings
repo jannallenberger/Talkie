@@ -785,3 +785,11 @@
 "Browse installed apps…" = "インストール済みアプリを参照…";
 "No apps yet — browse your installed apps above." = "アプリはまだありません — 上でインストール済みアプリを参照してください。";
 "You dismissed these enough times that Talkie stopped offering. Tap to un-mute." = "何度も却下したため、Talkie は提案を止めました。タップで再開します。";
+
+/* E8 — Dictate-in-L1, insert-in-L2 (per-app output language) */
+"Output language" = "出力言語";
+"Insert in" = "挿入する言語";
+"Dictate in any language you speak; Talkie translates the finished text into the language you pick here before inserting it — entirely on-device. Code, file names, and product names are kept as-is." = "話せる言語で口述してください。Talkie は完成したテキストをここで選んだ言語に翻訳してから挿入します。すべて Mac 上で処理されます。コード、ファイル名、製品名はそのまま保持されます。";
+"As spoken" = "話したまま";
+"As spoken — no translation." = "話したまま — 翻訳なし。";
+"Translated to %@ before inserting." = "挿入前に%@に翻訳します。";

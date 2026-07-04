@@ -41,7 +41,12 @@ final class AppProfileStore: ObservableObject {
             category: app.category,
             // "Private app": absent/false ⇒ normal (store + learn); only an explicit
             // `true` opts the app out. A no-op for every app the user hasn't marked.
-            neverStore: p?.neverStore ?? false
+            neverStore: p?.neverStore ?? false,
+            // E8 "Insert in": absent/empty ⇒ insert as spoken (the common case,
+            // no translation pass). Normalized to nil when empty so an accidental
+            // "" stored code never triggers a no-op translate. A no-op for every
+            // app the user hasn't given an output language.
+            outputLanguageCode: p?.outputLanguageCode.flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 
