@@ -58,6 +58,15 @@ final class StatsStore: ObservableObject {
     /// Words changed by the on-device AI cleanup (grammar, self-corrections).
     @Published private(set) var aiWordsChanged = 0
 
+    /// K5 — per-term fix tally ("Words you taught me"). How many distinct dictations
+    /// each term was rescued in (one increment per term per dictation), plus the
+    /// first-seen unix time for a stable tie-break / "since" display. On-device only,
+    /// in stats.json (same privacy class as dictionary.json). Capped at
+    /// `maxTrackedTerms` with lowest-count eviction so the file can't grow unbounded.
+    @Published private(set) var termFixCounts: [String: Int] = [:]
+    private(set) var termFirstFixedUnix: [String: Double] = [:]
+    static let maxTrackedTerms = 500
+
     private let fileURL: URL
 
     /// `directory` defaults to the real support dir; tests pass a temp dir so they
@@ -138,6 +147,50 @@ final class StatsStore: ObservableObject {
         save()
     }
 
+    /// K5 — record which specific terms were rescued on one dictation. `terms` is
+    /// already de-duplicated per dictation by the caller, so each counts once here
+    /// ("rescued N times" == N distinct dictations). Enforces the term cap by
+    /// evicting the lowest-count entries (oldest first-fixed breaks ties) so a heavy
+    /// user never grows stats.json without bound.
+    func recordTermFixes(_ terms: [String]) {
+        guard !terms.isEmpty else { return }
+        let now = Date().timeIntervalSince1970
+        var changed = false
+        for raw in terms {
+            let term = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !term.isEmpty else { continue }
+            termFixCounts[term, default: 0] += 1
+            if termFirstFixedUnix[term] == nil { termFirstFixedUnix[term] = now }
+            changed = true
+        }
+        guard changed else { return }
+        evictIfNeeded()
+        save()
+    }
+
+    /// Keep only the `maxTrackedTerms` most-fixed terms; drop the lowest-count ones
+    /// (oldest first-fixed as the tiebreak) along with their first-seen timestamps.
+    private func evictIfNeeded() {
+        guard termFixCounts.count > Self.maxTrackedTerms else { return }
+        let keep = Set(rankedTerms().prefix(Self.maxTrackedTerms).map(\.term))
+        termFixCounts = termFixCounts.filter { keep.contains($0.key) }
+        termFirstFixedUnix = termFirstFixedUnix.filter { keep.contains($0.key) }
+    }
+
+    /// Terms ranked highest-count first, oldest first-fixed breaking ties.
+    private func rankedTerms() -> [(term: String, count: Int)] {
+        termFixCounts.sorted {
+            $0.value != $1.value
+                ? $0.value > $1.value
+                : (termFirstFixedUnix[$0.key] ?? 0) < (termFirstFixedUnix[$1.key] ?? 0)
+        }.map { (term: $0.key, count: $0.value) }
+    }
+
+    /// The most-taught terms for the "Words you taught me" card (K5).
+    func topTaughtWords(limit: Int) -> [(term: String, count: Int)] {
+        Array(rankedTerms().prefix(limit))
+    }
+
     /// Lifetime average speaking speed.
     var averageWPM: Double {
         guard totalDurationSec > 0 else { return 0 }
@@ -159,6 +212,8 @@ final class StatsStore: ObservableObject {
         dictionaryFixes = 0
         fillersRemoved = 0
         aiWordsChanged = 0
+        termFixCounts = [:]
+        termFirstFixedUnix = [:]
         save()
     }
 
@@ -177,6 +232,9 @@ final class StatsStore: ObservableObject {
         // stats.json without these decodes cleanly (both default to 0).
         var longestDictationWords: Int?
         var longestDictationDurationSec: Double?
+        // K5 — optional for back-compat with files written before per-term tallying.
+        var termFixCounts: [String: Int]?
+        var termFirstFixedUnix: [String: Double]?
     }
 
     private func load() {
@@ -191,6 +249,8 @@ final class StatsStore: ObservableObject {
         aiWordsChanged = p.aiWordsChanged ?? 0
         longestDictationWords = p.longestDictationWords ?? 0
         longestDictationDurationSec = p.longestDictationDurationSec ?? 0
+        termFixCounts = p.termFixCounts ?? [:]
+        termFirstFixedUnix = p.termFirstFixedUnix ?? [:]
     }
 
     private func save() {
@@ -203,7 +263,9 @@ final class StatsStore: ObservableObject {
             fillersRemoved: fillersRemoved,
             aiWordsChanged: aiWordsChanged,
             longestDictationWords: longestDictationWords,
-            longestDictationDurationSec: longestDictationDurationSec
+            longestDictationDurationSec: longestDictationDurationSec,
+            termFixCounts: termFixCounts,
+            termFirstFixedUnix: termFirstFixedUnix
         )
         guard let data = try? JSONEncoder().encode(p) else { return }
         try? data.write(to: fileURL, options: .atomic)

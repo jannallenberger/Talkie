@@ -2070,6 +2070,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // L4: this dictation's words/phrases are CONTENT, so the lifetime
                 // word/phrase frequency store is skipped for a Private app too.
                 self.wordFreq.record(text: finalText)
+                // K5: which specific jargon terms Talkie rescued is likewise content,
+                // so the per-term "Words you taught me" tally is gated here too — a
+                // Private app records no term names. `replacedWords` is already the
+                // per-dictation de-duplicated fix list.
+                self.stats.recordTermFixes(replacedWords)
                 self.history.add(
                     finalText, wordCount: words, durationSec: duration,
                     appName: target.name, appCategory: target.category.rawValue,

@@ -100,6 +100,7 @@ struct DashboardView: View {
                         FixesCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                         WordsCard(stats: stats, history: history).frame(maxHeight: .infinity, alignment: .top)
                         RecordsCard(stats: stats, activity: activity).frame(maxHeight: .infinity, alignment: .top)
+                        TaughtWordsCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                     }
 
                     LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
@@ -770,6 +771,49 @@ private struct RecordsCard: View {
         let words = stats.longestDictationWords.formatted()
         let dur = formatDuration(stats.longestDictationDurationSec)
         return "\(words) words (\(dur))"
+    }
+}
+
+// MARK: - Words you taught me card
+
+/// K5 — the jargon terms Talkie has learned to get right for you, most-rescued
+/// first. Terms are user content, so they render verbatim (never localized) and
+/// are only ever read from the on-device `stats.json` tally.
+private struct TaughtWordsCard: View {
+    @ObservedObject var stats: StatsStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Eyebrow(text: "Words you taught me")
+
+            let top = stats.topTaughtWords(limit: 5)
+            if top.isEmpty {
+                Text("The terms Talkie learns to spell right for you will show up here.")
+                    .font(.talkieHeading(13, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(top, id: \.term) { entry in
+                    HStack(spacing: 8) {
+                        Image(systemName: "character.book.closed")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.inkTertiary)
+                            .frame(width: 16)
+                        Text(verbatim: entry.term)
+                            .font(.talkieHeading(13, weight: .regular))
+                            .foregroundStyle(Theme.inkSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 4)
+                        Text(verbatim: "\(entry.count)×")
+                            .font(.talkieHeading(13, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .monospacedDigit()
+                    }
+                }
+            }
+        }
+        .talkieCard(fill: true)
     }
 }
 
