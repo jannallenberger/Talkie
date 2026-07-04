@@ -261,6 +261,9 @@
 "Copy config" = "구성 복사";
 "Or from the terminal" = "또는 터미널에서";
 "Copy command" = "명령 복사";
+"Or let Claude set it up" = "또는 Claude가 직접 설정하게 하기";
+"Paste this into Claude and it connects the server itself" = "이것을 Claude에 붙여넣으면 서버를 직접 연결합니다";
+"Copy setup prompt" = "설정 프롬프트 복사";
 "What Claude can read" = "Claude가 읽을 수 있는 항목";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "커넥터 바이너리가 아직 없습니다. 빌드된 Talkie.app(./scripts/run.sh)에서 이 앱을 실행하면 함께 포함됩니다. 추가 단계는 없습니다.";
 "Opened in Claude Desktop" = "Claude Desktop에서 열림";

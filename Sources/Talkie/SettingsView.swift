@@ -745,6 +745,7 @@ private struct MCPConnectorCard: View {
 
     @State private var copiedConfig = false
     @State private var copiedCommand = false
+    @State private var copiedPrompt = false
     @State private var desktopStatus: String?
 
     private var path: String? { Self.binaryPath() }
@@ -789,6 +790,23 @@ private struct MCPConnectorCard: View {
                     } label: {
                         Label(copiedCommand ? "Copied".loc : "Copy command".loc,
                               systemImage: copiedCommand ? "checkmark" : "terminal")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.coral)
+                }
+                // (c) Let Claude wire itself up: a paste-into-Claude prompt that has it
+                // run the add command, learn the tools, and honestly frame the writes
+                // (queued, confirmed in Talkie with an Undo) — then verify with `search`.
+                SettingsRow(
+                    title: "Or let Claude set it up".loc,
+                    subtitle: "Paste this into Claude and it connects the server itself".loc
+                ) {
+                    Button {
+                        copyToPasteboard(MCPSetupPrompt.setupPrompt(binaryPath: path))
+                        flash($copiedPrompt)
+                    } label: {
+                        Label(copiedPrompt ? "Copied".loc : "Copy setup prompt".loc,
+                              systemImage: copiedPrompt ? "checkmark" : "text.bubble")
                     }
                     .buttonStyle(.bordered)
                     .tint(Theme.coral)

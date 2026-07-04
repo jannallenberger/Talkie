@@ -261,6 +261,9 @@
 "Copy config" = "Copiar configuração";
 "Or from the terminal" = "Ou pelo terminal";
 "Copy command" = "Copiar comando";
+"Or let Claude set it up" = "Ou deixe o Claude configurar";
+"Paste this into Claude and it connects the server itself" = "Cole isto no Claude e ele conecta o servidor sozinho";
+"Copy setup prompt" = "Copiar prompt de configuração";
 "What Claude can read" = "O que o Claude pode ler";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "O binário do conector ainda não está aqui. Execute este app a partir de uma Talkie.app compilada (./scripts/run.sh) e ele virá incluído — sem etapas extras.";
 "Opened in Claude Desktop" = "Aberto no Claude Desktop";

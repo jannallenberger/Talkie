@@ -261,6 +261,9 @@
 "Copy config" = "复制配置";
 "Or from the terminal" = "或在终端中";
 "Copy command" = "复制命令";
+"Or let Claude set it up" = "或让 Claude 自行设置";
+"Paste this into Claude and it connects the server itself" = "将此粘贴到 Claude，它会自行连接服务器";
+"Copy setup prompt" = "复制设置提示词";
 "What Claude can read" = "Claude 可以读取的内容";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "连接器二进制文件尚不存在。请从已构建的 Talkie.app（./scripts/run.sh）运行本应用，它便会随附其中——无需额外步骤。";
 "Opened in Claude Desktop" = "已在 Claude Desktop 中打开";
