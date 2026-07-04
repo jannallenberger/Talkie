@@ -1634,6 +1634,13 @@ private struct DictionarySettings: View {
                 // sheet as a file import so nothing is added without a confirm.
                 starterPacksCard
 
+                // L16 — "Install my jargon": a copy-prompt the user pastes into
+                // Claude. Claude (via the talkie MCP) reads how they actually talk to
+                // it and suggests the terms Talkie would mis-hear, queued for a one-tap
+                // confirm with Undo. Sits in the dictionary's import/export region
+                // beside the starter packs and the header Export button.
+                InstallMyJargonCard()
+
                 // Learned vocabulary — jargon Talkie picked up from what you say and
                 // confirm, now correcting close misses on its own. Read-only; stays
                 // hidden until something has graduated, so it never adds noise.

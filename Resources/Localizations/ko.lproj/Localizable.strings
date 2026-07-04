@@ -666,3 +666,9 @@
 "What Claude can do" = "Claude가 할 수 있는 일";
 "asks first" = "먼저 확인";
 "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie는 작은 로컬 서버를 제공하여 Claude가 회의, 브리핑, 약속, 컨텍스트, 통계, 사전, 메모를 읽을 수 있습니다 — 모두 기기에서 처리되며 Mac 밖으로 나가지 않습니다. Claude는 사전을 관리할 수도 있습니다 — 항목과 규칙 추가·변경·제거 — 하지만 모든 변경은 실행 취소가 가능한 원탭 확인을 기다립니다. 앱에 포함: 별도 다운로드나 빌드가 필요 없습니다.";
+
+/* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
+"Install my jargon" = "내 전문 용어 설치";
+"Copy prompt" = "프롬프트 복사";
+"Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Claude가 Talkie에 당신의 전문 용어를 가르치게 하세요. 이 프롬프트를 Claude에 붙여넣으면(Talkie 커네터 활성화 상태) 당신이 실제로 어떻게 대화하는지—이름, 제품, 용어—를 읽고 Talkie가 잘못 들을 만한 것들을 제안합니다. 모든 제안은 Talkie에서 원탭 확인(실행 취소 가능)을 기다립니다. Claude는 절대 당신의 사전을 스스로 변경하지 않습니다.";
+"Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Talkie 커네터가 필요합니다 — ‘일반 ▸ Claude에 연결’에서 설정하세요.";
