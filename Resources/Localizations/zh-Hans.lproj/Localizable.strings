@@ -659,3 +659,9 @@
 "What Claude can do" = "Claude 可以做什么";
 "asks first" = "会先询问";
 "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie 附带一个小型本地服务器，让 Claude 可以读取你的会议、简报、承诺、上下文、统计、词典和笔记——全部在设备上处理，不会离开你的 Mac。Claude 还可以管理你的词典——添加、更改或删除条目和规则——但每项更改都会等待你一键确认（可撤销）后才生效。随应用打包：无需单独下载或构建。";
+
+/* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
+"Install my jargon" = "安装我的行话";
+"Copy prompt" = "复制提示词";
+"Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "让 Claude 教 Talkie 认识你的行话。将此提示词粘贴到 Claude（并启用 Talkie 连接器），它会读取你实际上怎样与它交谈—你的名称、产品和术语—并建议出 Talkie 可能听错的词。每个建议都会等待你在 Talkie 中一键确认（可撤销）。Claude 绝不会自行更改你的词典。";
+"Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "需要 Talkie 连接器 — 请在“通用 ▸ 连接到 Claude”中设置。";

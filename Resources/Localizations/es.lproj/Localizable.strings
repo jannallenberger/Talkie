@@ -659,3 +659,9 @@
 "What Claude can do" = "Lo que Claude puede hacer";
 "asks first" = "pregunta antes";
 "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie incluye un pequeño servidor local para que Claude pueda leer tus reuniones, tu resumen, compromisos, contexto, estadísticas, tu diccionario y notas: en el dispositivo, nada sale de tu Mac. Claude también puede gestionar tu diccionario: añadir, cambiar o eliminar términos y reglas, pero cada cambio espera tu confirmación con un toque y opción de deshacer. Incluido con la app: sin descarga ni compilación aparte.";
+
+/* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
+"Install my jargon" = "Instalar mi jerga";
+"Copy prompt" = "Copiar prompt";
+"Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Deja que Claude enseñe tu jerga a Talkie. Pega este prompt en Claude (con el conector de Talkie activado) y leerá cómo hablas realmente con él — tus nombres, productos y términos — y sugerirá los que Talkie oiría mal. Cada sugerencia espera tu confirmación con un toque en Talkie, con opción de deshacer. Claude nunca cambia tu diccionario por su cuenta.";
+"Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Requiere el conector de Talkie: configúralo en General ▸ Conectar con Claude.";
