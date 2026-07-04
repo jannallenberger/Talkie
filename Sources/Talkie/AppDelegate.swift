@@ -858,12 +858,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         meetingPill.attach(recorder: meetingRecorder, subtopic: subtopicModel)
 
-        // Feed finalized transcript segments to the subtopic engine. H1 merged the
-        // separate "show the live topic" toggle into `showMeetingPill` — the pill is
-        // where the live topic surfaces, so one switch governs both.
+        // Feed finalized transcript segments to the subtopic engine unconditionally.
+        // D8: chapters are a SAVED-NOTES artifact, so the engine must see the
+        // transcript on every recording regardless of the pill. `showMeetingPill`
+        // governs only whether the live topic is DISPLAYED (the pill), not whether it
+        // is COMPUTED — H1's toggle sweep wrongly conflated the two and re-gated
+        // computation here, silently starving chapters for pill-hidden users. The
+        // engine no-ops when its on-device model is unavailable, so this is cheap.
         meetingRecorder.onLiveSegment = { [weak self] _, text in
             Task { @MainActor in
-                guard let self, self.settings.showMeetingPill else { return }
+                guard let self else { return }
                 await self.subtopicEngine.ingest(text)
             }
         }
@@ -927,12 +931,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // recorder also clears this in start(); doing it here too means an accept
         // that somehow races the very start of a recording can't inherit stale state.
         meetingRecorder.pendingChapters = []
-        // H1: the standalone "show the live topic" toggle was folded into
-        // `showMeetingPill`. The subtopic engine (which also produces chapters for the
-        // saved note) and the pill now share the one switch — turning the pill on gives
-        // you the live topic and chapters; turning it off skips both.
-        guard settings.showMeetingPill else { return }
+        // D8: SEPARATE computation from display. The subtopic engine drives the saved
+        // note's "## Chapters" section, so it must run for EVERY recording — chapters
+        // are an artifact of the notes the user keeps, not of the transient pill. Start
+        // it unconditionally (it self-no-ops when the on-device model is unavailable).
+        // Only the live PILL display honors `showMeetingPill`: H1 folded the standalone
+        // live-topic toggle into that switch, but "show the pill" and "produce chapters"
+        // are different concerns — the pill toggle must not silently suppress a
+        // saved-notes feature. (No new toggle: respects H1's single-switch mandate.)
         Task { await subtopicEngine.start() }
+        guard settings.showMeetingPill else { return }
         meetingPill.show()
     }
 

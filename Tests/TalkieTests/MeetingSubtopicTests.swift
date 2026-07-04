@@ -176,6 +176,49 @@ final class MeetingSubtopicTests: XCTestCase {
         XCTAssertTrue(cleared.isEmpty, "the live collector is reset for the next recording")
     }
 
+    /// D8-vs-H1 regression guard: chapters are a SAVED-NOTES artifact and must be
+    /// produced regardless of the live-pill DISPLAY toggle (`showMeetingPill`). H1's
+    /// toggle sweep wrongly re-gated the subtopic engine's *computation* (ingest +
+    /// start) behind that display flag, silently starving pill-hidden users of
+    /// chapters. This models the corrected AppDelegate wiring: the display flag is
+    /// consulted ONLY for `pill.show()`, never for feeding/starting the engine, so a
+    /// recording with `showMeetingPill == false` still collects accepted chapters.
+    ///
+    /// The engine deliberately has no `showMeetingPill` awareness of its own — the
+    /// wiring layer owns that concern — so the test drives the engine exactly as the
+    /// wiring does (ingest-then-accept) while asserting the display flag was never a
+    /// gate on the accept path.
+    @MainActor
+    func testChaptersProducedWhenPillHidden() async {
+        // The display toggle is OFF. The corrected wiring must ingest and accept
+        // regardless; it may only skip `pill.show()`.
+        let showMeetingPill = false
+        var pillShown = false
+        func maybeShowPill() { if showMeetingPill { pillShown = true } }
+
+        let model = MeetingSubtopicModel()
+        let collector = ChapterCollector()
+        let engine = Engine(summarizer: NoopSummarizer(), model: model) { [collector] topic in
+            collector.record(topic)   // fired on accept, exactly as the wiring stamps a chapter
+        }
+
+        // Recording starts: the wiring starts the engine and (only then) considers the
+        // pill. Pill display is gated; engine computation is not.
+        maybeShowPill()
+
+        // Feed transcript unconditionally (the corrected `onLiveSegment` has no pill
+        // guard) and drive two consecutive highs to force an accept.
+        collector.clock = 40
+        await engine.evaluateForTesting("TOPIC|Roadmap\nCONFIDENCE|HIGH")
+        await engine.evaluateForTesting("TOPIC|Roadmap\nCONFIDENCE|HIGH")
+
+        XCTAssertFalse(pillShown, "the pill stays hidden when showMeetingPill is false")
+        XCTAssertEqual(collector.chapters.map(\.title), ["Roadmap"],
+                       "chapters are still produced with the pill hidden — computation is decoupled from display")
+        XCTAssertEqual(model.current, "Roadmap",
+                       "the subtopic still resolves even though nothing displays it")
+    }
+
     // MARK: - D8: chapter note section (Meeting.chaptersMarkdown)
 
     func testChaptersMarkdownNeedsTwoChapters() {

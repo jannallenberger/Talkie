@@ -630,8 +630,10 @@ final class AppSettings: ObservableObject {
         static let autoDetectMeetings = "autoDetectMeetings"
         static let showMeetingPill = "showMeetingPill"
         /// Legacy key — the standalone "show the live topic" toggle was folded into
-        /// `showMeetingPill` in H1 (one switch governs the pill, its live topic, and
-        /// chapters). Retained only so `init` can `removeObject` the stale value.
+        /// `showMeetingPill` in H1 (one switch governs the pill and its live-topic
+        /// display). Chapters are NOT governed by it: D8 decoupled chapter computation
+        /// from the pill (chapters are a saved-notes artifact, produced on every
+        /// recording). Retained only so `init` can `removeObject` the stale value.
         static let meetingLiveTopic = "meetingLiveTopic"
         static let keepMeetingAudio = "keepMeetingAudio"
         static let meetingAllowlist = "meetingAllowlist"
