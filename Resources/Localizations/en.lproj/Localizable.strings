@@ -691,3 +691,11 @@
 /* L6d — Verify our claims: root row + subpage intro */
 "See the live entitlement list, the commands to check it yourself, and where your data lives." = "See the live entitlement list, the commands to check it yourself, and where your data lives.";
 "Every value below is read from this Mac right now — nothing is typed in." = "Every value below is read from this Mac right now — nothing is typed in.";
+/* L6f — Per-app editor: state what "Inherit" resolves to */
+"%@ (inherited)" = "%@ (inherited)";
+"Paste" = "Paste";
+"Type" = "Type";
+"1 term" = "1 term";
+"%d terms" = "%d terms";
+"Inherit — %1$@ (%2$@ apps)" = "Inherit — %1$@ (%2$@ apps)";
+"Paste (Talkie's default — switches to Type automatically if pastes fail here)." = "Paste (Talkie's default — switches to Type automatically if pastes fail here).";

@@ -689,3 +689,11 @@
 /* L6d — Verify our claims: root row + subpage intro */
 "See the live entitlement list, the commands to check it yourself, and where your data lives." = "查看实时权限列表、可自行核对的命令，以及你的数据存放位置。";
 "Every value below is read from this Mac right now — nothing is typed in." = "下面的每个数值都是此刻从这台 Mac 读取的 — 没有任何手动输入。";
+/* L6f — Per-app editor: state what "Inherit" resolves to */
+"%@ (inherited)" = "%@（继承）";
+"Paste" = "粘贴";
+"Type" = "输入";
+"1 term" = "1 个词条";
+"%d terms" = "%d 个词条";
+"Inherit — %1$@ (%2$@ apps)" = "继承——%1$@（%2$@应用）";
+"Paste (Talkie's default — switches to Type automatically if pastes fail here)." = "粘贴（Talkie 的默认设置——如果在此粘贴失败，将自动切换为输入）。";

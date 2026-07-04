@@ -689,3 +689,11 @@
 /* L6d — Verify our claims: root row + subpage intro */
 "See the live entitlement list, the commands to check it yourself, and where your data lives." = "Consulta la lista de permisos en vivo, los comandos para comprobarlo tú mismo y dónde viven tus datos.";
 "Every value below is read from this Mac right now — nothing is typed in." = "Cada valor de abajo se lee de este Mac ahora mismo: nada está escrito a mano.";
+/* L6f — Per-app editor: state what "Inherit" resolves to */
+"%@ (inherited)" = "%@ (heredado)";
+"Paste" = "Pegar";
+"Type" = "Escribir";
+"1 term" = "1 término";
+"%d terms" = "%d términos";
+"Inherit — %1$@ (%2$@ apps)" = "Heredar — %1$@ (apps de %2$@)";
+"Paste (Talkie's default — switches to Type automatically if pastes fail here)." = "Pegar (opción predeterminada de Talkie: cambia a Escribir automáticamente si el pegado falla aquí).";
