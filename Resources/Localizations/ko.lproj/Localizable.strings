@@ -799,3 +799,10 @@
 "Enable update checks" = "업데이트 확인 사용";
 "Update checks are off" = "업데이트 확인이 꺼져 있습니다";
 "This build won't contact GitHub. Turn checks on whenever you want the latest." = "이 빌드는 GitHub에 연결하지 않습니다. 최신 버전이 필요할 때 확인을 켜세요.";
+
+/* K6 — Name your parrot */
+"%1$@ learned “%2$@”" = "%1$@ 님이 “%2$@”을(를) 익혔어요";
+"Name the macaw" = "마코앵무새에게 이름 지어주기";
+"Name the macaw (optional)" = "앵무새 이름 (선택)";
+"🦜 %@" = "🦜 %@";
+"Click to name your parrot" = "클릭하여 앵무새에게 이름을 지어주세요";

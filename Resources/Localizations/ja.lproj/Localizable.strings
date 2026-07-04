@@ -799,3 +799,10 @@
 "Enable update checks" = "アップデートの確認を有効にする";
 "Update checks are off" = "アップデートの確認はオフです";
 "This build won't contact GitHub. Turn checks on whenever you want the latest." = "このビルドは GitHub に接続しません。最新版が必要になったら確認をオンにしてください。";
+
+/* K6 — Name your parrot */
+"%1$@ learned “%2$@”" = "%1$@ が「%2$@」を覚えました";
+"Name the macaw" = "コンゴウインコに名前をつける";
+"Name the macaw (optional)" = "インコの名前（任意）";
+"🦜 %@" = "🦜 %@";
+"Click to name your parrot" = "クリックしてインコに名前をつけます";

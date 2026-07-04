@@ -2363,13 +2363,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
                                    dateUnix: Date().timeIntervalSince1970, snippet: snippet)
         )
-        let message: String
-        switch source {
-        case .fieldEdit:
-            message = "Added “\(to)” to dictionary"
-        case .claudeCode:
-            message = String(format: "Added “%@” — from your Claude Code prompt".loc, to)
-        }
+        let message = AppDelegate.learnedPingMessage(
+            parrotName: self.settings.parrotName, to: to, source: source
+        )
         self.hud.showLearned(message) { [weak self] in
             guard let self else { return }
             self.dictionary.removeLearnedReplacement(from: from, to: to)
@@ -2379,6 +2375,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.hud.showReverted()
         }
         return true
+    }
+
+    /// K6 — build the learned-ping copy, name-aware. Pure and side-effect-free so
+    /// it can be unit-tested without touching the HUD or the dictionary.
+    ///
+    /// - When the bird has a name (`parrotName` non-empty after normalization) the
+    ///   ping speaks in its voice: "Kiwi learned “claude.md”" — emotional ownership
+    ///   for the one UserDefaults key K6 adds.
+    /// - When it is unnamed we fall back to the plain, K1-localized copy that
+    ///   existed before, so an empty name changes nothing.
+    ///
+    /// Every branch routes through `.loc` with positional format specifiers so the
+    /// argument order stays safe across all ten languages (a translation may need
+    /// the quoted term before the name, or a different quote glyph).
+    static func learnedPingMessage(parrotName rawName: String, to: String,
+                                   source: LearnSource) -> String {
+        // Trim/clip defensively even though `AppSettings` already normalizes on
+        // write — this helper may be called with a caller-built string in tests.
+        let name = AppSettings.normalizedParrotName(rawName)
+        if !name.isEmpty {
+            // Named bird — same voice for both learn sources; the source nuance
+            // ("from your Claude Code prompt") is dropped in favor of the name,
+            // which is the stronger signal of ownership.
+            return String(format: "%1$@ learned “%2$@”".loc, name, to)
+        }
+        switch source {
+        case .fieldEdit:
+            // K1: route the previously-hardcoded English literal through `.loc`
+            // (the key already exists in every `.lproj`), so an unnamed bird still
+            // localizes correctly.
+            return String(format: "Added “%@” to dictionary".loc, to)
+        case .claudeCode:
+            return String(format: "Added “%@” — from your Claude Code prompt".loc, to)
+        }
     }
 
     // MARK: Voice editing of just-inserted text (B9)

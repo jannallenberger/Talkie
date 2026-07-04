@@ -159,6 +159,12 @@ struct DashboardView: View {
                 Text(greeting)
                     .font(.talkieHeading(13, weight: .regular))
                     .foregroundStyle(Theme.inkSecondary)
+                // K6: the one optional text field WS-K adds — names the bird. H1
+                // deleted the Settings ▸ Profile card this spec originally targeted,
+                // so the field lives here beside `userName` (its post-H1 home),
+                // following the same inline click-to-edit pattern. Empty by default,
+                // so it changes nothing until the user opts in.
+                EditableParrotName(name: $settings.parrotName)
             }
             Spacer()
             Wordmark()
@@ -236,6 +242,67 @@ private struct EditableNameTitle: View {
     }
 
     private func commit() {
+        name = draft.trimmingCharacters(in: .whitespaces)
+        editing = false
+    }
+}
+
+/// K6 — the optional inline editor for the bird's name, sitting just under the
+/// greeting. Mirrors `EditableNameTitle`'s click-to-edit interaction at a quieter
+/// weight (this is garnish, not the headline): a small parrot-voiced affordance
+/// ("Name the macaw" when unset) that swaps in a borderless `TextField` on click
+/// and commits on Return or blur. The binding is `AppSettings.parrotName`, which
+/// normalizes (trim + 24-char cap) on write, so nothing typed here can blow out
+/// the pill layout the name later appears in.
+private struct EditableParrotName: View {
+    @Binding var name: String
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    /// The resting label: the named bird ("🦜 Kiwi") once set, else a gentle,
+    /// K1-voice invitation to name it.
+    private var displayText: String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "Name the macaw".loc
+                               : String(format: "🦜 %@".loc, trimmed)
+    }
+
+    var body: some View {
+        Group {
+            if editing {
+                TextField("Name the macaw (optional)".loc, text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.talkieHeading(13, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .focused($focused)
+                    .onSubmit(commit)
+                    .onChange(of: focused) { _, isFocused in
+                        if !isFocused { commit() }
+                    }
+                    .frame(maxWidth: 240, alignment: .leading)
+            } else {
+                Button(action: beginEditing) {
+                    Text(displayText)
+                        .font(.talkieHeading(13, weight: .regular))
+                        .foregroundStyle(name.trimmingCharacters(in: .whitespaces).isEmpty
+                                         ? Theme.inkTertiary : Theme.inkSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Click to name your parrot".loc)
+            }
+        }
+    }
+
+    private func beginEditing() {
+        draft = name
+        editing = true
+        focused = true
+    }
+
+    private func commit() {
+        // `AppSettings.parrotName` normalizes (trim + cap) on assignment; trim here
+        // too so an all-whitespace draft settles to empty before it round-trips.
         name = draft.trimmingCharacters(in: .whitespaces)
         editing = false
     }

@@ -327,6 +327,28 @@ final class AppSettings: ObservableObject {
     @Published var userName: String {
         didSet { defaults.set(userName, forKey: Keys.userName) }
     }
+    /// K6 — the optional name for the bird itself (default `""` — unnamed). When
+    /// set it personalizes the learned ping ("Kiwi learned …") and, later, Wrapped
+    /// narration. Purely cosmetic: an empty name changes nothing, so this is not a
+    /// behavioral toggle. The setter normalizes on the way in — whitespace-trimmed
+    /// and capped at `parrotNameMaxLength` characters — so the HUD/dashboard pill
+    /// can never be blown out by a pasted essay, and every reader (ping, Wrapped)
+    /// sees the same clean value without re-trimming. Privacy: this is personal
+    /// data, so it is deliberately absent from the diagnostic bundle's whitelist
+    /// (`BugBundle.Environment`) and must never be baked into an exported/shared
+    /// artifact by default.
+    @Published var parrotName: String {
+        didSet {
+            let clean = AppSettings.normalizedParrotName(parrotName)
+            if clean != parrotName {
+                // Re-entrant assignment runs didSet again, but `clean` is a fixed
+                // point of the normalizer, so it settles after one bounce.
+                parrotName = clean
+                return
+            }
+            defaults.set(parrotName, forKey: Keys.parrotName)
+        }
+    }
     /// True once the first-run onboarding has been completed.
     @Published var hasOnboarded: Bool {
         didSet { defaults.set(hasOnboarded, forKey: Keys.hasOnboarded) }
@@ -433,6 +455,7 @@ final class AppSettings: ObservableObject {
             Keys.vibeCoding: false,
             Keys.lastVibeOfferUnix: 0.0,
             Keys.userName: "",
+            Keys.parrotName: "",
             Keys.hasOnboarded: false,
             Keys.playSounds: true,
             Keys.launchAtLogin: false,
@@ -493,6 +516,9 @@ final class AppSettings: ObservableObject {
         declinedVibeRoots = d.stringArray(forKey: Keys.declinedVibeRoots) ?? []
         lastVibeOfferUnix = d.double(forKey: Keys.lastVibeOfferUnix)
         userName = d.string(forKey: Keys.userName) ?? ""
+        // Normalize on load too, so a value written by an older build (or edited in
+        // the plist by hand) can't smuggle in whitespace or an over-long name.
+        parrotName = AppSettings.normalizedParrotName(d.string(forKey: Keys.parrotName) ?? "")
         hasOnboarded = d.bool(forKey: Keys.hasOnboarded)
         playSounds = d.bool(forKey: Keys.playSounds)
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
@@ -530,6 +556,23 @@ final class AppSettings: ObservableObject {
               !list.isEmpty
         else { return MeetingApp.builtInAllowlist }
         return list
+    }
+
+    /// K6 — the longest a parrot name may be. Chosen to keep the learned-ping pill
+    /// and the dashboard header on one line even in the widest scripts; a pasted
+    /// paragraph is silently clipped rather than allowed to blow out the layout.
+    static let parrotNameMaxLength = 24
+
+    /// Normalize a raw parrot name into the stored form: whitespace/newlines
+    /// trimmed off both ends, then clipped to `parrotNameMaxLength` characters
+    /// (by grapheme cluster, so an emoji or accented letter counts as one). Pure
+    /// and idempotent — `normalized(normalized(x)) == normalized(x)` — which the
+    /// `didSet` re-entrancy guard relies on. Kept static so it is unit-testable
+    /// without an `AppSettings` instance.
+    static func normalizedParrotName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > parrotNameMaxLength else { return trimmed }
+        return String(trimmed.prefix(parrotNameMaxLength))
     }
 
     /// The cleanup style for an app category (user override, else default).
@@ -653,6 +696,7 @@ final class AppSettings: ObservableObject {
         static let declinedVibeRoots = "declinedVibeRoots"
         static let lastVibeOfferUnix = "lastVibeOfferUnix"
         static let userName = "userName"
+        static let parrotName = "parrotName"
         static let hasOnboarded = "hasOnboarded"
         static let playSounds = "playSounds"
         static let launchAtLogin = "launchAtLogin"

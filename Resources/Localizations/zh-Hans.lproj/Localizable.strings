@@ -799,3 +799,10 @@
 "Enable update checks" = "启用更新检查";
 "Update checks are off" = "更新检查已关闭";
 "This build won't contact GitHub. Turn checks on whenever you want the latest." = "此版本不会连接 GitHub。想要获取最新版本时再打开检查。";
+
+/* K6 — Name your parrot */
+"%1$@ learned “%2$@”" = "%1$@ 学会了“%2$@”";
+"Name the macaw" = "给金刚鹦鹉起个名字";
+"Name the macaw (optional)" = "鹦鹉的名字（可选）";
+"🦜 %@" = "🦜 %@";
+"Click to name your parrot" = "点击给你的鹦鹉起名";

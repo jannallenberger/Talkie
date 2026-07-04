@@ -799,3 +799,10 @@
 "Enable update checks" = "Controle op updates inschakelen";
 "Update checks are off" = "Controle op updates staat uit";
 "This build won't contact GitHub. Turn checks on whenever you want the latest." = "Deze build maakt geen verbinding met GitHub. Schakel de controle in wanneer je de nieuwste versie wilt.";
+
+/* K6 — Name your parrot */
+"%1$@ learned “%2$@”" = "%1$@ heeft “%2$@” geleerd";
+"Name the macaw" = "Geef de ara een naam";
+"Name the macaw (optional)" = "Naam voor de ara (optioneel)";
+"🦜 %@" = "🦜 %@";
+"Click to name your parrot" = "Klik om je papegaai een naam te geven";

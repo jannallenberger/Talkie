@@ -799,3 +799,10 @@
 "Enable update checks" = "Ativar verificação de atualizações";
 "Update checks are off" = "A verificação de atualizações está desativada";
 "This build won't contact GitHub. Turn checks on whenever you want the latest." = "Esta versão não entrará em contato com o GitHub. Ative a verificação quando quiser a versão mais recente.";
+
+/* K6 — Name your parrot */
+"%1$@ learned “%2$@”" = "%1$@ aprendeu “%2$@”";
+"Name the macaw" = "Dê um nome à arara";
+"Name the macaw (optional)" = "Nome da arara (opcional)";
+"🦜 %@" = "🦜 %@";
+"Click to name your parrot" = "Clique para dar um nome ao seu papagaio";
