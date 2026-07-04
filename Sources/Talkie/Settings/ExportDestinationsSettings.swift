@@ -176,11 +176,13 @@ struct ExportDestinationsSettings: View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Destination",
+                // DYNAMIC footer: reflects the live destination choice. Both branches
+                // route through `.loc` (plain-String footer bypasses auto-localization).
                 footer: prefs.destination == .talkieFolder
-                    ? "Plain Markdown in ~/Talkie Meetings — a folder you own, easy to point any tool at. No third-party app needed."
-                    : "Writes Markdown into the folder you pick. Point it at an Obsidian vault and Talkie formats for Obsidian automatically."
+                    ? "Plain Markdown in ~/Talkie Meetings — a folder you own that any tool can read. No other app needed.".loc
+                    : "Writes Markdown into the folder you pick. Point it at an Obsidian vault and Talkie formats for Obsidian on its own.".loc
             ) {
-                SettingsRow(title: "Save notes to") {
+                SettingsRow(title: "Save notes to".loc) {
                     Picker("", selection: $prefs.destination) {
                         ForEach(ExportPreferences.Destination.allCases) { Text($0.displayName).tag($0) }
                     }
@@ -189,9 +191,9 @@ struct ExportDestinationsSettings: View {
                 if prefs.destination == .folder {
                     SettingsDivider()
                     SettingsRow(
-                        title: "Folder",
+                        title: "Folder".loc,
                         subtitle: prefs.folderPath.isEmpty
-                            ? "No folder chosen yet"
+                            ? "No folder chosen yet".loc
                             : prefs.folderPath
                     ) {
                         Button(prefs.folderPath.isEmpty ? "Choose…" : "Change…", action: pickFolder)
@@ -223,9 +225,9 @@ struct ExportDestinationsSettings: View {
             // the list is whatever `shortcuts list` reports on this Mac.
             SettingsCard(
                 header: "After saving",
-                footer: "Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network."
+                footer: "Runs one of your macOS Shortcuts when a meeting note finishes saving, handing it the note's file. Stays on your Mac — no network.".loc
             ) {
-                SettingsRow(title: "After saving a meeting note, run") {
+                SettingsRow(title: "After saving a meeting note, run".loc) {
                     Picker("", selection: postSaveBinding) {
                         Text("None".loc).tag(String?.none)
                         ForEach(shortcutNames, id: \.self) { name in
@@ -259,8 +261,8 @@ struct ExportDestinationsSettings: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
-        panel.message = "Pick the folder Talkie should write your notes into."
+        panel.prompt = "Choose".loc
+        panel.message = "Pick the folder Talkie should write your notes into.".loc
         if !prefs.folderPath.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: prefs.folderPath)
         }

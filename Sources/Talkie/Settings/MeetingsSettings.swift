@@ -148,7 +148,7 @@ struct MeetingsSettings: View {
     private var destinationReferenceRow: some View {
         SettingsCard(
             header: "Where notes are saved",
-            footer: "Meeting notes and dictation notes share one destination, set in Notes & export."
+            footer: "Meeting notes and dictation notes share one destination, set in Notes & export.".loc
         ) {
             SettingsRow(
                 title: "Notes are saved to".loc,
