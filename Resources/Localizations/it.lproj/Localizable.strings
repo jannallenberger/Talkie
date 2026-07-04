@@ -666,6 +666,14 @@
 "asks first" = "chiede prima";
 "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie include un piccolo server locale così Claude può leggere le tue riunioni, il briefing, gli impegni, il contesto, le statistiche, il tuo dizionario e le note — sul dispositivo, niente lascia il tuo Mac. Claude può anche gestire il tuo dizionario — aggiungere, modificare o rimuovere voci e regole — ma ogni modifica attende la tua conferma con un tocco e un annulla. Incluso nell'app: nessun download o build separato.";
 
+/* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
+"Context awareness" = "Consapevolezza del contesto";
+"Use the app I'm dictating into for context" = "Usa l'app in cui sto dettando come contesto";
+"Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only. Also powers Vibe-coding offers and the Prompt cleanup style, which stay quiet while this is off." = "Talkie legge i nomi già sullo schermo — a chi stai scrivendo, il file che hai aperto — e orienta il riconoscimento per scriverli correttamente. Locale e in sola lettura. Alimenta anche i suggerimenti di Vibe-coding e lo stile di pulizia Prompt, che restano silenziosi finché questo è disattivato.";
+"Learning" = "Apprendimento";
+"Learn from my edits" = "Impara dalle mie correzioni";
+"Auto-improve the dictionary." = "Migliora il dizionario automaticamente.";
+"When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "Quando correggi una parola subito dopo aver dettato, Talkie ricorda la correzione. Le regole aggiunte automaticamente sono contrassegnate nella scheda Dizionario — rimuovi quelle che non vuoi.";
 /* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
 "Install my jargon" = "Installa il mio gergo";
 "Copy prompt" = "Copia il prompt";

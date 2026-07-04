@@ -287,7 +287,7 @@ struct MainView: View {
             VibeCodingView(projectIndex: projectIndex, settings: settings)
         case .general:
             SettingsHome(settings: settings, permissions: permissions,
-                         profiles: profiles, contextGraph: contextGraph,
+                         profiles: profiles,
                          history: history, router: router, onRetryHotKey: onRetryHotKey)
         }
     }
@@ -368,7 +368,6 @@ private struct SettingsHome: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
     @ObservedObject var profiles: AppProfileStore
-    @ObservedObject var contextGraph: ContextGraphStore
     @ObservedObject var history: HistoryStore
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Bool
@@ -395,15 +394,15 @@ private struct SettingsHome: View {
                         MicrophoneSettings(settings: settings)
                     }
                     // ── 2. Cleanup & intelligence ────────────────────────────────
-                    // Smart cleanup lives beside the context/learning/memory cards.
-                    // L6e MOUNTS its relocated Context-awareness + Learning cards
-                    // here (retiring the Memory card); until then `ContextSettings`
-                    // holds them inline. Do not remove — that's L6e's move, not L6a's.
+                    // Smart cleanup sits beside the Context-awareness + Learning
+                    // toggles as one story (L6e). The old Memory count card was
+                    // retired — the sidebar Memory tab is the surface for those
+                    // counts — so `ContextSettings` no longer needs the context
+                    // graph or the router.
                     section("Cleanup & intelligence",
                             subtitle: "How Talkie polishes text and learns your words.") {
                         CleanupSettings(settings: settings)
-                        // ⇥ L6e slot: relocated Context-awareness + Learning cards land here.
-                        ContextSettings(settings: settings, contextGraph: contextGraph, router: router)
+                        ContextSettings(settings: settings)
                     }
                     // ── 3. Languages ─────────────────────────────────────────────
                     // L6b REPLACES the full grid with a compact selected-strip plus an
@@ -1518,39 +1517,37 @@ private struct LanguageCard: View {
     }
 }
 
+/// The Context-awareness and Learning toggles, relocated here beside Smart
+/// cleanup (L6e) so the whole "Cleanup & intelligence" story reads as one. Both
+/// toggles are load-bearing for the vibe/jargon spine — with context awareness
+/// off, window-title capture returns nil, which silently no-ops the Vibe-coding
+/// indexing offer (A9) and the `.prompt` cleanup promotion (G9) — so they live
+/// here bit-for-bit, never gated or merged away. The former Memory count card
+/// was retired: the sidebar Memory tab is the surface, and the counts already
+/// live there, so no `ContextGraphStore`/`SettingsRouter` plumbing is needed.
+///
+/// Copy note: the card `String`s bypass `LocalizedStringKey`, so the edited
+/// footers/titles route through `.loc` explicitly (house rule,
+/// PrivacySettings.swift:190-196).
 private struct ContextSettings: View {
     @ObservedObject var settings: AppSettings
-    @ObservedObject var contextGraph: ContextGraphStore
-    @ObservedObject var router: SettingsRouter
-
-    private var peopleCount: Int { contextGraph.snapshot().entities(of: .person).count }
-    private var projectCount: Int { contextGraph.snapshot().entities(of: .project).count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsCard(
                 header: "Context awareness",
-                footer: "Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only."
+                footer: "Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only. Also powers Vibe-coding offers and the Prompt cleanup style, which stay quiet while this is off.".loc
             ) {
-                SettingsToggleRow(title: "Use the app I'm dictating into for context",
+                SettingsToggleRow(title: "Use the app I'm dictating into for context".loc,
                                   isOn: $settings.contextAwareness)
             }
             SettingsCard(
                 header: "Learning",
-                footer: "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want."
+                footer: "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want.".loc
             ) {
-                SettingsToggleRow(title: "Learn from my edits",
-                                  subtitle: "Auto-improve the dictionary.",
+                SettingsToggleRow(title: "Learn from my edits".loc,
+                                  subtitle: "Auto-improve the dictionary.".loc,
                                   isOn: $settings.learnFromEdits)
-            }
-            SettingsCard(header: "Memory") {
-                SettingsRow(
-                    title: "\(peopleCount) people, \(projectCount) projects tracked",
-                    subtitle: "Everything Talkie has picked up from your dictations and meetings."
-                ) {
-                    Button("Open Memory") { router.selectedTab = .memory }
-                        .buttonStyle(.bordered)
-                }
             }
         }
     }

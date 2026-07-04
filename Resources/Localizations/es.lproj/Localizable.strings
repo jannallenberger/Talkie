@@ -666,6 +666,14 @@
 "asks first" = "pregunta antes";
 "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie incluye un pequeño servidor local para que Claude pueda leer tus reuniones, tu resumen, compromisos, contexto, estadísticas, tu diccionario y notas: en el dispositivo, nada sale de tu Mac. Claude también puede gestionar tu diccionario: añadir, cambiar o eliminar términos y reglas, pero cada cambio espera tu confirmación con un toque y opción de deshacer. Incluido con la app: sin descarga ni compilación aparte.";
 
+/* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
+"Context awareness" = "Conciencia del contexto";
+"Use the app I'm dictating into for context" = "Usar la app en la que dicto como contexto";
+"Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only. Also powers Vibe-coding offers and the Prompt cleanup style, which stay quiet while this is off." = "Talkie lee los nombres que ya están en pantalla — a quién escribes, el archivo que tienes abierto — y ajusta el reconocimiento para escribirlos bien. Local y solo lectura. También impulsa las sugerencias de Vibe-coding y el estilo de limpieza Prompt, que permanecen en silencio mientras esto está desactivado.";
+"Learning" = "Aprendizaje";
+"Learn from my edits" = "Aprender de mis correcciones";
+"Auto-improve the dictionary." = "Mejora el diccionario automáticamente.";
+"When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "Cuando corriges una palabra justo después de dictar, Talkie recuerda la corrección. Las reglas añadidas automáticamente se marcan en la pestaña Diccionario — elimina las que no quieras.";
 /* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
 "Install my jargon" = "Instalar mi jerga";
 "Copy prompt" = "Copiar prompt";

@@ -666,6 +666,14 @@
 "asks first" = "確認します";
 "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "Talkie は小さなローカルサーバーを備え、Claude があなたのミーティング、ブリーフ、コミットメント、コンテキスト、統計、辞書、メモを読み取れます — すべてデバイス上で処理され、Mac から何も送信されません。Claude は辞書の管理もできます — 項目やルールの追加・変更・削除 — ただしどの変更もワンタップの確認（取り消し可能）を待ってから反映されます。アプリに同梱: 別途のダウンロードやビルドは不要です。";
 
+/* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
+"Context awareness" = "コンテキスト認識";
+"Use the app I'm dictating into for context" = "入力中のアプリをコンテキストに使う";
+"Talkie reads the names already on screen — who you're messaging, the file you have open — and biases recognition so it spells them right. Local and read-only. Also powers Vibe-coding offers and the Prompt cleanup style, which stay quiet while this is off." = "Talkie は画面にすでに表示されている名前 — 送信先の相手や開いているファイル — を読み取り、正しく綴られるよう認識を調整します。ローカルで読み取り専用です。Vibe コーディングの提案と Prompt クリーンアップスタイルも支えており、これがオフの間は動作しません。";
+"Learning" = "学習";
+"Learn from my edits" = "自分の修正から学習する";
+"Auto-improve the dictionary." = "辞書を自動的に改善します。";
+"When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "口述の直後に単語を修正すると、Talkie はその修正を覚えます。自動追加されたルールは辞書タブに印が付きます — 不要なものは削除してください。";
 /* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
 "Install my jargon" = "こだわりの用語を登録";
 "Copy prompt" = "プロンプトをコピー";
