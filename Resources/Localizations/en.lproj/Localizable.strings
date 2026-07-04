@@ -691,3 +691,17 @@
 /* L6d — Verify our claims: root row + subpage intro */
 "See the live entitlement list, the commands to check it yourself, and where your data lives." = "See the live entitlement list, the commands to check it yourself, and where your data lives.";
 "Every value below is read from this Mac right now — nothing is typed in." = "Every value below is read from this Mac right now — nothing is typed in.";
+
+/* L6c — Meetings settings subpage + honest folder row */
+"Meeting settings" = "Meeting settings";
+"Recording, transcription, and calendar context — all in one place." = "Recording, transcription, and calendar context — all in one place.";
+"Auto-detect, the live pill, meeting apps, and calendar context." = "Auto-detect, the live pill, meeting apps, and calendar context.";
+"Where notes are saved" = "Where notes are saved";
+"Meeting notes and dictation notes share one destination, set in Notes & export." = "Meeting notes and dictation notes share one destination, set in Notes & export.";
+"Notes are saved to" = "Notes are saved to";
+"Open Notes & export" = "Open Notes & export";
+"That folder isn’t reachable right now — notes fall back to ~/Talkie Meetings until it’s back." = "That folder isn’t reachable right now — notes fall back to ~/Talkie Meetings until it’s back.";
+"~/Talkie Meetings" = "~/Talkie Meetings";
+"That folder isn’t reachable — saving to ~/Talkie Meetings/ until it’s back" = "That folder isn’t reachable — saving to ~/Talkie Meetings/ until it’s back";
+"Saved to “%@” as markdown" = "Saved to “%@” as markdown";
+"Saved to your Obsidian vault “%@”" = "Saved to your Obsidian vault “%@”";

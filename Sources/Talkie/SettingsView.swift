@@ -269,7 +269,8 @@ struct MainView: View {
                           latency: latency, pressure: systemPressure, router: router)
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore,
-                         settings: settings, profileImage: profileImage)
+                         settings: settings, profileImage: profileImage,
+                         router: router)
         case .dictionary:
             DictionarySettings(dictionary: dictionary, nicheVocab: nicheVocab)
         case .memory:
@@ -421,13 +422,13 @@ private struct SettingsHome: View {
                         AppProfilesSettings(profiles: profiles)
                     }
                     // ── 5. Meetings ──────────────────────────────────────────────
-                    // L6c MOUNTS a Meetings row here that pushes `SettingsPage.meetings`
-                    // (also the deep-link target for the Meetings tab via `pendingPage`).
-                    // Calendar context — reading meeting names — belongs to this group.
+                    // L6c: one compact row that pushes `SettingsPage.meetings` — the
+                    // single subpage that now owns every meeting setting (auto-detect,
+                    // live pill, meeting apps, calendar context, destination reference).
+                    // It's also the deep-link target for the Meetings tab via `pendingPage`.
                     section("Meetings",
                             subtitle: "Recording, transcription, and calendar context.") {
-                        // ⇥ L6c slot: Meetings row → NavigationLink(value: SettingsPage.meetings).
-                        CalendarSettings()
+                        MeetingsSettingsLinkRow()
                     }
                     // ── 6. Notes & export ────────────────────────────────────────
                     // Dictation notes route through the same `ExportPreferences` as
@@ -481,10 +482,10 @@ private struct SettingsHome: View {
                     // compact selected strip). Same toggle semantics as the strip.
                     AllLanguagesPage(settings: settings)
                 case .meetings:
-                    // L6c fills this in with the Meetings settings pane.
-                    SubpagePlaceholder(
-                        title: "Meetings",
-                        subtitle: "Meeting recording and transcription settings will live here.")
+                    // L6c — the one Meetings settings subpage: auto-detect, the live
+                    // pill, the meeting-apps allowlist + muted lists, calendar context,
+                    // and an honest destination reference that links to Notes & export.
+                    MeetingsSettings(settings: settings, router: router)
                 case .verifyClaims:
                     // L6d — the full zero-network proof detail: the three
                     // verify-yourself commands, the live entitlement list, and the

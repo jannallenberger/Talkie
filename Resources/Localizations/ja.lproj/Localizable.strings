@@ -689,3 +689,17 @@
 /* L6d — Verify our claims: root row + subpage intro */
 "See the live entitlement list, the commands to check it yourself, and where your data lives." = "権限のライブ一覧、自分で確認するためのコマンド、データの保存場所をご覧ください。";
 "Every value below is read from this Mac right now — nothing is typed in." = "以下の値はすべて、今この Mac から読み取ったものです。手入力は一切ありません。";
+
+/* L6c — Meetings settings subpage + honest folder row */
+"Meeting settings" = "ミーティング設定";
+"Recording, transcription, and calendar context — all in one place." = "録音、文字起こし、カレンダーのコンテキストを一か所にまとめました。";
+"Auto-detect, the live pill, meeting apps, and calendar context." = "自動検出、ライブピル、会議アプリ、カレンダーのコンテキスト。";
+"Where notes are saved" = "メモの保存先";
+"Meeting notes and dictation notes share one destination, set in Notes & export." = "ミーティングのメモとディクテーションのメモは、「メモとエクスポート」で設定した同じ保存先を使います。";
+"Notes are saved to" = "メモの保存先";
+"Open Notes & export" = "「メモとエクスポート」を開く";
+"That folder isn’t reachable right now — notes fall back to ~/Talkie Meetings until it’s back." = "そのフォルダには今アクセスできません — 戻るまで、メモは ~/Talkie Meetings に保存されます。";
+"~/Talkie Meetings" = "~/Talkie Meetings";
+"That folder isn’t reachable — saving to ~/Talkie Meetings/ until it’s back" = "そのフォルダにアクセスできません — 戻るまで ~/Talkie Meetings/ に保存します";
+"Saved to “%@” as markdown" = "「%@」に Markdown として保存しました";
+"Saved to your Obsidian vault “%@”" = "Obsidian のボールト「%@」に保存しました";

@@ -26,8 +26,17 @@ struct MeetingsView: View {
     /// bookmark — the app isn't sandboxed), observed so the row reflects pick/clear live.
     /// Empty path = OFF; the watcher is never seeded with a default.
     @ObservedObject private var inboxWatch = InboxWatchPreferences.shared
+    /// The shared export destination (L6c). Observed so the folder row reflects the
+    /// resolved destination live — where notes ACTUALLY land — instead of the old
+    /// hardcoded "~/Talkie Meetings" claim. The real control is the "Notes & export"
+    /// card in Settings (it governs dictation notes too); this row only reports.
+    @ObservedObject private var exportPrefs = ExportPreferences.shared
+    /// The Settings router (L6c), so the "Meeting settings" link can switch to the
+    /// Settings tab and deep-link the Meetings subpage via `pendingPage`. Threaded from
+    /// the composition root (`MainView.content`); nil only in previews/tests, where the
+    /// link simply doesn't render.
+    var router: SettingsRouter? = nil
 
-    @State private var showingAppPicker = false
     /// Flashes the drop zone briefly when a non-audio file is rejected.
     @State private var rejectedDrop = false
     /// True while a supported file is hovering over the drop target.
@@ -55,7 +64,7 @@ struct MeetingsView: View {
                 folderRow
                 keepAudioCard
                 watchedInboxCard
-                detectionCard
+                meetingSettingsLink
 
                 if store.meetings.isEmpty {
                     emptyState
@@ -261,20 +270,101 @@ struct MeetingsView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Honest folder row (L6c): notes route through `ExportPreferences.resolvedDestination()`
+    /// (Meeting.swift), NOT the hardcoded ~/Talkie Meetings — so the line is derived from the
+    /// chosen destination, and Reveal opens the folder notes ACTUALLY land in. When a custom
+    /// folder is unreachable, the copy states the ~/Talkie Meetings fallback honestly (the
+    /// same fallback the resolver applies), mirroring the warning on the real control.
     private var folderRow: some View {
         HStack(spacing: 8) {
             Image(systemName: "folder.fill")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.inkTertiary)
-            Text("Saved to ~/Talkie Meetings/ as markdown")
+            Text(folderRowLine)
                 .font(.talkieEyebrow)
                 .foregroundStyle(Theme.inkTertiary)
             Spacer()
             Button("Reveal in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([store.folderURL])
+                NSWorkspace.shared.activateFileViewerSelecting([resolvedNotesFolder])
             }
             .buttonStyle(.link)
             .font(.system(size: 12))
+        }
+    }
+
+    /// The folder where notes actually land: a reachable custom folder, else the
+    /// ~/Talkie Meetings default (the same fallback `resolvedDestination()` applies for
+    /// the Talkie-folder choice, an empty path, or an unreachable custom folder). This
+    /// is what Reveal opens, so the button never points at a folder notes aren't in.
+    private var resolvedNotesFolder: URL {
+        if exportPrefs.destination == .folder,
+           !exportPrefs.folderPath.isEmpty, exportPrefs.folderIsAccessible {
+            return URL(fileURLWithPath: exportPrefs.folderPath)
+        }
+        return store.folderURL
+    }
+
+    /// The one-line "Saved to …" claim, derived from the resolved destination so it
+    /// never contradicts the chosen folder — including the unreachable-folder case,
+    /// where it honestly names the ~/Talkie Meetings fallback rather than a path that
+    /// isn't being written.
+    private var folderRowLine: String {
+        switch exportPrefs.destination {
+        case .talkieFolder:
+            return "Saved to ~/Talkie Meetings/ as markdown".loc
+        case .folder:
+            if exportPrefs.folderPath.isEmpty {
+                return "Saved to ~/Talkie Meetings/ as markdown".loc
+            }
+            if !exportPrefs.folderIsAccessible {
+                return "That folder isn’t reachable — saving to ~/Talkie Meetings/ until it’s back".loc
+            }
+            let name = URL(fileURLWithPath: exportPrefs.folderPath).lastPathComponent
+            return exportPrefs.pickedFolderIsVault
+                ? String(format: "Saved to your Obsidian vault “%@”".loc, name)
+                : String(format: "Saved to “%@” as markdown".loc, name)
+        }
+    }
+
+    /// The "Meeting settings" link (L6c) — replaces the four settings cards that used
+    /// to live on this page. The Meetings PAGE isn't inside the Settings NavigationStack
+    /// (it's a sibling tab), so this can't be a `NavigationLink`; instead it switches to
+    /// the Settings tab and asks for the Meetings subpage via `SettingsRouter.pendingPage`
+    /// (the L6a cross-tab deep-link). Degrades gracefully: even if the push doesn't take,
+    /// setting `.general` lands the user on the tab that holds the settings. Hidden in
+    /// previews/tests where no router is threaded.
+    @ViewBuilder
+    private var meetingSettingsLink: some View {
+        if let router {
+            Button {
+                router.selectedTab = .general
+                router.pendingPage = .meetings
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.coral)
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Meeting settings")
+                            .font(.talkieHeading(14, weight: .medium))
+                            .foregroundStyle(Theme.ink)
+                        Text("Auto-detect, the live pill, meeting apps, and calendar context.")
+                            .font(.talkieHeading(12, weight: .regular))
+                            .foregroundStyle(Theme.inkSecondary)
+                    }
+                    Spacer(minLength: 12)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.inkTertiary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+                .frame(maxWidth: .infinity)
+                .talkieSurface()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -367,88 +457,6 @@ struct MeetingsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
-    }
-
-    // MARK: Auto-detect & live pill
-
-    @ViewBuilder
-    private var detectionCard: some View {
-        SettingsCard(
-            header: "Auto-detect",
-            footer: "When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced).".loc
-        ) {
-            SettingsToggleRow(
-                title: "Detect meetings & offer to record".loc,
-                subtitle: "When a call app starts using your mic, Talkie offers to record. It never records on its own.".loc,
-                isOn: $settings.autoDetectMeetings)
-        }
-
-        SettingsCard(header: "Live pill") {
-            SettingsToggleRow(
-                title: "Show the meeting pill".loc,
-                subtitle: "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident.".loc,
-                isOn: $settings.showMeetingPill)
-        }
-
-        allowlistCard
-        if !settings.mutedMeetingApps.isEmpty { mutedCard }
-    }
-
-    private var allowlistCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Eyebrow(text: "Meeting apps")
-            Text("Talkie offers to record when one of these apps starts using your microphone.".loc)
-                .font(.talkieHeading(13, weight: .regular))
-                .foregroundStyle(Theme.inkSecondary)
-            Button {
-                showingAppPicker = true
-            } label: {
-                Label("Browse installed apps…".loc, systemImage: "square.grid.2x2")
-            }
-            .controlSize(.large)
-            if settings.meetingAllowlist.isEmpty {
-                Text("No apps yet — browse your installed apps above.".loc)
-                    .font(.talkieHeading(13, weight: .regular))
-                    .foregroundStyle(Theme.inkTertiary)
-            } else {
-                FlowLayout(spacing: 8) {
-                    ForEach(settings.meetingAllowlist, id: \.bundleID) { app in
-                        MeetingAppChip(app: app) { removeApp(app) }
-                    }
-                }
-            }
-        }
-        .talkieCard()
-        .sheet(isPresented: $showingAppPicker) {
-            MeetingAppPickerSheet(settings: settings) { showingAppPicker = false }
-        }
-    }
-
-    private var mutedCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Eyebrow(text: "Muted")
-            Text("You dismissed these enough times that Talkie stopped offering. Tap to un-mute.".loc)
-                .font(.talkieHeading(13, weight: .regular))
-                .foregroundStyle(Theme.inkSecondary)
-            FlowLayout(spacing: 8) {
-                ForEach(settings.mutedMeetingApps, id: \.self) { id in
-                    MutedAppChip(name: appDisplayName(for: id)) { unmute(id) }
-                }
-            }
-        }
-        .talkieCard()
-    }
-
-    private func removeApp(_ app: MeetingApp) {
-        settings.meetingAllowlist.removeAll { $0.bundleID == app.bundleID }
-    }
-
-    private func unmute(_ id: String) {
-        settings.mutedMeetingApps.removeAll { $0 == id }
-    }
-
-    private func appDisplayName(for id: String) -> String {
-        settings.meetingAllowlist.first(where: { $0.bundleID == id })?.displayName ?? id
     }
 
     private func reveal(_ meeting: Meeting) {
@@ -1027,8 +1035,9 @@ private struct LearnCandidate: Identifiable {
 
 /// A removable chip for one app in the meeting-detection allowlist. A glyph marks
 /// the tier (browser vs dedicated meeting app) so the weaker browser signal reads
-/// at a glance.
-private struct MeetingAppChip: View {
+/// at a glance. Internal (not `private`) so the relocated allowlist card in
+/// `MeetingsSettings` (L6c) reuses the exact same chip.
+struct MeetingAppChip: View {
     let app: MeetingApp
     let onRemove: () -> Void
 
@@ -1071,7 +1080,9 @@ private struct MeetingAppChip: View {
 }
 
 /// A muted-app chip; tapping it un-mutes (Talkie will offer for it again).
-private struct MutedAppChip: View {
+/// Internal (not `private`) so the relocated muted card in `MeetingsSettings` (L6c)
+/// reuses the exact same chip.
+struct MutedAppChip: View {
     let name: String
     let onUnmute: () -> Void
     var body: some View {

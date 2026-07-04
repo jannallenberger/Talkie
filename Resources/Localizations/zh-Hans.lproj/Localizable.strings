@@ -689,3 +689,17 @@
 /* L6d — Verify our claims: root row + subpage intro */
 "See the live entitlement list, the commands to check it yourself, and where your data lives." = "查看实时权限列表、可自行核对的命令，以及你的数据存放位置。";
 "Every value below is read from this Mac right now — nothing is typed in." = "下面的每个数值都是此刻从这台 Mac 读取的 — 没有任何手动输入。";
+
+/* L6c — Meetings settings subpage + honest folder row */
+"Meeting settings" = "会议设置";
+"Recording, transcription, and calendar context — all in one place." = "录制、转写和日历上下文，全部集中在一处。";
+"Auto-detect, the live pill, meeting apps, and calendar context." = "自动检测、实时胶囊、会议应用和日历上下文。";
+"Where notes are saved" = "笔记的存储位置";
+"Meeting notes and dictation notes share one destination, set in Notes & export." = "会议笔记和听写笔记共用一个存储位置，在“笔记与导出”中设置。";
+"Notes are saved to" = "笔记保存到";
+"Open Notes & export" = "打开“笔记与导出”";
+"That folder isn’t reachable right now — notes fall back to ~/Talkie Meetings until it’s back." = "该文件夹目前无法访问 — 在它恢复之前，笔记会保存到 ~/Talkie Meetings。";
+"~/Talkie Meetings" = "~/Talkie Meetings";
+"That folder isn’t reachable — saving to ~/Talkie Meetings/ until it’s back" = "该文件夹无法访问 — 在它恢复之前保存到 ~/Talkie Meetings/";
+"Saved to “%@” as markdown" = "已以 markdown 格式存储到“%@”";
+"Saved to your Obsidian vault “%@”" = "已保存到你的 Obsidian 仓库“%@”";
