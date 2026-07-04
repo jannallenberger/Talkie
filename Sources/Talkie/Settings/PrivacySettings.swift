@@ -47,145 +47,135 @@ struct PrivacySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            // Headline guarantee.
+            // ONE consolidated proof card (L6d): the on-device headline, a live
+            // entitlement verdict line (green/red, from the same `loadEntitlements`
+            // read), the embedded live socket readout, and the two copy buttons
+            // (shareable PNG + diagnostic report). The full detail — the entitlement
+            // LIST, the three verify-yourself commands, and the data locations —
+            // lives on the "Verify our claims" subpage below, not crowding the root.
             SettingsCard {
-                HStack(alignment: .top, spacing: 12) {
-                    ClayIcon(name: "IconShield", size: 30)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("100% on-device")
-                            .font(.talkieHeading(15, weight: .semibold))
-                            .foregroundStyle(Theme.ink)
-                        Text("Your audio, transcripts, and meetings never touch the network. Talkie holds one permission, ships with no network entitlement, and contains zero networking code.")
-                            .font(.callout)
-                            .foregroundStyle(Theme.inkSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Headline guarantee.
+                    HStack(alignment: .top, spacing: 12) {
+                        ClayIcon(name: "IconShield", size: 30)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("100% on-device")
+                                .font(.talkieHeading(15, weight: .semibold))
+                                .foregroundStyle(Theme.ink)
+                            Text("Your audio, transcripts, and meetings never touch the network. Talkie holds one permission, ships with no network entitlement, and contains zero networking code.")
+                                .font(.callout)
+                                .foregroundStyle(Theme.inkSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 13)
+
+                    SettingsDivider(leadingInset: 0)
+
+                    // Live entitlement verdict — one line, green/red, read from the
+                    // signature. The full per-entitlement list is on the subpage.
+                    if hasNetwork {
+                        SettingsNote(
+                            text: "A network entitlement is present on a build labelled “Talkie”. That’s a bug — the shipping build has none.",
+                            tone: Theme.danger, icon: "exclamationmark.octagon.fill"
+                        )
+                    } else {
+                        SettingsNote(
+                            text: "No com.apple.security.network.client — Talkie cannot be granted network access.",
+                            tone: Theme.positive, icon: "checkmark.seal.fill"
+                        )
+                    }
+
+                    SettingsDivider(leadingInset: 0)
+
+                    // Live open-socket readout — the claim you can watch tick, not
+                    // copy we typed. Refreshes every 2s ONLY while this pane is on
+                    // screen (the TimelineView lives in a subview torn down when you
+                    // navigate away, so there's no background timer).
+                    SocketReadoutInline()                                                      // talkie:no-network(self-inspection)
+                    // The honest caption that used to be the socket card's footer —
+                    // preserved verbatim so the readout still names why the count
+                    // stays zero mid speech-model download.                                  // talkie:no-network(self-inspection)
+                    Text("Counted live from this app’s own file descriptors, refreshed while you’re on this page. Speech-model downloads run in Apple’s system services, not inside Talkie, so they never appear here.")
+                        .font(.callout)
+                        .foregroundStyle(Theme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 11)
+
+                    SettingsDivider(leadingInset: 0)
+
+                    // The two one-click receipts: a shareable branded PNG and the
+                    // pasteable markdown diagnostic report. Both read live state at
+                    // click time — nothing here is typed in.                               // talkie:no-network(self-inspection)
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Copy proof card".loc)
+                                .font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                            Text("A shareable receipt that nothing leaves this Mac.".loc)
+                                .font(.talkieHeading(12, weight: .regular))
+                                .foregroundStyle(Theme.inkSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 12)
+                        Button {
+                            ProofCardExporter.copy(makeProofCardData())
+                            copiedProof = true
+                            Task { try? await Task.sleep(for: .seconds(1.4)); copiedProof = false }
+                        } label: {
+                            Label(copiedProof ? "Copied".loc : "Copy proof card".loc,
+                                  systemImage: copiedProof ? "checkmark" : "doc.on.doc")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.coral)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+
+                    SettingsDivider()
+
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Copy diagnostic report".loc)
+                                .font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                            Text("A pasteable markdown receipt you can drop into a GitHub issue.".loc)
+                                .font(.talkieHeading(12, weight: .regular))
+                                .foregroundStyle(Theme.inkSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 12)
+                        Button {
+                            let report = DoctorReport.generate(includeTCC: true)
+                            let pb = NSPasteboard.general
+                            pb.clearContents()
+                            pb.setString(report, forType: .string)
+                            copiedReport = true
+                            Task { try? await Task.sleep(for: .seconds(1.4)); copiedReport = false }
+                        } label: {
+                            Label(copiedReport ? "Copied".loc : "Copy diagnostic report".loc,
+                                  systemImage: copiedReport ? "checkmark" : "doc.on.doc")
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(Theme.coral)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 13)
             }
 
-            // Live entitlements from the signature.
-            SettingsCard(
-                header: "Entitlements (read from the signature)",
-                footer: "Read live from this build’s code signature, not from text we typed. You can confirm it yourself: codesign -d --entitlements - /Applications/Talkie.app"
-            ) {
-                if entitlements.isEmpty {
-                    SettingsNote(
-                        text: "No entitlements detected — typical of an un-signed debug build. The shipped, notarized build requests exactly one: microphone access.",
-                        tone: Theme.inkTertiary
-                    )
-                } else {
-                    ForEach(Array(entitlements.enumerated()), id: \.element.key) { index, ent in
-                        if index > 0 { SettingsDivider() }
-                        EntitlementRow(entitlement: ent)
-                    }
-                }
-                SettingsDivider(leadingInset: 0)
-                if hasNetwork {
-                    SettingsNote(
-                        text: "A network entitlement is present on a build labelled “Talkie”. That’s a bug — the shipping build has none.",
-                        tone: Theme.danger, icon: "exclamationmark.octagon.fill"
-                    )
-                } else {
-                    SettingsNote(
-                        text: "No com.apple.security.network.client — Talkie cannot be granted network access.",
-                        tone: Theme.positive, icon: "checkmark.seal.fill"
-                    )
-                }
+            // "Verify our claims" push — the full detail (entitlement list, the
+            // three verify-yourself commands, data locations) relocated intact to a
+            // subpage so the root stays a single legible proof card.
+            NavigationLink(value: SettingsPage.verifyClaims) {
+                VerifyClaimsRow()
             }
-
-            // Live open-socket readout — the claim you can watch tick, not copy we
-            // typed. Refreshes every 2s ONLY while this pane is on screen (the
-            // TimelineView lives in a subview that's torn down when you navigate
-            // away, so there's no background timer). See SocketReadoutCard.
-            SocketReadoutCard()                                                                // talkie:no-network(self-inspection)
-
-            // One-click shareable proof: renders entitlements + socket count +
-            // cdhash + version into a branded PNG on the clipboard.
-            SettingsCard(
-                header: "Share the proof",
-                footer: "Copies a branded image — entitlements, the live socket count, this build’s signature hash and version — you can paste into a chat or a doc. Every value is read from this Mac right now, nothing is typed in." // talkie:no-network(self-inspection)
-            ) {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Copy proof card".loc)
-                            .font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
-                        Text("A shareable receipt that nothing leaves this Mac.".loc)
-                            .font(.talkieHeading(12, weight: .regular))
-                            .foregroundStyle(Theme.inkSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 12)
-                    Button {
-                        ProofCardExporter.copy(makeProofCardData())
-                        copiedProof = true
-                        Task { try? await Task.sleep(for: .seconds(1.4)); copiedProof = false }
-                    } label: {
-                        Label(copiedProof ? "Copied".loc : "Copy proof card".loc,
-                              systemImage: copiedProof ? "checkmark" : "doc.on.doc")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-            }
-
-            // How to verify it yourself.
-            SettingsCard(
-                header: "Verify it yourself",
-                footer: "Or copy the whole picture at once — the diagnostic report gathers your entitlements, live sockets, FileVault status, permissions and data locations into pasteable text. It's the same thing you get from the command line: Talkie doctor." // talkie:no-network(self-inspection)
-            ) {
-                VerifyRow(number: "1", title: "Read the permissions",
-                          command: "codesign -d --entitlements - /Applications/Talkie.app")
-                SettingsDivider()
-                VerifyRow(number: "2", title: "Grep the source",
-                          command: "./scripts/check-no-network.sh")
-                SettingsDivider()
-                VerifyRow(number: "3", title: "Watch the wire",
-                          command: "nettop -p $(pgrep Talkie)")
-                SettingsDivider()
-                // One-tap markdown receipt of the whole verify-yourself story, with
-                // real in-app TCC states (includeTCC: true). Mirrors the proof-card
-                // button's transient "Copied" flash.
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Copy diagnostic report".loc)
-                            .font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
-                        Text("A pasteable markdown receipt you can drop into a GitHub issue.".loc)
-                            .font(.talkieHeading(12, weight: .regular))
-                            .foregroundStyle(Theme.inkSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 12)
-                    Button {
-                        let report = DoctorReport.generate(includeTCC: true)
-                        let pb = NSPasteboard.general
-                        pb.clearContents()
-                        pb.setString(report, forType: .string)
-                        copiedReport = true
-                        Task { try? await Task.sleep(for: .seconds(1.4)); copiedReport = false }
-                    } label: {
-                        Label(copiedReport ? "Copied".loc : "Copy diagnostic report".loc,
-                              systemImage: copiedReport ? "checkmark" : "doc.on.doc")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(Theme.coral)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-            }
-
-            SettingsCard(header: "Where your data lives") {
-                BulletRow(text: "~/Library/Application Support/Talkie — settings and history.")
-                SettingsDivider(leadingInset: 0)
-                BulletRow(text: "~/Talkie Meetings — your recordings and transcripts, in plain folders you own.")
-            }
+            .buttonStyle(.plain)
 
             // How long history is kept — a threat-model choice, so it's your call,
             // not a silent default. Replaces the old hardcoded 7-day window. The
@@ -254,29 +244,143 @@ struct PrivacySection: View {
     }
 }
 
-/// The live "open network sockets right now: 0" card. Isolated into its own view
-/// for one reason: the `TimelineView(.periodic(from:by: 2))` that drives the 2s
-/// refresh only exists while this view is in the hierarchy. When you leave the
-/// Privacy pane the view is torn down and the timeline stops — so the audit runs
-/// exactly while you're looking at it and never as a background timer (an I5
-/// acceptance criterion). Each tick re-reads `SocketAudit.snapshot()`, which is a
-/// cheap own-pid fd walk.
+/// The root's tappable "Verify our claims" row — a titled card with a trailing
+/// chevron that pushes `SettingsPage.verifyClaims`. It's the single entry point to
+/// the full proof detail (entitlement list, the three verify-yourself commands,
+/// data locations) that L6d relocated off the root; the root itself keeps only the
+/// one consolidated proof card above.
+private struct VerifyClaimsRow: View {
+    var body: some View {
+        SettingsCard {
+            HStack(spacing: 12) {
+                ClayIcon(name: "IconSeal", size: 26)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Verify our claims".loc)
+                        .font(.talkieHeading(14, weight: .medium))
+                        .foregroundStyle(Theme.ink)
+                    Text("See the live entitlement list, the commands to check it yourself, and where your data lives.".loc)
+                        .font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 12)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+    }
+}
+
+/// "Verify our claims" (L6d) — the full zero-network proof detail, relocated off
+/// the Privacy root intact: the live per-entitlement list read from this build's
+/// signature, the three verify-yourself shell commands, and the data-locations
+/// bullets. Reads its own entitlement snapshot on appear (the same
+/// `EntitlementInspector` path the root and the `talkie doctor` CLI use), so the
+/// list here always describes the running binary.
+struct VerifyClaimsSubpage: View {
+    @State private var entitlements: [Entitlement] = []
+    @State private var hasNetwork = false
+
+    var body: some View {
+        SubPage(
+            title: "Verify our claims",
+            subtitle: "Every value below is read from this Mac right now — nothing is typed in."
+        ) {
+            // The live per-entitlement list read from the signature. The
+            // codesign command that used to repeat in this card's footer is
+            // de-duplicated (L6d) — it now lives once, as step 1 below.
+            SettingsCard(
+                header: "Entitlements (read from the signature)",
+                footer: "Read live from this build’s code signature, not from text we typed. The exact command to confirm it yourself is step 1 below."
+            ) {
+                if entitlements.isEmpty {
+                    SettingsNote(
+                        text: "No entitlements detected — typical of an un-signed debug build. The shipped, notarized build requests exactly one: microphone access.",
+                        tone: Theme.inkTertiary
+                    )
+                } else {
+                    ForEach(Array(entitlements.enumerated()), id: \.element.key) { index, ent in
+                        if index > 0 { SettingsDivider() }
+                        EntitlementRow(entitlement: ent)
+                    }
+                }
+                SettingsDivider(leadingInset: 0)
+                if hasNetwork {
+                    SettingsNote(
+                        text: "A network entitlement is present on a build labelled “Talkie”. That’s a bug — the shipping build has none.",
+                        tone: Theme.danger, icon: "exclamationmark.octagon.fill"
+                    )
+                } else {
+                    SettingsNote(
+                        text: "No com.apple.security.network.client — Talkie cannot be granted network access.",
+                        tone: Theme.positive, icon: "checkmark.seal.fill"
+                    )
+                }
+            }
+
+            // How to verify it yourself — the three shell commands, relocated intact.
+            SettingsCard(
+                header: "Verify it yourself",
+                footer: "Run these against the app on your own Mac. They read the live signature, grep the source, and watch the wire — the same checks the diagnostic report gathers for you." // talkie:no-network(self-inspection)
+            ) {
+                VerifyRow(number: "1", title: "Read the permissions",
+                          command: "codesign -d --entitlements - /Applications/Talkie.app")
+                SettingsDivider()
+                VerifyRow(number: "2", title: "Grep the source",
+                          command: "./scripts/check-no-network.sh")
+                SettingsDivider()
+                VerifyRow(number: "3", title: "Watch the wire",
+                          command: "nettop -p $(pgrep Talkie)")
+            }
+
+            SettingsCard(header: "Where your data lives") {
+                BulletRow(text: "~/Library/Application Support/Talkie — settings and history.")
+                SettingsDivider(leadingInset: 0)
+                BulletRow(text: "~/Talkie Meetings — your recordings and transcripts, in plain folders you own.")
+            }
+        }
+        .onAppear(perform: loadEntitlements)
+    }
+
+    /// Read the entitlement keys from this process's own code signature via the
+    /// shared `EntitlementInspector` (I6) — the same path the root proof card and
+    /// the `talkie doctor` CLI use, so all three describe the exact same binary. On
+    /// an ad-hoc / un-signed build the inspector returns an empty list and the UI
+    /// degrades honestly rather than inventing a value.
+    private func loadEntitlements() {
+        let caps = EntitlementInspector.capabilities()
+        entitlements = caps.map {
+            Entitlement(key: $0.key, label: $0.label, isNetwork: $0.isNetwork)
+        }
+        hasNetwork = caps.contains { $0.isNetwork }
+    }
+}
+
+/// The live "open network sockets right now: 0" readout, as a row group with no
+/// surface of its own so it embeds cleanly inside the one consolidated proof card
+/// (L6d) rather than nesting a card-in-a-card. Isolated into its own view for one
+/// reason: the `TimelineView(.periodic(from:by: 2))` that drives the 2s refresh
+/// only exists while this view is in the hierarchy. When you leave the Privacy
+/// pane the view is torn down and the timeline stops — so the audit runs exactly
+/// while you're looking at it and never as a background timer (an I5 acceptance
+/// criterion). Each tick re-reads `SocketAudit.snapshot()`, a cheap own-pid fd
+/// walk.
 ///
-/// The honest footer names the one thing that could otherwise confuse the number:
+/// The honest caption names the one thing that could otherwise confuse the number:
 /// speech-model downloads happen in Apple's system daemons, in a *different*
 /// process, so they can never show up in Talkie's own socket count — the zero
 /// here is Talkie's, and it stays zero even mid-download.
-private struct SocketReadoutCard: View {                                                       // talkie:no-network(self-inspection)
+private struct SocketReadoutInline: View {                                                     // talkie:no-network(self-inspection)
     var body: some View {
-        SettingsCard(
-            header: "Open network sockets",                                                    // talkie:no-network(self-inspection)
-            footer: "Counted live from this app’s own file descriptors, refreshed while you’re on this page. Speech-model downloads run in Apple’s system services, not inside Talkie, so they never appear here."
-        ) {
-            // `.periodic` fires immediately then every 2s; the closure re-samples
-            // per tick. TimelineView owns the cadence, so no Timer/Task leaks.
-            TimelineView(.periodic(from: .now, by: 2)) { _ in
-                SocketReadoutRow(snapshot: SocketAudit.snapshot())                             // talkie:no-network(self-inspection)
-            }
+        // `.periodic` fires immediately then every 2s; the closure re-samples
+        // per tick. TimelineView owns the cadence, so no Timer/Task leaks.
+        TimelineView(.periodic(from: .now, by: 2)) { _ in
+            SocketReadoutRow(snapshot: SocketAudit.snapshot())                                 // talkie:no-network(self-inspection)
         }
     }
 }

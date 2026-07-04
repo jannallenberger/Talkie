@@ -682,3 +682,6 @@
 "Copy prompt" = "Copia il prompt";
 "Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Lascia che Claude insegni a Talkie il tuo gergo. Incolla questo prompt in Claude (con il connettore Talkie attivo): legge come gli parli davvero — i tuoi nomi, prodotti e termini — e suggerisce quelli che Talkie fraintenderebbe. Ogni suggerimento attende la tua conferma con un tocco in Talkie, con annulla. Claude non cambia mai il tuo dizionario da solo.";
 "Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Richiede il connettore Talkie: configuralo in Generali ▸ Connetti a Claude.";
+/* L6d — Verify our claims: root row + subpage intro */
+"See the live entitlement list, the commands to check it yourself, and where your data lives." = "Guarda l’elenco live delle autorizzazioni, i comandi per verificarlo tu stesso e dove vivono i tuoi dati.";
+"Every value below is read from this Mac right now — nothing is typed in." = "Ogni valore qui sotto è letto da questo Mac in questo momento: niente è digitato a mano.";
