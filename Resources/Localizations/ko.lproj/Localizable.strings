@@ -322,7 +322,7 @@
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "%@에 저장됨";
 "Nothing to note yet — dictate something first." = "아직 메모할 내용이 없습니다. 먼저 받아쓰기를 하세요.";
-"Couldn't save that note." = "해당 메모를 저장할 수 없습니다.";
+"Couldn’t save that note anywhere — nothing was typed, try again." = "그 메모를 어디에도 저장하지 못했어요 — 입력된 내용은 없습니다. 다시 시도해 주세요.";
 "Save to notes" = "노트에 저장";
 "Couldn't save — retry" = "저장 실패 — 다시 시도";
 /* A8 — transcript editor learn chips */
@@ -344,7 +344,7 @@
 "Click here, then hold %@ and speak…" = "여기를 클릭한 다음 %@ 를 누른 채 말하세요…";
 
 // MARK: - Secure-input culprit (B3)
-"Password field — tap to copy" = "암호 입력란 — 탭하여 복사";
+"Password field — I don’t peek. Tap to copy." = "암호 입력란 — 엿보지 않아요. 탭하여 복사.";
 "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@이(가) 보안 입력을 점유하고 있어요. 해당 앱으로 전환해 암호 요청을 닫아 주세요. 탭하여 복사.";
 "another app" = "다른 앱";
 /* I5 — privacy proof card + live socket readout */
@@ -374,7 +374,7 @@
 "Version: %@" = "버전: %@";
 "Taken: %@" = "생성 시각: %@";
 
-# I3 — true delete (purge + best-effort shred) confirmations
+// I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "삭제";
 "Clear everything" = "전체 지우기";
 "Clear your dictation history?" = "받아쓰기 기록을 지울까요?";
@@ -591,7 +591,7 @@
 "Continue" = "계속";
 "Start dictating" = "받아쓰기 시작";
 "Talkie is busy right now — try again in a moment." = "Talkie가 지금 사용 중입니다 — 잠시 후 다시 시도하세요.";
-"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "어떤 앱이든 마이크를 사용하기 시작하면 Talkie가 녹음을 제안합니다. 스스로 녹음하는 일은 없습니다. 한 앱의 제안을 두 번 닫으면 Talkie는 그 앱에 대해 더 이상 제안하지 않습니다(전용 회의 앱은 절대 음소거되지 않습니다)."
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "어떤 앱이든 마이크를 사용하기 시작하면 Talkie가 녹음을 제안합니다. 스스로 녹음하는 일은 없습니다. 한 앱의 제안을 두 번 닫으면 Talkie는 그 앱에 대해 더 이상 제안하지 않습니다(전용 회의 앱은 절대 음소거되지 않습니다).";
 
 // MARK: - Airplane-mode proof moment (H6)
 "Don't take our word for it — turn off Wi-Fi and dictate." = "말로만 믿지 마세요 — Wi-Fi를 끄고 받아쓰기를 해보세요.";
@@ -806,3 +806,12 @@
 "Name the macaw (optional)" = "앵무새 이름 (선택)";
 "🦜 %@" = "🦜 %@";
 "Click to name your parrot" = "클릭하여 앵무새에게 이름을 지어주세요";
+
+/* K1 — parrot-voice microcopy (paste fallbacks + error states) */
+"Turn on Accessibility so I can paste for you — tap to copy for now." = "손쉬운 사용을 켜면 대신 붙여넣을 수 있어요 — 지금은 탭하여 복사.";
+"Couldn’t paste that — it’s on your clipboard, tap to copy." = "붙여넣지 못했어요 — 클립보드에 있어요. 탭하여 복사.";
+"Didn’t paste — it’s safe on your clipboard, tap to copy." = "붙여넣지 않았어요 — 클립보드에 안전하게 있어요. 탭하여 복사.";
+"Wrap up the meeting recording first — then I’m all ears." = "먼저 회의 녹음을 끝내 주세요 — 그다음엔 귀 기울일게요.";
+"I need microphone access to hear you." = "당신의 말을 들으려면 마이크 접근 권한이 필요해요.";
+"Couldn't run that command — the on-device model may be unavailable." = "그 명령을 실행하지 못했어요 — 기기 내 모델을 사용할 수 없을 수 있어요.";
+"Nothing to paste yet — dictate something first." = "아직 붙여넣을 것이 없어요 — 먼저 무언가 받아쓰게 해 주세요.";

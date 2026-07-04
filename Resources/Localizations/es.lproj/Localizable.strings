@@ -322,7 +322,7 @@
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "Guardado en %@";
 "Nothing to note yet — dictate something first." = "Aún no hay nada que anotar: dicta algo primero.";
-"Couldn't save that note." = "No se pudo guardar esa nota.";
+"Couldn’t save that note anywhere — nothing was typed, try again." = "No se pudo guardar esa nota en ningún sitio: no se escribió nada, inténtalo de nuevo.";
 "Save to notes" = "Guardar en notas";
 "Couldn't save — retry" = "No se pudo guardar: reintentar";
 /* A8 — transcript editor learn chips */
@@ -344,7 +344,7 @@
 "Click here, then hold %@ and speak…" = "Haz clic aquí, luego mantén %@ y habla…";
 
 // MARK: - Secure-input culprit (B3)
-"Password field — tap to copy" = "Campo de contraseña: toca para copiar";
+"Password field — I don’t peek. Tap to copy." = "Campo de contraseña: no miro. Toca para copiar.";
 "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ está reteniendo la entrada segura: cambia a esa app y cierra su solicitud de contraseña. Toca para copiar.";
 "another app" = "otra app";
 /* I5 — privacy proof card + live socket readout */
@@ -374,7 +374,7 @@
 "Version: %@" = "Versión: %@";
 "Taken: %@" = "Tomada: %@";
 
-# I3 — true delete (purge + best-effort shred) confirmations
+// I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "Eliminar";
 "Clear everything" = "Borrar todo";
 "Clear your dictation history?" = "¿Borrar tu historial de dictados?";
@@ -591,7 +591,7 @@
 "Continue" = "Continuar";
 "Start dictating" = "Empezar a dictar";
 "Talkie is busy right now — try again in a moment." = "Talkie está ocupado ahora mismo — inténtalo de nuevo en un momento.";
-"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Cuando cualquier app empieza a usar tu micrófono, Talkie se ofrece a grabar; nunca graba por su cuenta. Descarta la oferta de una app dos veces y Talkie deja de ofrecerlo para ella (tus apps de reuniones dedicadas nunca se silencian)."
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Cuando cualquier app empieza a usar tu micrófono, Talkie se ofrece a grabar; nunca graba por su cuenta. Descarta la oferta de una app dos veces y Talkie deja de ofrecerlo para ella (tus apps de reuniones dedicadas nunca se silencian).";
 
 // MARK: - Airplane-mode proof moment (H6)
 "Don't take our word for it — turn off Wi-Fi and dictate." = "No nos creas sin más — apaga el Wi-Fi y dicta.";
@@ -806,3 +806,12 @@
 "Name the macaw (optional)" = "Nombre del guacamayo (opcional)";
 "🦜 %@" = "🦜 %@";
 "Click to name your parrot" = "Haz clic para nombrar a tu loro";
+
+/* K1 — parrot-voice microcopy (paste fallbacks + error states) */
+"Turn on Accessibility so I can paste for you — tap to copy for now." = "Activa Accesibilidad para que pueda pegar por ti; por ahora, toca para copiar.";
+"Couldn’t paste that — it’s on your clipboard, tap to copy." = "No pude pegar eso: está en el portapapeles, toca para copiar.";
+"Didn’t paste — it’s safe on your clipboard, tap to copy." = "No se pegó: está a salvo en el portapapeles, toca para copiar.";
+"Wrap up the meeting recording first — then I’m all ears." = "Termina primero la grabación de la reunión y luego soy todo oídos.";
+"I need microphone access to hear you." = "Necesito acceso al micrófono para oírte.";
+"Couldn't run that command — the on-device model may be unavailable." = "No se pudo ejecutar ese comando: puede que el modelo en el dispositivo no esté disponible.";
+"Nothing to paste yet — dictate something first." = "Aún no hay nada que pegar: dicta algo primero.";

@@ -322,7 +322,7 @@
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "已保存到 %@";
 "Nothing to note yet — dictate something first." = "还没有可记录的内容——请先口述一些内容。";
-"Couldn't save that note." = "无法保存该笔记。";
+"Couldn’t save that note anywhere — nothing was typed, try again." = "无法将该笔记保存到任何位置 — 未输入任何内容，请重试。";
 "Save to notes" = "保存到笔记";
 "Couldn't save — retry" = "保存失败——重试";
 /* A8 — transcript editor learn chips */
@@ -344,7 +344,7 @@
 "Click here, then hold %@ and speak…" = "点击这里，然后按住 %@ 说话…";
 
 // MARK: - Secure-input culprit (B3)
-"Password field — tap to copy" = "密码栏 — 轻点以复制";
+"Password field — I don’t peek. Tap to copy." = "密码栏 — 我不偷看。轻点以复制。";
 "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ 正占用安全输入 — 请切换到该 App 并关闭其密码提示。轻点以复制。";
 "another app" = "另一个 App";
 /* I5 — privacy proof card + live socket readout */
@@ -374,7 +374,7 @@
 "Version: %@" = "版本：%@";
 "Taken: %@" = "生成时间：%@";
 
-# I3 — true delete (purge + best-effort shred) confirmations
+// I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "删除";
 "Clear everything" = "全部清除";
 "Clear your dictation history?" = "清除你的听写历史？";
@@ -591,7 +591,7 @@
 "Continue" = "继续";
 "Start dictating" = "开始听写";
 "Talkie is busy right now — try again in a moment." = "Talkie 正忙 — 请稍后再试。";
-"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "当任何应用开始使用你的麦克风时，Talkie 会主动询问是否录制——它绝不会自行录制。将某个应用的提议关闭两次，Talkie 就不再为它提议（你的专用会议应用永远不会被静音）。"
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "当任何应用开始使用你的麦克风时，Talkie 会主动询问是否录制——它绝不会自行录制。将某个应用的提议关闭两次，Talkie 就不再为它提议（你的专用会议应用永远不会被静音）。";
 
 // MARK: - Airplane-mode proof moment (H6)
 "Don't take our word for it — turn off Wi-Fi and dictate." = "别光听我们说 — 关掉 Wi-Fi，试着口述。";
@@ -806,3 +806,12 @@
 "Name the macaw (optional)" = "鹦鹉的名字（可选）";
 "🦜 %@" = "🦜 %@";
 "Click to name your parrot" = "点击给你的鹦鹉起名";
+
+/* K1 — parrot-voice microcopy (paste fallbacks + error states) */
+"Turn on Accessibility so I can paste for you — tap to copy for now." = "开启辅助功能后我就能替你粘贴 — 现在先轻点以复制。";
+"Couldn’t paste that — it’s on your clipboard, tap to copy." = "无法粘贴 — 内容在剪贴板里，轻点以复制。";
+"Didn’t paste — it’s safe on your clipboard, tap to copy." = "没有粘贴 — 内容安全地留在剪贴板里，轻点以复制。";
+"Wrap up the meeting recording first — then I’m all ears." = "请先结束会议录音 — 然后我洗耳恭听。";
+"I need microphone access to hear you." = "我需要麦克风权限才能听到你说话。";
+"Couldn't run that command — the on-device model may be unavailable." = "无法运行该命令 — 设备端模型可能不可用。";
+"Nothing to paste yet — dictate something first." = "还没有可粘贴的内容 — 请先口述一些内容。";

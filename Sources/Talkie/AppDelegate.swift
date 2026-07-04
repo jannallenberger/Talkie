@@ -1000,14 +1000,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         guard TranscriptionEngine.isAvailable else {
-            hud.showError("On-device speech isn't available on this Mac.")
+            // K1: localized (the sibling call site at ~:2981 already used `.loc`).
+            // Hard capability error — wording stays maximally informative.
+            hud.showError("On-device speech isn't available on this Mac.".loc)
             return
         }
         // The meeting recorder shares the transcription engine — don't dictate
         // over an active recording, nor while one is still finalizing (the
         // finalize pass is still using the shared engine/audio).
         guard meetingRecorder?.isRecording != true, meetingRecorder?.isFinishing != true else {
-            hud.showError("Stop the meeting recording first.")
+            // K1: localized + light voice pass; still names the exact blocker.
+            hud.showError("Wrap up the meeting recording first — then I’m all ears.".loc)
             return
         }
 
@@ -1239,7 +1242,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.isDictating = false
                 self.updateStatusUI()
                 self.birdBuddy.setActive(false)
-                self.hud.showError("Microphone access is needed to dictate.")
+                // K1: localized + light voice pass; the exact grant needed stays clear.
+                self.hud.showError("I need microphone access to hear you.".loc)
                 self.permissions.refresh()
                 // H5: declining the mic ends the try-it — surface the honest inline
                 // error in the onboarding field, then clear the sink and reset the
@@ -1827,7 +1831,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                       !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     // Bare "note this" with no prior dictation to file — tell the
                     // user rather than silently typing "note this" into their doc.
-                    self.hud.showError("Nothing to note yet — dictate something first.")
+                    // K1: localized (key already present; was rendering English on all locales).
+                    self.hud.showError("Nothing to note yet — dictate something first.".loc)
                     return
                 }
                 // Build the neutral note (pure) and resolve the destination on the
@@ -1850,7 +1855,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         do {
                             _ = try await TalkieFolderDestination().write(note)
                         } catch {
-                            await MainActor.run { self.hud.showError("Couldn't save that note.") }
+                            // K1: localized + voice; honest — both write attempts failed, nothing was typed.
+                            await MainActor.run { self.hud.showError("Couldn’t save that note anywhere — nothing was typed, try again.".loc) }
                             return
                         }
                     }
@@ -1973,7 +1979,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         // through to the dictation path below, which would type the literal
                         // spoken command ("translate to German") into the document.
                         self.isProcessing = false
-                        self.hud.showError("Couldn't run that command — the on-device model may be unavailable.")
+                        // K1: localized; blocking error stays maximally informative.
+                        self.hud.showError("Couldn't run that command — the on-device model may be unavailable.".loc)
                         return
                     }
                 }
@@ -2780,7 +2787,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !isDictating, !isProcessing else { return }
         guard let text = history.entries.first?.text,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            hud.showError("No transcript to paste yet.")
+            // K1: localized + voice; names the next action (dictate first).
+            hud.showError("Nothing to paste yet — dictate something first.".loc)
             return
         }
         // Resolve the FRONTMOST app's insertion mode (the global picker is gone as of

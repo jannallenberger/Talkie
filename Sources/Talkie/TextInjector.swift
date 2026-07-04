@@ -60,7 +60,9 @@ enum TextInjector {
         guard ensureTrusted(prompt: false) else {
             promptTrustOnce()
             copyToClipboard(text)
-            return .leftOnClipboard(reason: "Enable Accessibility to auto-paste — tap to copy")
+            // K1: route through `.loc` (was a raw English literal). Names the exact
+            // fix (grant Accessibility) and the exact next action (⌘V from clipboard).
+            return .leftOnClipboard(reason: "Turn on Accessibility so I can paste for you — tap to copy for now.".loc)
         }
 
         switch mode {
@@ -105,11 +107,12 @@ enum TextInjector {
         }
         guard ensureTrusted(prompt: false) else {
             copyToClipboard(text)
-            return .leftOnClipboard(reason: "Can't auto-paste — tap to copy")
+            // K1: localized; still names the failure and the recoverable next action.
+            return .leftOnClipboard(reason: "Couldn’t paste that — it’s on your clipboard, tap to copy.".loc)
         }
         guard hasEditableFocus() else {
             copyToClipboard(text)
-            return .leftOnClipboard(reason: "Not pasted — tap to copy")
+            return .leftOnClipboard(reason: "Didn’t paste — it’s safe on your clipboard, tap to copy.".loc)
         }
         selectBackward(graphemeCount)
         pasteViaClipboard(text, restorePrevious: true) // ⌘V over a selection replaces it
@@ -210,13 +213,13 @@ enum TextInjector {
     private static func secureInputReason() -> String {
         guard let culprit = SecureInputCulprit.current() else {
             // Nobody resolvable — keep today's honest, generic guess.
-            return "Password field — tap to copy".loc
+            return "Password field — I don’t peek. Tap to copy.".loc
         }
         // If the holder is the app you're actually in, a focused password field is
         // the likely story: the short, familiar message is right.
         let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         if culprit.pid == frontPID {
-            return "Password field — tap to copy".loc
+            return "Password field — I don’t peek. Tap to copy.".loc
         }
         // The holder is some OTHER app (the stuck-state case). Name it so you know
         // exactly what to dismiss — a 1Password lock screen, Terminal's Secure

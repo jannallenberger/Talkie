@@ -322,7 +322,7 @@
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "Opgeslagen in %@";
 "Nothing to note yet — dictate something first." = "Nog niets om te noteren — dicteer eerst iets.";
-"Couldn't save that note." = "Kon die notitie niet opslaan.";
+"Couldn’t save that note anywhere — nothing was typed, try again." = "Kon die notitie nergens opslaan — er is niets getypt, probeer het opnieuw.";
 "Save to notes" = "Opslaan in notities";
 "Couldn't save — retry" = "Opslaan mislukt — opnieuw";
 /* A8 — transcript editor learn chips */
@@ -344,7 +344,7 @@
 "Click here, then hold %@ and speak…" = "Klik hier, houd dan %@ ingedrukt en spreek…";
 
 // MARK: - Secure-input culprit (B3)
-"Password field — tap to copy" = "Wachtwoordveld — tik om te kopiëren";
+"Password field — I don’t peek. Tap to copy." = "Wachtwoordveld — ik gluur niet. Tik om te kopiëren.";
 "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ houdt beveiligde invoer vast — schakel ernaartoe en sluit de wachtwoordvraag. Tik om te kopiëren.";
 "another app" = "een andere app";
 /* I5 — privacy proof card + live socket readout */
@@ -374,7 +374,7 @@
 "Version: %@" = "Versie: %@";
 "Taken: %@" = "Gemaakt: %@";
 
-# I3 — true delete (purge + best-effort shred) confirmations
+// I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "Verwijder";
 "Clear everything" = "Alles wissen";
 "Clear your dictation history?" = "Je dicteergeschiedenis wissen?";
@@ -591,7 +591,7 @@
 "Continue" = "Doorgaan";
 "Start dictating" = "Beginnen met dicteren";
 "Talkie is busy right now — try again in a moment." = "Talkie is nu bezig — probeer het zo meteen opnieuw.";
-"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Zodra een app je microfoon gaat gebruiken, biedt Talkie aan om op te nemen — uit zichzelf neemt het nooit op. Wijs het aanbod van een app twee keer af en Talkie biedt het niet meer aan voor die app (je speciale vergader-apps worden nooit gedempt)."
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Zodra een app je microfoon gaat gebruiken, biedt Talkie aan om op te nemen — uit zichzelf neemt het nooit op. Wijs het aanbod van een app twee keer af en Talkie biedt het niet meer aan voor die app (je speciale vergader-apps worden nooit gedempt).";
 
 // MARK: - Airplane-mode proof moment (H6)
 "Don't take our word for it — turn off Wi-Fi and dictate." = "Geloof ons niet zomaar — zet Wi-Fi uit en dicteer.";
@@ -806,3 +806,12 @@
 "Name the macaw (optional)" = "Naam voor de ara (optioneel)";
 "🦜 %@" = "🦜 %@";
 "Click to name your parrot" = "Klik om je papegaai een naam te geven";
+
+/* K1 — parrot-voice microcopy (paste fallbacks + error states) */
+"Turn on Accessibility so I can paste for you — tap to copy for now." = "Zet Toegankelijkheid aan zodat ik voor je kan plakken — tik voorlopig om te kopiëren.";
+"Couldn’t paste that — it’s on your clipboard, tap to copy." = "Kon dat niet plakken — het staat op je klembord, tik om te kopiëren.";
+"Didn’t paste — it’s safe on your clipboard, tap to copy." = "Niet geplakt — het staat veilig op je klembord, tik om te kopiëren.";
+"Wrap up the meeting recording first — then I’m all ears." = "Rond eerst de vergaderopname af — dan ben ik een en al oor.";
+"I need microphone access to hear you." = "Ik heb microfoontoegang nodig om je te horen.";
+"Couldn't run that command — the on-device model may be unavailable." = "Kon die opdracht niet uitvoeren — het model op het apparaat is mogelijk niet beschikbaar.";
+"Nothing to paste yet — dictate something first." = "Nog niets om te plakken — dicteer eerst iets.";

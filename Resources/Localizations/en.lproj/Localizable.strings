@@ -322,7 +322,7 @@
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "Saved to %@";
 "Nothing to note yet — dictate something first." = "Nothing to note yet — dictate something first.";
-"Couldn't save that note." = "Couldn't save that note.";
+"Couldn’t save that note anywhere — nothing was typed, try again." = "Couldn’t save that note anywhere — nothing was typed, try again.";
 "Save to notes" = "Save to notes";
 "Couldn't save — retry" = "Couldn't save — retry";
 /* A8 — transcript editor learn chips */
@@ -344,7 +344,7 @@
 "Click here, then hold %@ and speak…" = "Click here, then hold %@ and speak…";
 
 // MARK: - Secure-input culprit (B3)
-"Password field — tap to copy" = "Password field — tap to copy";
+"Password field — I don’t peek. Tap to copy." = "Password field — I don’t peek. Tap to copy.";
 "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy.";
 "another app" = "another app";
 /* I5 — privacy proof card + live socket readout */
@@ -374,7 +374,7 @@
 "Version: %@" = "Version: %@";
 "Taken: %@" = "Taken: %@";
 
-# I3 — true delete (purge + best-effort shred) confirmations
+// I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "Delete";
 "Clear everything" = "Clear everything";
 "Clear your dictation history?" = "Clear your dictation history?";
@@ -808,3 +808,12 @@
 "Name the macaw (optional)" = "Name the macaw (optional)";
 "🦜 %@" = "🦜 %@";
 "Click to name your parrot" = "Click to name your parrot";
+
+/* K1 — parrot-voice microcopy (paste fallbacks + error states) */
+"Turn on Accessibility so I can paste for you — tap to copy for now." = "Turn on Accessibility so I can paste for you — tap to copy for now.";
+"Couldn’t paste that — it’s on your clipboard, tap to copy." = "Couldn’t paste that — it’s on your clipboard, tap to copy.";
+"Didn’t paste — it’s safe on your clipboard, tap to copy." = "Didn’t paste — it’s safe on your clipboard, tap to copy.";
+"Wrap up the meeting recording first — then I’m all ears." = "Wrap up the meeting recording first — then I’m all ears.";
+"I need microphone access to hear you." = "I need microphone access to hear you.";
+"Couldn't run that command — the on-device model may be unavailable." = "Couldn't run that command — the on-device model may be unavailable.";
+"Nothing to paste yet — dictate something first." = "Nothing to paste yet — dictate something first.";

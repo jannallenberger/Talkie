@@ -322,7 +322,7 @@
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "Gespeichert in %@";
 "Nothing to note yet — dictate something first." = "Noch nichts zu notieren – diktiere zuerst etwas.";
-"Couldn't save that note." = "Diese Notiz konnte nicht gespeichert werden.";
+"Couldn’t save that note anywhere — nothing was typed, try again." = "Diese Notiz konnte nirgends gespeichert werden – es wurde nichts eingefügt, bitte erneut versuchen.";
 "Save to notes" = "In Notizen speichern";
 "Couldn't save — retry" = "Speichern fehlgeschlagen – erneut versuchen";
 /* A8 — transcript editor learn chips */
@@ -344,7 +344,7 @@
 "Click here, then hold %@ and speak…" = "Hier klicken, dann %@ halten und sprechen …";
 
 // MARK: - Secure-input culprit (B3)
-"Password field — tap to copy" = "Passwortfeld – zum Kopieren tippen";
+"Password field — I don’t peek. Tap to copy." = "Passwortfeld – ich schaue nicht hin. Zum Kopieren tippen.";
 "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ hält die sichere Eingabe – wechsle dorthin und schließe die Passwortabfrage. Zum Kopieren tippen.";
 "another app" = "einer anderen App";
 /* I5 — privacy proof card + live socket readout */
@@ -374,7 +374,7 @@
 "Version: %@" = "Version: %@";
 "Taken: %@" = "Erstellt: %@";
 
-# I3 — true delete (purge + best-effort shred) confirmations
+// I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "Löschen";
 "Clear everything" = "Alles löschen";
 "Clear your dictation history?" = "Diktatverlauf löschen?";
@@ -591,7 +591,7 @@
 "Continue" = "Weiter";
 "Start dictating" = "Diktieren starten";
 "Talkie is busy right now — try again in a moment." = "Talkie ist gerade beschäftigt — versuchen Sie es gleich noch einmal.";
-"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Wenn irgendeine App dein Mikrofon verwendet, bietet Talkie an aufzunehmen — von selbst nimmt es nie auf. Lehnst du das Angebot einer App zweimal ab, bietet Talkie es für diese App nicht mehr an (deine dedizierten Meeting-Apps werden nie stummgeschaltet)."
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Wenn irgendeine App dein Mikrofon verwendet, bietet Talkie an aufzunehmen — von selbst nimmt es nie auf. Lehnst du das Angebot einer App zweimal ab, bietet Talkie es für diese App nicht mehr an (deine dedizierten Meeting-Apps werden nie stummgeschaltet).";
 
 // MARK: - Airplane-mode proof moment (H6)
 "Don't take our word for it — turn off Wi-Fi and dictate." = "Nehmen Sie uns nicht beim Wort — schalten Sie das WLAN aus und diktieren Sie.";
@@ -806,3 +806,12 @@
 "Name the macaw (optional)" = "Ara benennen (optional)";
 "🦜 %@" = "🦜 %@";
 "Click to name your parrot" = "Klicken, um Ihren Papagei zu benennen";
+
+/* K1 — parrot-voice microcopy (paste fallbacks + error states) */
+"Turn on Accessibility so I can paste for you — tap to copy for now." = "Aktiviere die Bedienungshilfen, damit ich für dich einfügen kann – tippe vorerst zum Kopieren.";
+"Couldn’t paste that — it’s on your clipboard, tap to copy." = "Konnte das nicht einfügen – es liegt in deiner Zwischenablage, zum Kopieren tippen.";
+"Didn’t paste — it’s safe on your clipboard, tap to copy." = "Nicht eingefügt – es liegt sicher in deiner Zwischenablage, zum Kopieren tippen.";
+"Wrap up the meeting recording first — then I’m all ears." = "Beende zuerst die Besprechungsaufnahme – dann bin ich ganz Ohr.";
+"I need microphone access to hear you." = "Ich brauche Mikrofonzugriff, um dich zu hören.";
+"Couldn't run that command — the on-device model may be unavailable." = "Dieser Befehl konnte nicht ausgeführt werden – das Modell auf dem Gerät ist möglicherweise nicht verfügbar.";
+"Nothing to paste yet — dictate something first." = "Noch nichts zum Einfügen – diktiere zuerst etwas.";

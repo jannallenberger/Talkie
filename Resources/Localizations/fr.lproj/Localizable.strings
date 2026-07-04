@@ -322,7 +322,7 @@
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "Enregistré dans %@";
 "Nothing to note yet — dictate something first." = "Rien à noter pour l’instant — dictez d’abord quelque chose.";
-"Couldn't save that note." = "Impossible d’enregistrer cette note.";
+"Couldn’t save that note anywhere — nothing was typed, try again." = "Impossible d’enregistrer cette note où que ce soit — rien n’a été saisi, réessayez.";
 "Save to notes" = "Enregistrer dans les notes";
 "Couldn't save — retry" = "Échec de l’enregistrement — réessayer";
 /* A8 — transcript editor learn chips */
@@ -344,7 +344,7 @@
 "Click here, then hold %@ and speak…" = "Cliquez ici, puis maintenez %@ et parlez…";
 
 // MARK: - Secure-input culprit (B3)
-"Password field — tap to copy" = "Champ de mot de passe — touchez pour copier";
+"Password field — I don’t peek. Tap to copy." = "Champ de mot de passe — je ne regarde pas. Touchez pour copier.";
 "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ retient la saisie sécurisée — passez à cette app et fermez sa demande de mot de passe. Touchez pour copier.";
 "another app" = "une autre app";
 /* I5 — privacy proof card + live socket readout */
@@ -374,7 +374,7 @@
 "Version: %@" = "Version : %@";
 "Taken: %@" = "Prise le : %@";
 
-# I3 — true delete (purge + best-effort shred) confirmations
+// I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "Supprimer";
 "Clear everything" = "Tout effacer";
 "Clear your dictation history?" = "Effacer votre historique de dictée ?";
@@ -591,7 +591,7 @@
 "Continue" = "Continuer";
 "Start dictating" = "Commencer à dicter";
 "Talkie is busy right now — try again in a moment." = "Talkie est occupé pour l’instant — réessayez dans un moment.";
-"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Quand une app se met à utiliser ton micro, Talkie propose d’enregistrer — il n’enregistre jamais tout seul. Refuse deux fois la proposition d’une app et Talkie cesse de la proposer pour elle (tes apps de réunion dédiées ne sont jamais réduites au silence)."
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "Quand une app se met à utiliser ton micro, Talkie propose d’enregistrer — il n’enregistre jamais tout seul. Refuse deux fois la proposition d’une app et Talkie cesse de la proposer pour elle (tes apps de réunion dédiées ne sont jamais réduites au silence).";
 
 // MARK: - Airplane-mode proof moment (H6)
 "Don't take our word for it — turn off Wi-Fi and dictate." = "Ne nous croyez pas sur parole — coupez le Wi-Fi et dictez.";
@@ -806,3 +806,12 @@
 "Name the macaw (optional)" = "Nommer le ara (facultatif)";
 "🦜 %@" = "🦜 %@";
 "Click to name your parrot" = "Cliquez pour nommer votre perroquet";
+
+/* K1 — parrot-voice microcopy (paste fallbacks + error states) */
+"Turn on Accessibility so I can paste for you — tap to copy for now." = "Activez l’Accessibilité pour que je puisse coller à votre place — pour l’instant, touchez pour copier.";
+"Couldn’t paste that — it’s on your clipboard, tap to copy." = "Je n’ai pas pu coller ça — c’est dans votre presse-papiers, touchez pour copier.";
+"Didn’t paste — it’s safe on your clipboard, tap to copy." = "Pas collé — c’est à l’abri dans votre presse-papiers, touchez pour copier.";
+"Wrap up the meeting recording first — then I’m all ears." = "Terminez d’abord l’enregistrement de la réunion — ensuite, je suis tout ouïe.";
+"I need microphone access to hear you." = "J’ai besoin de l’accès au micro pour vous entendre.";
+"Couldn't run that command — the on-device model may be unavailable." = "Impossible d’exécuter cette commande — le modèle sur l’appareil est peut-être indisponible.";
+"Nothing to paste yet — dictate something first." = "Rien à coller pour l’instant — dictez d’abord quelque chose.";

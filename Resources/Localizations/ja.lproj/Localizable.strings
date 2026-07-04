@@ -322,7 +322,7 @@
 /* D4 — export gap: note-this dictation + save Brief to notes */
 "Saved to %@" = "%@ に保存しました";
 "Nothing to note yet — dictate something first." = "まだメモするものがありません。まず何か話してください。";
-"Couldn't save that note." = "そのメモを保存できませんでした。";
+"Couldn’t save that note anywhere — nothing was typed, try again." = "そのメモをどこにも保存できませんでした — 何も入力されていません。もう一度お試しください。";
 "Save to notes" = "ノートに保存";
 "Couldn't save — retry" = "保存できませんでした — 再試行";
 /* A8 — transcript editor learn chips */
@@ -344,7 +344,7 @@
 "Click here, then hold %@ and speak…" = "ここをクリックし、%@ を押しながら話してください…";
 
 // MARK: - Secure-input culprit (B3)
-"Password field — tap to copy" = "パスワード欄 — タップしてコピー";
+"Password field — I don’t peek. Tap to copy." = "パスワード欄 — のぞき見しません。タップしてコピー。";
 "%@ is holding secure input — switch to it and dismiss its password prompt. Tap to copy." = "%@ がセキュア入力を保持しています。そのアプリに切り替えてパスワード入力を閉じてください。タップしてコピー。";
 "another app" = "別のアプリ";
 /* I5 — privacy proof card + live socket readout */
@@ -374,7 +374,7 @@
 "Version: %@" = "バージョン: %@";
 "Taken: %@" = "取得日時: %@";
 
-# I3 — true delete (purge + best-effort shred) confirmations
+// I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "削除";
 "Clear everything" = "すべて消去";
 "Clear your dictation history?" = "ディクテーション履歴を消去しますか？";
@@ -591,7 +591,7 @@
 "Continue" = "続ける";
 "Start dictating" = "ディクテーションを開始";
 "Talkie is busy right now — try again in a moment." = "Talkie は現在処理中です — 少し待ってからもう一度お試しください。";
-"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "どのアプリでもマイクを使い始めると、Talkie が録音を提案します。ひとりでに録音することはありません。あるアプリの提案を 2 回却下すると、そのアプリには提案しなくなります（専用の会議アプリが無音化されることはありません）。"
+"When any app starts using your mic, Talkie offers to record — it never records on its own. Dismiss an app’s offer twice and Talkie stops offering for it (your dedicated meeting apps are never silenced)." = "どのアプリでもマイクを使い始めると、Talkie が録音を提案します。ひとりでに録音することはありません。あるアプリの提案を 2 回却下すると、そのアプリには提案しなくなります（専用の会議アプリが無音化されることはありません）。";
 
 // MARK: - Airplane-mode proof moment (H6)
 "Don't take our word for it — turn off Wi-Fi and dictate." = "言葉だけで信じないで — Wi-Fi を切って話してみてください。";
@@ -806,3 +806,12 @@
 "Name the macaw (optional)" = "インコの名前（任意）";
 "🦜 %@" = "🦜 %@";
 "Click to name your parrot" = "クリックしてインコに名前をつけます";
+
+/* K1 — parrot-voice microcopy (paste fallbacks + error states) */
+"Turn on Accessibility so I can paste for you — tap to copy for now." = "アクセシビリティをオンにすると代わりに貼り付けできます — 今はタップしてコピー。";
+"Couldn’t paste that — it’s on your clipboard, tap to copy." = "貼り付けできませんでした — クリップボードにあります。タップしてコピー。";
+"Didn’t paste — it’s safe on your clipboard, tap to copy." = "貼り付けませんでした — クリップボードに安全に残っています。タップしてコピー。";
+"Wrap up the meeting recording first — then I’m all ears." = "先に会議の録音を終えてください — それから何でもどうぞ。";
+"I need microphone access to hear you." = "あなたの声を聞くにはマイクへのアクセスが必要です。";
+"Couldn't run that command — the on-device model may be unavailable." = "そのコマンドを実行できませんでした — デバイス上のモデルが利用できない可能性があります。";
+"Nothing to paste yet — dictate something first." = "まだ貼り付けるものがありません — まず何か話してください。";
