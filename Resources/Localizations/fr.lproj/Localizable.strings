@@ -689,6 +689,20 @@
 /* L6d — Verify our claims: root row + subpage intro */
 "See the live entitlement list, the commands to check it yourself, and where your data lives." = "Voyez la liste des autorisations en direct, les commandes pour le vérifier vous-même et où vivent vos données.";
 "Every value below is read from this Mac right now — nothing is typed in." = "Chaque valeur ci-dessous est lue depuis ce Mac à l’instant même — rien n’est saisi à la main.";
+
+/* L6c — Meetings settings subpage + honest folder row */
+"Meeting settings" = "Réglages des réunions";
+"Recording, transcription, and calendar context — all in one place." = "Enregistrement, transcription et contexte de calendrier — tout au même endroit.";
+"Auto-detect, the live pill, meeting apps, and calendar context." = "Détection auto, la pastille en direct, les apps de réunion et le contexte de calendrier.";
+"Where notes are saved" = "Où les notes sont enregistrées";
+"Meeting notes and dictation notes share one destination, set in Notes & export." = "Les notes de réunion et de dictée partagent une même destination, définie dans Notes et export.";
+"Notes are saved to" = "Les notes sont enregistrées dans";
+"Open Notes & export" = "Ouvrir Notes et export";
+"That folder isn’t reachable right now — notes fall back to ~/Talkie Meetings until it’s back." = "Ce dossier est introuvable pour le moment — les notes iront dans ~/Talkie Meetings jusqu’à son retour.";
+"~/Talkie Meetings" = "~/Talkie Meetings";
+"That folder isn’t reachable — saving to ~/Talkie Meetings/ until it’s back" = "Ce dossier est introuvable — enregistrement dans ~/Talkie Meetings/ jusqu’à son retour";
+"Saved to “%@” as markdown" = "Enregistré dans « %@ » au format markdown";
+"Saved to your Obsidian vault “%@”" = "Enregistré dans votre coffre Obsidian « %@ »";
 /* L6f — Per-app editor: state what "Inherit" resolves to */
 "%@ (inherited)" = "%@ (hérité)";
 "Paste" = "Coller";

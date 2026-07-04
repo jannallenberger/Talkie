@@ -689,6 +689,20 @@
 /* L6d — Verify our claims: root row + subpage intro */
 "See the live entitlement list, the commands to check it yourself, and where your data lives." = "Bekijk de live lijst met machtigingen, de commando’s om het zelf te controleren en waar je gegevens staan.";
 "Every value below is read from this Mac right now — nothing is typed in." = "Elke waarde hieronder wordt nu van deze Mac gelezen — niets is ingetypt.";
+
+/* L6c — Meetings settings subpage + honest folder row */
+"Meeting settings" = "Vergaderinstellingen";
+"Recording, transcription, and calendar context — all in one place." = "Opname, transcriptie en agendacontext — allemaal op één plek.";
+"Auto-detect, the live pill, meeting apps, and calendar context." = "Automatische detectie, de live-pil, vergader-apps en agendacontext.";
+"Where notes are saved" = "Waar notities worden bewaard";
+"Meeting notes and dictation notes share one destination, set in Notes & export." = "Vergader- en dicteernotities delen één bestemming, ingesteld in Notities en export.";
+"Notes are saved to" = "Notities worden bewaard in";
+"Open Notes & export" = "Notities en export openen";
+"That folder isn’t reachable right now — notes fall back to ~/Talkie Meetings until it’s back." = "Die map is nu niet bereikbaar — notities gaan naar ~/Talkie Meetings totdat hij weer terug is.";
+"~/Talkie Meetings" = "~/Talkie Meetings";
+"That folder isn’t reachable — saving to ~/Talkie Meetings/ until it’s back" = "Die map is niet bereikbaar — bewaren in ~/Talkie Meetings/ totdat hij terug is";
+"Saved to “%@” as markdown" = "Bewaard in ‘%@’ als markdown";
+"Saved to your Obsidian vault “%@”" = "Bewaard in je Obsidian-kluis ‘%@’";
 /* L6f — Per-app editor: state what "Inherit" resolves to */
 "%@ (inherited)" = "%@ (overgenomen)";
 "Paste" = "Plakken";

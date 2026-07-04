@@ -19,6 +19,10 @@ struct CalendarSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            // L6c: the "What it does" bullets used to float in their own ownerless
+            // card below this one; they now live INSIDE the Calendar-context card
+            // (access row → divider → bullets), footer last, so the explainer has a
+            // visible owner instead of reading as a stray, un-headed list.
             SettingsCard(
                 header: "Calendar context",
                 footer: "Read-only. Talkie reads the event you’re in to title the note and bias attendee names — it never creates, edits, or deletes anything on your calendar. Everything stays on your Mac."
@@ -29,9 +33,7 @@ struct CalendarSettings: View {
                 ) {
                     statusTrailing
                 }
-            }
-
-            SettingsCard(header: "What it does") {
+                SettingsDivider(leadingInset: 0)
                 BulletNote(icon: "textformat", text: "Titles a recording with the meeting’s real name instead of a timestamp.")
                 SettingsDivider(leadingInset: 0)
                 BulletNote(icon: "person.2", text: "Biases recognition toward attendee names so they’re spelled correctly.")

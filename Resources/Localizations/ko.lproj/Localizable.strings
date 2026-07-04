@@ -689,6 +689,20 @@
 /* L6d — Verify our claims: root row + subpage intro */
 "See the live entitlement list, the commands to check it yourself, and where your data lives." = "실시간 권한 목록, 직접 확인하는 명령어, 데이터가 저장되는 위치를 확인하세요.";
 "Every value below is read from this Mac right now — nothing is typed in." = "아래 모든 값은 지금 이 Mac에서 읽어 온 것입니다 — 직접 입력한 것은 없습니다.";
+
+/* L6c — Meetings settings subpage + honest folder row */
+"Meeting settings" = "회의 설정";
+"Recording, transcription, and calendar context — all in one place." = "녹음, 전사, 캘린더 컨텍스트를 한곳에 모았어요.";
+"Auto-detect, the live pill, meeting apps, and calendar context." = "자동 감지, 라이브 필, 회의 앱, 캘린더 컨텍스트.";
+"Where notes are saved" = "노트 저장 위치";
+"Meeting notes and dictation notes share one destination, set in Notes & export." = "회의 노트와 받아쓰기 노트는 하나의 저장 위치를 공유하며, ‘노트 및 내보내기’에서 설정합니다.";
+"Notes are saved to" = "노트 저장 위치";
+"Open Notes & export" = "‘노트 및 내보내기’ 열기";
+"That folder isn’t reachable right now — notes fall back to ~/Talkie Meetings until it’s back." = "그 폴더에 지금 접근할 수 없어요 — 다시 돌아올 때까지 노트는 ~/Talkie Meetings에 저장돼요.";
+"~/Talkie Meetings" = "~/Talkie Meetings";
+"That folder isn’t reachable — saving to ~/Talkie Meetings/ until it’s back" = "그 폴더에 접근할 수 없어요 — 다시 돌아올 때까지 ~/Talkie Meetings/에 저장해요";
+"Saved to “%@” as markdown" = "‘%@’에 마크다운으로 저장됨";
+"Saved to your Obsidian vault “%@”" = "Obsidian 보관함 ‘%@’에 저장됨";
 /* L6f — Per-app editor: state what "Inherit" resolves to */
 "%@ (inherited)" = "%@ (상속됨)";
 "Paste" = "붙여넣기";
