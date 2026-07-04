@@ -416,7 +416,7 @@ private struct SettingsHome: View {
                     // ── 4. Apps ──────────────────────────────────────────────────
                     section("Apps",
                             subtitle: "Per-app cleanup styles for the apps you customize.") {
-                        AppProfilesSettings(profiles: profiles)
+                        AppProfilesSettings(profiles: profiles, settings: settings)
                     }
                     // ── 5. Meetings ──────────────────────────────────────────────
                     // L6c MOUNTS a Meetings row here that pushes `SettingsPage.meetings`

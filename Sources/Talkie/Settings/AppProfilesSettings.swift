@@ -12,6 +12,10 @@ import SwiftUI
 /// `SettingsCard` / `SettingsRow` vocabulary.
 struct AppProfilesSettings: View {
     @ObservedObject var profiles: AppProfileStore
+    /// The global settings — needed so an "Inherit" override can state the live
+    /// value it resolves to (the per-category cleanup style) instead of a bare
+    /// "Inherit", both in each row summary here and inside the editor sheet.
+    @ObservedObject var settings: AppSettings
 
     /// The profile being edited in the sheet (nil = sheet closed).
     @State private var editing: AppProfile?
@@ -70,6 +74,7 @@ struct AppProfilesSettings: View {
         .sheet(item: $editing) { profile in
             AppProfileEditor(
                 profile: profile,
+                settings: settings,
                 dictionaryVocab: dictionaryVocab,
                 onSave: { profiles.upsert($0); editing = nil },
                 onCancel: { editing = nil }
@@ -84,16 +89,31 @@ struct AppProfilesSettings: View {
         AppDelegate.shared?.dictionary.vocabulary ?? []
     }
 
-    /// A compact one-line description of what a profile overrides.
+    /// A compact one-line description of what a profile does — stating the *effective*
+    /// value for each facet, not just the overrides. The cleanup style always resolves
+    /// to something (a per-app override, else the app's category style), so the row
+    /// leads with the real style the app will use and tags it "inherited" when it's the
+    /// category default. Private + a narrowed vocabulary are additive notes.
     private func summary(for p: AppProfile) -> String {
+        let category = AppCategory.classify(bundleID: p.bundleID, name: p.displayName)
+        let effectiveStyle = p.cleanupStyle ?? settings.cleanupStyle(for: category)
         var parts: [String] = []
         if p.neverStore == true { parts.append("Private".loc) }
-        if let s = p.cleanupStyle { parts.append(s.displayName) }
-        if let m = p.insertionMode { parts.append(m == .paste ? "Paste" : "Type") }
-        if let filter = p.vocabularyFilter, !filter.isEmpty {
-            parts.append("\(filter.count) terms")
+        // Leading facet: the style the app actually cleans up in. Overrides read as
+        // the plain style name; an inherited style is tagged so the row doesn't imply
+        // the user set it here.
+        if p.cleanupStyle != nil {
+            parts.append(effectiveStyle.displayName)
+        } else {
+            parts.append(String(format: "%@ (inherited)".loc, effectiveStyle.displayName))
         }
-        return parts.isEmpty ? "Custom" : parts.joined(separator: " · ")
+        if let m = p.insertionMode { parts.append(m == .paste ? "Paste".loc : "Type".loc) }
+        if let filter = p.vocabularyFilter, !filter.isEmpty {
+            parts.append(filter.count == 1
+                         ? "1 term".loc
+                         : String(format: "%d terms".loc, filter.count))
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// The currently-running apps the user can still add a rule for (regular,
@@ -180,6 +200,9 @@ private struct ProfileRow: View {
 /// On save the profile is upserted; an all-Inherit profile is dropped by the store.
 private struct AppProfileEditor: View {
     @State var profile: AppProfile
+    /// Injected so each "Inherit" row can state the concrete value it resolves to —
+    /// the same per-category cleanup style shown in Settings ▸ Smart cleanup.
+    @ObservedObject var settings: AppSettings
     let dictionaryVocab: [String]
     let onSave: (AppProfile) -> Void
     let onCancel: () -> Void
@@ -187,6 +210,35 @@ private struct AppProfileEditor: View {
     // Each override is modeled as an optional binding the picker maps to "Inherit".
     private var cleanupStyle: Binding<CleanupStyle?> { $profile.cleanupStyle }
     private var insertionMode: Binding<InsertionMode?> { $profile.insertionMode }
+
+    /// This app's coarse category, from its bundle id + name — the key the cleanup
+    /// style inherits through (matches the pipeline's `AppCategory.classify`).
+    private var category: AppCategory {
+        AppCategory.classify(bundleID: profile.bundleID, name: profile.displayName)
+    }
+
+    /// The concrete style Inherit resolves to for this app right now: its category's
+    /// style from the global Smart-cleanup pane (a user override there, else the
+    /// per-category default). Exactly what the dictation pipeline would use.
+    private var inheritedStyle: CleanupStyle { settings.cleanupStyle(for: category) }
+
+    /// Subtitle under the Style row: when overridden, the picked style's one-line
+    /// `detail`; when left on Inherit, the live resolved value + its category, e.g.
+    /// "Inherit — Faithful (Terminal apps)".
+    private var styleSubtitle: String {
+        if let s = profile.cleanupStyle { return s.detail }
+        return String(format: "Inherit — %1$@ (%2$@ apps)".loc,
+                      inheritedStyle.displayName, category.label)
+    }
+
+    /// Subtitle under the Insert-text-by row when left on Inherit. Paste is the
+    /// universal default (B2 removed the global picker); Talkie flips just this app
+    /// to Type automatically if a paste is seen to fail here.
+    private var insertionSubtitle: String? {
+        profile.insertionMode == nil
+            ? "Paste (Talkie's default — switches to Type automatically if pastes fail here).".loc
+            : nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -217,7 +269,7 @@ private struct AppProfileEditor: View {
                         header: "Cleanup",
                         footer: "“Inherit” follows the style for this app's category in Settings. Override it to give just this app its own style."
                     ) {
-                        SettingsRow(title: "Style") {
+                        SettingsRow(title: "Style", subtitle: styleSubtitle) {
                             Picker("", selection: cleanupStyle) {
                                 Text("Inherit").tag(CleanupStyle?.none)
                                 ForEach(CleanupStyle.allCases) { Text($0.displayName).tag(CleanupStyle?.some($0)) }
@@ -233,7 +285,7 @@ private struct AppProfileEditor: View {
                         // verifiably failed to land in it (Talkie switched it
                         // automatically). Pick "Inherit" to go back to the paste default
                         // and let it re-learn.
-                        SettingsRow(title: "Insert text by") {
+                        SettingsRow(title: "Insert text by", subtitle: insertionSubtitle) {
                             Picker("", selection: insertionMode) {
                                 Text("Inherit").tag(InsertionMode?.none)
                                 ForEach(InsertionMode.allCases) { Text($0.displayName).tag(InsertionMode?.some($0)) }
