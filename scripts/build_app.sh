@@ -151,6 +151,14 @@ if [[ -d "$ROOT/Resources/Fonts" ]]; then
   cp "$ROOT/Resources/Fonts/"*.otf "$APP/Contents/Resources/Fonts/" 2>/dev/null || true
 fi
 
+# K2 earcons — bundled .caf cues, resolved bundled-first by Feedback.swift (subdir
+# "Sounds") with a fallback to system sounds when absent. Placeholder synthesized
+# set; see Resources/Sounds/PROVENANCE.md.
+if [[ -d "$ROOT/Resources/Sounds" ]]; then
+  mkdir -p "$APP/Contents/Resources/Sounds"
+  cp "$ROOT/Resources/Sounds/"*.caf "$APP/Contents/Resources/Sounds/" 2>/dev/null || true
+fi
+
 # Brand art (the real logo + Higgsfield-generated feather/background assets),
 # loaded at runtime via Brand.image(_:). Copied flat into Resources/.
 if [[ -d "$ROOT/Resources/Brand" ]]; then
