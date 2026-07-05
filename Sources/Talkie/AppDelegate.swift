@@ -630,7 +630,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func hintLine() -> String {
         // One gesture for everyone: hold to talk, tap twice to lock hands-free.
-        return String(format: "Hold %@ to talk · tap twice to lock".loc, settings.activationKey.displayName)
+        return String(format: "Hold %@ to talk · keep holding to lock".loc, settings.activationKey.displayName)
     }
 
     private func updateStatusUI() {
@@ -741,6 +741,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// only touch the HUD pill.
     private func startSilenceWatchdog() {
         silenceWatchdog?.stop()   // defensive: never leak a prior session's watchdog
+        // Opt-out: when auto-stop-on-silence is off, a latched hands-free session keeps
+        // listening until you tap to stop — no watchdog, no countdown, no ring.
+        guard settings.autoStopOnSilence else { silenceWatchdog = nil; return }
         let myID = sessionID
         silenceWatchdog = SilenceWatchdogDriver(
             onCountdownStarted: { [weak self] remaining in
@@ -1402,12 +1405,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionLive = false
         let duration = Date().timeIntervalSince(recordingStartedAt ?? Date())
         recordingStartedAt = nil
-        // A "lone quick tap" is a session that was never locked hands-free and whose
-        // live capture was shorter than the tap threshold — i.e. the user tapped once
-        // (maybe not realizing it's hold-to-talk) rather than holding or tap-tapping.
-        // Used only to decide whether to surface the one-time gesture hint when such a
-        // tap yields nothing. Threshold matches the gesture machine's tap window.
-        let wasLoneShortTap = !wasHandsFreeLocked && duration < ActivationGesture.tapThreshold
+        // A "lone quick tap" is a session that never latched hands-free and whose live
+        // capture was very short — i.e. the user tapped once (maybe not realizing it's
+        // hold-to-talk) rather than holding a beat. Used only to decide whether to
+        // surface the one-time gesture hint when such a tap yields nothing.
+        let wasLoneShortTap = !wasHandsFreeLocked && duration < ActivationGesture.latchThreshold
 
         Feedback.stop()
         audio.stop()
@@ -1429,8 +1431,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `contextualStrings` bias slot stays untouched — a proven no-op on this
         // stack, so post-hoc proofreading is the path that actually fires.
         var nicheTerms = dictionary.vocabulary
+        // The user's EXPLICIT canonical terms — every vocabulary entry PLUS each
+        // replacement rule's target — are high-intent, so they earn the corrector's
+        // looser phonetic gate (see NicheCorrector): they added these deliberately, so a
+        // close-but-not-tight recognizer miss ("church" ← "Chirp") should still snap to
+        // them. We also fold the replacement targets into the correction target list so a
+        // rule's canonical spelling gets phonetically rescued even when it isn't also a
+        // standalone vocabulary entry.
+        var trustedCores = Set(dictionary.vocabulary.map { NicheCorrector.core($0) })
+        for r in dictionary.replacements {
+            let to = r.to.trimmingCharacters(in: .whitespaces)
+            let toCore = NicheCorrector.core(to)
+            guard toCore.count >= 4 else { continue }
+            trustedCores.insert(toCore)
+            if !nicheTerms.contains(where: { $0.caseInsensitiveCompare(to) == .orderedSame }) {
+                nicheTerms.append(to)
+            }
+        }
         do {
-            var seen = Set(dictionary.vocabulary.map { $0.lowercased() })
+            var seen = Set(nicheTerms.map { $0.lowercased() })
             for term in nicheVocab.snapshot().correctorTerms(forNiche: NicheID.default.key, limit: 300)
             where seen.insert(term.lowercased()).inserted {
                 nicheTerms.append(term)
@@ -1462,6 +1481,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // below), and optimistic insertion is disabled for the session so the user never
         // watches the spoken-language interim swap to the translated text at stop.
         let outputLanguageCode = resolved.outputLanguageCode
+        // Adaptive per-app output language (this feature): true means the target
+        // isn't fixed — it's DETECTED at stop time from the target app's existing
+        // content (see the translate hook below). `outputLanguageCode` is always nil
+        // alongside this (mutually exclusive, enforced in `AppProfileStore.resolve`),
+        // so this needs its own flag anywhere a call site must tell "no translation"
+        // apart from "adaptive translation" — namely here, gating optimistic
+        // insertion off exactly like the fixed-code case does, for the identical
+        // reason: the interim would be the spoken language, and the stop-time pass
+        // (once it detects a mismatch) would make the user watch it swap.
+        let outputLanguageAdaptive = resolved.outputLanguageAdaptive
         let optimisticEnabled = settings.optimisticInsertion
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
@@ -1620,11 +1649,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var optimistic: (count: Int, text: String)?
             if self.dictationSink == nil,
                optimisticEnabled, mode == .paste, cleanupEnabled, !languageSwitched,
-               // E8: never optimistically insert for an output-language override app —
-               // the interim is the SPOKEN language, and the stop-time translate pass
-               // would then make the user watch e.g. German swap to English. The
-               // translated final is inserted once, cleanly, below.
-               outputLanguageCode == nil,
+               // E8 + Adaptive: never optimistically insert for an output-language
+               // override app (fixed OR adaptive) — the interim is the SPOKEN
+               // language, and the stop-time translate pass would then make the user
+               // watch e.g. German swap to English. The translated final is inserted
+               // once, cleanly, below.
+               outputLanguageCode == nil, !outputLanguageAdaptive,
                !finalRaw.isEmpty, CleanupEngine.isAvailable {
                 let interimProcessed = TextProcessor.apply(
                     replacements: replacements, removeFillers: removeFillers,
@@ -1707,7 +1737,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // corrector fixed the wrong thing, and that term should demote.
             var nicheFixTargets: [String] = []
             if !nicheTerms.isEmpty {
-                let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms)
+                let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms, trusted: trustedCores)
                 cleaned = corrected.text
                 nicheFixes = corrected.fixes.map(\.to)
                 nicheFixTargets = nicheFixes
@@ -2000,12 +2030,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // in the target language. `cleanupLangCode` is the session's pinned input
             // language — we do NOT re-detect it. Latency: one extra on-device pass at
             // stop, and only for a mismatched-language utterance in an override app.
+            //
+            // Adaptive (this feature): when the app has Adaptive on instead of a fixed
+            // code, there IS no target yet — resolve one by reading a bounded sample of
+            // text ALREADY IN the app (not what we just dictated; this runs before
+            // `finalText` is ever inserted, see the insertion calls further below) and
+            // detecting its language. Every step here is fail-closed to "insert as
+            // spoken": `AdaptiveOutputLanguage.preflightGate` must clear BEFORE the AX
+            // read is even attempted (context awareness on, app not Private — the same
+            // consent `beginDictation` already required to mine phrases, and the same
+            // I1 Private-app invariant: a Private app's focused content is NEVER read),
+            // and `AdaptiveOutputLanguage.decide` must then find a confident, DIFFERENT
+            // context language before we call the model at all. A resolved target here
+            // feeds into the EXACT SAME `OutputTranslator.translate` call as a fixed E8
+            // pick — no guard is duplicated or bypassed.
             var translated = false
-            if let outputLanguageCode {
+            var resolvedTargetCode = outputLanguageCode
+            if outputLanguageAdaptive, resolvedTargetCode == nil {
+                let gate1 = AdaptiveOutputLanguage.preflightGate(
+                    contextAwareness: self.settings.contextAwareness, neverStore: neverStore
+                )
+                if let gate1 {
+                    talkieDebugLog("adaptive-lang: \(gate1) — inserting as spoken")
+                } else {
+                    // Gates cleared — ONLY NOW is the bounded AX read permitted. Reuses
+                    // the shared focused-field reader (battle-tested by
+                    // `InsertionVerifier`/`LearningEngine`); no new AX primitive, no
+                    // second live round-trip beyond this one bounded read.
+                    let contextText = AXFieldReader.focusedElementValue()?.1
+                    let contextCode = contextText.flatMap { LanguageDetector.canScore($0) ? LanguageDetector.dominantLanguageCode($0) : nil }
+                    let gate2 = AdaptiveOutputLanguage.decide(
+                        contextText: contextText, inputCode: cleanupLangCode, contextCode: contextCode
+                    )
+                    switch gate2 {
+                    case .detected(let code):
+                        talkieDebugLog("adaptive-lang: detected context=\(code) input=\(cleanupLangCode ?? "?") — translating")
+                        resolvedTargetCode = code
+                    case .skipSameLanguage:
+                        talkieDebugLog("adaptive-lang: context already matches input — inserting as spoken")
+                    case .fallback(let reason), .noAttempt(let reason):
+                        talkieDebugLog("adaptive-lang: \(reason) — inserting as spoken")
+                    }
+                }
+            }
+            if let resolvedTargetCode {
                 var mustSurvive = nicheTerms
                 mustSurvive.append(contentsOf: replacements.map(\.to))
                 let result = await OutputTranslator.translate(
-                    finalText, to: outputLanguageCode,
+                    finalText, to: resolvedTargetCode,
                     inputCode: cleanupLangCode, mustSurvive: mustSurvive
                 )
                 finalText = result.text

@@ -60,6 +60,27 @@ struct MemoryView: View {
     }
 
     var body: some View {
+        ScrollView {
+            pageContent
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Theme.canvas)
+        .confirmationDialog("Clear your dictation history?",
+                            isPresented: $showingClearConfirm, titleVisibility: .visible) {
+            Button("Clear everything", role: .destructive) { clearEverything() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.")
+        }
+    }
+
+    // MARK: Page content (header + search + history)
+
+    /// The header (title + Copy All / Clear), the search bar, and the history / search
+    /// results feed — the whole Memory page.
+    private var pageContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
                 PageHeader(title: "Memory",
@@ -82,15 +103,6 @@ struct MemoryView: View {
             searchField
 
             content
-        }
-        .padding(28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .confirmationDialog("Clear your dictation history?",
-                            isPresented: $showingClearConfirm, titleVisibility: .visible) {
-            Button("Clear everything", role: .destructive) { clearEverything() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.")
         }
     }
 
@@ -173,7 +185,9 @@ struct MemoryView: View {
         }
     }
 
-    /// No query: the plain chronological feed (History's old job).
+    /// No query: the plain chronological feed (History's old job). Renders as a bare
+    /// `LazyVStack` — the enclosing Memory page owns the single scroll view, so a nested
+    /// same-axis ScrollView here would fight it.
     @ViewBuilder
     private var browseFeed: some View {
         if history.entries.isEmpty {
@@ -181,14 +195,12 @@ struct MemoryView: View {
                         subtitle: "Hold your dictation key and speak — what you say will show up here.",
                         icon: "text.bubble")
         } else {
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    ForEach(history.entries) { entry in
-                        MemoryDictationRow(entry: entry, formatter: Self.dateFormatter) {
-                            copyToClipboard(entry.text)
-                        } onDelete: {
-                            deleteDictation(entry)
-                        }
+            LazyVStack(spacing: 10) {
+                ForEach(history.entries) { entry in
+                    MemoryDictationRow(entry: entry, formatter: Self.dateFormatter) {
+                        copyToClipboard(entry.text)
+                    } onDelete: {
+                        deleteDictation(entry)
                     }
                 }
             }
@@ -206,11 +218,11 @@ struct MemoryView: View {
                         subtitle: "Try a different word — this searches what you've said, your meetings, and what Talkie's picked up from them.",
                         icon: "magnifyingglass")
         } else {
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    ForEach(hits) { hit in
-                        resolvedRow(for: hit)
-                    }
+            // Bare `LazyVStack`: the Memory page's single scroll view scrolls this feed;
+            // a nested ScrollView here would conflict.
+            LazyVStack(spacing: 10) {
+                ForEach(hits) { hit in
+                    resolvedRow(for: hit)
                 }
             }
         }
@@ -265,7 +277,7 @@ struct MemoryView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 240)
     }
 
     private func copyToClipboard(_ text: String) {

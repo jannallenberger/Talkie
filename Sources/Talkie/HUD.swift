@@ -784,7 +784,7 @@ final class HUDController {
         panel.orderFrontRegardless()
         // Non-focusable transient pill — announce the gesture so a VoiceOver user who
         // just tapped-and-got-nothing still learns hold vs tap-tap.
-        announce("Hold your key to talk, or tap it twice to lock hands-free recording.".loc)
+        announce("Hold your key to talk; keep holding it to lock hands-free recording.".loc)
         hide(after: 2.6)
     }
 
@@ -977,6 +977,10 @@ enum GestureHint {
 private struct HUDView: View {
     @ObservedObject var model: HUDModel
     let pillFrame: PillFrameBox
+    /// Whether the live transcript renders as flowing text below the waveform (growing
+    /// the pill downward). Read live from the same UserDefaults the settings toggle
+    /// writes — `AppSettings` persists to `.standard`.
+    @AppStorage("showLivePillText") private var showLivePillText = true
 
     private static let hudSpace = "talkieHUD"
 
@@ -1003,28 +1007,20 @@ private struct HUDView: View {
         return .white.opacity(model.highContrast ? min(opacity + 0.06, 1) : opacity)
     }
 
-    /// C1 — the live transcript tail shown in the capture pill while you speak. The
-    /// finalized head (`model.text`) reads at ~0.85 white; the still-changing
-    /// `model.volatileText` follows dimmer (~0.5) so words visibly firm up as they
-    /// commit. It's a single `Text` over a two-run `AttributedString` (see
-    /// `liveTailString`) so it truncates as ONE line: `truncationMode(.head)` keeps
-    /// the newest words visible (older words fall off the left, even for a long
-    /// unbroken compound), and `maxWidth` caps the width so the `.fixedSize()` capsule
-    /// can't outgrow the 440pt panel. Empty text → nothing rendered, i.e. today's
-    /// exact pill.
+    /// C1 (redesigned) — the live tail as a WRAPPING block below the waveform. A fixed
+    /// width forces it to wrap (so the pill grows downward, not sideways); a line cap
+    /// stops it past a few lines; head-truncation keeps the newest words visible once
+    /// it's full. Empty text renders nothing.
     @ViewBuilder
-    private var liveTail: some View {
-        if !model.text.isEmpty || !model.volatileText.isEmpty {
-            Text(liveTailString)
-                .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
-                .lineLimit(1)
-                .truncationMode(.head)
-                .frame(maxWidth: 260, alignment: .trailing)
-                // The pill mirrors your own live speech; VoiceOver already narrates
-                // capture via the group label, and a partial re-read every cadence
-                // would be noise, so keep this decorative tail out of the a11y tree.
-                .accessibilityHidden(true)
-        }
+    private var liveTailBlock: some View {
+        Text(liveTailString)
+            .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
+            .multilineTextAlignment(.leading)
+            .lineLimit(5)
+            .truncationMode(.head)
+            .frame(width: 260, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityHidden(true)
     }
 
     /// The two-tone attributed tail: a firm finalized head + a dimmer volatile tail,
@@ -1070,10 +1066,13 @@ private struct HUDView: View {
             .padding(.horizontal, model.highContrast ? 13 : 12)
             .padding(.vertical, model.highContrast ? 8 : 7)
             .background(
-                Capsule(style: .continuous)
+                // A FIXED corner radius (not a Capsule): as the pill grows DOWNWARD with
+                // the live transcript, the radius must stay constant — a capsule's radius
+                // is half its height, so it ballooned rounder as the pill got taller.
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
                     .fill(.black)
                     .overlay(
-                        Capsule(style: .continuous)
+                        RoundedRectangle(cornerRadius: 17, style: .continuous)
                             .strokeBorder(
                                 .white.opacity(model.highContrast ? 0.9 : 0.10),
                                 lineWidth: model.highContrast ? 1.5 : 0.5
@@ -1098,18 +1097,16 @@ private struct HUDView: View {
                     // dropped". Keyed by `keepStyleTick` so it restarts from full.
                     CountdownRing(duration: HUDController.keepStyleDuration)
                         .id(model.keepStyleTick)
-                } else if model.silenceCountingDown {
-                    // B5: a hands-free-locked session that's gone quiet drains the same
-                    // coral ring over the auto-stop window — the visible, cancelable
-                    // countdown. Not phase-gated (the pill stays `.listening`); keyed by
-                    // `silenceCountdownTick` so a cancel→re-arm restarts it from full.
-                    CountdownRing(duration: model.silenceCountdownDuration)
-                        .id(model.silenceCountdownTick)
                 }
+                // The silence auto-stop no longer draws a draining ring — the "closing
+                // in" countdown read as stressful. A quiet latched session instead shows
+                // only the calm "still listening — say something…" text in the row above,
+                // and the whole auto-stop is opt-out (Settings ▸ Stop hands-free when I go
+                // quiet).
             }
             .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
             .fixedSize()
-            .contentShape(Capsule(style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
             .background(
                 // Publish the pill's frame (SwiftUI top-left coords) so the panel's
                 // hosting view only claims clicks here — the transparent headroom
@@ -1147,49 +1144,52 @@ private struct HUDView: View {
             // "not yet recording" ring stays legible; the live red is already a
             // saturated feather color, left as-is.
             let tint = recording ? Theme.featherRed : ink(model.highContrast ? 0.9 : 0.55)
-            HStack(spacing: 8) {
-                StatusDot(color: tint, filled: recording)
-                    .animation(.easeInOut(duration: 0.25), value: recording)
-                // A red waveform: equal-width bars whose heights move with your
-                // voice. A one-shot wave of opacity sweeps across it the instant
-                // recording starts, then it settles to steady red.
-                Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
-                    .accessibilityHidden(true)
-                // Hands-free lock (tap-tap): a small lock glyph so it's obvious you
-                // can release the key and it keeps recording until you tap to stop.
-                // Only while genuinely locked; it slides in without disturbing the
-                // dot/waveform. Coral so it reads as an active Talkie state, not an
-                // error. Accessibility is folded into the group label below.
-                if model.handsFreeLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.coral)
-                        .transition(.scale.combined(with: .opacity))
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    StatusDot(color: tint, filled: recording)
+                        .animation(.easeInOut(duration: 0.25), value: recording)
+                    // A red waveform: equal-width bars whose heights move with your
+                    // voice. A one-shot wave of opacity sweeps across it the instant
+                    // recording starts, then it settles to steady red.
+                    Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
                         .accessibilityHidden(true)
+                    // Hands-free lock: a small lock glyph so it's obvious you can release
+                    // the key and it keeps recording until you tap to stop. Only while
+                    // genuinely locked; it slides in without disturbing the dot/waveform.
+                    // Coral so it reads as an active state, not an error. Accessibility is
+                    // folded into the group label below.
+                    if model.handsFreeLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.coral)
+                            .transition(.scale.combined(with: .opacity))
+                            .accessibilityHidden(true)
+                    }
+                    // Feature 14: the active cleanup style/level, tappable to cycle —
+                    // change how the dictation is polished without leaving the record.
+                    // Hidden entirely when no switcher is wired (today's pill).
+                    CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
+                    if model.silenceCountingDown {
+                        // B5: while the hands-free auto-stop countdown runs, the row says
+                        // so in plain words — a gentle nudge that one word (or reaching the
+                        // key) keeps it going. It takes the tail slot so the pill doesn't
+                        // also carry the transcript during the wrap-up moment.
+                        Text("still listening — say something or it'll wrap up")
+                            .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
+                            .foregroundStyle(ink(0.72))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .transition(.blurReplace)
+                    }
                 }
-                // Feature 14: the active cleanup style/level, tappable to cycle —
-                // change how Talkie polishes this dictation without leaving the
-                // record. Hidden entirely when no switcher is wired (today's pill).
-                CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
-                if model.silenceCountingDown {
-                    // B5: while the hands-free auto-stop countdown runs, the tail says so
-                    // in plain words — a gentle nudge that one word (or reaching the key)
-                    // keeps it going. Takes the tail slot so the pill doesn't also carry
-                    // the transcript tail during the wrap-up moment.
-                    Text("still listening — say something or it'll wrap up")
-                        .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
-                        .foregroundStyle(ink(0.72))
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .transition(.blurReplace)
-                } else {
-                    // C1: the live tail of what Talkie is hearing. The finalized head
-                    // reads firmly; the volatile tail is dimmer and firms up as it
-                    // commits. One truncating line, capped so the pill can't outgrow the
-                    // panel — the HEAD truncates (…) so the newest words stay visible even
-                    // for a long unbroken German compound. Empty text renders nothing, so
-                    // the bare pill (dot + waveform + switcher) is exactly today's.
-                    liveTail
+                // C1 (redesigned): the live tail of what's being heard flows BELOW the
+                // waveform as wrapping text, so the pill grows DOWNWARD (to a capped
+                // height) as you speak rather than stretching sideways. Gated by the
+                // Settings toggle; hidden during the silence countdown (which owns the row
+                // above) and when there's nothing yet — so the bare pill is exactly today's.
+                if showLivePillText, !model.silenceCountingDown,
+                   !model.text.isEmpty || !model.volatileText.isEmpty {
+                    liveTailBlock
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.handsFreeLocked)
@@ -1553,7 +1553,7 @@ private struct HUDView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(ink(0.85))
                     .accessibilityHidden(true)
-                Text("Hold to talk · tap twice to lock")
+                Text("Hold to talk · keep holding to lock")
                     .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
                     .foregroundStyle(ink(0.9))
                     .lineLimit(1)
@@ -1561,7 +1561,7 @@ private struct HUDView: View {
             }
             .transition(.blurReplace)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Hold your key to talk, or tap it twice to lock hands-free recording.".loc)
+            .accessibilityLabel("Hold your key to talk; keep holding it to lock hands-free recording.".loc)
         case .error(let message):
             HStack(spacing: 7) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -1595,9 +1595,9 @@ private struct CountdownRing: View {
 
     var body: some View {
         ZStack {
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
                 .stroke(.white.opacity(0.08), lineWidth: 2)
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
                 .trim(from: 0, to: depleted ? 0 : 1)
                 .stroke(Theme.coral, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .shadow(color: Theme.coral.opacity(0.6), radius: 4)

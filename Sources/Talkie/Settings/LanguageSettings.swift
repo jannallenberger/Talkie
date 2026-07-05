@@ -74,30 +74,30 @@ struct LanguageSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(selectedLanguages) { lang in
-                        LanguageStripTile(
-                            language: lang,
-                            selected: true,
-                            locked: settings.spokenLanguages == [lang.id]
-                        ) { toggleSpokenLanguage(lang.id, in: settings) }
-                    }
-                    ForEach(suggestions) { lang in
-                        LanguageStripTile(
-                            language: lang,
-                            selected: false,
-                            locked: false
-                        ) { toggleSpokenLanguage(lang.id, in: settings) }
-                    }
-                    AllLanguagesTile()
+            // A wrapping grid of the languages you speak (+ a couple of suggestions and
+            // the "All languages" tile) that FILLS the card width — no dead horizontal
+            // whitespace, wrapping to a second row only when there are many. Tiles share
+            // the detail page's flag size so the two surfaces read as one design.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 116, maximum: 150), spacing: 10)],
+                      alignment: .leading, spacing: 10) {
+                ForEach(selectedLanguages) { lang in
+                    LanguageStripTile(
+                        language: lang,
+                        selected: true,
+                        locked: settings.spokenLanguages == [lang.id]
+                    ) { toggleSpokenLanguage(lang.id, in: settings) }
                 }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                ForEach(suggestions) { lang in
+                    LanguageStripTile(
+                        language: lang,
+                        selected: false,
+                        locked: false
+                    ) { toggleSpokenLanguage(lang.id, in: settings) }
+                }
+                AllLanguagesTile()
             }
-            // The horizontal strip owns only horizontal scroll; vertical deltas
-            // fall through to the page. Clipping stays on so tiles don't bleed past
-            // the card edge as they scroll.
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
 
             Text(settings.spokenLanguages.count > 1
                  ? "Talkie auto-detects which of these you're speaking each time."
@@ -123,18 +123,18 @@ private struct LanguageStripTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 7) {
+            VStack(spacing: 9) {
                 flag
-                    .frame(width: 46, height: 46)
+                    .frame(width: 72, height: 72)
                     .overlay(alignment: .bottomTrailing) {
                         if selected { checkBadge.offset(x: 4, y: 4) }
                     }
                 Text(language.gridTitle)
-                    .font(.talkieHeading(12, weight: .semibold))
+                    .font(.talkieHeading(12.5, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
             }
-            .frame(width: 84, height: 104)
+            .frame(maxWidth: .infinity, minHeight: 128)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(selected ? Theme.coralWash : Theme.surface)
@@ -160,7 +160,7 @@ private struct LanguageStripTile: View {
                let img = Brand.image("Flag\(region)") {
                 Image(nsImage: img).resizable().scaledToFit()
             } else {
-                Text(language.flag).font(.system(size: 30))
+                Text(language.flag).font(.system(size: 52))
             }
         }
     }
@@ -185,14 +185,14 @@ private struct AllLanguagesTile: View {
 
     var body: some View {
         NavigationLink(value: SettingsPage.allLanguages) {
-            VStack(spacing: 7) {
+            VStack(spacing: 9) {
                 Image(systemName: "globe")
-                    .font(.system(size: 30, weight: .regular))
+                    .font(.system(size: 44, weight: .regular))
                     .foregroundStyle(Theme.coral)
-                    .frame(width: 46, height: 46)
+                    .frame(width: 72, height: 72)
                 HStack(spacing: 2) {
                     Text("All languages")
-                        .font(.talkieHeading(12, weight: .semibold))
+                        .font(.talkieHeading(12.5, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(1)
                     Image(systemName: "chevron.right")
@@ -200,7 +200,7 @@ private struct AllLanguagesTile: View {
                         .foregroundStyle(Theme.inkTertiary)
                 }
             }
-            .frame(width: 84, height: 104)
+            .frame(maxWidth: .infinity, minHeight: 128)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(Theme.surface)
@@ -227,7 +227,7 @@ private struct AllLanguagesTile: View {
 struct AllLanguagesPage: View {
     @ObservedObject var settings: AppSettings
 
-    private let columns = [GridItem(.adaptive(minimum: 176, maximum: 220), spacing: 12)]
+    private let columns = [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 12)]
 
     var body: some View {
         SubPage(title: "All languages",
@@ -271,7 +271,7 @@ private struct LanguageCard: View {
                 // The flag is the hero — large, centered, with the selection check
                 // as a badge on its corner.
                 flag
-                    .frame(width: 96, height: 96)
+                    .frame(width: 72, height: 72)
                     .overlay(alignment: .bottomTrailing) {
                         if selected { checkBadge.offset(x: 5, y: 5) }
                     }
@@ -315,7 +315,7 @@ private struct LanguageCard: View {
                let img = Brand.image("Flag\(region)") {
                 Image(nsImage: img).resizable().scaledToFit()
             } else {
-                Text(language.flag).font(.system(size: 64))
+                Text(language.flag).font(.system(size: 52))
             }
         }
     }

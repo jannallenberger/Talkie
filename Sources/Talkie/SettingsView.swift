@@ -266,7 +266,8 @@ struct MainView: View {
                           scratchpad: scratchpad, profileImage: profileImage,
                           wordFreq: wordFreq,
                           jobTitle: jobTitle,
-                          latency: latency, pressure: systemPressure, router: router)
+                          latency: latency, pressure: systemPressure,
+                          router: router)
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore,
                          settings: settings, profileImage: profileImage,
@@ -1645,6 +1646,14 @@ private struct BehaviorSettings: View {
                 SettingsToggleRow(title: "Show floating bird".loc,
                                   subtitle: "A draggable macaw that pulses while you dictate.".loc,
                                   isOn: $settings.showBirdBuddy)
+                SettingsDivider()
+                SettingsToggleRow(title: "Show live words in the pill".loc,
+                                  subtitle: "The transcript flows below the waveform as you speak — the pill grows downward, not sideways.".loc,
+                                  isOn: $settings.showLivePillText)
+                SettingsDivider()
+                SettingsToggleRow(title: "Stop hands-free when I go quiet".loc,
+                                  subtitle: "A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown.".loc,
+                                  isOn: $settings.autoStopOnSilence)
             }
         }
     }

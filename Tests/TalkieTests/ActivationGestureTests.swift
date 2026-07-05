@@ -1,413 +1,131 @@
 import XCTest
 @testable import Talkie
 
-/// Exhaustive edge-matrix tests for the pure `ActivationGesture` state machine —
-/// the single hold/tap-tap/tap gesture family, exercised as a function of
-/// timestamped input edges with no timers, clocks, or I/O. Every path the
-/// `HotKeyMonitor` can feed it (hold-release, lone tap + timeout, tap-tap lock,
-/// lock-then-tap stop, tap-tap-tap, reconcile-during-lock, rebind mid-hold) is
-/// pinned here, because the maker's manual gesture testing is headless and this
-/// machine is where every activation decision is actually made.
+/// Exhaustive edge-matrix tests for the pure `ActivationGesture` state machine — the
+/// single **hold-to-talk / hold-to-latch / tap-to-stop** gesture family, exercised as
+/// a function of timestamped input edges with no timers, clocks, or I/O. Every path
+/// the `HotKeyMonitor` can feed it (hold-release push-to-talk, hold-past-latch,
+/// release-keeps-recording, tap-to-stop, early/late/stale timers, reconcile exemption,
+/// rebind mid-hold) is pinned here, because the maker's manual gesture testing is
+/// headless and this machine is where every activation decision is actually made.
 final class ActivationGestureTests: XCTestCase {
-    private let tap = ActivationGesture.tapThreshold      // 0.35
-    private let dbl = ActivationGesture.doubleTapWindow   // 0.35
+    private let latch = ActivationGesture.latchThreshold   // 0.5
 
-    // MARK: Hold to talk (push-to-talk)
+    // MARK: First-phoneme priority
 
-    func testHoldBeginsImmediatelyOnKeyDown() {
+    func testKeyDownBeginsAndArmsLatchImmediately() {
         var g = ActivationGesture()
-        // First-phoneme priority: the very first key-down arms audio at once, with
-        // no wait to classify the gesture.
-        XCTAssertEqual(g.keyDown(at: 0), .begin, "idle key-down must begin immediately")
-        XCTAssertTrue(g.isActive, "a begun session is active")
-        XCTAssertTrue(g.isHeld, "an in-progress hold reports .isHeld")
-        XCTAssertFalse(g.isLocked, "a hold is not locked")
-    }
-
-    func testHoldReleaseAfterThresholdEndsWithZeroAddedLatency() {
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        // Released well after the tap threshold → a real hold → end synchronously
-        // on release (no deferEnd, so push-to-talk has zero added stop latency).
-        XCTAssertEqual(g.keyUp(at: tap + 0.5), .end, "release after a hold ends immediately")
-        XCTAssertFalse(g.isActive, "session is over after a hold-release")
-    }
-
-    func testHoldReleaseExactlyAtThresholdIsAHold() {
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        // The boundary is inclusive: held for exactly tapThreshold counts as a hold
-        // (ends now), not a tap.
-        XCTAssertEqual(g.keyUp(at: tap), .end, "a release at exactly the threshold is a hold")
-        XCTAssertFalse(g.isActive)
-    }
-
-    // MARK: Lone quick tap → timeout end
-
-    func testQuickTapDefersEndThenTimerEnds() {
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        // Released before the threshold → ambiguous → defer, keep recording, wait
-        // for a possible second tap.
-        let up = g.keyUp(at: 0.1)
-        XCTAssertEqual(up, .deferEnd(fireAt: 0.1 + dbl), "a quick tap defers its end to the double-tap deadline")
-        XCTAssertTrue(g.isActive, "a deferred tap is still recording while awaiting a second tap")
-        XCTAssertFalse(g.isHeld, "awaiting-second-tap is not a held phase (key is already up)")
-        XCTAssertFalse(g.isLocked, "awaiting-second-tap is not yet locked")
-        // No second press arrives; the timer fires at the deadline → lone tap ends.
-        XCTAssertEqual(g.timerFired(at: 0.1 + dbl), .end, "with no second tap, the timer ends the lone tap")
-        XCTAssertFalse(g.isActive, "the lone tap session is over after the timer")
-    }
-
-    func testTimerBeforeDeadlineIsIgnored() {
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        _ = g.keyUp(at: 0.1)
-        // A timer that fires early (before the armed deadline) must not end the
-        // session — the double-tap window is still open.
-        XCTAssertEqual(g.timerFired(at: 0.1 + dbl - 0.01), .none, "an early timer tick is ignored")
-        XCTAssertTrue(g.isActive, "still awaiting the second tap after an early tick")
-    }
-
-    // MARK: Tap-tap → lock
-
-    func testTapTapLocks() {
-        var g = ActivationGesture()
-        XCTAssertEqual(g.keyDown(at: 0), .begin, "first tap begins")
-        XCTAssertEqual(g.keyUp(at: 0.1), .deferEnd(fireAt: 0.1 + dbl), "first tap release defers")
-        // Second press inside the window → lock hands-free. Nothing to begin (we've
-        // been recording since the first tap); we only lock.
-        XCTAssertEqual(g.keyDown(at: 0.2), .lock, "a second press within the window locks")
-        XCTAssertTrue(g.isLocked, "the session is now locked hands-free")
+        // Idle key-down arms audio AND the latch timer in one shot — no waiting to
+        // classify the press, so the mic is live from the first instant.
+        XCTAssertEqual(g.keyDown(at: 0), .beginArmingLatch(fireAt: latch))
         XCTAssertTrue(g.isActive)
-        XCTAssertFalse(g.isHeld, "locked is not held")
-    }
-
-    func testSupersededTimerAfterLockIsNoOp() {
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        _ = g.keyUp(at: 0.1)
-        _ = g.keyDown(at: 0.2)                // locks
-        // The deferred timer for the first tap still fires (the caller can't always
-        // cancel in time) — it must be a no-op now that we're locked, or it would
-        // kill the lock.
-        XCTAssertEqual(g.timerFired(at: 0.1 + dbl), .none, "a superseded deferred timer must not end a locked session")
-        XCTAssertTrue(g.isLocked, "lock survives the stale timer")
-    }
-
-    func testKeyUpOfSecondTapWhileLockedIsIgnored() {
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        _ = g.keyUp(at: 0.1)
-        _ = g.keyDown(at: 0.2)                // locks (we're now .locked)
-        // The second tap's own key-up arrives after the lock — it must not disturb
-        // the locked session.
-        XCTAssertEqual(g.keyUp(at: 0.25), .none, "the second tap's release is ignored while locked")
-        XCTAssertTrue(g.isLocked)
-    }
-
-    // MARK: Lock → tap → stop
-
-    func testLockThenTapStops() {
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        _ = g.keyUp(at: 0.1)
-        _ = g.keyDown(at: 0.2)                // lock
-        _ = g.keyUp(at: 0.25)                 // second tap release (ignored)
-        // While locked, the next press stops and inserts.
-        XCTAssertEqual(g.keyDown(at: 1.0), .end, "a press while locked stops the session")
-        XCTAssertFalse(g.isActive, "locked session ends on the stop press")
-        // The stop press's own release is a harmless stray.
-        XCTAssertEqual(g.keyUp(at: 1.05), .none, "the stop press's release is a stray no-op")
-        XCTAssertFalse(g.isActive)
-    }
-
-    // MARK: Tap-tap-tap (lock then immediately stop)
-
-    func testTapTapTapLocksThenStops() {
-        var g = ActivationGesture()
-        XCTAssertEqual(g.keyDown(at: 0), .begin)
-        XCTAssertEqual(g.keyUp(at: 0.1), .deferEnd(fireAt: 0.1 + dbl))
-        XCTAssertEqual(g.keyDown(at: 0.2), .lock, "second press locks")
-        XCTAssertEqual(g.keyUp(at: 0.25), .none)
-        // A third quick press (still hands-free intent) stops the freshly-locked
-        // session — tap-tap to start hands-free, tap once more to stop.
-        XCTAssertEqual(g.keyDown(at: 0.3), .end, "the third press stops the locked session")
-        XCTAssertFalse(g.isActive)
-    }
-
-    // MARK: A tap after a lone-tap session has fully ended
-
-    func testSecondTapAfterTimeoutIsANewSession() {
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        _ = g.keyUp(at: 0.1)
-        XCTAssertEqual(g.timerFired(at: 0.1 + dbl), .end, "lone tap ends")
-        // A press that arrives only AFTER the window closed is a brand-new gesture,
-        // not a lock — it begins a fresh session.
-        XCTAssertEqual(g.keyDown(at: 1.0), .begin, "a press after the window is a new session, not a lock")
         XCTAssertTrue(g.isHeld)
-    }
-
-    func testSecondPressExactlyAtDeadlineStillLocksIfTimerHasntFired() {
-        // Ordering matters: if the second press is delivered before the timer tick,
-        // it locks even at the deadline instant. (The machine is edge-ordered; the
-        // caller delivers whichever event happened first.)
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        _ = g.keyUp(at: 0.1)
-        XCTAssertEqual(g.keyDown(at: 0.1 + dbl), .lock, "a second press at the deadline still locks if it arrives before the timer")
-        XCTAssertTrue(g.isLocked)
-    }
-
-    // MARK: Reconcile during lock (isLocked/isHeld exemption contract)
-
-    func testLockedSessionIsExemptFromReconcile() {
-        // The reconcile tick in HotKeyMonitor force-ends only when `isHeld`. A locked
-        // session has no key held, so it must report isHeld == false (and isLocked
-        // == true) — otherwise a "modifier is physically up" reconcile would kill the
-        // lock. This test pins that contract.
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        _ = g.keyUp(at: 0.1)
-        _ = g.keyDown(at: 0.2)                // locked
-        XCTAssertFalse(g.isHeld, "a locked session must NOT read as held (reconcile exemption)")
-        XCTAssertTrue(g.isLocked)
-        XCTAssertTrue(g.isActive)
-    }
-
-    func testAwaitingSecondTapIsExemptFromReconcile() {
-        // While awaiting the second tap the key is already up (that's what started
-        // the wait). A reconcile firing on "key is up" must not pre-empt the tap-tap
-        // window, so this phase must also report isHeld == false.
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        _ = g.keyUp(at: 0.1)
-        XCTAssertFalse(g.isHeld, "awaiting-second-tap must NOT read as held")
-        XCTAssertTrue(g.isActive, "but it is still an active (recording) session")
-    }
-
-    func testHeldSessionReportsHeldForReconcile() {
-        // The one phase reconcile IS allowed to force-end: a plain hold in progress.
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        XCTAssertTrue(g.isHeld, "a hold in progress reports .isHeld so reconcile can rescue a dropped key-up")
-    }
-
-    // MARK: Key rebind mid-hold (reset semantics)
-
-    func testResetDuringHoldReportsActiveAndClears() {
-        // On a binding change mid-hold, HotKeyMonitor resets the machine and
-        // synthesizes its own deactivate; the machine must go idle and report that a
-        // session was active (so the monitor knows to fire the end) WITHOUT emitting
-        // a second .end of its own.
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        XCTAssertTrue(g.reset(), "reset during a hold reports the session was active")
-        XCTAssertFalse(g.isActive, "reset clears the machine to idle")
-        // After a reset the next key-down is a clean new session.
-        XCTAssertEqual(g.keyDown(at: 5), .begin, "post-reset, a key-down begins fresh")
-    }
-
-    func testResetDuringLockReportsActive() {
-        var g = ActivationGesture()
-        _ = g.keyDown(at: 0)
-        _ = g.keyUp(at: 0.1)
-        _ = g.keyDown(at: 0.2)                // locked
-        XCTAssertTrue(g.reset(), "reset during a lock reports the session was active")
-        XCTAssertFalse(g.isActive)
         XCTAssertFalse(g.isLocked)
     }
 
-    func testResetWhenIdleReportsInactive() {
-        var g = ActivationGesture()
-        XCTAssertFalse(g.reset(), "reset with no session reports inactive so the monitor fires no spurious end")
-        XCTAssertFalse(g.isActive)
-    }
+    // MARK: Hold to talk (push-to-talk) — release before the latch ends synchronously
 
-    // MARK: Dropped-edge resilience
-
-    func testDoubleKeyDownWithoutUpDoesNotDoubleBegin() {
-        // A clean edge source can't press an already-pressed key, but if a key-up is
-        // dropped we're conservatively still recording — a second down must not emit
-        // a second .begin (which would try to start an overlapping session).
-        var g = ActivationGesture()
-        XCTAssertEqual(g.keyDown(at: 0), .begin)
-        XCTAssertEqual(g.keyDown(at: 0.05), .none, "a duplicate key-down while held does not re-begin")
-        XCTAssertTrue(g.isHeld)
-    }
-
-    func testStrayKeyUpWhenIdleIsNoOp() {
-        var g = ActivationGesture()
-        XCTAssertEqual(g.keyUp(at: 0), .none, "a key-up with no session is a harmless no-op")
-        XCTAssertFalse(g.isActive)
-    }
-
-    func testTimerFiredWhenIdleIsNoOp() {
-        var g = ActivationGesture()
-        XCTAssertEqual(g.timerFired(at: 1), .none, "a timer tick with no pending defer is a no-op")
-    }
-
-    func testTimerFiredWhenHeldIsNoOp() {
-        // A stale defer timer from a previous session must not end an unrelated hold
-        // now in progress.
+    func testReleaseBeforeLatchEndsWithZeroAddedLatency() {
         var g = ActivationGesture()
         _ = g.keyDown(at: 0)
-        XCTAssertEqual(g.timerFired(at: 10), .none, "a stray timer must not end a live hold")
+        // Released well before the latch deadline → a plain push-to-talk hold that
+        // ends the instant the key is let go (no deferred-end tax).
+        XCTAssertEqual(g.keyUp(at: 0.2), .end)
+        XCTAssertFalse(g.isActive)
+    }
+
+    func testStaleLatchTimerAfterReleaseIsNoOp() {
+        var g = ActivationGesture()
+        _ = g.keyDown(at: 0)
+        XCTAssertEqual(g.keyUp(at: 0.2), .end)
+        // The latch timer the caller armed still fires at 0.5, but the session already
+        // ended — it must be a safe no-op, never latch a dead session.
+        XCTAssertEqual(g.timerFired(at: latch), .none)
+        XCTAssertFalse(g.isActive)
+    }
+
+    // MARK: Hold to latch — hold past the threshold and it latches hands-free
+
+    func testHoldPastLatchLatches() {
+        var g = ActivationGesture()
+        XCTAssertEqual(g.keyDown(at: 0), .beginArmingLatch(fireAt: latch))
+        // Still held when the timer fires at the deadline → latch hands-free.
+        XCTAssertEqual(g.timerFired(at: latch), .lock)
+        XCTAssertTrue(g.isLocked)
+        XCTAssertFalse(g.isHeld, "a latched-but-still-held session is not a push-to-talk hold")
+    }
+
+    func testReleaseAfterLatchKeepsRecording() {
+        var g = ActivationGesture()
+        _ = g.keyDown(at: 0)
+        _ = g.timerFired(at: latch)               // latches (key still down)
+        // Letting the key go after latching keeps recording with nothing held.
+        XCTAssertEqual(g.keyUp(at: 0.8), .none)
+        XCTAssertTrue(g.isActive)
+        XCTAssertTrue(g.isLocked)
+    }
+
+    func testEarlyTimerBeforeDeadlineIsIgnored() {
+        var g = ActivationGesture()
+        _ = g.keyDown(at: 0)
+        // A timer tick before the armed deadline (e.g. an early/rescheduled fire) does
+        // not latch — only the real deadline does.
+        XCTAssertEqual(g.timerFired(at: latch - 0.01), .none)
         XCTAssertTrue(g.isHeld)
     }
 
-    // MARK: Full round-trips
+    // MARK: Tap to stop
 
-    func testTwoConsecutiveHoldsAreIndependent() {
+    func testTapWhenLatchedStops() {
         var g = ActivationGesture()
-        XCTAssertEqual(g.keyDown(at: 0), .begin)
-        XCTAssertEqual(g.keyUp(at: 1), .end)
-        XCTAssertEqual(g.keyDown(at: 2), .begin, "a second hold begins cleanly")
-        XCTAssertEqual(g.keyUp(at: 3), .end, "and ends cleanly")
+        _ = g.keyDown(at: 0)
+        _ = g.timerFired(at: latch)               // latch
+        _ = g.keyUp(at: 0.8)                       // release → locked hands-free
+        // The next press stops and inserts.
+        XCTAssertEqual(g.keyDown(at: 2.0), .end)
         XCTAssertFalse(g.isActive)
+        // The key-up half of that stopping tap is a stray release — ignored.
+        XCTAssertEqual(g.keyUp(at: 2.1), .none)
     }
 
-    func testLockCycleThenHoldCycle() {
+    func testStopWhileStillHeldLatched() {
+        // Latched but the key was never released (lockedHeld). A brand-new press can't
+        // arrive without an intervening up, but if a duplicate down does, it's ignored
+        // rather than mis-stopping.
         var g = ActivationGesture()
-        // Lock cycle.
-        XCTAssertEqual(g.keyDown(at: 0), .begin)
-        XCTAssertEqual(g.keyUp(at: 0.1), .deferEnd(fireAt: 0.1 + dbl))
-        XCTAssertEqual(g.keyDown(at: 0.2), .lock)
-        XCTAssertEqual(g.keyDown(at: 1.0), .end)      // stop the lock
-        // Immediately a normal hold cycle works.
-        XCTAssertEqual(g.keyDown(at: 2.0), .begin, "a hold after a lock cycle begins cleanly")
-        XCTAssertEqual(g.keyUp(at: 3.0), .end)
-        XCTAssertFalse(g.isActive)
-    }
-
-    // MARK: Mouse-edge path (B7) — the SAME machine, fed by a mouse side button
-    //
-    // `HotKeyMonitor` feeds `otherMouseDown`/`otherMouseUp` edges for a bound mouse
-    // side button (button 4/5) into this exact machine, timestamped identically to a
-    // keyboard modifier's `flagsChanged` edges. The machine is input-source-agnostic
-    // (it consumes only `keyDown`/`keyUp`/`timerFired` with a time), so the full
-    // gesture family must behave identically no matter which HID drove the edge. The
-    // live mouse matrix is the maker's (headless); these pin the headless contract:
-    // a mouse edge sequence yields the same Actions a keyboard sequence would. The
-    // `mouseDown`/`mouseUp` locals below stand for the edges the tap thread derives
-    // from `otherMouseDown`/`otherMouseUp`.
-
-    func testMouseButtonHoldToTalkMatchesKeyboard() {
-        var g = ActivationGesture()
-        // The down/up edges here stand for a mouse side button's
-        // `otherMouseDown`/`otherMouseUp`, fed into the machine identically to a
-        // modifier's edges. Press-hold-release must begin on down and end on the
-        // post-threshold release, exactly like a modifier hold.
-        XCTAssertEqual(g.keyDown(at: 0), .begin, "a mouse side-button press begins immediately (first-phoneme priority)")
-        XCTAssertTrue(g.isHeld, "holding the side button is a held session")
-        XCTAssertEqual(g.keyUp(at: tap + 0.2), .end, "releasing the side button after a hold ends with zero added latency")
-        XCTAssertFalse(g.isActive)
-    }
-
-    func testMouseButtonTapTapLocksAndTapStops() {
-        var g = ActivationGesture()
-        // Quick tap-tap on the side button locks hands-free; a further tap stops.
-        XCTAssertEqual(g.keyDown(at: 0), .begin, "first side-button tap begins")
-        XCTAssertEqual(g.keyUp(at: 0.1), .deferEnd(fireAt: 0.1 + dbl), "first side-button tap defers its end")
-        XCTAssertEqual(g.keyDown(at: 0.2), .lock, "a second side-button press within the window locks")
+        _ = g.keyDown(at: 0)
+        _ = g.timerFired(at: latch)               // lockedHeld
+        XCTAssertEqual(g.keyDown(at: 0.6), .none, "a duplicate down while latched-held is ignored")
         XCTAssertTrue(g.isLocked)
-        XCTAssertEqual(g.keyUp(at: 0.25), .none, "the locking tap's release is ignored")
-        XCTAssertEqual(g.keyDown(at: 1.0), .end, "a later side-button press stops the locked session")
-        XCTAssertFalse(g.isActive)
     }
 
-    func testMouseButtonLoneTapDefersThenEnds() {
+    // MARK: Reconcile exemption + reset
+
+    func testReconcileFlagsAcrossPhases() {
         var g = ActivationGesture()
-        // A single quick side-button tap with no follow-up ends on the deferred timer
-        // — never latches recording on — identical to the keyboard lone-tap path.
-        XCTAssertEqual(g.keyDown(at: 0), .begin)
-        XCTAssertEqual(g.keyUp(at: 0.1), .deferEnd(fireAt: 0.1 + dbl))
-        XCTAssertEqual(g.timerFired(at: 0.1 + dbl), .end, "with no second side-button tap the lone tap ends")
+        XCTAssertFalse(g.isHeld); XCTAssertFalse(g.isLocked)   // idle
+        _ = g.keyDown(at: 0)
+        XCTAssertTrue(g.isHeld, "a plain hold may be force-ended by reconcile")
+        XCTAssertFalse(g.isLocked)
+        _ = g.timerFired(at: latch)
+        XCTAssertFalse(g.isHeld, "a latched session must be exempt from reconcile force-release")
+        XCTAssertTrue(g.isLocked)
+    }
+
+    func testResetReportsActiveAndGoesIdle() {
+        var g = ActivationGesture()
+        _ = g.keyDown(at: 0)
+        XCTAssertTrue(g.reset(), "reset reports a session was active")
         XCTAssertFalse(g.isActive)
+        XCTAssertFalse(g.reset(), "reset on idle reports nothing was active")
     }
 
-    func testMouseAndKeyboardEdgeSequencesProduceIdenticalActions() {
-        // The strongest statement of the input-source-agnostic contract: replay the
-        // same timestamped edge script through two independent machines — one framed
-        // as "keyboard", one as "mouse" — and assert the emitted Action streams are
-        // byte-for-byte equal. If they ever diverge, some path secretly depends on the
-        // input device, which the machine must never do.
-        let script: [(down: Bool, t: TimeInterval)] = [
-            (true, 0.0),      // begin
-            (false, 0.1),     // defer (quick tap)
-            (true, 0.2),      // lock
-            (false, 0.25),    // ignored
-            (true, 1.0),      // stop
-            (false, 1.05),    // stray
-        ]
-        var keyboard = ActivationGesture()
-        var mouse = ActivationGesture()
-        for step in script {
-            let kb = step.down ? keyboard.keyDown(at: step.t) : keyboard.keyUp(at: step.t)
-            let ms = step.down ? mouse.keyDown(at: step.t) : mouse.keyUp(at: step.t)
-            XCTAssertEqual(kb, ms, "keyboard and mouse edges must yield identical actions at t=\(step.t)")
-        }
-        XCTAssertEqual(keyboard.isActive, mouse.isActive, "both machines end in the same active state")
-    }
-}
-
-/// B7 mouse-button `ActivationKey` mapping — the pure, source-agnostic metadata the
-/// picker, onboarding keycap, and `HotKeyMonitor` read to route a mouse side button
-/// through the identical gesture machine and the collision-free paste chord.
-final class MouseButtonActivationKeyTests: XCTestCase {
-    func testMouseCasesAreClassifiedAsMouseButtons() {
-        XCTAssertTrue(ActivationKey.mouseButton4.isMouseButton)
-        XCTAssertTrue(ActivationKey.mouseButton5.isMouseButton)
-        for key in [ActivationKey.rightOption, .leftOption, .rightControl] {
-            XCTAssertFalse(key.isMouseButton, "\(key) is a keyboard modifier, not a mouse button")
-        }
-    }
-
-    func testMouseCasesCarryAGlyphAndKeyboardCasesDoNot() {
-        // The mouse buttons render as an SF Symbol glyph (no ⌥/⌃-style character
-        // exists for them); keyboard modifiers keep their glyph in the display name
-        // and expose no symbol.
-        XCTAssertEqual(ActivationKey.mouseButton4.symbolName, "computermouse")
-        XCTAssertEqual(ActivationKey.mouseButton5.symbolName, "computermouse")
-        XCTAssertNil(ActivationKey.rightOption.symbolName)
-        XCTAssertNil(ActivationKey.leftOption.symbolName)
-        XCTAssertNil(ActivationKey.rightControl.symbolName)
-    }
-
-    func testMousePasteShortcutIsControlCmdVAndCannotCollide() {
-        // A mouse side button is not a keyboard modifier, so no keyboard chord can
-        // clash with it — the re-paste chord defaults to ⌃⌘V for both cases.
-        for key in [ActivationKey.mouseButton4, .mouseButton5] {
-            XCTAssertEqual(key.pasteShortcut.secondary, .control, "\(key) pairs Command with Control")
-            XCTAssertEqual(key.pasteShortcut.display, "⌃⌘V", "\(key) shows the ⌃⌘V chord")
-        }
-    }
-
-    func testAllCasesIncludeTheTwoMouseButtons() {
-        // The picker renders every `allCases` entry; the two new mouse options must be
-        // present (and no toggles were added — the picker is still the only surface).
-        XCTAssertTrue(ActivationKey.allCases.contains(.mouseButton4))
-        XCTAssertTrue(ActivationKey.allCases.contains(.mouseButton5))
-        XCTAssertEqual(ActivationKey.allCases.count, 5, "three modifiers + two mouse buttons")
-    }
-
-    func testMouseDisplayNamesAreDistinctAndNonEmpty() {
-        // `.loc` falls back to the English source when a translation is missing, so a
-        // non-empty distinct display name proves the source strings are wired.
-        let n4 = ActivationKey.mouseButton4.displayName
-        let n5 = ActivationKey.mouseButton5.displayName
-        XCTAssertFalse(n4.isEmpty)
-        XCTAssertFalse(n5.isEmpty)
-        XCTAssertNotEqual(n4, n5, "the two side buttons have distinct labels")
-    }
-
-    func testCodableRawValuesArePinned() {
-        // Persistence stores the raw value; pin the two new ones so a future rename
-        // can't silently orphan a user's saved binding.
-        XCTAssertEqual(ActivationKey.mouseButton4.rawValue, "mouseButton4")
-        XCTAssertEqual(ActivationKey.mouseButton5.rawValue, "mouseButton5")
-        XCTAssertEqual(ActivationKey(rawValue: "mouseButton4"), .mouseButton4)
-        XCTAssertEqual(ActivationKey(rawValue: "mouseButton5"), .mouseButton5)
+    func testDroppedKeyUpDoesNotDoubleBegin() {
+        var g = ActivationGesture()
+        _ = g.keyDown(at: 0)
+        // A second down without an intervening up (dropped edge) is ignored, not a
+        // second begin.
+        XCTAssertEqual(g.keyDown(at: 0.1), .none)
+        XCTAssertTrue(g.isHeld)
     }
 }

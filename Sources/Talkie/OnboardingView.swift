@@ -367,12 +367,12 @@ struct OnboardingView: View {
 
     private var gesture: some View {
         VStack(spacing: 16) {
-            Text("Hold, speak, release — or tap twice to go hands-free")
+            Text("Hold, speak, release — or keep holding to go hands-free")
                 .font(.talkieDisplay(27))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop.")
+            Text("Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. Want it hands-free? Keep holding the key a moment and recording locks; tap once to stop.")
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)

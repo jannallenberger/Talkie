@@ -66,6 +66,20 @@ final class DictionaryStore: ObservableObject {
         }
         replacements = payload.replacements
         vocabulary = payload.vocabulary
+        cleanupChirpSeedIfNeeded()
+    }
+
+    /// Undo the brief Chirp rename: remove the auto-added `chirp → Chirp` seed if it's
+    /// still present, so an existing dictionary doesn't carry a stray rule now that the
+    /// app is "Talkie" again. Idempotent; only removes that exact auto-added rule (it was
+    /// added by an earlier launch, never by the user).
+    private func cleanupChirpSeedIfNeeded() {
+        let before = replacements.count
+        replacements.removeAll {
+            $0.from.caseInsensitiveCompare("chirp") == .orderedSame &&
+            $0.to.caseInsensitiveCompare("Chirp") == .orderedSame
+        }
+        if replacements.count != before { save() }
     }
 
     /// Move an undecodable store file to `dictionary.json.corrupt` so it's

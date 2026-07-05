@@ -20,10 +20,15 @@ enum NichePhonetics {
         for ch in raw.lowercased() where ch.isLetter { letters.append(ch) }
         guard !letters.isEmpty else { return "" }
         letters = letters
+            .replacingOccurrences(of: "x", with: "ks")    // real 'x' first, before 'x' is reused as the sh/ch marker
+            .replacingOccurrences(of: "sch", with: "x")   // German 'sch' + the English affricates all collapse to
+            .replacingOccurrences(of: "tch", with: "x")   // one "hush" sound, so ch/sh/tch/sch stop being 2 letters
+            .replacingOccurrences(of: "ch", with: "x")    // ("church" ↔ "chirp" become a 1-edit skeleton match, not 2)
+            .replacingOccurrences(of: "sh", with: "x")
+            .replacingOccurrences(of: "th", with: "t")
             .replacingOccurrences(of: "ph", with: "f")
             .replacingOccurrences(of: "ck", with: "k")
             .replacingOccurrences(of: "qu", with: "kw")
-            .replacingOccurrences(of: "x", with: "ks")
         var mapped = ""
         for ch in letters {
             switch ch {
@@ -75,15 +80,24 @@ enum NicheCorrector {
         let display: String   // canonical spelling to insert
         let core: String      // lowercased letters only
         let skeleton: String
+        /// True for terms the user EXPLICITLY added to their dictionary (a vocabulary
+        /// entry or a replacement's canonical target). High intent → a looser phonetic
+        /// gate than auto-graduated niche terms, which stay tight to hold zero FPs.
+        let trusted: Bool
     }
+
+    /// The core key a term matches on (lowercased letters only) — exposed so callers can
+    /// build the `trusted` set with the exact normalization the matcher uses.
+    static func core(_ s: String) -> String { lettersLower(s) }
 
     /// Proofread `text`, replacing close-sounding misrecognitions of any of `terms`
     /// with that term's canonical spelling. `terms` should be the confident niche
     /// vocabulary (in the live store, only graduated terms; in the test panel, the
     /// user's typed list). Never mutates `text` in place — rebuilds it from slices,
     /// so all replacements use valid original indices.
-    static func correct(_ text: String, terms: [String], termGuard: NicheTermGuard = .default) -> NicheCorrection {
-        let targets = buildTargets(terms)
+    static func correct(_ text: String, terms: [String], trusted: Set<String> = [],
+                        termGuard: NicheTermGuard = .default) -> NicheCorrection {
+        let targets = buildTargets(terms, trusted: trusted)
         guard !targets.isEmpty else { return NicheCorrection(text: text, fixes: []) }
 
         let words = wordTokens(in: text)
@@ -146,14 +160,15 @@ enum NicheCorrector {
         return NicheCorrection(text: out, fixes: fixes)
     }
 
-    private static func buildTargets(_ terms: [String]) -> [Target] {
+    private static func buildTargets(_ terms: [String], trusted: Set<String>) -> [Target] {
         var seen = Set<String>()
         var out: [Target] = []
         for raw in terms {
             let core = lettersLower(raw)
             guard core.count >= 4, seen.insert(core).inserted else { continue }
             out.append(Target(display: raw.trimmingCharacters(in: .whitespaces),
-                              core: core, skeleton: NichePhonetics.skeleton(core)))
+                              core: core, skeleton: NichePhonetics.skeleton(core),
+                              trusted: trusted.contains(core)))
         }
         return out
     }
@@ -174,9 +189,13 @@ enum NicheCorrector {
                 return nil
             }
             let skelDist = NichePhonetics.editDistance(skel, t.skeleton)
-            if skelDist > 1 { continue }
+            // A user-added dictionary term is high-intent, so it earns a looser gate — a
+            // skeleton within 2 (vs 1) and a larger raw-edit cap — so a close-but-not-
+            // tight recognizer miss still snaps to it. Auto-graduated niche terms keep
+            // the tight gate so silent learning can never introduce a false fix.
+            if skelDist > (t.trusted ? 2 : 1) { continue }
             let rawDist = NichePhonetics.editDistance(core, t.core)
-            let cap = max(1, Int(0.34 * Double(max(core.count, t.core.count))))
+            let cap = max(1, Int((t.trusted ? 0.5 : 0.34) * Double(max(core.count, t.core.count))))
             if rawDist > cap { continue }
             // A single real common word might be what the user meant — only correct
             // it on an exact-sounding match (skeleton identical).

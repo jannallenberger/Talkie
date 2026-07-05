@@ -295,19 +295,19 @@ final class HotKeyMonitor: @unchecked Sendable {
         switch action {
         case .none:
             return nil
-        case .begin:
-            cancelDeferTimerLocked()
+        case .beginArmingLatch(let fireAt):
+            // Begin now and arm the latch timer: if the key is still held when it
+            // fires, the machine returns `.lock` (see the timer handler) and recording
+            // latches hands-free. A release before then ends synchronously via `.end`.
+            armDeferTimerLocked(fireAt: fireAt)
             return onActivate
         case .end:
             cancelDeferTimerLocked()
             return onDeactivate
         case .lock:
-            // A second tap locked: the pending lone-tap timer is now superseded.
+            // The hold latched hands-free: the latch timer has fired and done its job.
             cancelDeferTimerLocked()
             return onLock
-        case .deferEnd(let fireAt):
-            armDeferTimerLocked(fireAt: fireAt)
-            return nil
         }
     }
 

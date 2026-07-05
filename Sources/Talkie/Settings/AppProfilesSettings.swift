@@ -210,12 +210,37 @@ private struct AppProfileEditor: View {
     // Each override is modeled as an optional binding the picker maps to "Inherit".
     private var cleanupStyle: Binding<CleanupStyle?> { $profile.cleanupStyle }
     private var insertionMode: Binding<InsertionMode?> { $profile.insertionMode }
-    /// E8 "Insert in": nil = as spoken; a base code ("en") = translate to it. The
-    /// setter normalizes an empty pick back to nil so the field stays sparse.
-    private var outputLanguageCode: Binding<String?> {
+
+    /// The sentinel tag for the "Adaptive (auto-detect)" picker row — a value no
+    /// real base language code can ever collide with, so it shares the SAME
+    /// `Picker<selection: String?>` as "As spoken" (nil) and the explicit language
+    /// list without a second control or an enum-backed selection type.
+    private static let adaptiveTag = "__adaptive__"
+
+    /// The single "Insert in" selection space the picker binds to: `nil` = as
+    /// spoken (clears both `outputLanguageCode` and `outputLanguageAdaptive`),
+    /// `Self.adaptiveTag` = Adaptive (sets `outputLanguageAdaptive = true`, clears
+    /// the fixed code), or a real base code = fixed E8 mode (sets the code, clears
+    /// adaptive). The two `AppProfile` fields are mutually exclusive by
+    /// construction — every setter branch below writes to at most one of them, and
+    /// always clears the other, so a stale value can never linger and later win
+    /// resolution behind the user's back (see `AppProfileStore.resolve`, which
+    /// would otherwise have to arbitrate a profile with both set).
+    private var outputLanguagePick: Binding<String?> {
         Binding(
-            get: { profile.outputLanguageCode },
-            set: { profile.outputLanguageCode = ($0?.isEmpty ?? true) ? nil : $0 }
+            get: {
+                if profile.outputLanguageAdaptive == true { return Self.adaptiveTag }
+                return (profile.outputLanguageCode?.isEmpty ?? true) ? nil : profile.outputLanguageCode
+            },
+            set: { newValue in
+                if newValue == Self.adaptiveTag {
+                    profile.outputLanguageAdaptive = true
+                    profile.outputLanguageCode = nil
+                } else {
+                    profile.outputLanguageAdaptive = nil
+                    profile.outputLanguageCode = (newValue?.isEmpty ?? true) ? nil : newValue
+                }
+            }
         )
     }
 
@@ -302,15 +327,21 @@ private struct AppProfileEditor: View {
                         }
                     }
 
-                    // "Insert in" (E8): translate this app's finished dictation
-                    // on-device into a chosen language just before it's inserted, so you
-                    // can dictate in your native language and have Talkie draft, say,
-                    // English Slack messages. "As spoken" (nil, the default) inserts the
-                    // text in the language you spoke — no translation, no cost. Only the
-                    // languages you speak are offered; a monolingual user sees only the
-                    // default. Justified new surface: it's a per-app field on the
-                    // existing override sheet, not a new global toggle — only the user
-                    // knows which apps want which language.
+                    // "Insert in" (E8 fixed + Adaptive): translate this app's finished
+                    // dictation on-device into a language just before it's inserted, so
+                    // you can dictate in your native language and have Talkie draft,
+                    // say, English Slack messages. "As spoken" (nil, the default)
+                    // inserts the text in the language you spoke — no translation, no
+                    // cost. "Adaptive (auto-detect)" is the multi-language sibling of
+                    // the fixed per-language rows below it: instead of hand-picking ONE
+                    // target, Talkie DETECTS each dictation's target from text already
+                    // in the app, so a channel that itself switches languages (a mixed
+                    // German/English Slack thread) doesn't force a single fixed pick.
+                    // Only the languages you speak are offered as fixed targets; a
+                    // monolingual user sees only "As spoken" and Adaptive. Justified new
+                    // surface: it's a per-app field on the existing override sheet, not
+                    // a new global toggle — only the user knows which apps want
+                    // translation at all, fixed or adaptive.
                     if outputLanguageOptions.count > 1 {
                         SettingsCard(
                             header: "Output language",
@@ -320,8 +351,9 @@ private struct AppProfileEditor: View {
                                 title: "Insert in".loc,
                                 subtitle: outputLanguageSubtitle
                             ) {
-                                Picker("", selection: outputLanguageCode) {
+                                Picker("", selection: outputLanguagePick) {
                                     Text("As spoken".loc).tag(String?.none)
+                                    Text("Adaptive (auto-detect)".loc).tag(String?.some(Self.adaptiveTag))
                                     ForEach(outputLanguageOptions, id: \.code) { option in
                                         Text(option.name).tag(String?.some(option.code))
                                     }
@@ -435,8 +467,12 @@ private struct AppProfileEditor: View {
     }
 
     /// Subtitle under the "Insert in" row: names the resolved behaviour so the row
-    /// reads on its own — "As spoken (no translation)" or "Translated to German".
+    /// reads on its own — "As spoken (no translation)", "Adaptive — detects the
+    /// language automatically.", or "Translated to German".
     private var outputLanguageSubtitle: String {
+        if profile.outputLanguageAdaptive == true {
+            return "Adaptive — detects the language automatically.".loc
+        }
         guard let code = profile.outputLanguageCode, !code.isEmpty else {
             return "As spoken — no translation.".loc
         }
