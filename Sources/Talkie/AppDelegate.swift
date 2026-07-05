@@ -1481,6 +1481,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // below), and optimistic insertion is disabled for the session so the user never
         // watches the spoken-language interim swap to the translated text at stop.
         let outputLanguageCode = resolved.outputLanguageCode
+        // Adaptive per-app output language (this feature): true means the target
+        // isn't fixed — it's DETECTED at stop time from the target app's existing
+        // content (see the translate hook below). `outputLanguageCode` is always nil
+        // alongside this (mutually exclusive, enforced in `AppProfileStore.resolve`),
+        // so this needs its own flag anywhere a call site must tell "no translation"
+        // apart from "adaptive translation" — namely here, gating optimistic
+        // insertion off exactly like the fixed-code case does, for the identical
+        // reason: the interim would be the spoken language, and the stop-time pass
+        // (once it detects a mismatch) would make the user watch it swap.
+        let outputLanguageAdaptive = resolved.outputLanguageAdaptive
         let optimisticEnabled = settings.optimisticInsertion
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
@@ -1639,11 +1649,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var optimistic: (count: Int, text: String)?
             if self.dictationSink == nil,
                optimisticEnabled, mode == .paste, cleanupEnabled, !languageSwitched,
-               // E8: never optimistically insert for an output-language override app —
-               // the interim is the SPOKEN language, and the stop-time translate pass
-               // would then make the user watch e.g. German swap to English. The
-               // translated final is inserted once, cleanly, below.
-               outputLanguageCode == nil,
+               // E8 + Adaptive: never optimistically insert for an output-language
+               // override app (fixed OR adaptive) — the interim is the SPOKEN
+               // language, and the stop-time translate pass would then make the user
+               // watch e.g. German swap to English. The translated final is inserted
+               // once, cleanly, below.
+               outputLanguageCode == nil, !outputLanguageAdaptive,
                !finalRaw.isEmpty, CleanupEngine.isAvailable {
                 let interimProcessed = TextProcessor.apply(
                     replacements: replacements, removeFillers: removeFillers,
@@ -2019,12 +2030,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // in the target language. `cleanupLangCode` is the session's pinned input
             // language — we do NOT re-detect it. Latency: one extra on-device pass at
             // stop, and only for a mismatched-language utterance in an override app.
+            //
+            // Adaptive (this feature): when the app has Adaptive on instead of a fixed
+            // code, there IS no target yet — resolve one by reading a bounded sample of
+            // text ALREADY IN the app (not what we just dictated; this runs before
+            // `finalText` is ever inserted, see the insertion calls further below) and
+            // detecting its language. Every step here is fail-closed to "insert as
+            // spoken": `AdaptiveOutputLanguage.preflightGate` must clear BEFORE the AX
+            // read is even attempted (context awareness on, app not Private — the same
+            // consent `beginDictation` already required to mine phrases, and the same
+            // I1 Private-app invariant: a Private app's focused content is NEVER read),
+            // and `AdaptiveOutputLanguage.decide` must then find a confident, DIFFERENT
+            // context language before we call the model at all. A resolved target here
+            // feeds into the EXACT SAME `OutputTranslator.translate` call as a fixed E8
+            // pick — no guard is duplicated or bypassed.
             var translated = false
-            if let outputLanguageCode {
+            var resolvedTargetCode = outputLanguageCode
+            if outputLanguageAdaptive, resolvedTargetCode == nil {
+                let gate1 = AdaptiveOutputLanguage.preflightGate(
+                    contextAwareness: self.settings.contextAwareness, neverStore: neverStore
+                )
+                if let gate1 {
+                    talkieDebugLog("adaptive-lang: \(gate1) — inserting as spoken")
+                } else {
+                    // Gates cleared — ONLY NOW is the bounded AX read permitted. Reuses
+                    // the shared focused-field reader (battle-tested by
+                    // `InsertionVerifier`/`LearningEngine`); no new AX primitive, no
+                    // second live round-trip beyond this one bounded read.
+                    let contextText = AXFieldReader.focusedElementValue()?.1
+                    let contextCode = contextText.flatMap { LanguageDetector.canScore($0) ? LanguageDetector.dominantLanguageCode($0) : nil }
+                    let gate2 = AdaptiveOutputLanguage.decide(
+                        contextText: contextText, inputCode: cleanupLangCode, contextCode: contextCode
+                    )
+                    switch gate2 {
+                    case .detected(let code):
+                        talkieDebugLog("adaptive-lang: detected context=\(code) input=\(cleanupLangCode ?? "?") — translating")
+                        resolvedTargetCode = code
+                    case .skipSameLanguage:
+                        talkieDebugLog("adaptive-lang: context already matches input — inserting as spoken")
+                    case .fallback(let reason), .noAttempt(let reason):
+                        talkieDebugLog("adaptive-lang: \(reason) — inserting as spoken")
+                    }
+                }
+            }
+            if let resolvedTargetCode {
                 var mustSurvive = nicheTerms
                 mustSurvive.append(contentsOf: replacements.map(\.to))
                 let result = await OutputTranslator.translate(
-                    finalText, to: outputLanguageCode,
+                    finalText, to: resolvedTargetCode,
                     inputCode: cleanupLangCode, mustSurvive: mustSurvive
                 )
                 finalText = result.text

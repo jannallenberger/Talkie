@@ -794,6 +794,10 @@
 "As spoken — no translation." = "話したまま — 翻訳なし。";
 "Translated to %@ before inserting." = "挿入前に%@に翻訳します。";
 
+/* Adaptive per-app output language — multi-language sibling of E8's fixed pick */
+"Adaptive (auto-detect)" = "アダプティブ（自動検出）";
+"Adaptive — detects the language automatically." = "アダプティブ — 言語を自動的に検出します。";
+
 /* J2 — dev-tools updater consent gate (dev flavor only) */
 "This developer build can check GitHub for new Talkie builds. One HTTPS request to list releases; nothing about you or your dictation is sent. The public build contains no network code at all." = "この開発ビルドは GitHub をチェックして新しい Talkie のビルドを探すことができます。リリース一覧を取得するための HTTPS リクエストが 1 回だけ行われ、あなたやあなたの音声入力に関する情報は一切送信されません。公開ビルドにはネットワークコードは一切含まれていません。";
 "Enable update checks" = "アップデートの確認を有効にする";

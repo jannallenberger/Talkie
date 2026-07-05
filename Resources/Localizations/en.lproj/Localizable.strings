@@ -796,6 +796,10 @@
 "As spoken — no translation." = "As spoken — no translation.";
 "Translated to %@ before inserting." = "Translated to %@ before inserting.";
 
+/* Adaptive per-app output language — multi-language sibling of E8's fixed pick */
+"Adaptive (auto-detect)" = "Adaptive (auto-detect)";
+"Adaptive — detects the language automatically." = "Adaptive — detects the language automatically.";
+
 /* J2 — dev-tools updater consent gate (dev flavor only) */
 "This developer build can check GitHub for new Talkie builds. One HTTPS request to list releases; nothing about you or your dictation is sent. The public build contains no network code at all." = "This developer build can check GitHub for new Talkie builds. One HTTPS request to list releases; nothing about you or your dictation is sent. The public build contains no network code at all.";
 "Enable update checks" = "Enable update checks";

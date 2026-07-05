@@ -794,6 +794,10 @@
 "As spoken — no translation." = "말한 그대로 — 번역 없음.";
 "Translated to %@ before inserting." = "삽입하기 전에 %@로 번역합니다.";
 
+/* Adaptive per-app output language — multi-language sibling of E8's fixed pick */
+"Adaptive (auto-detect)" = "적응형 (자동 감지)";
+"Adaptive — detects the language automatically." = "적응형 — 언어를 자동으로 감지합니다.";
+
 /* J2 — dev-tools updater consent gate (dev flavor only) */
 "This developer build can check GitHub for new Talkie builds. One HTTPS request to list releases; nothing about you or your dictation is sent. The public build contains no network code at all." = "이 개발 빌드는 GitHub에서 새로운 Talkie 빌드를 확인할 수 있습니다. 릴리스 목록을 가져오기 위한 HTTPS 요청 한 번만 보내며, 사용자나 받아쓰기에 관한 정보는 전혀 전송되지 않습니다. 공개 빌드에는 네트워크 코드가 전혀 없습니다.";
 "Enable update checks" = "업데이트 확인 사용";
