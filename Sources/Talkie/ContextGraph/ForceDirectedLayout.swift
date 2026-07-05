@@ -52,6 +52,13 @@ struct ForceDirectedLayout {
         var settleEnergy: Double = 0.4
 
         static let `default` = Parameters()
+
+        /// A cheap value signature over just the user-tunable force fields, so a
+        /// SwiftUI `.onChange` can re-heat the sim on an actual slider change without
+        /// needing `Parameters` to be `Equatable` wholesale.
+        var forceSignature: String {
+            "\(charge)|\(stiffness)|\(restLength)|\(gravity)|\(chargeSoftening)|\(maxSpeed)|\(hubGravity)|\(damping)"
+        }
     }
 
     private(set) var positions: [CGPoint]
@@ -59,7 +66,11 @@ struct ForceDirectedLayout {
     /// Endpoint index pairs + weights, resolved once from `EntityID` edges at init so
     /// the hot `step()` loop works on plain `Int` indices.
     private let springs: [(a: Int, b: Int, weight: Double)]
-    private let params: Parameters
+    /// The live force constants. `var` (not `let`) so the controls panel can retune
+    /// them mid-flight via `updateParameters(_:)` — the running positions are kept and
+    /// the caller re-heats the sim, so the layout eases into the new shape rather than
+    /// resetting.
+    private(set) var params: Parameters
     /// Nodes pinned by the user (a dragged node) are held in place — the sim still
     /// reads their position for forces on others, but never moves them itself.
     private var pinned: Set<Int>
@@ -101,6 +112,22 @@ struct ForceDirectedLayout {
         var deg = Array(repeating: 0.0, count: nodes.count)
         for s in resolvedSprings { deg[s.a] += 1; deg[s.b] += 1 }
         self.degrees = deg
+    }
+
+    /// Retune the force constants without disturbing the current positions/velocities
+    /// — used by the controls panel so dragging a Forces slider reshapes the *running*
+    /// layout (the caller re-heats the sim so it eases toward the new equilibrium)
+    /// instead of snapping back to the seed ring. Only the tunable force fields are
+    /// swapped; the structural seed radius is left as-built.
+    mutating func updateParameters(_ new: Parameters) {
+        params.charge = new.charge
+        params.stiffness = new.stiffness
+        params.restLength = new.restLength
+        params.gravity = new.gravity
+        params.chargeSoftening = new.chargeSoftening
+        params.maxSpeed = new.maxSpeed
+        params.hubGravity = new.hubGravity
+        params.damping = new.damping
     }
 
     /// Pin a node (while the user drags it): the sim reads its position but never

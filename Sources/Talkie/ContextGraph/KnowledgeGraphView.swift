@@ -20,16 +20,33 @@ struct KnowledgeGraphView: View {
     @State private var graph: KnowledgeGraphModel.KnowledgeGraph = .empty
     /// The currently selected node's id, driving the inspector.
     @State private var selectedID: EntityID?
+    /// The live Obsidian-style customization values (display multipliers + the four
+    /// headline force constants). One struct so "Reset" restores everything at once.
+    @State private var render = GraphRenderSettings.defaults
+    /// Whether the collapsible controls panel is open. Closed by default so the graph
+    /// opens clean; the sliders button in the corner reveals it.
+    @State private var controlsOpen = false
+
+    /// When true, the surrounding chrome (legend, cap notice, controls) is hidden —
+    /// set by the Memory-page embedding, where the graph is a background layer that
+    /// the search bar + history slide over, so those overlays would collide with the
+    /// scroll content. The standalone use leaves it false and keeps the full chrome.
+    var chromeHidden = false
 
     var body: some View {
         Group {
             if graph.isEmpty {
                 emptyState
             } else {
-                GraphCanvas(graph: graph, selectedID: $selectedID)
-                    .overlay(alignment: .topLeading) { legend }
+                GraphCanvas(graph: graph, selectedID: $selectedID,
+                            parameters: render.layoutParameters,
+                            nodeSizeMultiplier: render.nodeSize,
+                            linkThicknessMultiplier: render.linkThickness,
+                            labelThreshold: Int(render.labelThreshold.rounded()))
+                    .overlay(alignment: .topLeading) { if !chromeHidden { legend } }
                     .overlay(alignment: .topTrailing) { inspector }
-                    .overlay(alignment: .bottomLeading) { capNotice }
+                    .overlay(alignment: .bottomLeading) { if !chromeHidden { capNotice } }
+                    .overlay(alignment: .bottomTrailing) { controls }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -37,6 +54,13 @@ struct KnowledgeGraphView: View {
         .navigationTitle("Knowledge graph".loc)
         .onAppear(perform: rebuild)
         .onReceive(contextGraph.$entities.map { _ in () }) { _ in rebuild() }
+    }
+
+    // MARK: Controls (Obsidian-style, collapsible)
+
+    private var controls: some View {
+        GraphControlsPanel(settings: $render, isOpen: $controlsOpen)
+            .padding(16)
     }
 
     private func rebuild() {

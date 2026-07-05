@@ -28,13 +28,6 @@ enum SpeedRoute: Hashable {
     case detail
 }
 
-/// WS-M — the interactive knowledge-graph subpage route. Its own enum +
-/// `navigationDestination`, mirroring `MilestoneRoute`, so the graph opens as a
-/// full pushed page from a Dashboard card rather than an eighth sidebar tab.
-enum KnowledgeGraphRoute: Hashable {
-    case graph
-}
-
 struct DashboardView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var stats: StatsStore
@@ -59,9 +52,6 @@ struct DashboardView: View {
     /// L3b: session-scoped memory-pressure observer, read by the speed detail
     /// page's environment diagnostics.
     @ObservedObject var pressure: SystemPressure
-    /// WS-M: the live on-device context graph, powering the interactive
-    /// knowledge-graph subpage the Dashboard's "Your knowledge graph" card opens.
-    @ObservedObject var contextGraph: ContextGraphStore
     @ObservedObject var router: SettingsRouter
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -128,8 +118,6 @@ struct DashboardView: View {
                         StreakCard(activity: activity).frame(maxHeight: .infinity, alignment: .top)
                             .accessibilityElement(children: .combine)
                         MilestoneEntryCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
-                        KnowledgeGraphEntryCard(contextGraph: contextGraph)
-                            .frame(maxHeight: .infinity, alignment: .top)
                     }
                 }
                 .padding(28)
@@ -148,12 +136,6 @@ struct DashboardView: View {
                 switch route {
                 case .detail:
                     SpeedDetailView(latency: latency, pressure: pressure)
-                }
-            }
-            .navigationDestination(for: KnowledgeGraphRoute.self) { route in
-                switch route {
-                case .graph:
-                    KnowledgeGraphView(contextGraph: contextGraph)
                 }
             }
         }
@@ -517,62 +499,6 @@ private struct MilestoneEntryCard: View {
                         .font(.talkieHeading(12, weight: .medium))
                         .foregroundStyle(Theme.inkSecondary)
                 }
-            }
-            .talkieCard(fill: true)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Knowledge graph entry card (→ interactive graph subpage)
-
-/// WS-M — the Dashboard's doorway to the interactive knowledge graph: a count of
-/// the people / projects / terms currently mapped, a hint, and a chevron. A
-/// `NavigationLink` carrying `KnowledgeGraphRoute.graph`, resolved by the
-/// Dashboard's `navigationDestination`. Reads the live store so the count stays
-/// current; the heavy graph derivation happens only once the page is pushed.
-private struct KnowledgeGraphEntryCard: View {
-    @ObservedObject var contextGraph: ContextGraphStore
-
-    /// Count of graph-eligible entities (people / projects / terms — commitments are
-    /// action items, not nodes). A quick filter over the live map, not the full
-    /// edge derivation, so the Dashboard stays light.
-    private var mappedCount: Int {
-        contextGraph.entities.values.reduce(into: 0) { count, entity in
-            if entity.kind != .commitment { count += 1 }
-        }
-    }
-
-    var body: some View {
-        NavigationLink(value: KnowledgeGraphRoute.graph) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Eyebrow(text: "Your knowledge graph")
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.inkTertiary)
-                }
-                HStack(spacing: 9) {
-                    Image(systemName: "point.3.connected.trianglepath.dotted")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Theme.featherBlue)
-                    Text(mappedCount > 0
-                         ? String(format: "%@ people, projects & terms".loc, mappedCount.formatted())
-                         : "Nothing mapped yet".loc)
-                        .font(.talkieHeading(17, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-
-                Text(mappedCount > 0
-                     ? "See how they connect — an interactive map of what you talk about.".loc
-                     : "Dictate and take meetings, then watch the map fill in.".loc)
-                    .font(.talkieHeading(12, weight: .regular))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .talkieCard(fill: true)
             .contentShape(Rectangle())

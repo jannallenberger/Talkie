@@ -47,6 +47,17 @@ struct MemoryView: View {
     /// Drives the "Clear everything" confirmation — clearing history also erases what
     /// Talkie's memory extracted from it, so we ask first and state the scope honestly.
     @State private var showingClearConfirm = false
+    /// True while the pointer is over the graph region. Drives `.scrollDisabled` on the
+    /// page scroll view: over the graph, page scrolling is OFF so the graph's own
+    /// drag-pan / pinch-zoom own the gesture; at or below the search bar it's ON so the
+    /// search bar + history scroll up over the graph as normal. Tracked via
+    /// `.onContinuousHover` on the graph layer.
+    @State private var pointerOverGraph = false
+
+    /// The graph occupies this fraction of the Memory viewport height as a top-anchored
+    /// background band; the scroll content opens with a transparent spacer this tall, so
+    /// the graph shows through until the user scrolls the search + history up over it.
+    private static let graphHeightFraction: CGFloat = 0.57
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -60,6 +71,90 @@ struct MemoryView: View {
     }
 
     var body: some View {
+        GeometryReader { geo in
+            let graphHeight = geo.size.height * Self.graphHeightFraction
+
+            ZStack(alignment: .top) {
+                // ── Background layer: the live knowledge graph ───────────────────
+                // A top-anchored band, full width, faded out at its TOP and BOTTOM
+                // edges by a gradient mask so it melts into the page chrome instead of
+                // ending in a hard rectangle. It sits behind the scroll content; as the
+                // user scrolls the search + history up, they cover it.
+                graphLayer(height: graphHeight)
+
+                // ── Foreground: the scrolling page ───────────────────────────────
+                // Opens with a transparent spacer the height of the visible graph, so
+                // the graph shows through at rest; below it, on a solid surface, come
+                // the header, search bar, and history — which rise up over the graph as
+                // the page scrolls. Scrolling is disabled while the pointer is over the
+                // graph (so the graph owns its own pan/zoom); enabled elsewhere.
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Transparent window onto the graph behind. A tap here would
+                        // fall through to the graph; that's intended — this region IS
+                        // the graph as far as the user is concerned.
+                        Color.clear
+                            .frame(height: graphHeight)
+
+                        pageContent
+                            .padding(28)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            // The solid page surface that slides up over the graph —
+                            // an opaque canvas fill so the graph never bleeds through
+                            // the search + history once they cover it.
+                            .background(Theme.canvas)
+                    }
+                }
+                .scrollDisabled(pointerOverGraph)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .confirmationDialog("Clear your dictation history?",
+                            isPresented: $showingClearConfirm, titleVisibility: .visible) {
+            Button("Clear everything", role: .destructive) { clearEverything() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.")
+        }
+    }
+
+    // MARK: Graph layer (top band, blur-faded top + bottom)
+
+    /// The knowledge graph as a top-anchored background band. Faded at both edges via a
+    /// vertical gradient mask (opaque in the middle, transparent at the very top and
+    /// bottom) so it dissolves into the page rather than ending in a hard line. An
+    /// `.onContinuousHover` tracks whether the pointer is over it, which gates page
+    /// scrolling so the graph keeps its own drag-pan / pinch-zoom.
+    private func graphLayer(height: CGFloat) -> some View {
+        KnowledgeGraphView(contextGraph: contextGraph, chromeHidden: true)
+            .frame(height: height)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: .black, location: 0.10),
+                        .init(color: .black, location: 0.80),
+                        .init(color: .clear, location: 1.0),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+            .frame(maxHeight: .infinity, alignment: .top)
+            .onContinuousHover { phase in
+                switch phase {
+                case .active:  pointerOverGraph = true
+                case .ended:   pointerOverGraph = false
+                }
+            }
+    }
+
+    // MARK: Page content (header + search + history — the solid layer over the graph)
+
+    /// The header (title + Copy All / Clear), the search bar, and the history / search
+    /// results feed — everything that was the Memory page before, now stacked on the
+    /// solid surface that scrolls up over the graph.
+    private var pageContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
                 PageHeader(title: "Memory",
@@ -82,15 +177,6 @@ struct MemoryView: View {
             searchField
 
             content
-        }
-        .padding(28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .confirmationDialog("Clear your dictation history?",
-                            isPresented: $showingClearConfirm, titleVisibility: .visible) {
-            Button("Clear everything", role: .destructive) { clearEverything() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.")
         }
     }
 
@@ -173,7 +259,9 @@ struct MemoryView: View {
         }
     }
 
-    /// No query: the plain chronological feed (History's old job).
+    /// No query: the plain chronological feed (History's old job). Renders as a bare
+    /// `LazyVStack` — the enclosing Memory page owns the single scroll view now (the
+    /// graph sits behind it), so a nested same-axis ScrollView here would fight it.
     @ViewBuilder
     private var browseFeed: some View {
         if history.entries.isEmpty {
@@ -181,14 +269,12 @@ struct MemoryView: View {
                         subtitle: "Hold your dictation key and speak — what you say will show up here.",
                         icon: "text.bubble")
         } else {
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    ForEach(history.entries) { entry in
-                        MemoryDictationRow(entry: entry, formatter: Self.dateFormatter) {
-                            copyToClipboard(entry.text)
-                        } onDelete: {
-                            deleteDictation(entry)
-                        }
+            LazyVStack(spacing: 10) {
+                ForEach(history.entries) { entry in
+                    MemoryDictationRow(entry: entry, formatter: Self.dateFormatter) {
+                        copyToClipboard(entry.text)
+                    } onDelete: {
+                        deleteDictation(entry)
                     }
                 }
             }
@@ -206,11 +292,11 @@ struct MemoryView: View {
                         subtitle: "Try a different word — this searches what you've said, your meetings, and what Talkie's picked up from them.",
                         icon: "magnifyingglass")
         } else {
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    ForEach(hits) { hit in
-                        resolvedRow(for: hit)
-                    }
+            // Bare `LazyVStack`: the Memory page's single scroll view scrolls this feed
+            // up over the graph behind it; a nested ScrollView here would conflict.
+            LazyVStack(spacing: 10) {
+                ForEach(hits) { hit in
+                    resolvedRow(for: hit)
                 }
             }
         }
@@ -265,7 +351,7 @@ struct MemoryView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 240)
     }
 
     private func copyToClipboard(_ text: String) {

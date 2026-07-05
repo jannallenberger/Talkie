@@ -14,6 +14,20 @@ struct GraphCanvas: View {
     let graph: KnowledgeGraphModel.KnowledgeGraph
     @Binding var selectedID: EntityID?
 
+    /// Live physics parameters from the controls panel. A change to these re-seeds
+    /// the running sim's forces and re-heats it (see `.onChange` below) so the layout
+    /// visibly responds as the user drags a Forces slider.
+    var parameters: ForceDirectedLayout.Parameters = .default
+    /// Display multipliers from the controls panel — pure render-time scalars, so
+    /// changing them repaints instantly without touching the simulation.
+    ///   • `nodeSizeMultiplier`      scales every node's drawn radius.
+    ///   • `linkThicknessMultiplier` scales every edge's stroke width.
+    ///   • `labelThreshold`          the degree/mentions cutoff above which a node is
+    ///     labelled at rest (lower = more labels shown).
+    var nodeSizeMultiplier: CGFloat = 1
+    var linkThicknessMultiplier: CGFloat = 1
+    var labelThreshold: Int = 4
+
     /// The simulation. Rebuilt when the graph's node/edge identity changes.
     @State private var layout: ForceDirectedLayout
     /// True while the sim is still moving; flips false once it settles so the
@@ -37,10 +51,18 @@ struct GraphCanvas: View {
     /// A brief warm-up so the graph opens already partly spread rather than as a ring.
     private static let warmupSteps = 60
 
-    init(graph: KnowledgeGraphModel.KnowledgeGraph, selectedID: Binding<EntityID?>) {
+    init(graph: KnowledgeGraphModel.KnowledgeGraph, selectedID: Binding<EntityID?>,
+         parameters: ForceDirectedLayout.Parameters = .default,
+         nodeSizeMultiplier: CGFloat = 1,
+         linkThicknessMultiplier: CGFloat = 1,
+         labelThreshold: Int = 4) {
         self.graph = graph
         self._selectedID = selectedID
-        var initial = ForceDirectedLayout(nodes: graph.nodes, edges: graph.edges)
+        self.parameters = parameters
+        self.nodeSizeMultiplier = nodeSizeMultiplier
+        self.linkThicknessMultiplier = linkThicknessMultiplier
+        self.labelThreshold = labelThreshold
+        var initial = ForceDirectedLayout(nodes: graph.nodes, edges: graph.edges, parameters: parameters)
         initial.settle(steps: Self.warmupSteps)
         self._layout = State(initialValue: initial)
     }
@@ -68,6 +90,14 @@ struct GraphCanvas: View {
             }
         }
         .onChange(of: graph.nodeSignature) { _, _ in reheat() }
+        // A Forces slider changed: push the new constants into the live sim and
+        // re-heat so the layout eases toward the new equilibrium. `Parameters` is
+        // Equatable-by-fields via this signature (a struct of Doubles), so this only
+        // fires on an actual value change, not every re-render.
+        .onChange(of: parameters.forceSignature) { _, _ in
+            layout.updateParameters(parameters)
+            isSettling = true
+        }
         .onDisappear { isSettling = false }
     }
 
@@ -121,7 +151,7 @@ struct GraphCanvas: View {
             path.addLine(to: p2)
             let strength = Double(edge.weight) / Double(maxWeight)
             let opacity = 0.10 + 0.08 * strength // ~0.10–0.18
-            let width = (0.7 + 1.3 * strength) * min(1.4, max(0.5, zoom))
+            let width = (0.7 + 1.3 * strength) * min(1.4, max(0.5, zoom)) * linkThicknessMultiplier
             context.stroke(path, with: .color(Theme.inkTertiary.opacity(opacity)),
                            lineWidth: width)
         }
@@ -140,8 +170,9 @@ struct GraphCanvas: View {
                            with: .color(isSelected ? Theme.ink : .black.opacity(0.25)),
                            lineWidth: isSelected ? 2 : 0.75)
 
-            // Label only larger nodes or the selected one (avoid clutter).
-            if isSelected || node.degree >= labelDegreeThreshold || node.mentions >= labelMentionThreshold {
+            // Label only larger nodes or the selected one (avoid clutter). The cutoff
+            // is the controls panel's live text-fade threshold.
+            if isSelected || node.degree >= labelThreshold || node.mentions >= labelThreshold {
                 let text = Text(node.displayName)
                     .font(.system(size: max(9, min(13, 8 + r * 0.35)), weight: isSelected ? .semibold : .medium))
                     .foregroundStyle(isSelected ? Theme.ink : Theme.inkSecondary)
@@ -150,16 +181,12 @@ struct GraphCanvas: View {
         }
     }
 
-    /// Node radius from mentions + degree, ~4–16 pt in world units (before zoom).
+    /// Node radius from mentions + degree, ~4–16 pt in world units (before zoom),
+    /// scaled by the controls panel's live node-size multiplier.
     private func nodeRadius(_ node: KnowledgeGraphModel.Node) -> CGFloat {
         let base = 4.0 + 1.6 * (Double(node.mentions).squareRoot()) + 0.8 * Double(node.degree).squareRoot()
-        return CGFloat(min(16, max(4, base)))
+        return CGFloat(min(16, max(4, base))) * nodeSizeMultiplier
     }
-
-    /// Label gates — degree/mentions above which a node is always labelled. Tuned so
-    /// only the hubs carry text at rest, keeping a dense graph readable.
-    private var labelDegreeThreshold: Int { 4 }
-    private var labelMentionThreshold: Int { 6 }
 
     // MARK: Coordinate transforms
 

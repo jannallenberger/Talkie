@@ -267,7 +267,7 @@ struct MainView: View {
                           wordFreq: wordFreq,
                           jobTitle: jobTitle,
                           latency: latency, pressure: systemPressure,
-                          contextGraph: contextGraph, router: router)
+                          router: router)
         case .meetings:
             MeetingsView(recorder: meetingRecorder, store: meetingStore,
                          settings: settings, profileImage: profileImage,
