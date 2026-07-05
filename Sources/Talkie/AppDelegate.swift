@@ -630,7 +630,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func hintLine() -> String {
         // One gesture for everyone: hold to talk, tap twice to lock hands-free.
-        return String(format: "Hold %@ to talk · tap twice to lock".loc, settings.activationKey.displayName)
+        return String(format: "Hold %@ to talk · keep holding to lock".loc, settings.activationKey.displayName)
     }
 
     private func updateStatusUI() {
@@ -1402,12 +1402,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionLive = false
         let duration = Date().timeIntervalSince(recordingStartedAt ?? Date())
         recordingStartedAt = nil
-        // A "lone quick tap" is a session that was never locked hands-free and whose
-        // live capture was shorter than the tap threshold — i.e. the user tapped once
-        // (maybe not realizing it's hold-to-talk) rather than holding or tap-tapping.
-        // Used only to decide whether to surface the one-time gesture hint when such a
-        // tap yields nothing. Threshold matches the gesture machine's tap window.
-        let wasLoneShortTap = !wasHandsFreeLocked && duration < ActivationGesture.tapThreshold
+        // A "lone quick tap" is a session that never latched hands-free and whose live
+        // capture was very short — i.e. the user tapped once (maybe not realizing it's
+        // hold-to-talk) rather than holding a beat. Used only to decide whether to
+        // surface the one-time gesture hint when such a tap yields nothing.
+        let wasLoneShortTap = !wasHandsFreeLocked && duration < ActivationGesture.latchThreshold
 
         Feedback.stop()
         audio.stop()
@@ -1429,8 +1428,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `contextualStrings` bias slot stays untouched — a proven no-op on this
         // stack, so post-hoc proofreading is the path that actually fires.
         var nicheTerms = dictionary.vocabulary
+        // The user's EXPLICIT canonical terms — every vocabulary entry PLUS each
+        // replacement rule's target — are high-intent, so they earn the corrector's
+        // looser phonetic gate (see NicheCorrector): they added these deliberately, so a
+        // close-but-not-tight recognizer miss ("church" ← "Chirp") should still snap to
+        // them. We also fold the replacement targets into the correction target list so a
+        // rule's canonical spelling gets phonetically rescued even when it isn't also a
+        // standalone vocabulary entry.
+        var trustedCores = Set(dictionary.vocabulary.map { NicheCorrector.core($0) })
+        for r in dictionary.replacements {
+            let to = r.to.trimmingCharacters(in: .whitespaces)
+            let toCore = NicheCorrector.core(to)
+            guard toCore.count >= 4 else { continue }
+            trustedCores.insert(toCore)
+            if !nicheTerms.contains(where: { $0.caseInsensitiveCompare(to) == .orderedSame }) {
+                nicheTerms.append(to)
+            }
+        }
         do {
-            var seen = Set(dictionary.vocabulary.map { $0.lowercased() })
+            var seen = Set(nicheTerms.map { $0.lowercased() })
             for term in nicheVocab.snapshot().correctorTerms(forNiche: NicheID.default.key, limit: 300)
             where seen.insert(term.lowercased()).inserted {
                 nicheTerms.append(term)
@@ -1707,7 +1723,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // corrector fixed the wrong thing, and that term should demote.
             var nicheFixTargets: [String] = []
             if !nicheTerms.isEmpty {
-                let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms)
+                let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms, trusted: trustedCores)
                 cleaned = corrected.text
                 nicheFixes = corrected.fixes.map(\.to)
                 nicheFixTargets = nicheFixes

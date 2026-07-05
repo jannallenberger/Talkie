@@ -388,6 +388,13 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(showBirdBuddy, forKey: Keys.showBirdBuddy); notifyChanged() }
     }
 
+    /// Show the live transcript as flowing text inside the capture pill while you
+    /// speak — the pill grows DOWNWARD as you talk, up to a cap, instead of stretching
+    /// sideways. Off = the bare pill (dot + waveform + cleanup switcher), no live words.
+    @Published var showLivePillText: Bool {
+        didSet { defaults.set(showLivePillText, forKey: Keys.showLivePillText) }
+    }
+
     private func notifyChanged() {
         NotificationCenter.default.post(name: .talkieSettingsChanged, object: nil)
     }
@@ -461,6 +468,7 @@ final class AppSettings: ObservableObject {
             Keys.launchAtLogin: false,
             Keys.pauseMusicWhileDictating: true,
             Keys.showBirdBuddy: true,
+            Keys.showLivePillText: true,
         ])
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
         // B4 migration: the Hold/Toggle Mode picker is gone — every user now gets the
@@ -525,6 +533,7 @@ final class AppSettings: ObservableObject {
         preferredInputDeviceUID = d.string(forKey: Keys.preferredInputDeviceUID)
         pauseMusicWhileDictating = d.bool(forKey: Keys.pauseMusicWhileDictating)
         showBirdBuddy = d.bool(forKey: Keys.showBirdBuddy)
+        showLivePillText = d.bool(forKey: Keys.showLivePillText)
         // H1: drop the four toggle-sweep keys from the plist so nothing stale lingers.
         // Their behaviors are now unconditional-by-construction (see the property
         // deletions above); leaving orphaned values would be harmless but untidy.
@@ -707,5 +716,6 @@ final class AppSettings: ObservableObject {
         /// `MusicController`). Retained only so `init` can `removeObject` the stale value.
         static let pauseMusicMediaKeyFallback = "pauseMusicMediaKeyFallback"
         static let showBirdBuddy = "showBirdBuddy"
+        static let showLivePillText = "showLivePillText"
     }
 }

@@ -1645,6 +1645,10 @@ private struct BehaviorSettings: View {
                 SettingsToggleRow(title: "Show floating bird".loc,
                                   subtitle: "A draggable macaw that pulses while you dictate.".loc,
                                   isOn: $settings.showBirdBuddy)
+                SettingsDivider()
+                SettingsToggleRow(title: "Show live words in the pill".loc,
+                                  subtitle: "The transcript flows below the waveform as you speak — the pill grows downward, not sideways.".loc,
+                                  isOn: $settings.showLivePillText)
             }
         }
     }

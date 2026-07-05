@@ -92,7 +92,9 @@ final class DictionaryStore: ObservableObject {
     /// Shared so the undecodable-file path falls back to the same in-memory
     /// defaults it would have seeded — without re-saving over the bad file.
     static let defaultReplacements: [Replacement] = [
-        Replacement(from: "talkie", to: "Talkie"),
+        // The app's own name self-corrects out of the box (recognition reliably hears
+        // "chirp" lowercased, or a near-miss the looser trusted-term corrector rescues).
+        Replacement(from: "chirp", to: "Chirp"),
     ]
 
     private func seedDefaultsIfEmpty() {
