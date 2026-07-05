@@ -101,7 +101,7 @@ struct GraphControlsPanel: View {
 
             group("Forces") {
                 slider("Center force", value: $settings.gravity, in: 0.002...0.06)
-                slider("Repel force", value: $settings.charge, in: 1_500...14_000)
+                slider("Repel force", value: $settings.charge, in: 1_500...24_000)
                 slider("Link force", value: $settings.stiffness, in: 0.004...0.08)
                 slider("Link distance", value: $settings.restLength, in: 40...200)
             }

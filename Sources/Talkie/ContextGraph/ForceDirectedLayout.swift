@@ -22,12 +22,14 @@ struct ForceDirectedLayout {
     /// Tunable constants. Defaults chosen to settle a few-hundred-node graph into a
     /// readable spread within a couple of seconds at ~60 steps/sec.
     struct Parameters {
-        /// Repulsion strength between every pair of nodes.
-        var charge: Double = 6_000
+        /// Repulsion strength between every pair of nodes. Tuned HIGH so the graph
+        /// SPREADS (like Obsidian) — nodes separate instead of piling into an overlapping
+        /// blob, so the edges/clusters between people, projects, and terms are visible.
+        var charge: Double = 13_000
         /// Spring stiffness along edges.
         var stiffness: Double = 0.02
-        /// Rest length a spring pulls toward.
-        var restLength: Double = 90
+        /// Rest length a spring pulls toward — the natural gap between two linked nodes.
+        var restLength: Double = 115
         /// Pull toward the centre (per unit distance).
         var gravity: Double = 0.015
         /// Velocity retained each step (0…1). Lower = settles faster / stiffer.

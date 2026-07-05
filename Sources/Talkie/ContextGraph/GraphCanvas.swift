@@ -30,8 +30,10 @@ struct GraphCanvas: View {
 
     /// The simulation. Rebuilt when the graph's node/edge identity changes.
     @State private var layout: ForceDirectedLayout
-    /// True while the sim is still moving; flips false once it settles so the
-    /// `TimelineView` clock stops advancing the layout.
+    /// Drives the `TimelineView` clock: true while the graph is on screen so the sim
+    /// runs CONTINUOUSLY (a grab always responds; it never freezes a couple of seconds
+    /// after opening). Flipped false only in `.onDisappear` so it doesn't burn CPU
+    /// off-screen.
     @State private var isSettling = true
 
     // Viewport transform.
@@ -98,6 +100,7 @@ struct GraphCanvas: View {
             layout.updateParameters(parameters)
             isSettling = true
         }
+        .onAppear { isSettling = true }
         .onDisappear { isSettling = false }
     }
 
@@ -114,10 +117,12 @@ struct GraphCanvas: View {
     private func advance(at date: Date) {
         guard isSettling, date != lastStepDate else { return }
         lastStepDate = date
-        let energy = layout.step()
-        if energy < ForceDirectedLayout.Parameters.default.settleEnergy && draggingNode == nil {
-            isSettling = false
-        }
+        // Keep stepping the whole time the graph is on screen — the sim never "finishes"
+        // (Obsidian-style live layout), so a grab always responds and it stays alive
+        // instead of freezing shortly after opening. At equilibrium the bounded forces +
+        // damping mean it barely moves, so the per-frame cost is negligible; `.onDisappear`
+        // pauses the clock when you leave the page.
+        _ = layout.step()
     }
 
     /// Re-heat the sim (resume stepping) — after a drag, or when the graph changes.
@@ -184,8 +189,10 @@ struct GraphCanvas: View {
     /// Node radius from mentions + degree, ~4–16 pt in world units (before zoom),
     /// scaled by the controls panel's live node-size multiplier.
     private func nodeRadius(_ node: KnowledgeGraphModel.Node) -> CGFloat {
-        let base = 4.0 + 1.6 * (Double(node.mentions).squareRoot()) + 0.8 * Double(node.degree).squareRoot()
-        return CGFloat(min(16, max(4, base))) * nodeSizeMultiplier
+        // Smaller dots (Jann's taste + so the links between nodes read): most nodes sit
+        // ~2–4 pt, hubs grow to ~10, scaled by the controls' live node-size multiplier.
+        let base = 2.2 + 1.0 * (Double(node.mentions).squareRoot()) + 0.5 * Double(node.degree).squareRoot()
+        return CGFloat(min(10, max(2.2, base))) * nodeSizeMultiplier
     }
 
     // MARK: Coordinate transforms
