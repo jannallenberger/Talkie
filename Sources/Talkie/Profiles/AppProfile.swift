@@ -265,7 +265,7 @@ enum AdaptiveOutputLanguage {
             // ⇒ insert as spoken. Never guess from a fragment.
             return .fallback(reason: "context-unreadable")
         }
-        guard let contextCode else {
+        guard let contextCode, !contextCode.isEmpty else {
             // Read plenty of text but couldn't call its language — same honest
             // fallback as above, just a different reason for the log.
             return .fallback(reason: "context-undetected")
@@ -275,7 +275,13 @@ enum AdaptiveOutputLanguage {
             // "same" from "different" — don't gamble a translation.
             return .fallback(reason: "input-undetected")
         }
-        if contextCode == inputCode {
+        // Lowercased before comparing — matches `OutputTranslator.base(_:)`'s own
+        // defensive normalization for the identical "are these the same base code"
+        // question, so the two language-comparison call sites in this feature area
+        // can never disagree over a casing quirk (`languageCode(of:)`/`NLLanguage`
+        // raw values are lowercase in practice, but this costs nothing and removes
+        // the assumption).
+        if contextCode.lowercased() == inputCode.lowercased() {
             // Guard (d)'s sibling: the app is already in the language you spoke —
             // zero LLM calls, insert as spoken (this IS the correct outcome, not a
             // fallback).

@@ -276,6 +276,16 @@ final class AdaptiveOutputLanguageTests: XCTestCase {
         XCTAssertEqual(d, .skipSameLanguage)
     }
 
+    func testDecideSameLanguageComparisonIsCaseInsensitive() {
+        // Defensive hardening matching `OutputTranslator.base(_:)`'s own lowercasing
+        // of the identical comparison: a case difference between the two codes must
+        // still read as "same language", not a false "different" that would trigger
+        // an unnecessary (and confusing) translate pass.
+        let d = AdaptiveOutputLanguage.decide(
+            contextText: "this is a plain english sentence with enough words", inputCode: "EN", contextCode: "en")
+        XCTAssertEqual(d, .skipSameLanguage, "a casing-only difference must not be treated as a language mismatch")
+    }
+
     func testDecideDetectsWhenContextLanguageDiffersFromInput() {
         // German dictation into an English-context app ⇒ translate to English.
         let d = AdaptiveOutputLanguage.decide(
