@@ -47,17 +47,6 @@ struct MemoryView: View {
     /// Drives the "Clear everything" confirmation — clearing history also erases what
     /// Talkie's memory extracted from it, so we ask first and state the scope honestly.
     @State private var showingClearConfirm = false
-    /// True while the pointer is over the graph region. Drives `.scrollDisabled` on the
-    /// page scroll view: over the graph, page scrolling is OFF so the graph's own
-    /// drag-pan / pinch-zoom own the gesture; at or below the search bar it's ON so the
-    /// search bar + history scroll up over the graph as normal. Tracked via
-    /// `.onContinuousHover` on the graph layer.
-    @State private var pointerOverGraph = false
-
-    /// The graph occupies this fraction of the Memory viewport height as a top-anchored
-    /// background band; the scroll content opens with a transparent spacer this tall, so
-    /// the graph shows through until the user scrolls the search + history up over it.
-    private static let graphHeightFraction: CGFloat = 0.57
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -71,30 +60,13 @@ struct MemoryView: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            let graphHeight = geo.size.height * Self.graphHeightFraction
-
-            // The graph is the FIRST child of the scroll view — a real, directly
-            // interactive element, NOT a layer behind a transparent hole (SwiftUI can't
-            // reliably route drags / hover / taps through that, which is what left the
-            // graph completely un-navigable). Scrolling is disabled while the pointer is
-            // over the graph, so a drag there pans / selects the graph instead of
-            // scrolling the page; move below it (onto the search bar or history) and the
-            // page scrolls, carrying the graph up out of view. The graph fades at its top
-            // and bottom edges via its own gradient mask.
-            ScrollView {
-                VStack(spacing: 0) {
-                    graphLayer(height: graphHeight)
-
-                    pageContent
-                        .padding(28)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.canvas)
-                }
-            }
-            .scrollDisabled(pointerOverGraph)
+        ScrollView {
+            pageContent
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Theme.canvas)
         .confirmationDialog("Clear your dictation history?",
                             isPresented: $showingClearConfirm, titleVisibility: .visible) {
             Button("Clear everything", role: .destructive) { clearEverything() }
@@ -104,42 +76,10 @@ struct MemoryView: View {
         }
     }
 
-    // MARK: Graph layer (scroll-view header, blur-faded top + bottom)
-
-    /// The knowledge graph as the scroll view's first child — a fixed-height, full-width
-    /// band, faded at both edges via a vertical gradient mask (opaque in the middle,
-    /// transparent at the very top and bottom) so it dissolves into the page rather than
-    /// ending in a hard line. An `.onContinuousHover` tracks whether the pointer is over
-    /// it, which gates page scrolling so the graph keeps its own drag-pan / pinch-zoom /
-    /// tap-to-select while the pointer is inside it.
-    private func graphLayer(height: CGFloat) -> some View {
-        KnowledgeGraphView(contextGraph: contextGraph, chromeHidden: true)
-            .frame(height: height)
-            .frame(maxWidth: .infinity)
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.0),
-                        .init(color: .black, location: 0.10),
-                        .init(color: .black, location: 0.80),
-                        .init(color: .clear, location: 1.0),
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
-            )
-            .onContinuousHover { phase in
-                switch phase {
-                case .active:  pointerOverGraph = true
-                case .ended:   pointerOverGraph = false
-                }
-            }
-    }
-
-    // MARK: Page content (header + search + history — the solid layer over the graph)
+    // MARK: Page content (header + search + history)
 
     /// The header (title + Copy All / Clear), the search bar, and the history / search
-    /// results feed — everything that was the Memory page before, now stacked on the
-    /// solid surface that scrolls up over the graph.
+    /// results feed — the whole Memory page.
     private var pageContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
@@ -246,8 +186,8 @@ struct MemoryView: View {
     }
 
     /// No query: the plain chronological feed (History's old job). Renders as a bare
-    /// `LazyVStack` — the enclosing Memory page owns the single scroll view now (the
-    /// graph sits behind it), so a nested same-axis ScrollView here would fight it.
+    /// `LazyVStack` — the enclosing Memory page owns the single scroll view, so a nested
+    /// same-axis ScrollView here would fight it.
     @ViewBuilder
     private var browseFeed: some View {
         if history.entries.isEmpty {
@@ -278,8 +218,8 @@ struct MemoryView: View {
                         subtitle: "Try a different word — this searches what you've said, your meetings, and what Talkie's picked up from them.",
                         icon: "magnifyingglass")
         } else {
-            // Bare `LazyVStack`: the Memory page's single scroll view scrolls this feed
-            // up over the graph behind it; a nested ScrollView here would conflict.
+            // Bare `LazyVStack`: the Memory page's single scroll view scrolls this feed;
+            // a nested ScrollView here would conflict.
             LazyVStack(spacing: 10) {
                 ForEach(hits) { hit in
                     resolvedRow(for: hit)
