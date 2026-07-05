@@ -42,11 +42,17 @@ final class AppProfileStore: ObservableObject {
             // "Private app": absent/false ⇒ normal (store + learn); only an explicit
             // `true` opts the app out. A no-op for every app the user hasn't marked.
             neverStore: p?.neverStore ?? false,
-            // E8 "Insert in": absent/empty ⇒ insert as spoken (the common case,
-            // no translation pass). Normalized to nil when empty so an accidental
-            // "" stored code never triggers a no-op translate. A no-op for every
-            // app the user hasn't given an output language.
-            outputLanguageCode: p?.outputLanguageCode.flatMap { $0.isEmpty ? nil : $0 }
+            // E8 "Insert in" / Adaptive: mutually exclusive by construction. Adaptive
+            // WINS when set — it ignores any stale `outputLanguageCode` a prior fixed
+            // pick may have left behind, so a profile can never resolve to "translate
+            // to this fixed code AND also detect" at once. Only when adaptive is
+            // nil/false does the fixed code apply (absent/empty ⇒ nil ⇒ insert as
+            // spoken, unchanged from before this feature). Normalized to nil when
+            // empty so an accidental "" stored code never triggers a no-op translate.
+            outputLanguageCode: (p?.outputLanguageAdaptive ?? false)
+                ? nil
+                : p?.outputLanguageCode.flatMap { $0.isEmpty ? nil : $0 },
+            outputLanguageAdaptive: p?.outputLanguageAdaptive ?? false
         )
     }
 
