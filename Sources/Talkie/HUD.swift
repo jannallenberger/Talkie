@@ -1094,14 +1094,12 @@ private struct HUDView: View {
                     // dropped". Keyed by `keepStyleTick` so it restarts from full.
                     CountdownRing(duration: HUDController.keepStyleDuration)
                         .id(model.keepStyleTick)
-                } else if model.silenceCountingDown {
-                    // B5: a hands-free-locked session that's gone quiet drains the same
-                    // coral ring over the auto-stop window — the visible, cancelable
-                    // countdown. Not phase-gated (the pill stays `.listening`); keyed by
-                    // `silenceCountdownTick` so a cancel→re-arm restarts it from full.
-                    CountdownRing(duration: model.silenceCountdownDuration)
-                        .id(model.silenceCountdownTick)
                 }
+                // The silence auto-stop no longer draws a draining ring — the "closing
+                // in" countdown read as stressful. A quiet latched session instead shows
+                // only the calm "still listening — say something…" text in the row above,
+                // and the whole auto-stop is opt-out (Settings ▸ Stop hands-free when I go
+                // quiet).
             }
             .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
             .fixedSize()

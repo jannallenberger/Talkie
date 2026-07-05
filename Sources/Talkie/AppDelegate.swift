@@ -741,6 +741,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// only touch the HUD pill.
     private func startSilenceWatchdog() {
         silenceWatchdog?.stop()   // defensive: never leak a prior session's watchdog
+        // Opt-out: when auto-stop-on-silence is off, a latched hands-free session keeps
+        // listening until you tap to stop — no watchdog, no countdown, no ring.
+        guard settings.autoStopOnSilence else { silenceWatchdog = nil; return }
         let myID = sessionID
         silenceWatchdog = SilenceWatchdogDriver(
             onCountdownStarted: { [weak self] remaining in
