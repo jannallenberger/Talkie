@@ -1066,10 +1066,13 @@ private struct HUDView: View {
             .padding(.horizontal, model.highContrast ? 13 : 12)
             .padding(.vertical, model.highContrast ? 8 : 7)
             .background(
-                Capsule(style: .continuous)
+                // A FIXED corner radius (not a Capsule): as the pill grows DOWNWARD with
+                // the live transcript, the radius must stay constant — a capsule's radius
+                // is half its height, so it ballooned rounder as the pill got taller.
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
                     .fill(.black)
                     .overlay(
-                        Capsule(style: .continuous)
+                        RoundedRectangle(cornerRadius: 17, style: .continuous)
                             .strokeBorder(
                                 .white.opacity(model.highContrast ? 0.9 : 0.10),
                                 lineWidth: model.highContrast ? 1.5 : 0.5
@@ -1103,7 +1106,7 @@ private struct HUDView: View {
             }
             .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
             .fixedSize()
-            .contentShape(Capsule(style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
             .background(
                 // Publish the pill's frame (SwiftUI top-left coords) so the panel's
                 // hosting view only claims clicks here — the transparent headroom
@@ -1592,9 +1595,9 @@ private struct CountdownRing: View {
 
     var body: some View {
         ZStack {
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
                 .stroke(.white.opacity(0.08), lineWidth: 2)
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
                 .trim(from: 0, to: depleted ? 0 : 1)
                 .stroke(Theme.coral, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .shadow(color: Theme.coral.opacity(0.6), radius: 4)
