@@ -157,6 +157,24 @@ final class ActivityStore: ObservableObject {
         (days[Self.key(for: day, calendar: calendar)]?.dictations ?? 0) > 0
     }
 
+    // MARK: Daily series (dashboard words-per-day chart)
+
+    /// One point per day for the trailing `count` days, oldest → newest and
+    /// including today (days with no activity report `0`). Reads the same
+    /// on-device `days` tally the heatmap does — nothing networked, no estimate —
+    /// so the dashboard's words-per-day chart stays as honest as every other stat.
+    func dailyWords(days count: Int) -> [(date: Date, words: Int)] {
+        guard count > 0 else { return [] }
+        let today = calendar.startOfDay(for: Date())
+        var out: [(date: Date, words: Int)] = []
+        for offset in stride(from: count - 1, through: 0, by: -1) {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+            let words = days[Self.key(for: day, calendar: calendar)]?.words ?? 0
+            out.append((date: day, words: words))
+        }
+        return out
+    }
+
     // MARK: Heatmap
 
     /// Build the contribution grid for the trailing `weeks` weeks up to this week.

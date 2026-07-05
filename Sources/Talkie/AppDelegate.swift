@@ -1771,7 +1771,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 replacements: replacements,
                 removeFillers: !aiHandledFillers,
                 autoCapitalize: autoCap,
-                to: cleaned
+                to: cleaned,
+                // Feed the per-word recognizer confidences so confidence-gated
+                // (weighted) learned rules can tell "the user really said `from`
+                // this time" (leave it) from "the recognizer was unsure" (apply the
+                // learned spelling). Hard rules ignore this and always apply.
+                wordConfidences: wordConfidences
             )
             var finalText = processed.text
 
