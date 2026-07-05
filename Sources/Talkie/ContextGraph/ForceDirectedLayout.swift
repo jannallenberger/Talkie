@@ -32,9 +32,20 @@ struct ForceDirectedLayout {
         var gravity: Double = 0.015
         /// Velocity retained each step (0…1). Lower = settles faster / stiffer.
         var damping: Double = 0.85
-        /// Floor on pairwise distance so the `1/d²` charge can't explode when two
-        /// seeded nodes start near-coincident.
+        /// Floor on pairwise distance so the spring math can't divide by zero.
         var minDistance: Double = 0.5
+        /// Softening added to the charge denominator (`charge/(d²+soft²)`) so repulsion
+        /// is BOUNDED — two near-coincident nodes can never generate a screen-flinging
+        /// force the way the old `1/d²`-with-a-tiny-floor did. Also acts as a node's
+        /// effective "personal space" radius.
+        var chargeSoftening: Double = 34
+        /// Hard cap on a node's per-step speed, so no single frame can jump a node clear
+        /// across the canvas (the other half of keeping the sim from exploding).
+        var maxSpeed: Double = 22
+        /// Extra centring pull per unit of node degree — high-degree HUBS are drawn
+        /// toward the middle so the layout reads as a hierarchy (hubs central, leaves
+        /// radiating out) instead of a uniform cloud.
+        var hubGravity: Double = 0.03
         /// Radius of the seeding circle.
         var seedRadius: Double = 240
         /// Below this total kinetic energy the sim is considered settled.
@@ -52,6 +63,8 @@ struct ForceDirectedLayout {
     /// Nodes pinned by the user (a dragged node) are held in place — the sim still
     /// reads their position for forces on others, but never moves them itself.
     private var pinned: Set<Int>
+    /// Per-node degree (resolved edge count), for degree-weighted centring (hierarchy).
+    private let degrees: [Double]
 
     let nodeCount: Int
 
@@ -79,10 +92,15 @@ struct ForceDirectedLayout {
 
         // Resolve EntityID edges → index pairs once.
         let indexByID = Dictionary(uniqueKeysWithValues: nodes.enumerated().map { ($0.element.id, $0.offset) })
-        self.springs = edges.compactMap { edge in
+        let resolvedSprings = edges.compactMap { (edge) -> (a: Int, b: Int, weight: Double)? in
             guard let a = indexByID[edge.a], let b = indexByID[edge.b], a != b else { return nil }
             return (a, b, Double(max(1, edge.weight)))
         }
+        self.springs = resolvedSprings
+        // Degree per node from the resolved springs — drives hub-weighted centring.
+        var deg = Array(repeating: 0.0, count: nodes.count)
+        for s in resolvedSprings { deg[s.a] += 1; deg[s.b] += 1 }
+        self.degrees = deg
     }
 
     /// Pin a node (while the user drags it): the sim reads its position but never
@@ -125,7 +143,10 @@ struct ForceDirectedLayout {
                     distSq = dx * dx + dy * dy
                 }
                 let dist = distSq.squareRoot()
-                let repulse = params.charge / distSq
+                // Softened Coulomb: BOUNDED repulsion (max ≈ charge/soft²) so close nodes
+                // firmly push apart without ever flinging across the screen.
+                let soft = params.chargeSoftening
+                let repulse = params.charge / (distSq + soft * soft)
                 let ux = dx / dist, uy = dy / dist
                 forces[i].dx += ux * repulse
                 forces[i].dy += uy * repulse
@@ -153,12 +174,21 @@ struct ForceDirectedLayout {
         var energy = 0.0
         for i in 0..<n {
             if pinned.contains(i) { velocities[i] = .zero; continue }
-            forces[i].dx -= Double(positions[i].x) * params.gravity
-            forces[i].dy -= Double(positions[i].y) * params.gravity
+            // Degree-weighted centring: hubs feel more gravity → they settle central and
+            // leaves radiate out, so the graph reads as a hierarchy, not a flat cloud.
+            let g = params.gravity + params.hubGravity * degrees[i]
+            forces[i].dx -= Double(positions[i].x) * g
+            forces[i].dy -= Double(positions[i].y) * g
 
             var v = velocities[i]
             v.dx = (v.dx + forces[i].dx) * params.damping
             v.dy = (v.dy + forces[i].dy) * params.damping
+            // Speed clamp: no single step may fling a node across the canvas.
+            let speed = (v.dx * v.dx + v.dy * v.dy).squareRoot()
+            if speed > params.maxSpeed {
+                let scale = params.maxSpeed / speed
+                v.dx *= scale; v.dy *= scale
+            }
             velocities[i] = v
             positions[i].x += CGFloat(v.dx)
             positions[i].y += CGFloat(v.dy)
