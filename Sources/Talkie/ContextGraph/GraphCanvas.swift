@@ -142,11 +142,28 @@ struct GraphCanvas: View {
                       center: CGPoint, zoom: CGFloat) {
         let positions = layout.positions
         guard positions.count == graph.nodes.count else { return }
+        let indexByID = graph.indexByID
 
-        // Edges first — faint grey, width scaled by weight.
+        // Selection focus (Obsidian-style): when a node is selected, its NEIGHBOURHOOD —
+        // itself + directly-linked nodes and the edges between them — stays bright while
+        // everything else dims, so you can see exactly how one term/person/project is
+        // interlinked. Nothing selected → the whole graph draws, with orphan (link-less)
+        // nodes faded so the connected core reads.
+        let selectedIndex: Int? = selectedID.flatMap { indexByID[$0] }
+        let hasSelection = selectedIndex != nil
+        var focusSet = Set<Int>()
+        if let si = selectedIndex {
+            focusSet.insert(si)
+            for edge in graph.edges {
+                guard let ai = indexByID[edge.a], let bi = indexByID[edge.b] else { continue }
+                if ai == si { focusSet.insert(bi) }
+                if bi == si { focusSet.insert(ai) }
+            }
+        }
+
+        // Edges first.
         var maxWeight = 1
         for e in graph.edges { maxWeight = max(maxWeight, e.weight) }
-        let indexByID = graph.indexByID
         for edge in graph.edges {
             guard let ai = indexByID[edge.a], let bi = indexByID[edge.b] else { continue }
             let p1 = worldToScreen(positions[ai], center: center, zoom: zoom)
@@ -155,10 +172,24 @@ struct GraphCanvas: View {
             path.move(to: p1)
             path.addLine(to: p2)
             let strength = Double(edge.weight) / Double(maxWeight)
-            let opacity = 0.10 + 0.08 * strength // ~0.10–0.18
-            let width = (0.7 + 1.3 * strength) * min(1.4, max(0.5, zoom)) * linkThicknessMultiplier
-            context.stroke(path, with: .color(Theme.inkTertiary.opacity(opacity)),
-                           lineWidth: width)
+            let touchesSelection = hasSelection && (ai == selectedIndex || bi == selectedIndex)
+            let color: Color
+            let opacity: Double
+            let width: CGFloat
+            if hasSelection {
+                // Selected node's edges glow coral; every other edge nearly vanishes.
+                color = touchesSelection ? Theme.coral : Theme.inkTertiary
+                opacity = touchesSelection ? 0.85 : 0.04
+                width = touchesSelection
+                    ? (1.2 + 1.6 * strength) * min(1.6, max(0.6, zoom)) * linkThicknessMultiplier
+                    : 0.6 * linkThicknessMultiplier
+            } else {
+                // At rest: more visible than before so the interconnectivity reads.
+                color = Theme.inkTertiary
+                opacity = 0.15 + 0.18 * strength // ~0.15–0.33
+                width = (0.7 + 1.5 * strength) * min(1.5, max(0.5, zoom)) * linkThicknessMultiplier
+            }
+            context.stroke(path, with: .color(color.opacity(opacity)), lineWidth: width)
         }
 
         // Nodes on top.
@@ -168,19 +199,27 @@ struct GraphCanvas: View {
             let rect = CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)
             let base = GraphStyle.color(for: node.kind)
             let isSelected = node.id == selectedID
+            let nodeOpacity: Double = hasSelection
+                ? (focusSet.contains(i) ? 1.0 : 0.16)          // dim non-neighbourhood
+                : (node.degree == 0 ? 0.42 : 1.0)              // fade orphans at rest
 
-            context.fill(Circle().path(in: rect), with: .color(base))
+            context.fill(Circle().path(in: rect), with: .color(base.opacity(nodeOpacity)))
             // Subtle outline; the selected node gets a brighter ring.
             context.stroke(Circle().path(in: rect),
-                           with: .color(isSelected ? Theme.ink : .black.opacity(0.25)),
+                           with: .color(isSelected ? Theme.ink : .black.opacity(0.25 * nodeOpacity)),
                            lineWidth: isSelected ? 2 : 0.75)
 
-            // Label only larger nodes or the selected one (avoid clutter). The cutoff
-            // is the controls panel's live text-fade threshold.
-            if isSelected || node.degree >= labelThreshold || node.mentions >= labelThreshold {
+            // Label the selected node + its neighbours always; otherwise the hubs (the
+            // controls panel's live text-fade threshold). Non-focus labels fade with the
+            // selection so the neighbourhood's names stand out.
+            let showLabel = isSelected
+                || (hasSelection && focusSet.contains(i))
+                || (!hasSelection && (node.degree >= labelThreshold || node.mentions >= labelThreshold))
+            if showLabel {
+                let dimLabel = hasSelection && !focusSet.contains(i)
                 let text = Text(node.displayName)
                     .font(.system(size: max(9, min(13, 8 + r * 0.35)), weight: isSelected ? .semibold : .medium))
-                    .foregroundStyle(isSelected ? Theme.ink : Theme.inkSecondary)
+                    .foregroundStyle((isSelected ? Theme.ink : Theme.inkSecondary).opacity(dimLabel ? 0.3 : 1))
                 context.draw(text, at: CGPoint(x: p.x, y: p.y + r + 8), anchor: .top)
             }
         }

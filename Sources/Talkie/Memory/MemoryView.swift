@@ -95,6 +95,10 @@ struct MemoryView: View {
                         // the graph as far as the user is concerned.
                         Color.clear
                             .frame(height: graphHeight)
+                            // Let taps / drags / hover fall THROUGH to the graph behind —
+                            // Color.clear is otherwise hit-testable and was swallowing the
+                            // clicks meant to select a node.
+                            .allowsHitTesting(false)
 
                         pageContent
                             .padding(28)
@@ -103,6 +107,17 @@ struct MemoryView: View {
                             // an opaque canvas fill so the graph never bleeds through
                             // the search + history once they cover it.
                             .background(Theme.canvas)
+                            // Its TOP edge fades in (mirroring the graph's bottom fade) so
+                            // the page EMERGES from the graph rather than hard-cutting, and
+                            // the fade travels with the content as it scrolls.
+                            .mask(
+                                VStack(spacing: 0) {
+                                    LinearGradient(colors: [.clear, .black],
+                                                   startPoint: .top, endPoint: .bottom)
+                                        .frame(height: 44)
+                                    Color.black
+                                }
+                            )
                     }
                 }
                 .scrollDisabled(pointerOverGraph)
