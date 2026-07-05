@@ -30,10 +30,11 @@ struct GraphCanvas: View {
 
     /// The simulation. Rebuilt when the graph's node/edge identity changes.
     @State private var layout: ForceDirectedLayout
-    /// Drives the `TimelineView` clock: true while the graph is on screen so the sim
-    /// runs CONTINUOUSLY (a grab always responds; it never freezes a couple of seconds
-    /// after opening). Flipped false only in `.onDisappear` so it doesn't burn CPU
-    /// off-screen.
+    /// Drives the `TimelineView` clock: true while the sim should keep stepping. Set on
+    /// appear and on every interaction (drag / zoom / a Forces slider / a graph change);
+    /// cleared in `advance()` once the layout is calm — so the graph eases to rest and
+    /// then STOPS stepping (no perpetual per-frame CPU, which was the lag) yet always
+    /// re-heats and responds when grabbed. Also cleared in `.onDisappear`.
     @State private var isSettling = true
 
     // Viewport transform.
@@ -117,12 +118,16 @@ struct GraphCanvas: View {
     private func advance(at date: Date) {
         guard isSettling, date != lastStepDate else { return }
         lastStepDate = date
-        // Keep stepping the whole time the graph is on screen — the sim never "finishes"
-        // (Obsidian-style live layout), so a grab always responds and it stays alive
-        // instead of freezing shortly after opening. At equilibrium the bounded forces +
-        // damping mean it barely moves, so the per-frame cost is negligible; `.onDisappear`
-        // pauses the clock when you leave the page.
-        _ = layout.step()
+        let energy = layout.step()
+        // Settle once calm: stop the clock so the sim isn't spending a frame's work (plus
+        // TimelineView + per-frame Task churn) every tick forever — THAT constant stepping
+        // was the lag. ANY interaction re-heats it (`isSettling = true` on drag / zoom / a
+        // Forces slider / a graph change), so a grab always responds. The earlier
+        // "freezes after opening" was the graph not RECEIVING drags (it sat behind the
+        // scroll view) — fixed by making it a real scroll child — not a sim that had died.
+        if energy < parameters.settleEnergy && draggingNode == nil {
+            isSettling = false
+        }
     }
 
     /// Re-heat the sim (resume stepping) — after a drag, or when the graph changes.

@@ -74,54 +74,25 @@ struct MemoryView: View {
         GeometryReader { geo in
             let graphHeight = geo.size.height * Self.graphHeightFraction
 
-            ZStack(alignment: .top) {
-                // ── Background layer: the live knowledge graph ───────────────────
-                // A top-anchored band, full width, faded out at its TOP and BOTTOM
-                // edges by a gradient mask so it melts into the page chrome instead of
-                // ending in a hard rectangle. It sits behind the scroll content; as the
-                // user scrolls the search + history up, they cover it.
-                graphLayer(height: graphHeight)
+            // The graph is the FIRST child of the scroll view — a real, directly
+            // interactive element, NOT a layer behind a transparent hole (SwiftUI can't
+            // reliably route drags / hover / taps through that, which is what left the
+            // graph completely un-navigable). Scrolling is disabled while the pointer is
+            // over the graph, so a drag there pans / selects the graph instead of
+            // scrolling the page; move below it (onto the search bar or history) and the
+            // page scrolls, carrying the graph up out of view. The graph fades at its top
+            // and bottom edges via its own gradient mask.
+            ScrollView {
+                VStack(spacing: 0) {
+                    graphLayer(height: graphHeight)
 
-                // ── Foreground: the scrolling page ───────────────────────────────
-                // Opens with a transparent spacer the height of the visible graph, so
-                // the graph shows through at rest; below it, on a solid surface, come
-                // the header, search bar, and history — which rise up over the graph as
-                // the page scrolls. Scrolling is disabled while the pointer is over the
-                // graph (so the graph owns its own pan/zoom); enabled elsewhere.
-                ScrollView {
-                    VStack(spacing: 0) {
-                        // Transparent window onto the graph behind. A tap here would
-                        // fall through to the graph; that's intended — this region IS
-                        // the graph as far as the user is concerned.
-                        Color.clear
-                            .frame(height: graphHeight)
-                            // Let taps / drags / hover fall THROUGH to the graph behind —
-                            // Color.clear is otherwise hit-testable and was swallowing the
-                            // clicks meant to select a node.
-                            .allowsHitTesting(false)
-
-                        pageContent
-                            .padding(28)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            // The solid page surface that slides up over the graph —
-                            // an opaque canvas fill so the graph never bleeds through
-                            // the search + history once they cover it.
-                            .background(Theme.canvas)
-                            // Its TOP edge fades in (mirroring the graph's bottom fade) so
-                            // the page EMERGES from the graph rather than hard-cutting, and
-                            // the fade travels with the content as it scrolls.
-                            .mask(
-                                VStack(spacing: 0) {
-                                    LinearGradient(colors: [.clear, .black],
-                                                   startPoint: .top, endPoint: .bottom)
-                                        .frame(height: 44)
-                                    Color.black
-                                }
-                            )
-                    }
+                    pageContent
+                        .padding(28)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.canvas)
                 }
-                .scrollDisabled(pointerOverGraph)
             }
+            .scrollDisabled(pointerOverGraph)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .confirmationDialog("Clear your dictation history?",
@@ -133,17 +104,18 @@ struct MemoryView: View {
         }
     }
 
-    // MARK: Graph layer (top band, blur-faded top + bottom)
+    // MARK: Graph layer (scroll-view header, blur-faded top + bottom)
 
-    /// The knowledge graph as a top-anchored background band. Faded at both edges via a
-    /// vertical gradient mask (opaque in the middle, transparent at the very top and
-    /// bottom) so it dissolves into the page rather than ending in a hard line. An
-    /// `.onContinuousHover` tracks whether the pointer is over it, which gates page
-    /// scrolling so the graph keeps its own drag-pan / pinch-zoom.
+    /// The knowledge graph as the scroll view's first child — a fixed-height, full-width
+    /// band, faded at both edges via a vertical gradient mask (opaque in the middle,
+    /// transparent at the very top and bottom) so it dissolves into the page rather than
+    /// ending in a hard line. An `.onContinuousHover` tracks whether the pointer is over
+    /// it, which gates page scrolling so the graph keeps its own drag-pan / pinch-zoom /
+    /// tap-to-select while the pointer is inside it.
     private func graphLayer(height: CGFloat) -> some View {
         KnowledgeGraphView(contextGraph: contextGraph, chromeHidden: true)
             .frame(height: height)
-            .frame(maxWidth: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity)
             .mask(
                 LinearGradient(
                     stops: [
@@ -155,7 +127,6 @@ struct MemoryView: View {
                     startPoint: .top, endPoint: .bottom
                 )
             )
-            .frame(maxHeight: .infinity, alignment: .top)
             .onContinuousHover { phase in
                 switch phase {
                 case .active:  pointerOverGraph = true
