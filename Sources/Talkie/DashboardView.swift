@@ -87,6 +87,11 @@ struct DashboardView: View {
 
                     ScratchpadCard(scratchpad: scratchpad)
 
+                    // L-bento: the hero band — a slim WPM gauge leading, the wide
+                    // words-per-day chart filling the rest. Reflows to a stack when the
+                    // window is too narrow to seat both side by side.
+                    heroBand
+
                     // Equal-height cards take two cooperating pieces: the outer
                     // `.frame(maxHeight: .infinity, alignment: .top)` top-aligns
                     // each LazyVGrid cell wrapper (so a short card sits at the top
@@ -97,9 +102,8 @@ struct DashboardView: View {
                     LazyVGrid(columns: metricCols, alignment: .leading, spacing: Theme.Space.gridGap) {
                         // K9: each read-only stat card reads as ONE combined VoiceOver
                         // element (its eyebrow + values as a single phrase) instead of
-                        // a stream of disconnected fragments.
-                        GaugeCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
-                            .accessibilityElement(children: .combine)
+                        // a stream of disconnected fragments. (The WPM gauge moved up
+                        // into the hero band, so this grid starts at Speed.)
                         SpeedCard(latency: latency).frame(maxHeight: .infinity, alignment: .top)
                             .accessibilityElement(children: .combine)
                         FixesCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
@@ -200,6 +204,39 @@ struct DashboardView: View {
         if total == 0 { return "Hold your dictation key and speak — your stats will fill in here." }
         return "\(total.formatted()) words dictated, all on-device."
     }
+
+    // MARK: Hero band
+
+    /// The bento hero: a slim WPM gauge leading and the wide words-per-day chart
+    /// filling the rest. `ViewThatFits` seats them side by side when there's room
+    /// (the common case) and stacks them when the window narrows, so neither the
+    /// gauge nor the chart is ever crushed. `heroHeight` pins both to one height in
+    /// the side-by-side layout so their surfaces paint level, like the grid rows.
+    private var heroBand: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: Theme.Space.gridGap) {
+                GaugeCard(stats: stats)
+                    .frame(width: 236)
+                    .accessibilityElement(children: .combine)
+                WordsPerDayCard(activity: activity)
+                    .frame(minWidth: 320, maxWidth: .infinity)
+                    .accessibilityElement(children: .combine)
+            }
+            .frame(height: heroHeight)
+            VStack(spacing: Theme.Space.gridGap) {
+                GaugeCard(stats: stats)
+                    .accessibilityElement(children: .combine)
+                WordsPerDayCard(activity: activity)
+                    .frame(height: heroHeight)
+                    .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    /// The side-by-side hero height — tall enough to seat the gauge's arc plus its
+    /// two comparison lines, and the chart's number plus its bars, without crushing
+    /// either. Tuned to the gauge card's natural height so nothing compresses.
+    private let heroHeight: CGFloat = 236
 }
 
 /// The dashboard's serif title, doubling as the inline editor for `userName`
@@ -273,12 +310,13 @@ private struct EditableParrotName: View {
     @State private var draft = ""
     @FocusState private var focused: Bool
 
-    /// The resting label: the named bird ("🦜 Kiwi") once set, else a gentle,
-    /// K1-voice invitation to name it.
+    /// The resting label: the named bird ("Kiwi") once set, else a gentle,
+    /// K1-voice invitation to name it. No emoji prefix — the bare name reads
+    /// cleaner beside the greeting, and the name is user content so it renders
+    /// verbatim (never localized).
     private var displayText: String {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? "Name the macaw".loc
-                               : String(format: "🦜 %@".loc, trimmed)
+        return trimmed.isEmpty ? "Name the macaw".loc : trimmed
     }
 
     var body: some View {
@@ -380,13 +418,24 @@ private struct DashboardAvatar: View {
     @ViewBuilder
     private var control: some View {
         if profileImage.image != nil {
-            // A set photo: the avatar with a click menu to replace or remove it.
+            // A set photo sits in the SAME circular slot the "+" affordance occupies —
+            // a sunken fill + a solid ring — with the photo matted a few points inside
+            // it, so a set photo reads as "in the slot" rather than a bare cut-out.
+            // Click opens a menu to replace or remove it.
             Menu {
                 Button("Choose photo…".loc, action: choosePhoto)
                 Button("Remove photo".loc, role: .destructive) { profileImage.clear() }
             } label: {
-                AvatarView(store: profileImage, size: size)
-                    .overlay(dropTargeting ? Circle().strokeBorder(Theme.coral, lineWidth: 2) : nil)
+                Circle()
+                    .fill(Theme.surfaceSunken.opacity(0.6))
+                    .overlay(AvatarView(store: profileImage, size: size - 6))
+                    .overlay(
+                        Circle().strokeBorder(
+                            dropTargeting ? Theme.coral : Theme.hairline,
+                            lineWidth: 1.5
+                        )
+                    )
+                    .frame(width: size, height: size)
             }
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
@@ -675,6 +724,102 @@ private struct Gauge: View {
                      endAngle: .degrees(180 + 180 * to),
                      clockwise: false)
         }
+    }
+}
+
+// MARK: - Words-per-day chart card (bento hero, right)
+
+/// L-bento — the playful hero chart: one rounded bar per day for the last two
+/// weeks, its height set by that day's word count and tinted along the feather
+/// ramp (gold at the foot → macaw red at the crest). Honest by construction — it
+/// reads the same on-device `ActivityStore.days` tally as the streak heatmap, so a
+/// day with no dictation is a real gap (a faint stub), never a fabricated point.
+/// Bars grow from the baseline on first appear unless Reduce Motion is on.
+private struct WordsPerDayCard: View {
+    @ObservedObject var activity: ActivityStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Two weeks reads as a clean rhythm at hero width without crowding the bars.
+    private let dayCount = 14
+
+    /// Drives the grow-from-baseline entrance; flipped once on appear.
+    @State private var grown = false
+
+    private var series: [(date: Date, words: Int)] { activity.dailyWords(days: dayCount) }
+    private var maxWords: Int { max(1, series.map(\.words).max() ?? 0) }
+    private var total: Int { series.reduce(0) { $0 + $1.words } }
+    private var hasData: Bool { total > 0 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Eyebrow(text: "Words per day")
+                Spacer()
+                Text("\(dayCount) days")
+                    .font(.talkieEyebrow)
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+
+            if hasData {
+                Text(total.formatted())
+                    .font(.talkieMetric(34))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                chart
+            } else {
+                EmptyHint(icon: "chart.bar.xaxis",
+                          text: "Dictate and your daily words chart here.")
+            }
+        }
+        .talkieCard(fill: true)
+        .onAppear {
+            guard !reduceMotion else { grown = true; return }
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.78)) { grown = true }
+        }
+    }
+
+    /// The bar row, sized to fill whatever height the card gives it below the
+    /// number. Each bar is a squircle capsule; zero-word days collapse to a faint
+    /// baseline stub so the two-week axis stays continuous.
+    private var chart: some View {
+        GeometryReader { geo in
+            let n = max(series.count, 1)
+            let gap: CGFloat = 5
+            let barW = max(3, (geo.size.width - gap * CGFloat(n - 1)) / CGFloat(n))
+            HStack(alignment: .bottom, spacing: gap) {
+                ForEach(Array(series.enumerated()), id: \.offset) { _, day in
+                    let frac = CGFloat(Double(day.words) / Double(maxWords))
+                    Capsule(style: .continuous)
+                        .fill(day.words == 0
+                              ? AnyShapeStyle(Theme.surfaceSunken)
+                              : AnyShapeStyle(LinearGradient(
+                                    colors: [Theme.featherGold, Theme.featherCoral],
+                                    startPoint: .top, endPoint: .bottom)))
+                        .frame(width: barW,
+                               height: barHeight(frac: frac, full: geo.size.height, empty: day.words == 0))
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .help(dayHelp(day))
+                }
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    /// A bar's drawn height: a faint 3-pt stub for an empty day; otherwise the
+    /// day's share of the busiest day scaled to the chart height — or `0` before
+    /// the entrance animation runs, so the bars spring up from the baseline.
+    private func barHeight(frac: CGFloat, full: CGFloat, empty: Bool) -> CGFloat {
+        if empty { return 3 }
+        guard grown else { return 0 }
+        return max(4, full * frac)
+    }
+
+    /// Tooltip: "N words · Mon 3" for an active day, empty for a quiet one.
+    private func dayHelp(_ day: (date: Date, words: Int)) -> String {
+        guard day.words > 0 else { return "" }
+        let when = day.date.formatted(.dateTime.weekday(.abbreviated).day())
+        return "\(day.words) words · \(when)"
     }
 }
 

@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// A spoken→written substitution. Applied to the final transcript.
 struct Replacement: Codable, Identifiable, Hashable {
@@ -13,8 +14,19 @@ struct Replacement: Codable, Identifiable, Hashable {
     /// True if Talkie added this automatically by watching you edit (optional for
     /// back-compat with older saved files).
     var learned: Bool?
+    /// True when this is a *confidence-gated* learned rule: `to` is itself an
+    /// ordinary dictionary word (e.g. "their"→"there"), so rewriting `from`→`to`
+    /// blindly would be illogical — it would clobber every future genuine `from`.
+    /// A weighted rule instead fires ONLY when the recognizer was unsure it heard
+    /// `from` this session (see `TextProcessor.apply`); when it was confident,
+    /// `from` stands. Optional for back-compat: absent/false is a hard always-
+    /// replace rule — the right behavior for learned jargon (`to` NOT a dictionary
+    /// word, e.g. "Coralate"), which must snap every time.
+    var weighted: Bool?
 
     var isLearned: Bool { learned ?? false }
+    /// See `weighted`. A weighted rule is gated on recognizer confidence.
+    var isWeighted: Bool { weighted ?? false }
 }
 
 /// User vocabulary + substitutions. Backs both the dictionary UI and the
@@ -156,9 +168,33 @@ final class DictionaryStore: ObservableObject {
         guard !f.isEmpty, !t.isEmpty, f.lowercased() != t.lowercased() else { return false }
         // Skip if we already have this exact correction.
         if replacements.contains(where: { $0.from.lowercased() == f.lowercased() && $0.to == t }) { return false }
-        replacements.append(Replacement(from: f, to: t, caseSensitive: false, wholeWord: true, learned: true))
+        // When the TARGET is itself an ordinary dictionary word (e.g. "their"→
+        // "there"), a hard always-replace rule is illogical: it would rewrite every
+        // future genuine `from`. Store it CONFIDENCE-GATED instead — it fires only
+        // when the recognizer was unsure it heard `from` (see `TextProcessor.apply`).
+        // A target that is NOT a dictionary word — learned jargon like "Coralate" or
+        // "claude.md" — stays a hard rule so it keeps snapping every time.
+        let weighted = Self.isOrdinaryDictionaryWord(t)
+        replacements.append(Replacement(from: f, to: t, caseSensitive: false, wholeWord: true,
+                                        learned: true, weighted: weighted))
         save()
         return true
+    }
+
+    /// Whether `word` is an ordinary word already in the user's dictionary — the
+    /// signal that a learned correction *toward* it must be confidence-gated rather
+    /// than a hard always-replace. The built-in high-frequency set is the
+    /// deterministic floor; `NSSpellChecker` broadens it to the full system
+    /// dictionary. Multi-word targets are treated as jargon (hard rule) — a phrase
+    /// isn't a single lexical item the recognizer confuses with a common word.
+    static func isOrdinaryDictionaryWord(_ word: String) -> Bool {
+        let w = word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !w.isEmpty, !w.contains(" ") else { return false }
+        if NicheTermGuard.default.commonWords.contains(w) { return true }
+        // `checkSpelling` returns the range of the first misspelling; NSNotFound
+        // means the whole word is known-good (i.e. it's in the dictionary).
+        let misspelling = NSSpellChecker.shared.checkSpelling(of: w, startingAt: 0)
+        return misspelling.location == NSNotFound
     }
 
     /// Undo a just-learned correction: remove the matching learned rule. Only
@@ -400,12 +436,21 @@ enum TextProcessor {
         replacements: [Replacement],
         removeFillers: Bool,
         autoCapitalize: Bool,
-        to input: String
+        to input: String,
+        wordConfidences: [WordConfidence] = []
     ) -> ProcessedText {
         var text = input
         var replacementHits = 0
         var replacedWords: [String] = []
         for r in replacements {
+            // A confidence-gated (weighted) rule fires ONLY when the recognizer was
+            // unsure it heard `from` this session. If it was confident — or `from`
+            // never appears in the confidences (e.g. an interim pass hands none) —
+            // the recognizer stands by what it heard, so we leave `from` alone. Hard
+            // rules (the jargon default) skip this gate and always apply.
+            if r.isWeighted, !recognizerWasUnsure(about: r.from, in: wordConfidences) {
+                continue
+            }
             let (out, hits) = applyOne(r, to: text)
             text = out
             replacementHits += hits
@@ -537,6 +582,22 @@ enum TextProcessor {
             let opts: String.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
             return haystack.range(of: needle, options: opts) != nil
         }
+    }
+
+    /// Whether the recognizer was visibly UNSURE it heard `word` this session — the
+    /// gate a `weighted` (confidence-gated) rule fires on. True iff some recognized
+    /// token equals `word` (case-insensitively, ignoring surrounding punctuation)
+    /// with confidence below `ConfidenceGate.floor`. When the word never appears, or
+    /// only appears with solid confidence, this is false: the recognizer stands by
+    /// what it heard, so a weighted rule must NOT rewrite it. Pure.
+    static func recognizerWasUnsure(about word: String, in confidences: [WordConfidence]) -> Bool {
+        let target = word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !target.isEmpty else { return false }
+        for wc in confidences {
+            let token = wc.word.lowercased().trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+            if token == target && wc.confidence < ConfidenceGate.floor { return true }
+        }
+        return false
     }
 
     private static func capitalizeFirstLetter(_ text: String) -> String {
