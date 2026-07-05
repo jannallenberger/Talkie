@@ -25,8 +25,6 @@ import Foundation
 // binary stays `talkie-mcp`. This constant is user-visible COPY only — tool
 // descriptions and queue-confirmation text.
 enum BrandMirror {
-    /// MIRROR: Brand.displayName fallback ("Talkie") in the app target. The display
-    /// name is now "Chirp"; the app resolves it from CFBundleDisplayName, this static
-    /// literal is the MCP binary's copy (it can't read the app plist).
-    static let displayName = "Chirp"
+    /// MIRROR: Brand.displayName fallback ("Talkie") in the app target.
+    static let displayName = "Talkie"
 }

@@ -66,23 +66,20 @@ final class DictionaryStore: ObservableObject {
         }
         replacements = payload.replacements
         vocabulary = payload.vocabulary
-        migrateBrandSeedIfNeeded()
+        cleanupChirpSeedIfNeeded()
     }
 
-    /// One-time brand migration (Talkie → Chirp): make the app's own name self-correct
-    /// on EXISTING installs too. Additive + idempotent — appends `chirp → Chirp` only
-    /// when it's absent, never touching the user's own rules (per docs/REBRAND.md; the
-    /// fresh-install seed alone doesn't reach an existing dictionary.json). Because the
-    /// rule's target "Chirp" then becomes a TRUSTED corrector term, a phonetic miss like
-    /// "chart" gets rescued to "Chirp" — not just an exact-text "chirp".
-    private func migrateBrandSeedIfNeeded() {
-        let hasChirp = replacements.contains {
+    /// Undo the brief Chirp rename: remove the auto-added `chirp → Chirp` seed if it's
+    /// still present, so an existing dictionary doesn't carry a stray rule now that the
+    /// app is "Talkie" again. Idempotent; only removes that exact auto-added rule (it was
+    /// added by an earlier launch, never by the user).
+    private func cleanupChirpSeedIfNeeded() {
+        let before = replacements.count
+        replacements.removeAll {
             $0.from.caseInsensitiveCompare("chirp") == .orderedSame &&
             $0.to.caseInsensitiveCompare("Chirp") == .orderedSame
         }
-        guard !hasChirp else { return }
-        replacements.append(Replacement(from: "chirp", to: "Chirp"))
-        save()
+        if replacements.count != before { save() }
     }
 
     /// Move an undecodable store file to `dictionary.json.corrupt` so it's
@@ -109,9 +106,7 @@ final class DictionaryStore: ObservableObject {
     /// Shared so the undecodable-file path falls back to the same in-memory
     /// defaults it would have seeded — without re-saving over the bad file.
     static let defaultReplacements: [Replacement] = [
-        // The app's own name self-corrects out of the box (recognition reliably hears
-        // "chirp" lowercased, or a near-miss the looser trusted-term corrector rescues).
-        Replacement(from: "chirp", to: "Chirp"),
+        Replacement(from: "talkie", to: "Talkie"),
     ]
 
     private func seedDefaultsIfEmpty() {
