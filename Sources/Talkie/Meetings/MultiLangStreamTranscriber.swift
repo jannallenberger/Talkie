@@ -12,19 +12,64 @@ import Speech
 /// `start` mirrors `TranscriptionEngine.beginSession`'s shape — it returns the
 /// audio `format` the caller feeds and a `continuation` to push mic/system buffers
 /// into — so it drops into `MeetingRecorder` in place of a single-locale session.
+///
+/// **Analyzer rotation.** A single `SpeechAnalyzer` stops promoting volatile
+/// hypotheses to finalized results on a long, continuous stream (~30 min in); once it
+/// stalls, every later word arrives stamped at the last good audio time and a whole
+/// speaker turn collapses under one timecode. `MeetingRecorder.tick()` therefore calls
+/// `rotate()` periodically: each lane retires its current analyzer and starts a fresh
+/// one over the continuing audio, so no analyzer ever lives long enough to stall. Word
+/// timings from a retired generation are shifted into meeting time by the generation's
+/// `offset` (the seconds of audio already fed when it started) and kept; the merge at
+/// `finish` sees one continuous, correctly-clocked timeline.
 actor MultiLangStreamTranscriber {
-    /// One language's live recognizer over the shared stream.
-    private struct Lane {
+    /// One language's live recognizer over the shared stream. A reference type so its
+    /// analyzer generation can be rotated in place (see `rotate`). `offset` is the
+    /// meeting time at which the CURRENT generation started (added to its
+    /// analyzer-relative word timings); `collected` holds the offset-corrected words
+    /// already harvested from PRIOR generations.
+    private final class Lane {
         let localeID: String
+        let locale: Locale
+        let format: AVAudioFormat
+        let contextualStrings: [String]
+        let liveCb: (@Sendable (String) -> Void)?
+        var analyzer: SpeechAnalyzer
+        var continuation: AsyncStream<AnalyzerInput>.Continuation
+        var results: Task<[StreamLanguageVoter.TimedWord], Never>
+        var offset: Double
+        var collected: [StreamLanguageVoter.TimedWord] = []
+
+        init(localeID: String, locale: Locale, format: AVAudioFormat,
+             contextualStrings: [String], liveCb: (@Sendable (String) -> Void)?,
+             gen: Gen, offset: Double) {
+            self.localeID = localeID
+            self.locale = locale
+            self.format = format
+            self.contextualStrings = contextualStrings
+            self.liveCb = liveCb
+            self.analyzer = gen.analyzer
+            self.continuation = gen.continuation
+            self.results = gen.results
+            self.offset = offset
+        }
+    }
+
+    /// A freshly-built, started analyzer generation for one lane.
+    private struct Gen {
         let analyzer: SpeechAnalyzer
         let continuation: AsyncStream<AnalyzerInput>.Continuation
-        let format: AVAudioFormat
         let results: Task<[StreamLanguageVoter.TimedWord], Never>
     }
 
     private var lanes: [Lane] = []
     private var fanoutTask: Task<Void, Never>?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
+    /// Seconds of (reference-format) audio fanned out so far — the meeting clock the
+    /// per-generation analyzer offsets are pinned to.
+    private var audioSecondsFed: Double = 0
+    private var referenceSampleRate: Double = 1
+    private var rotationCount = 0
 
     static var isAvailable: Bool { SpeechTranscriber.isAvailable }
 
@@ -77,86 +122,28 @@ actor MultiLangStreamTranscriber {
                 talkieDebugLog("meeting-lane[\(id)]: skip — locale unsupported")
                 continue
             }
-            let transcriber = SpeechTranscriber(
-                locale: loc,
-                transcriptionOptions: [],
-                reportingOptions: [.volatileResults],
-                attributeOptions: [.transcriptionConfidence, .audioTimeRange]
-            )
-            guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
+            let probe = Self.makeTranscriber(locale: loc)
+            guard await AssetInventory.status(forModules: [probe]) == .installed else {
                 talkieDebugLog("meeting-lane[\(id)]: skip — model not installed")
                 continue
             }
-            guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [probe]) else {
                 talkieDebugLog("meeting-lane[\(id)]: skip — no compatible format")
                 continue
             }
 
-            let (laneStream, laneCont) = AsyncStream<AnalyzerInput>.makeStream()
-            let analyzer = SpeechAnalyzer(modules: [transcriber])
-            if !contextualStrings.isEmpty {
-                let ctx = AnalysisContext()
-                ctx.contextualStrings = [.general: contextualStrings]
-                try? await analyzer.setContext(ctx)
-            }
-
-            // Live segments are emitted only by the first lane — the live notch
-            // needs one stream while recording; the per-language truth is resolved
-            // by the merge at stop.
+            // Live segments are emitted only by the first lane — the live notch needs
+            // one stream while recording; the per-language truth is resolved by the
+            // merge at stop.
             let liveCb = built.isEmpty ? onLiveSegment : nil
-            let laneLocale = id
-            let results = Task { () -> [StreamLanguageVoter.TimedWord] in
-                var words: [StreamLanguageVoter.TimedWord] = []
-                do {
-                    for try await result in transcriber.results where result.isFinal {
-                        let attr = result.text
-                        let fullText = String(attr.characters).trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !fullText.isEmpty else { continue }
-                        // Per-word timing + confidence is what enables word-level
-                        // language routing (a single foreign word in a sentence).
-                        var anyWord = false
-                        for run in attr.runs {
-                            guard let conf = run.transcriptionConfidence,
-                                  let range = run.audioTimeRange else { continue }
-                            let word = String(attr[run.range].characters).trimmingCharacters(in: .whitespaces)
-                            guard !word.isEmpty else { continue }
-                            let s = range.start.seconds
-                            let e = (range.start + range.duration).seconds
-                            words.append(.init(localeID: laneLocale, text: word,
-                                               start: s.isFinite ? s : 0,
-                                               end: e.isFinite ? e : s,
-                                               confidence: conf))
-                            anyWord = true
-                        }
-                        // Fallback: a result with no per-word timing still votes as
-                        // one block over its own range, so nothing is silently lost.
-                        if !anyWord {
-                            var sum = 0.0, n = 0
-                            for run in attr.runs where run.transcriptionConfidence != nil {
-                                sum += run.transcriptionConfidence ?? 0; n += 1
-                            }
-                            let s = result.range.start.seconds
-                            let e = (result.range.start + result.range.duration).seconds
-                            words.append(.init(localeID: laneLocale, text: fullText,
-                                               start: s.isFinite ? s : 0,
-                                               end: e.isFinite ? e : s,
-                                               confidence: n > 0 ? sum / Double(n) : 0))
-                        }
-                        liveCb?(fullText)
-                    }
-                } catch {}
-                return words
-            }
-
-            do {
-                try await analyzer.start(inputSequence: laneStream)
-            } catch {
-                talkieDebugLog("meeting-lane[\(id)]: analyzer.start threw — \(error.localizedDescription)")
-                results.cancel()
-                laneCont.finish()
+            guard let gen = await startAnalyzer(locale: loc, laneLocaleID: id,
+                                                contextualStrings: contextualStrings, liveCb: liveCb) else {
+                talkieDebugLog("meeting-lane[\(id)]: analyzer.start threw")
                 continue
             }
-            built.append(Lane(localeID: id, analyzer: analyzer, continuation: laneCont, format: format, results: results))
+            built.append(Lane(localeID: id, locale: loc, format: format,
+                              contextualStrings: contextualStrings, liveCb: liveCb,
+                              gen: gen, offset: 0))
         }
 
         // Need at least two lanes to have anything to vote between; otherwise the
@@ -168,6 +155,9 @@ actor MultiLangStreamTranscriber {
         }
 
         self.lanes = built
+        self.referenceSampleRate = max(1, reference.sampleRate)
+        self.audioSecondsFed = 0
+        self.rotationCount = 0
         talkieDebugLog("meeting-lanes started: [\(built.map(\.localeID).joined(separator: ", "))]")
 
         // Fan the caller's reference-format audio out to every lane. The closure
@@ -182,8 +172,143 @@ actor MultiLangStreamTranscriber {
         return (reference, inCont)
     }
 
-    /// Replay one input buffer into every lane, conforming to each lane's format.
+    /// Build a transcriber configured exactly like the live meeting lanes.
+    private static func makeTranscriber(locale loc: Locale) -> SpeechTranscriber {
+        SpeechTranscriber(
+            locale: loc,
+            transcriptionOptions: [],
+            reportingOptions: [.volatileResults],
+            attributeOptions: [.transcriptionConfidence, .audioTimeRange]
+        )
+    }
+
+    /// Build + start one analyzer generation for a lane: a fresh transcriber, analyzer,
+    /// input stream, and a reader task that harvests finalized per-word timings (in the
+    /// analyzer's own audio clock, starting at 0). Returns nil if the analyzer won't
+    /// start. Used for both the initial lane and every rotation.
+    private func startAnalyzer(
+        locale loc: Locale, laneLocaleID: String,
+        contextualStrings: [String], liveCb: (@Sendable (String) -> Void)?
+    ) async -> Gen? {
+        let transcriber = Self.makeTranscriber(locale: loc)
+        let (laneStream, laneCont) = AsyncStream<AnalyzerInput>.makeStream()
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        if !contextualStrings.isEmpty {
+            let ctx = AnalysisContext()
+            ctx.contextualStrings = [.general: contextualStrings]
+            try? await analyzer.setContext(ctx)
+        }
+
+        let laneLocale = laneLocaleID
+        let results = Task { () -> [StreamLanguageVoter.TimedWord] in
+            var words: [StreamLanguageVoter.TimedWord] = []
+            do {
+                for try await result in transcriber.results where result.isFinal {
+                    let attr = result.text
+                    let fullText = String(attr.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !fullText.isEmpty else { continue }
+                    // Per-word timing + confidence is what enables word-level language
+                    // routing (a single foreign word in a sentence).
+                    var anyWord = false
+                    for run in attr.runs {
+                        guard let conf = run.transcriptionConfidence,
+                              let range = run.audioTimeRange else { continue }
+                        let word = String(attr[run.range].characters).trimmingCharacters(in: .whitespaces)
+                        guard !word.isEmpty else { continue }
+                        let s = range.start.seconds
+                        let e = (range.start + range.duration).seconds
+                        words.append(.init(localeID: laneLocale, text: word,
+                                           start: s.isFinite ? s : 0,
+                                           end: e.isFinite ? e : s,
+                                           confidence: conf))
+                        anyWord = true
+                    }
+                    // Fallback: a result with no per-word timing still votes as one block
+                    // over its own range, so nothing is silently lost.
+                    if !anyWord {
+                        var sum = 0.0, n = 0
+                        for run in attr.runs where run.transcriptionConfidence != nil {
+                            sum += run.transcriptionConfidence ?? 0; n += 1
+                        }
+                        let s = result.range.start.seconds
+                        let e = (result.range.start + result.range.duration).seconds
+                        words.append(.init(localeID: laneLocale, text: fullText,
+                                           start: s.isFinite ? s : 0,
+                                           end: e.isFinite ? e : s,
+                                           confidence: n > 0 ? sum / Double(n) : 0))
+                    }
+                    liveCb?(fullText)
+                }
+            } catch {}
+            return words
+        }
+
+        do {
+            try await analyzer.start(inputSequence: laneStream)
+        } catch {
+            results.cancel()
+            laneCont.finish()
+            return nil
+        }
+        return Gen(analyzer: analyzer, continuation: laneCont, results: results)
+    }
+
+    /// Retire each lane's current analyzer and start a fresh one over the continuing
+    /// audio, so no single analyzer runs long enough to hit the ~30-min finalization
+    /// stall. The replacement is built and swapped in BEFORE the old one is stopped, so
+    /// the fanout always has a live target and no audio is dropped; the retired
+    /// generation's words are then harvested, shifted into meeting time by its offset,
+    /// and kept. Best-effort per lane: if a replacement fails to start, the lane is left
+    /// running on its existing analyzer (a stall risk beats a dead lane).
+    func rotate() async {
+        guard !lanes.isEmpty else { return }
+        rotationCount += 1
+        for lane in lanes {
+            guard let gen = await startAnalyzer(locale: lane.locale, laneLocaleID: lane.localeID,
+                                                contextualStrings: lane.contextualStrings,
+                                                liveCb: lane.liveCb) else {
+                talkieDebugLog("meeting-lane[\(lane.localeID)]: rotate — replacement failed; keeping current analyzer")
+                continue
+            }
+            // Swap synchronously — no await between capturing `old` and installing the
+            // new generation, so `fanout` (also actor-isolated) cannot interleave and
+            // split a buffer across generations. Offset correctness: `audioSecondsFed` is
+            // the END time of the last buffer that reached the OLD analyzer, which is the
+            // START time of the first buffer the NEW analyzer will receive (the next
+            // `fanout`). Any buffers that arrived while `startAnalyzer` was awaited fed the
+            // OLD continuation (the swap hadn't happened yet), so pinning `lane.offset`
+            // here lines the new analyzer's clock-0 up exactly with meeting time — no gap,
+            // no overlap with the retiring generation.
+            let old = (analyzer: lane.analyzer, continuation: lane.continuation,
+                       results: lane.results, offset: lane.offset)
+            lane.analyzer = gen.analyzer
+            lane.continuation = gen.continuation
+            lane.results = gen.results
+            lane.offset = audioSecondsFed
+
+            // Retire the old generation: stop its input, finalize, drain, shift into
+            // meeting time, accumulate.
+            old.continuation.finish()
+            do {
+                try await old.analyzer.finalizeAndFinishThroughEndOfInput()
+            } catch {
+                old.results.cancel()
+            }
+            let raw = await old.results.value
+            let off = old.offset
+            lane.collected.append(contentsOf: raw.map { w in
+                var w = w; w.start += off; w.end += off; return w
+            })
+            // Liveness signal: a window that fed audio but harvested no words is the
+            // fingerprint of a stall the rotation just cleared.
+            talkieDebugLog("meeting-lane[\(lane.localeID)]: rotated (#\(rotationCount)) — window words=\(raw.count), next offset \(Int(lane.offset))s")
+        }
+    }
+
+    /// Replay one input buffer into every lane, conforming to each lane's format, and
+    /// advance the meeting audio clock (from the reference-format input).
     private func fanout(_ input: AnalyzerInput) {
+        audioSecondsFed += Double(input.buffer.frameLength) / referenceSampleRate
         for lane in lanes {
             for buf in TranscriptionEngine.conform([input.buffer], to: lane.format) {
                 lane.continuation.yield(AnalyzerInput(buffer: buf))
@@ -196,7 +321,8 @@ actor MultiLangStreamTranscriber {
     }
 
     /// Stop all lanes and return the language-routed spans (per-segment confidence
-    /// vote, anchored on `anchorLocale`). Empty if nothing was transcribed.
+    /// vote, anchored on `anchorLocale`). Empty if nothing was transcribed. Includes
+    /// every rotated-out generation's words plus the final live generation's.
     func finish(anchorLocale: String) async -> [StreamLanguageVoter.Span] {
         inputContinuation?.finish()
         inputContinuation = nil
@@ -205,6 +331,7 @@ actor MultiLangStreamTranscriber {
 
         var all: [StreamLanguageVoter.TimedWord] = []
         for lane in lanes {
+            lane.continuation.finish()
             do {
                 try await lane.analyzer.finalizeAndFinishThroughEndOfInput()
             } catch {
@@ -212,11 +339,15 @@ actor MultiLangStreamTranscriber {
                 // and `await lane.results.value` below would hang stop() forever.
                 // Cancel the reader: its `for try await … catch {}` returns the words
                 // accumulated so far on cancel, so the await resolves promptly.
-                // (Mirrors TranscriptionEngine.finishSessionDetailed's guard.)
                 lane.results.cancel()
-                talkieDebugLog("meeting-lane[\(lane.localeID)]: finalize threw — \(error.localizedDescription); cancelling reader")
+                talkieDebugLog("meeting-lane[\(lane.localeID)]: finalize threw — cancelling reader")
             }
-            all.append(contentsOf: await lane.results.value)
+            let raw = await lane.results.value
+            let off = lane.offset
+            all.append(contentsOf: lane.collected)
+            all.append(contentsOf: raw.map { w in
+                var w = w; w.start += off; w.end += off; return w
+            })
         }
         lanes = []
 

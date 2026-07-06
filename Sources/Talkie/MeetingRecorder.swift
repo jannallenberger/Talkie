@@ -154,6 +154,19 @@ final class MeetingRecorder: ObservableObject {
     private var micMulti: MultiLangStreamTranscriber?
     private var farMulti: MultiLangStreamTranscriber?
 
+    /// Analyzer-rotation clock (far-end diarization-stall fix). A single `SpeechAnalyzer`
+    /// stops finalizing on a long continuous stream (~30 min in), collapsing the rest of
+    /// the transcript under one timecode. `tick()` rotates the live multilingual lanes
+    /// every `meetingRotationInterval` seconds so no analyzer ever lives that long. The
+    /// in-flight rotation is tracked so `stop()` can await it before finalizing (rotation
+    /// and finish both mutate lane state on the same actor and must not overlap).
+    private var lastRotationElapsed: TimeInterval = 0
+    private var rotationTask: Task<Void, Never>?
+    /// Comfortably under the observed ~30-min stall, so a fresh analyzer is always well
+    /// within its healthy window (single-locale streams rely on the renderer's
+    /// stall-collapse safeguard instead of rotation).
+    private static let meetingRotationInterval: TimeInterval = 600
+
     private var turnLog: TurnLog?
     private var startedAt: Date?
     private var partialURL: URL?
@@ -442,6 +455,7 @@ final class MeetingRecorder: ObservableObject {
         // (belt-and-suspenders: AppDelegate also resets at onRecordingStarted).
         pendingChapters = []
         elapsed = 0
+        lastRotationElapsed = 0
         capturingFarEnd = farActive
         isRecording = true
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -538,6 +552,22 @@ final class MeetingRecorder: ObservableObject {
             }
         }
 
+        // Analyzer rotation (far-end diarization-stall fix): periodically retire and
+        // rebuild the live multilingual analyzers so none runs long enough to stop
+        // finalizing (~30 min in) and collapse the rest of the transcript under one
+        // timecode. A no-op when there are no lanes; single-locale streams rely on the
+        // renderer's stall-collapse safeguard. The rotation runs off the main actor;
+        // `stop()` awaits `rotationTask` before finalizing so the two never overlap.
+        if elapsed - lastRotationElapsed >= Self.meetingRotationInterval,
+           micMulti != nil || farMulti != nil {
+            lastRotationElapsed = elapsed
+            let far = farMulti, mic = micMulti
+            rotationTask = Task {
+                await far?.rotate()
+                await mic?.rotate()
+            }
+        }
+
         // Periodic crash-safety flush of the structured partial (C7): transcript AND
         // the user's typed live notes AND the far-end flag, so a crash loses nothing.
         // `notes` is @Published main-actor state and `tick()` is main-actor, so this
@@ -617,6 +647,12 @@ final class MeetingRecorder: ObservableObject {
         let chapters = pendingChapters.isEmpty ? nil : pendingChapters
         pendingChapters = []
 
+        // Await any in-flight analyzer rotation before finalizing: rotation and finish
+        // both mutate lane state on the transcriber actor and must not overlap. The
+        // timer is already invalidated above, so no new rotation can start after this.
+        await rotationTask?.value
+        rotationTask = nil
+
         // Finalize each stream. A multilingual (live-lanes) stream resolves its
         // per-segment language vote here and rebuilds the speaker's turns — each
         // language span becomes a timed turn, so mid-meeting switches AND cross-
@@ -658,12 +694,15 @@ final class MeetingRecorder: ObservableObject {
         turnLog = nil
 
         let finalTurns = log?.snapshot() ?? []
-        let transcript = MeetingTranscriptRenderer.render(finalTurns)
+        // Pass the meeting `duration` so the renderer can de-collapse a stalled-recognizer
+        // timestamp collapse (a long run of one speaker's turns frozen under a single
+        // timecode) into readable, spread-out lines. A no-op on healthy transcripts.
+        let transcript = MeetingTranscriptRenderer.render(finalTurns, duration: duration)
         let clean = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         // Per-segment audio-clock timings for captions/click-to-play/chapters. Built
         // from the SAME final snapshot as the transcript, so they never disagree; the
         // rendered transcript and `.md` are unchanged (segments live only in the index).
-        let segments = MeetingTranscriptRenderer.segments(from: finalTurns)
+        let segments = MeetingTranscriptRenderer.segments(from: finalTurns, duration: duration)
         guard !clean.isEmpty else {
             // Nothing was transcribed → any kept audio has no transcript to verify against
             // and no meeting will reference it (a notes-only meeting has no segments, so it
