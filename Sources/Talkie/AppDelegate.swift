@@ -1303,11 +1303,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // the mic, then flip the pill to the red "recording" state. Resumed
                 // on every teardown path in `endDictation`.
                 if self.settings.pauseMusicWhileDictating {
-                    // H1: the "also pause other apps" sub-toggle is gone — the media-key
-                    // fallback is now always allowed. It's gated on real output activity
-                    // in `MusicController.pauseForDictation` (it only sends play/pause when
-                    // another process is actually playing), so it can't fire spuriously.
-                    self.musicController.pauseForDictation(allowMediaKeyFallback: true)
+                    // Scriptable-only: pauses Apple Music/Spotify iff already running and
+                    // playing. Never launches either app — see `MusicController`'s header
+                    // for why the old blind media-key fallback was removed.
+                    self.musicController.pauseForDictation()
                 }
                 self.hud.showListening()
             } catch {

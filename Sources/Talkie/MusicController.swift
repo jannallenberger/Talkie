@@ -7,9 +7,21 @@ import AppKit
 /// equivalent of iOS's `AVAudioSession` "other audio" interruption). So we drive
 /// the two players that cover the overwhelming majority of cases — Apple Music and
 /// Spotify — via AppleScript, **state-aware**: only pause what's actually playing,
-/// only resume what we paused. An opt-in media-key fallback covers everything else
-/// (browsers, podcast apps), but it only fires when some other process is genuinely
-/// playing output, so it can never *start* silent playback.
+/// only resume what we paused, and only ever touch a player that's already
+/// running — this can never launch either app.
+///
+/// There used to also be a blind system-media-key fallback for everything else
+/// (browsers, podcast apps). It's gone: macOS's documented behavior for an
+/// unclaimed play/pause key is to launch Music.app and make it frontmost, and the
+/// "is something else playing" signal it was gated on (any process with an active
+/// CoreAudio output stream) false-positives constantly — a muted video tab, a
+/// call app's idle audio session, anything holding output IO open. The result was
+/// Music.app launching on essentially every dictation, stealing focus, and (worse)
+/// leaving it as the frontmost app while it's still cold-launching — exactly the
+/// state where the pipeline's synchronous, no-timeout AX reads of "whatever's
+/// frontmost" (`AXFieldReader`, `hasEditableFocus`) can hang indefinitely, which is
+/// what made `isProcessing` get stuck. Losing the browser/podcast ducking is the
+/// right trade for never doing that again.
 ///
 /// All AppleScript runs on a private serial queue, never the main thread:
 /// `NSAppleScript.executeAndReturnError` blocks until the event completes, and the
@@ -41,34 +53,16 @@ final class MusicController: @unchecked Sendable {
     /// Players we paused for the current dictation — resume touches only these.
     /// Confined to `queue`.
     private var pausedPlayers: Set<Player> = []
-    /// Set when we used the blind media-key fallback, so resume re-sends the key.
-    /// Confined to `queue`.
-    private var usedMediaKeyFallback = false
 
     /// Pause whatever is currently playing. Returns immediately; the work runs off
     /// the main thread. Idempotent: a second call while already paused does nothing.
-    /// `allowMediaKeyFallback` enables the system play/pause key for non-scriptable
-    /// players.
-    func pauseForDictation(allowMediaKeyFallback: Bool) {
-        let selfPID = ProcessInfo.processInfo.processIdentifier
+    func pauseForDictation() {
         queue.async { [weak self] in
-            guard let self, self.pausedPlayers.isEmpty, !self.usedMediaKeyFallback else { return }
-
-            var pausedAny = false
+            guard let self, self.pausedPlayers.isEmpty else { return }
             for player in Player.allCases where self.isRunning(player) {
                 if self.pauseIfPlaying(player) {
                     self.pausedPlayers.insert(player)
-                    pausedAny = true
                 }
-            }
-
-            // Nothing scriptable was playing. If enabled, nudge the system
-            // play/pause key — but only when some other app is genuinely outputting
-            // audio, so we never start playback that wasn't there.
-            guard !pausedAny, allowMediaKeyFallback else { return }
-            if AudioDevices.isOtherProcessPlayingOutput(excludingPID: selfPID) {
-                MediaKey.sendPlayPause()
-                self.usedMediaKeyFallback = true
             }
         }
     }
@@ -82,10 +76,6 @@ final class MusicController: @unchecked Sendable {
                 _ = self.runScript("tell application \"\(player.appName)\" to play")
             }
             self.pausedPlayers.removeAll()
-            if self.usedMediaKeyFallback {
-                MediaKey.sendPlayPause()
-                self.usedMediaKeyFallback = false
-            }
         }
     }
 
@@ -115,35 +105,5 @@ final class MusicController: @unchecked Sendable {
         let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
         if let error { talkieDebugLog("MusicController AppleScript error: \(error)") }
         return result
-    }
-}
-
-/// Posts the system "Play/Pause" media key. This is a blind toggle (it can't read
-/// or target a specific player), so callers gate it on actual output activity.
-private enum MediaKey {
-    /// The NX system-defined "play/pause" key code (from `ev_keymap.h`). Hardcoded
-    /// to avoid an IOKit import for a single constant.
-    private static let playPauseKey = 16
-
-    static func sendPlayPause() {
-        post(keyDown: true)
-        post(keyDown: false)
-    }
-
-    private static func post(keyDown: Bool) {
-        let flagsValue: UInt = keyDown ? 0xA00 : 0xB00
-        let data1 = (playPauseKey << 16) | ((keyDown ? 0xA : 0xB) << 8)
-        guard let event = NSEvent.otherEvent(
-            with: .systemDefined,
-            location: .zero,
-            modifierFlags: NSEvent.ModifierFlags(rawValue: flagsValue),
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            subtype: 8,
-            data1: data1,
-            data2: -1
-        ) else { return }
-        event.cgEvent?.post(tap: .cghidEventTap)
     }
 }

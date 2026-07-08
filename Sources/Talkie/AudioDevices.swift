@@ -109,17 +109,6 @@ enum AudioDevices {
         return .swap(to: target)
     }
 
-    /// True iff some *other* process is currently playing audio on an output device.
-    /// Used to gate the blind media-key fallback so it can never *start* silent
-    /// playback — it only nudges play/pause when something is genuinely playing.
-    static func isOtherProcessPlayingOutput(excludingPID selfPID: pid_t) -> Bool {
-        for object in processObjectList() {
-            guard processPID(object) != selfPID, isRunningOutput(object) else { continue }
-            return true
-        }
-        return false
-    }
-
     // MARK: - Device property reads
 
     /// `kAudioHardwarePropertyDevices` → every audio device the system knows about.
@@ -207,51 +196,4 @@ enum AudioDevices {
         return string.isEmpty ? nil : string
     }
 
-    // MARK: - Output-activity reads (media-key fallback gate)
-
-    /// `kAudioHardwarePropertyProcessObjectList` → every audio process.
-    private static func processObjectList() -> [AudioObjectID] {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyProcessObjectList,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        let system = AudioObjectID(kAudioObjectSystemObject)
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &dataSize) == noErr, dataSize > 0 else {
-            return []
-        }
-        let count = Int(dataSize) / MemoryLayout<AudioObjectID>.stride
-        var ids = [AudioObjectID](repeating: AudioObjectID(kAudioObjectUnknown), count: count)
-        let status = ids.withUnsafeMutableBytes { buffer in
-            AudioObjectGetPropertyData(system, &address, 0, nil, &dataSize, buffer.baseAddress!)
-        }
-        return status == noErr ? ids : []
-    }
-
-    private static func processPID(_ object: AudioObjectID) -> pid_t {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioProcessPropertyPID,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var pid: pid_t = -1
-        var size = UInt32(MemoryLayout<pid_t>.size)
-        AudioObjectGetPropertyData(object, &address, 0, nil, &size, &pid)
-        return pid
-    }
-
-    /// `kAudioProcessPropertyIsRunningOutput` → 1 iff the process has an active
-    /// output stream (i.e. it's playing audio right now).
-    private static func isRunningOutput(_ object: AudioObjectID) -> Bool {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioProcessPropertyIsRunningOutput,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var value: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr else { return false }
-        return value != 0
-    }
 }
