@@ -110,7 +110,14 @@ enum TextInjector {
             // K1: localized; still names the failure and the recoverable next action.
             return .leftOnClipboard(reason: "Couldn’t paste that — it’s on your clipboard, tap to copy.".loc)
         }
-        guard hasEditableFocus() else {
+        // STRICT: only replace-in-place where ⇧←-select-then-paste reliably REPLACES
+        // (a settable native field). If focus drifted to a terminal / Electron field
+        // since the interim was inserted, a paste-over would append the cleaned copy
+        // *underneath* the raw one — so fall back to the clipboard instead of
+        // duplicating. The optimistic INSERT is gated on the same signal, so this is
+        // normally already satisfied; this re-check just guards a focus change during
+        // the cleanup await.
+        guard focusIsInPlaceReplaceable() else {
             copyToClipboard(text)
             return .leftOnClipboard(reason: "Didn’t paste — it’s safe on your clipboard, tap to copy.".loc)
         }
@@ -157,6 +164,35 @@ enum TextInjector {
             down?.post(tap: .cgSessionEventTap)
             up?.post(tap: .cgSessionEventTap)
         }
+    }
+
+    /// STRICT check: is the current keyboard focus a field where selecting text with
+    /// ⇧←×N and pasting over it reliably REPLACES those characters? True only when the
+    /// focused element exposes a *settable* `AXValue` — i.e. a native macOS text field
+    /// or text view. This is deliberately narrower than `hasEditableFocus()`:
+    ///
+    ///  - Terminals (Terminal.app, iTerm2, Warp, VS Code's integrated terminal, …) do
+    ///    NOT expose a settable AXValue — their command line isn't a GUI text field, so
+    ///    ⇧← is swallowed and a paste-over lands the new text AFTER the old instead of
+    ///    replacing it (the "raw block, then the polished copy underneath" bug).
+    ///  - Electron / web fields (Slack, Chrome, ChatGPT, Claude desktop) also usually
+    ///    aren't settable — they only expose a selectable range — so they're excluded
+    ///    too. That's the SAFE direction: an app wrongly excluded just falls back to a
+    ///    single clean insert; an app wrongly *included* would duplicate.
+    ///
+    /// Used to gate the optional optimistic-insertion swap (`replaceBackward`), which is
+    /// the only place a select-and-paste-over runs. Fails closed: any element we can't
+    /// confirm settable returns false, so the swap never fires where it might duplicate.
+    static func focusIsInPlaceReplaceable() -> Bool {
+        let system = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+              let focusedRef, CFGetTypeID(focusedRef) == AXUIElementGetTypeID()
+        else { return false }
+        let element = focusedRef as! AXUIElement
+        var settable: DarwinBoolean = false
+        return AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success
+            && settable.boolValue
     }
 
     /// Best-effort check: is the current keyboard focus an editable text element?

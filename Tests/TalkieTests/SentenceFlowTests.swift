@@ -79,4 +79,45 @@ final class SentenceFlowTests: XCTestCase {
         let inputWords = segs.flatMap { $0.split(separator: " ") }.count
         XCTAssertEqual(wordCount(out), inputWords)
     }
+
+    // A pause right after a lone "I" is the case Jann reported: the recognizer
+    // finalizes "…I." and capitalizes the next word, but a bare "I" never ends a
+    // sentence — so the deterministic floor (used when Apple Intelligence is off)
+    // must drop the seam and lower-case the continuation.
+    func testMergeContinuationsMergesDanglingPronounI() {
+        let out = SentenceFlow.mergeContinuations(["I.", "Want to make a couple of changes."])
+        XCTAssertEqual(out, "I want to make a couple of changes.")
+    }
+
+    func testMergeContinuationsMergesDanglingPronounIMidFragment() {
+        let out = SentenceFlow.mergeContinuations(["So I", "Really need this."])
+        XCTAssertEqual(out, "So I really need this.")
+    }
+
+    // A sentence can't end on an article, so the seam merges — but the word after
+    // an article is often a (proper) noun, so its casing is preserved.
+    func testMergeContinuationsMergesDanglingArticleKeepingCase() {
+        let out = SentenceFlow.mergeContinuations(["I visited the.", "New York office."])
+        XCTAssertEqual(out, "I visited the New York office.")
+    }
+
+    // The dangling-word rule must not clobber a genuine boundary: "me" (unlike "I")
+    // can legitimately end a sentence, so "Call me. Now …" stays two sentences.
+    func testMergeContinuationsKeepsBoundaryAfterObjectPronoun() {
+        let out = SentenceFlow.mergeContinuations(["Call me.", "Now go home."])
+        XCTAssertEqual(out, "Call me. Now go home.")
+    }
+
+    // "a" is intentionally NOT a dangling article: a sentence CAN end on it (the
+    // letter/grade "A"), so two genuine sentences must not be welded together.
+    func testMergeContinuationsKeepsBoundaryAfterLetterA() {
+        let out = SentenceFlow.mergeContinuations(["I got an A.", "It was great."])
+        XCTAssertEqual(out, "I got an A. It was great.")
+    }
+
+    // A dangling-"I" merge must still protect an acronym after it (never "aPI").
+    func testMergeContinuationsProtectsAcronymAfterDanglingI() {
+        let out = SentenceFlow.mergeContinuations(["I.", "API calls fail."])
+        XCTAssertEqual(out, "I API calls fail.")
+    }
 }

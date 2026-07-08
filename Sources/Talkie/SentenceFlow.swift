@@ -25,6 +25,15 @@ enum SentenceFlow {
         "then", "though", "although", "yet", "plus", "while", "whereas",
     ]
 
+    /// Articles that an English sentence can never *end* on: when a pause-seam lands
+    /// right after one, the pause split a single thought, so the seam should merge.
+    /// The word after an article is usually a noun (possibly a proper noun), so the
+    /// merge keeps that word's original casing. NOTE: "a" is deliberately EXCLUDED — a
+    /// sentence CAN legitimately end on "a" (the letter/grade "I got an A", "plan A",
+    /// "vitamin A"), so merging after it would weld two real sentences. "an"/"the" have
+    /// no such standalone meaning and are safe.
+    private static let danglingArticles: Set<String> = ["an", "the"]
+
     /// **AI path.** Join the segments into ONE continuous stream with the pause-seam
     /// punctuation removed and the following fragment de-capitalized, so the cleanup
     /// model re-punctuates and re-capitalizes from scratch by grammar (its
@@ -61,9 +70,12 @@ enum SentenceFlow {
 
         var out = frags[0]
         for frag in frags.dropFirst() {
-            let decision = mergeDecision(next: frag)
+            let decision = mergeDecision(prevTail: trailingWord(of: out), next: frag)
             if decision.merge {
-                let lead = decision.lowercaseLead ? lowercaseFirst(frag) : frag
+                // Re-use the seam de-capitalizer so a merged lead is lowered *safely*
+                // — it protects the pronoun "I" and all-caps acronyms (API, US) from
+                // being clipped to "i"/"aPI".
+                let lead = decision.lowercaseLead ? deCapitalizeLeading(frag) : frag
                 out = stripTrailingTerminators(out) + " " + lead
             } else {
                 out += " " + frag
@@ -82,19 +94,33 @@ enum SentenceFlow {
 
     /// Whether to drop the seam period before `next`, and whether the leading word
     /// is safe to lower-case (a capitalized conjunction like "But" is; a proper noun
-    /// is not, so it falls through to `keep`).
-    private static func mergeDecision(next: String) -> (merge: Bool, lowercaseLead: Bool) {
+    /// is not, so it falls through to `keep`). `prevTail` is the last word of the text
+    /// accumulated so far — the word the pause fell *after*.
+    private static func mergeDecision(prevTail: String?, next: String) -> (merge: Bool, lowercaseLead: Bool) {
         guard let word = leadingWord(next) else { return (false, false) }
         if startsLowercase(word) { return (true, false) }
         if continuationWords.contains(word.lowercased().trimmingCharacters(in: .punctuationCharacters)) {
             return (true, true) // capitalized conjunction → safe to lower-case on merge
         }
+        // The seam split a single thought when the PREVIOUS fragment ended on a word
+        // an English sentence never ends on. Kept deliberately tiny and high-precision
+        // — a false merge corrupts a real boundary:
+        //   • a lone "I": the recognizer capitalizes the word after the pause
+        //     ("…I. Want to…"), but a bare "I" never ends a sentence, so it's really
+        //     one thought → merge and lower-case the next word (safely).
+        //   • an article ("a"/"an"/"the"): a sentence can't end there; the next word is
+        //     usually a noun (maybe a proper noun) → merge but KEEP its casing.
+        if let prev = prevTail.map({ $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }) {
+            if prev == "i" { return (true, true) }
+            if danglingArticles.contains(prev) { return (true, false) }
+        }
         return (false, false)
     }
 
-    private static func lowercaseFirst(_ s: String) -> String {
-        guard let first = s.first, first.isUppercase else { return s }
-        return String(first).lowercased() + s.dropFirst()
+    /// The last whitespace-delimited word of `s`. Trailing terminators/space are
+    /// irrelevant — `mergeDecision` strips punctuation before comparing.
+    private static func trailingWord(of s: String) -> String? {
+        s.split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" }).last.map(String.init)
     }
 
     /// Drop trailing seam terminators (and any trailing whitespace) from a fragment.
