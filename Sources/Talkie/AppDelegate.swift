@@ -1303,11 +1303,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // the mic, then flip the pill to the red "recording" state. Resumed
                 // on every teardown path in `endDictation`.
                 if self.settings.pauseMusicWhileDictating {
-                    // H1: the "also pause other apps" sub-toggle is gone — the media-key
-                    // fallback is now always allowed. It's gated on real output activity
-                    // in `MusicController.pauseForDictation` (it only sends play/pause when
-                    // another process is actually playing), so it can't fire spuriously.
-                    self.musicController.pauseForDictation(allowMediaKeyFallback: true)
+                    // Scriptable-only: pauses Apple Music/Spotify iff already running and
+                    // playing. Never launches either app — see `MusicController`'s header
+                    // for why the old blind media-key fallback was removed.
+                    self.musicController.pauseForDictation()
                 }
                 self.hud.showListening()
             } catch {
@@ -1463,11 +1462,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionProfile = nil
         // Capitalization is a smart always-on default derived from the resolved
         // style/category (terminal/coding + faithful ⇒ no leading capital, so a
-        // dictated shell command keeps its lowercase). Fillers are always stripped
-        // deterministically UNLESS the AI already rewrote the text (handled at the
-        // final `TextProcessor.apply` via `!aiHandledFillers`).
+        // dictated shell command keeps its lowercase). The deterministic filler net is
+        // decided per-language below (`stripEnglishFillers`), once the session's
+        // language is known — the filler list ("um", "uh", …) is English-only, and
+        // "um" is an ordinary word in German/Portuguese, so it must never run on those.
         let autoCap = resolved.autoCapitalize
-        let removeFillers = true
         let mode = resolved.insertionMode
         // "Private app" (I1): when set, this session inserts text normally but the
         // pipeline stores and learns NOTHING from it — the completion closure below
@@ -1626,6 +1625,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // English-primary on-device model can't translate non-English speech.
             let cleanupLangCode = LanguageDetector.languageCode(of: self.currentLocaleID)
 
+            // Whether to run the deterministic filler stripper. Its token list ("um",
+            // "uh", "erm", …) is English disfluencies — but "um" is an everyday word in
+            // German ("around/at") and Portuguese ("a/one"), so stripping it there
+            // corrupts meaning. Only run the net for English (or when the language is
+            // unknown — English is the primary case); non-English relies on the cleanup
+            // model, which is instructed to drop that language's own fillers.
+            let stripEnglishFillers = (cleanupLangCode == nil || cleanupLangCode == "en")
+
             // Cleanup. The fast path joins the segments that were already cleaned
             // live while you spoke — so we only wait on the last in-flight one.
             // We fall back to a fresh whole/batched pass only when streaming
@@ -1649,6 +1656,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var optimistic: (count: Int, text: String)?
             if self.dictationSink == nil,
                optimisticEnabled, mode == .paste, cleanupEnabled, !languageSwitched,
+               // Only preview where the swap-in can actually REPLACE the interim. The
+               // swap (`replaceBackward`) selects the interim with ⇧←×N and pastes over
+               // it — which only replaces in a settable native text field. In a
+               // terminal (Claude Code in Terminal/iTerm2) or an Electron/web field the
+               // ⇧← is swallowed and the ⌘V lands the cleaned text AFTER the interim:
+               // the "raw block, then the polished copy written underneath" bug. Gating
+               // on the field capability (not the app category, which misfiles e.g.
+               // iTerm2 as `.coding`) means those apps get one clean insert instead.
+               TextInjector.focusIsInPlaceReplaceable(),
                // E8 + Adaptive: never optimistically insert for an output-language
                // override app (fixed OR adaptive) — the interim is the SPOKEN
                // language, and the stop-time translate pass would then make the user
@@ -1656,9 +1672,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                // once, cleanly, below.
                outputLanguageCode == nil, !outputLanguageAdaptive,
                !finalRaw.isEmpty, CleanupEngine.isAvailable {
+                // The instant preview must not carry Apple's pause-induced periods
+                // (a thinking pause finalizes a segment ending in "."), or the user
+                // sees "I. Want to…" flash in before the swap. De-seam it the same
+                // deterministic way the no-AI final path does, so even the un-polished
+                // preview reads as one flowing thought.
+                let interimBase = (segments.count > 1)
+                    ? SentenceFlow.mergeContinuations(segments)
+                    : finalRaw
                 let interimProcessed = TextProcessor.apply(
-                    replacements: replacements, removeFillers: removeFillers,
-                    autoCapitalize: autoCap, to: finalRaw
+                    replacements: replacements, removeFillers: stripEnglishFillers,
+                    autoCapitalize: autoCap, to: interimBase
                 )
                 var interim = interimProcessed.text
                 if vibeOn, !vibeSnapshot.isEmpty {
@@ -1764,12 +1788,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             cleaned = NumberNormalizer.normalize(cleaned)
 
             // Apply the dictionary AFTER the LLM so your exact spellings always win.
-            // Strip fillers deterministically unless the AI already rewrote the text
-            // (it removes fillers itself as part of the rewrite; double-stripping
-            // would risk clipping a word the model reflowed).
+            // Run the deterministic filler stripper as a SAFETY NET even when the AI
+            // rewrote the text (English only — see `stripEnglishFillers`). The
+            // on-device model removes MOST fillers as part of its rewrite, but it is
+            // not reliable: a stray "um"/"uh" routinely survives a cleanup pass, and
+            // gating this net on `!aiHandledFillers` let those slip all the way into the
+            // field (Jann's #1 complaint). `stripFillers` only ever drops standalone
+            // English disfluency tokens (um, uh, erm, …) as whole words, so it is
+            // idempotent and safe to run on already-cleaned English text — a word the
+            // model legitimately reflowed is never a bare filler token. This is the
+            // guarantee that fillers never reach the clipboard/field regardless of
+            // whether cleanup ran.
             let processed = TextProcessor.apply(
                 replacements: replacements,
-                removeFillers: !aiHandledFillers,
+                removeFillers: stripEnglishFillers,
                 autoCapitalize: autoCap,
                 to: cleaned,
                 // Feed the per-word recognizer confidences so confidence-gated

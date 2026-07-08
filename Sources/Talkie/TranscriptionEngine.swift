@@ -535,6 +535,16 @@ actor TranscriptionEngine {
         // span continuing from the last timed segment's end so ordering is preserved
         // and the value stays finite (we honestly don't claim a duration for it).
         if !volatileText.isEmpty {
+            // A LARGE volatile tail here is the fingerprint of a finalization stall: the
+            // analyzer stopped promoting finalized results mid-session (~30 min in) and
+            // everything since piled up as one unstamped block. The multilingual meeting
+            // path rotates its analyzers to prevent this outright; the single-locale path
+            // (dictation + the meeting far/mic fallback) instead relies on
+            // `MeetingTranscriptRenderer.decollapse` to split this tail into timed lines.
+            let tailWords = volatileText.split(whereSeparator: { $0 == " " || $0 == "\n" }).count
+            if tailWords > 60 {
+                talkieDebugLog("TranscriptionEngine: large volatile tail at finish (\(tailWords) words) — likely a finalization stall; the renderer will de-collapse it")
+            }
             onSegment?(volatileText)
             finalizedSegments.append(volatileText)
             let tailStart = finalizedTimedSegments.last?.end ?? 0

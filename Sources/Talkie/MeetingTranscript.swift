@@ -125,8 +125,9 @@ enum MeetingTranscriptRenderer {
     /// Phase 1. When both sides spoke, it's interleaved and speaker-labeled:
     /// `[mm:ss] Me: …` / `[mm:ss] Them: …`, coalescing consecutive same-speaker
     /// turns into one line.
-    static func render(_ turns: [TurnLog.Turn]) -> String {
-        let sorted = turns.sorted { $0.elapsed < $1.elapsed }
+    static func render(_ turns: [TurnLog.Turn], duration: TimeInterval? = nil) -> String {
+        let prepared = duration.map { decollapse(turns, duration: $0) } ?? turns
+        let sorted = prepared.sorted { $0.elapsed < $1.elapsed }
         guard !sorted.isEmpty else { return "" }
 
         let speakers = sorted.reduce(into: [MeetingSpeaker]()) { acc, turn in
@@ -139,14 +140,19 @@ enum MeetingTranscriptRenderer {
         }
 
         // Coalesce consecutive same-speaker turns, then label each block with the
-        // timestamp of its first turn.
-        var blocks: [(elapsed: TimeInterval, speaker: MeetingSpeaker, text: String)] = []
+        // timestamp of its first turn. A block only grows while its turns stay within
+        // `coalesceMaxGap` of each other — a larger jump (a long pause, or the spread
+        // pieces a de-collapsed stall produces) starts a fresh line, so a 35-minute
+        // stall can never render as one block again.
+        var blocks: [(elapsed: TimeInterval, last: TimeInterval, speaker: MeetingSpeaker, text: String)] = []
         for turn in sorted {
-            if var last = blocks.last, last.speaker == turn.speaker {
-                last.text += " " + turn.text
-                blocks[blocks.count - 1] = last
+            if var block = blocks.last, block.speaker == turn.speaker,
+               turn.elapsed - block.last <= coalesceMaxGap {
+                block.text += " " + turn.text
+                block.last = turn.elapsed
+                blocks[blocks.count - 1] = block
             } else {
-                blocks.append((turn.elapsed, turn.speaker, turn.text))
+                blocks.append((turn.elapsed, turn.elapsed, turn.speaker, turn.text))
             }
         }
 
@@ -162,8 +168,9 @@ enum MeetingTranscriptRenderer {
     /// backwards even if two streams' clocks interleave with a small skew. Returns nil
     /// when there is nothing timed to persist, so callers store `segments = nil` rather
     /// than an empty array (keeping the "no segments" and "pre-D2" cases identical).
-    static func segments(from turns: [TurnLog.Turn]) -> [MeetingSegment]? {
-        let sorted = turns.sorted { $0.elapsed < $1.elapsed }
+    static func segments(from turns: [TurnLog.Turn], duration: TimeInterval? = nil) -> [MeetingSegment]? {
+        let prepared = duration.map { decollapse(turns, duration: $0) } ?? turns
+        let sorted = prepared.sorted { $0.elapsed < $1.elapsed }
         guard !sorted.isEmpty else { return nil }
         var out: [MeetingSegment] = []
         out.reserveCapacity(sorted.count)
@@ -183,6 +190,118 @@ enum MeetingTranscriptRenderer {
             out.append(MeetingSegment(speaker: turn.speaker.rawValue, start: start, end: end, text: turn.text))
         }
         return out
+    }
+
+    // MARK: Stalled-recognizer safeguard (de-collapse)
+
+    /// Natural speaking rate, used to estimate how long a collapsed run of speech
+    /// really lasted when no later turn bounds it.
+    static let assumedWordsPerSecond = 2.5
+    /// A run of same-speaker turns whose whole time span is under this (seconds) is
+    /// treated as sharing "one timestamp" — the fingerprint of a finalization stall.
+    static let collapseSpanTolerance = 3.0
+    /// Only re-time a frozen run once it carries more words than one instant of speech
+    /// could (~a minute of talk), so ordinary fast back-and-forth is left untouched.
+    static let collapseWordFloor = 150
+    /// A frozen run is re-chunked into paragraph-sized pieces of about this many words
+    /// each, so the output is uniform whether the stall produced one giant turn or many
+    /// tiny merged spans, and each renders as its own timed line.
+    static let decollapseChunkWords = 80
+    /// `render` keeps consecutive same-speaker turns on one line only while they're
+    /// within this many seconds of each other; a larger gap (a long pause, or the
+    /// spread-apart pieces a de-collapsed stall produces) starts a new timed line.
+    static let coalesceMaxGap = 12.0
+
+    static func wordCount(_ s: String) -> Int {
+        s.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
+    }
+
+    /// Undo a stalled recognizer's timestamp collapse. When macOS's `SpeechAnalyzer`
+    /// stops finalizing on a long stream (~30 min in), every later segment can arrive
+    /// stamped at the last good audio time, so a whole speaker turn — up to tens of
+    /// minutes — coalesces under ONE timecode (the "[29:52] Them: …4,872 words" bug).
+    /// This detects such a frozen run (consecutive same-speaker turns that barely
+    /// advance in time yet carry far more speech than one instant could) and spreads
+    /// its timecodes across the real gap — up to the next turn, else the meeting
+    /// `duration` — splitting a lone giant turn into word-chunks. The primary fix is
+    /// analyzer rotation (which keeps this from ever triggering); this is the backstop
+    /// so a stall can never again produce one unreadable block. Pure, and a no-op on a
+    /// healthy transcript whose turns already carry distinct, advancing times.
+    static func decollapse(_ turns: [TurnLog.Turn], duration: TimeInterval) -> [TurnLog.Turn] {
+        let sorted = turns.sorted { $0.elapsed < $1.elapsed }
+        guard !sorted.isEmpty else { return turns }
+        var out: [TurnLog.Turn] = []
+        var i = 0
+        while i < sorted.count {
+            // Grow a run of consecutive same-speaker turns whose times stay within the
+            // tolerance of the run's start (i.e. effectively one frozen timestamp).
+            let speaker = sorted[i].speaker
+            let runStart = sorted[i].elapsed
+            var j = i
+            while j < sorted.count,
+                  sorted[j].speaker == speaker,
+                  sorted[j].elapsed - runStart < collapseSpanTolerance {
+                j += 1
+            }
+            let run = Array(sorted[i..<j])
+            let totalWords = run.reduce(0) { $0 + wordCount($1.text) }
+            if totalWords >= collapseWordFloor {
+                // Its true end: the next (different-speaker) turn if meaningfully later,
+                // else an estimate from the word count, capped at the meeting end.
+                let nextTime = j < sorted.count ? sorted[j].elapsed : duration
+                let estimated = min(duration, runStart + Double(totalWords) / assumedWordsPerSecond)
+                var runEnd = nextTime
+                if runEnd - runStart < 1 { runEnd = estimated }
+                runEnd = max(runEnd, runStart + 1)
+                out.append(contentsOf: spread(run, from: runStart, to: runEnd, speaker: speaker))
+            } else {
+                out.append(contentsOf: run)
+            }
+            i = j
+        }
+        return out
+    }
+
+    /// Spread a frozen run's text evenly across `[start, end]`. The run's (collapsed,
+    /// same-timecode) text is joined and re-chunked into paragraph-sized pieces so the
+    /// output is uniform whether the stall produced one giant turn or many tiny merged
+    /// spans; each piece then gets an interpolated timecode. `render`'s gap-break turns
+    /// them into separate lines.
+    private static func spread(_ run: [TurnLog.Turn], from start: TimeInterval,
+                               to end: TimeInterval, speaker: MeetingSpeaker) -> [TurnLog.Turn] {
+        let span = max(0, end - start)
+        let fullText = run.map(\.text).joined(separator: " ")
+        let pieces = chunked(fullText, per: decollapseChunkWords)
+        guard pieces.count > 1 else {
+            return [TurnLog.Turn(elapsed: start, speaker: speaker, text: fullText, endSec: max(start, end))]
+        }
+        let words = pieces.map { max(1, wordCount($0)) }
+        let wordsTotal = max(1, words.reduce(0, +))
+        var out: [TurnLog.Turn] = []
+        var cumulative = 0
+        for (k, text) in pieces.enumerated() {
+            let startFrac = Double(cumulative) / Double(wordsTotal)
+            cumulative += words[k]
+            let endFrac = Double(cumulative) / Double(wordsTotal)
+            let s = start + span * startFrac
+            let e = start + span * endFrac
+            out.append(TurnLog.Turn(elapsed: s, speaker: speaker, text: text, endSec: max(s, e)))
+        }
+        return out
+    }
+
+    /// Split text into chunks of about `per` words, on word boundaries.
+    private static func chunked(_ text: String, per: Int) -> [String] {
+        let ws = text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).map(String.init)
+        guard ws.count > per else { return [text] }
+        var chunks: [String] = []
+        var idx = 0
+        while idx < ws.count {
+            let end = min(idx + per, ws.count)
+            chunks.append(ws[idx..<end].joined(separator: " "))
+            idx = end
+        }
+        return chunks
     }
 
     /// `mm:ss` (or `h:mm:ss` past an hour) for a relative offset.

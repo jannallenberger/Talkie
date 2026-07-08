@@ -95,6 +95,14 @@ final class HUDModel: ObservableObject {
     @Published var busyNudge: Int = 0
     /// Bumped when audio goes live, to fire the one-shot waveform "start" sweep.
     @Published var recordStartID: Int = 0
+    /// Bumped the instant a hold begins (key-down), so the capture pill can run a
+    /// "hold-to-lock" progress fill that sweeps across it over exactly
+    /// `ActivationGesture.latchThreshold`. If the user releases before it completes it
+    /// was a plain push-to-talk tap (the pill leaves the capture phase and the fill
+    /// vanishes); if they keep holding, the fill reaches full right as the session
+    /// latches hands-free and `handsFreeLocked` flips — which pops the pill. Its own
+    /// tick so each fresh hold restarts the fill from empty even back-to-back.
+    @Published var latchArmedTick: Int = 0
     /// Text held for the tap-to-copy fallback when a paste couldn't land.
     @Published var copyText: String = ""
     /// Keyboard shortcut to surface in the copy-prompt pill (e.g. "⌥⌘V" to re-paste
@@ -352,6 +360,7 @@ final class HUDController {
         resetLevels()
         model.handsFreeLocked = false   // fresh session starts un-locked
         model.silenceCountingDown = false   // and never inherits a stale auto-stop countdown
+        model.latchArmedTick &+= 1      // (re)start the hold-to-lock progress fill from empty
         model.phase = .arming
         model.text = ""
         model.volatileText = ""
@@ -982,6 +991,11 @@ private struct HUDView: View {
     /// writes — `AppSettings` persists to `.standard`.
     @AppStorage("showLivePillText") private var showLivePillText = true
 
+    /// Drives the one-shot "pop" the instant a hold latches hands-free: a quick spring
+    /// scale-up that snaps back, so locking reads as a satisfying click rather than a
+    /// silent state change. Toggled true→false around the `handsFreeLocked` edge.
+    @State private var lockPop = false
+
     private static let hudSpace = "talkieHUD"
 
     // MARK: Accessibility-aware styling helpers
@@ -1071,6 +1085,14 @@ private struct HUDView: View {
                 // is half its height, so it ballooned rounder as the pill got taller.
                 RoundedRectangle(cornerRadius: 17, style: .continuous)
                     .fill(.black)
+                    // Change #2: hold-to-lock progress. A subtle coral fill sweeps in
+                    // from the leading edge over exactly `latchThreshold`; if the user
+                    // keeps holding it reaches full right as the session latches, then
+                    // the pill pops (below). A quick release leaves the capture phase
+                    // and the fill vanishes — so a plain push-to-talk tap barely shows it.
+                    .overlay(alignment: .leading) {
+                        LatchProgressFill(model: model, cornerRadius: 17)
+                    }
                     .overlay(
                         RoundedRectangle(cornerRadius: 17, style: .continuous)
                             .strokeBorder(
@@ -1079,6 +1101,16 @@ private struct HUDView: View {
                             )
                     )
             )
+            // The lock "pop": a brief spring scale keyed on the hands-free latch edge.
+            .scaleEffect(lockPop ? 1.06 : 1.0, anchor: .top)
+            .onChange(of: model.handsFreeLocked) {
+                guard model.handsFreeLocked else { return }
+                withAnimation(.spring(response: 0.16, dampingFraction: 0.4)) { lockPop = true }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(160))
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) { lockPop = false }
+                }
+            }
             // Learned-correction ping: a coral ring that traces the pill and
             // visibly drains over the dismiss window — a wordless countdown. Keyed
             // by `learnedTick` so it restarts from full on each new ping.
@@ -1580,6 +1612,50 @@ private struct HUDView: View {
         case .hidden:
             EmptyView()
         }
+    }
+}
+
+/// Change #2 — the "hold-to-lock" progress fill inside the capture pill. A subtle
+/// coral wash grows from the leading edge to full over exactly
+/// `ActivationGesture.latchThreshold`, so a hold visibly "charges up" to the
+/// hands-free latch. It shows only during live capture and only until the session
+/// latches (`handsFreeLocked`), so a quick push-to-talk tap barely reveals it, while
+/// a deliberate hold fills it right as the lock fires and the pill pops. Keyed off
+/// `latchArmedTick`, which the controller bumps on every new hold, so each press
+/// restarts the fill from empty — even two holds back to back.
+private struct LatchProgressFill: View {
+    @ObservedObject var model: HUDModel
+    var cornerRadius: CGFloat
+    @State private var fill: CGFloat = 0
+
+    /// The fill is meaningful only while genuinely capturing and not yet latched —
+    /// once locked, the lock glyph + pop own the moment, so the fill steps aside.
+    private var active: Bool {
+        switch model.phase {
+        case .arming, .listening, .transcribing: return !model.handsFreeLocked
+        default: return false
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(Theme.featherRed.opacity(0.16))
+                .frame(width: max(0, geo.size.width * fill))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .opacity(active ? 1 : 0)
+        .allowsHitTesting(false)
+        .onAppear { if active { start() } }
+        // A fresh hold: restart the sweep from empty.
+        .onChange(of: model.latchArmedTick) { start() }
+        // Session ended (or latched): drop the fill instantly so the next hold starts clean.
+        .onChange(of: active) { if !active { fill = 0 } }
+    }
+
+    private func start() {
+        fill = 0
+        withAnimation(.linear(duration: ActivationGesture.latchThreshold)) { fill = 1 }
     }
 }
 
