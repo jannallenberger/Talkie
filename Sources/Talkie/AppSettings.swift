@@ -373,12 +373,13 @@ final class AppSettings: ObservableObject {
             }
         }
     }
-    /// Pause currently-playing media while you dictate, then resume it. Covers
-    /// scriptable players (Apple Music / Spotify) directly, and — since H1 removed the
-    /// separate opt-in — also nudges the system play/pause key for anything else that's
-    /// actually outputting audio (browsers, podcasts). The media-key nudge is gated on
-    /// real output activity in `MusicController.pauseForDictation`, so it never fires
-    /// blindly.
+    /// Pause currently-playing media while you dictate, then resume it. Covers only
+    /// the scriptable players — Apple Music and Spotify — and only when one is
+    /// already running and playing, so this can never launch either app. (An earlier
+    /// version also nudged the system play/pause key for anything else that was
+    /// outputting audio; that fallback was removed because macOS's default handler
+    /// for an unclaimed play/pause key launches Music.app and makes it frontmost —
+    /// see `MusicController`.)
     @Published var pauseMusicWhileDictating: Bool {
         didSet { defaults.set(pauseMusicWhileDictating, forKey: Keys.pauseMusicWhileDictating) }
     }
