@@ -44,6 +44,15 @@ struct MeetingsView: View {
     /// The meeting awaiting delete confirmation. Deleting a meeting overwrites its
     /// transcript file and forgets what the graph learned from it, so we confirm first.
     @State private var pendingDelete: Meeting?
+    /// Bridges the live-notes draft (owned by `RecordingNotesEditor`, an isolated
+    /// child view so per-keystroke typing doesn't republish through `recorder` and
+    /// re-diff this whole page) back to the "Stop & summarize" button, so stopping
+    /// can flush the latest keystroke into `recorder.notes` synchronously — before
+    /// `MeetingRecorder.stop()` reads it — without the editor's typing ever
+    /// publishing through SwiftUI itself. Held via `@State` only so its IDENTITY
+    /// survives across body re-evaluations; it is deliberately NOT an
+    /// `ObservableObject` — mutating `.text` is silent by design.
+    @State private var notesDraftBox = NotesDraftBox()
 
     var body: some View {
         ScrollView {
@@ -60,7 +69,9 @@ struct MeetingsView: View {
                 recordCard
                 if let importer { ImportControls(importer: importer) }
                 languageModeRow
-                if recorder.isRecording { notesCard }
+                if recorder.isRecording {
+                    RecordingNotesEditor(recorder: recorder, draftBox: notesDraftBox)
+                }
                 folderRow
                 keepAudioCard
                 watchedInboxCard
@@ -69,18 +80,28 @@ struct MeetingsView: View {
                 if store.meetings.isEmpty {
                     emptyState
                 } else {
-                    ForEach(store.meetings) { meeting in
-                        MeetingRow(
-                            meeting: meeting,
-                            profileImage: profileImage,
-                            folderURL: store.folderURL,
-                            onReveal: { reveal(meeting) },
-                            onCopy: { copy(meeting) },
-                            onDelete: { pendingDelete = meeting },
-                            onRegenerate: { await regenerateSummary(meeting) },
-                            onSaveTranscript: { edited in saveTranscript(meeting, edited: edited) },
-                            onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
-                        )
+                    // LazyVStack (rather than the plain VStack this used to be)
+                    // instantiates only the rows near the visible scroll region
+                    // instead of all ~200 retained meetings eagerly on every pass.
+                    // Paired with `.equatable()` below, a row whose `Meeting` value
+                    // hasn't changed skips its own body re-evaluation entirely, so
+                    // the 1 Hz recording tick / a notes keystroke elsewhere on this
+                    // page no longer re-lays-out (and re-word-counts) the whole list.
+                    LazyVStack(alignment: .leading, spacing: Theme.Space.section) {
+                        ForEach(store.meetings) { meeting in
+                            MeetingRow(
+                                meeting: meeting,
+                                profileImage: profileImage,
+                                folderURL: store.folderURL,
+                                onReveal: { reveal(meeting) },
+                                onCopy: { copy(meeting) },
+                                onDelete: { pendingDelete = meeting },
+                                onRegenerate: { await regenerateSummary(meeting) },
+                                onSaveTranscript: { edited in saveTranscript(meeting, edited: edited) },
+                                onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
+                            )
+                            .equatable()
+                        }
                     }
                 }
             }
@@ -199,13 +220,22 @@ struct MeetingsView: View {
                     Text(recorder.capturingFarEnd ? "Recording you + the call…" : "Recording (mic only)…")
                         .font(.talkieHeading(15, weight: .semibold))
                         .foregroundStyle(Theme.ink)
-                    Text(timeString(recorder.elapsed))
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(Theme.inkSecondary)
+                    // Isolated into its own view so the once-a-second tick only
+                    // invalidates this one Text, not the whole page (see
+                    // `RecordingElapsedText` below).
+                    RecordingElapsedText(recorder: recorder)
                 }
                 Spacer()
-                Button("Stop & summarize") { Task { await recorder.stop() } }
-                    .controlSize(.large)
+                Button("Stop & summarize") {
+                    // Flush the notes draft synchronously BEFORE stop() reads
+                    // `recorder.notes` — `stop()` reads it a few lines after
+                    // setting `isRecording = false`, with no `await` in between,
+                    // so a debounce-driven commit reacting to `isRecording`
+                    // flipping would always be too late. See `NotesDraftBox`.
+                    recorder.notes = notesDraftBox.text
+                    Task { await recorder.stop() }
+                }
+                .controlSize(.large)
             } else if recorder.isFinishing {
                 ProgressView().controlSize(.small)
                 Text("Transcribing & summarizing…")
@@ -232,43 +262,12 @@ struct MeetingsView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // Live notes during a recording — fused with the transcript on stop (the
-    // "Granola magic"). Jot sparse points; Talkie expands them from what was said.
-    private var notesCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkTertiary)
-                Text("Your notes")
-                    .font(.talkieEyebrow)
-                    .foregroundStyle(Theme.inkSecondary)
-                Spacer()
-                Text("Fused with the transcript when you stop")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.inkTertiary)
-            }
-            TextEditor(text: $recorder.notes)
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.ink)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 88, maxHeight: 170)
-                .padding(8)
-                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(alignment: .topLeading) {
-                    if recorder.notes.isEmpty {
-                        Text("Jot key points — Talkie expands them with the transcript…")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.inkTertiary)
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 16)
-                            .allowsHitTesting(false)
-                    }
-                }
-        }
-        .talkieCard()
-        .frame(maxWidth: .infinity)
-    }
+    // Live notes during a recording used to live here as a `notesCard` computed
+    // property bound directly to `$recorder.notes` — every keystroke published
+    // through `recorder` (an `@ObservedObject` this whole page observes), forcing
+    // a full-page re-diff per character typed. Replaced by `RecordingNotesEditor`
+    // (below `RecordingDot`), a standalone child view with its own local draft
+    // `@State`, so typing only invalidates that tiny view.
 
     /// Honest folder row (L6c): notes route through `ExportPreferences.resolvedDestination()`
     /// (Meeting.swift), NOT the hardcoded ~/Talkie Meetings — so the line is derived from the
@@ -522,11 +521,6 @@ struct MeetingsView: View {
         )
         return added
     }
-
-    private func timeString(_ t: TimeInterval) -> String {
-        let s = Int(t)
-        return String(format: "%02d:%02d", s / 60, s % 60)
-    }
 }
 
 private struct RecordingDot: View {
@@ -541,7 +535,152 @@ private struct RecordingDot: View {
     }
 }
 
-private struct MeetingRow: View {
+/// The elapsed-time readout during a recording, isolated into its own tiny view
+/// so the once-a-second tick (`MeetingRecorder.elapsed`, driven by a 1 Hz
+/// `Timer`) only invalidates this one `Text` instead of the whole `MeetingsView`
+/// page — which, before this, re-laid-out (and, pre-caching, re-word-counted)
+/// every retained meeting row every second while recording.
+private struct RecordingElapsedText: View {
+    @ObservedObject var recorder: MeetingRecorder
+
+    var body: some View {
+        Text(Self.timeString(recorder.elapsed))
+            .font(.system(size: 13, design: .monospaced))
+            .foregroundStyle(Theme.inkSecondary)
+    }
+
+    private static func timeString(_ t: TimeInterval) -> String {
+        let s = Int(t)
+        return String(format: "%02d:%02d", s / 60, s % 60)
+    }
+}
+
+/// A plain (non-observed) box holding the in-progress notes draft, shared
+/// between `RecordingNotesEditor` and `MeetingsView`'s "Stop & summarize" button.
+/// Deliberately NOT an `ObservableObject`: `RecordingNotesEditor` updates `.text`
+/// on every keystroke, and that mutation must stay silent (no `objectWillChange`)
+/// so typing never republishes to `MeetingsView`. The button reads `.text`
+/// synchronously right before calling `recorder.stop()`, so the very last
+/// keystroke — which may still be sitting in the debounce below — is never lost
+/// to a stop triggered from the in-app button.
+private final class NotesDraftBox {
+    var text: String = ""
+}
+
+/// Live notes during a recording — fused with the transcript on stop (the
+/// "Granola magic"). Jot sparse points; Talkie expands them from what was said.
+///
+/// Used to be a `TextEditor` bound directly to `$recorder.notes` inline in
+/// `MeetingsView.body`; every keystroke published through `recorder` (an
+/// `@ObservedObject` the whole page observes), forcing a full-page re-diff per
+/// character typed — expensive once the meetings list below it holds ~200 rows.
+/// Pulling the editor out into its own view with a LOCAL `@State` draft means a
+/// keystroke only invalidates this small view: the draft is committed back to
+/// `recorder.notes` on a short debounce (so `MeetingRecorder`'s own 1 Hz
+/// crash-recovery flush stays reasonably fresh), on blur, and when this view
+/// disappears (recording stopped via a path other than the in-app button, or the
+/// user switches tabs mid-recording) — never silently dropped.
+private struct RecordingNotesEditor: View {
+    @ObservedObject var recorder: MeetingRecorder
+    let draftBox: NotesDraftBox
+
+    @State private var draft: String = ""
+    @FocusState private var isFocused: Bool
+    @State private var commitTask: Task<Void, Never>?
+
+    /// Debounce before an in-progress edit reaches `recorder.notes`. Short
+    /// enough that `MeetingRecorder`'s periodic crash-recovery flush (which reads
+    /// `notes`) never lags typing by more than a fraction of a second, and that a
+    /// recording stopped via a path OTHER than this page's button (a global
+    /// hotkey, a Shortcut) — which this view can't intercept synchronously —
+    /// only risks losing, at most, this little.
+    private static let commitDebounce: Duration = .milliseconds(400)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.inkTertiary)
+                Text("Your notes")
+                    .font(.talkieEyebrow)
+                    .foregroundStyle(Theme.inkSecondary)
+                Spacer()
+                Text("Fused with the transcript when you stop")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            TextEditor(text: $draft)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.ink)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 88, maxHeight: 170)
+                .padding(8)
+                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if draft.isEmpty {
+                        Text("Jot key points — Talkie expands them with the transcript…")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.inkTertiary)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .focused($isFocused)
+        }
+        .talkieCard()
+        .frame(maxWidth: .infinity)
+        .onAppear {
+            // Seed from whatever `recorder.notes` already holds — a recording
+            // started before this page was opened, or recovered mid-flight —
+            // so re-opening the Meetings tab never shows a blank editor over
+            // real notes.
+            draft = recorder.notes
+            draftBox.text = draft
+        }
+        .onChange(of: draft) { _, newValue in
+            draftBox.text = newValue
+            scheduleCommit(newValue)
+        }
+        .onChange(of: isFocused) { _, focused in
+            if !focused { commitNow() }
+        }
+        .onDisappear { commitNow() }
+    }
+
+    private func scheduleCommit(_ text: String) {
+        commitTask?.cancel()
+        commitTask = Task {
+            try? await Task.sleep(for: Self.commitDebounce)
+            guard !Task.isCancelled else { return }
+            recorder.notes = text
+        }
+    }
+
+    private func commitNow() {
+        commitTask?.cancel()
+        commitTask = nil
+        recorder.notes = draft
+    }
+}
+
+/// Perf: `.equatable()` (applied at the `ForEach` call site in `MeetingsView`)
+/// lets SwiftUI skip re-evaluating a row's `body` entirely when the PARENT
+/// reconstructs it with an unchanged `Meeting` — e.g. the once-a-second
+/// recording tick or a notes keystroke elsewhere on the page, neither of which
+/// ever touches `store.meetings`. Only `meeting`/`folderURL` are compared: the
+/// closures aren't (and can't be) meaningfully compared, and `profileImage`
+/// (an `@ObservedObject`) keeps its OWN reactivity independent of this check —
+/// this only gates whether the PARENT's reconstruction forces a re-render, not
+/// the row's own internal state changes.
+private struct MeetingRow: View, Equatable {
+    // nonisolated: `View` is @MainActor, but `Equatable.==` must be nonisolated.
+    // Safe here — it only reads Sendable `let`s (`Meeting`, `URL`).
+    nonisolated static func == (lhs: MeetingRow, rhs: MeetingRow) -> Bool {
+        lhs.meeting == rhs.meeting && lhs.folderURL == rhs.folderURL
+    }
+
     let meeting: Meeting
     /// L7: the user's profile picture, shown leading the row header ONLY when a photo
     /// is set. In-app display only — never written into the exported note.
@@ -576,10 +715,21 @@ private struct MeetingRow: View {
     @State private var draft: String?
     /// The learn chips offered after a save, and which have been accepted/added.
     @State private var learnable: [LearnCandidate] = []
+    /// Cached so the row doesn't re-split the (potentially long) transcript on
+    /// every render — populated once on `onAppear` and refreshed only when
+    /// `meeting.transcript` actually changes (a transcript edit), not on every
+    /// body re-evaluation triggered by `hovering`/`expanded`/an unrelated parent
+    /// re-render. `wordCount` below falls back to a live count for the single
+    /// render that can happen before `onAppear` fires.
+    @State private var cachedWordCount: Int?
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; return f
     }()
+
+    private var wordCount: Int {
+        cachedWordCount ?? WordCounter.count(meeting.transcript)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -593,7 +743,7 @@ private struct MeetingRow: View {
                     Text(Self.dateFormatter.string(from: meeting.date))
                         .font(.talkieHeading(14, weight: .semibold))
                         .foregroundStyle(Theme.ink)
-                    Text("\(Int((meeting.durationSec / 60).rounded())) min · \(WordCounter.count(meeting.transcript)) words")
+                    Text("\(Int((meeting.durationSec / 60).rounded())) min · \(wordCount) words")
                         .font(.talkieEyebrow)
                         .foregroundStyle(Theme.inkTertiary)
                 }
@@ -689,6 +839,12 @@ private struct MeetingRow: View {
         }
         .talkieCard(padding: 14)
         .onHover { hovering = $0 }
+        .onAppear {
+            if cachedWordCount == nil { cachedWordCount = WordCounter.count(meeting.transcript) }
+        }
+        .onChange(of: meeting.transcript) { _, newValue in
+            cachedWordCount = WordCounter.count(newValue)
+        }
         .confirmationDialog(
             "Regenerate summary?",
             isPresented: $confirmRegenerate,

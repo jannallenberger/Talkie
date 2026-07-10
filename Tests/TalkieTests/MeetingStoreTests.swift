@@ -147,7 +147,7 @@ final class MeetingStoreTests: XCTestCase {
     /// position) and rewrites the durable `.md` file, so the JSON index AND the note
     /// on disk both serve the edited text. This is the persistence backbone of the
     /// transcript editor.
-    func testUpdatePersistsEditedTranscriptToIndexAndMarkdown() throws {
+    func testUpdatePersistsEditedTranscriptToIndexAndMarkdown() async throws {
         let store = makeStore()
         var m = meeting(title: "Sync", startUnix: 1_700_000_000)
         m.transcript = "we discussed the cloud MD rollout"
@@ -175,6 +175,8 @@ final class MeetingStoreTests: XCTestCase {
         XCTAssertFalse(rewrittenMD.contains("cloud MD"), "stale transcript is replaced, not appended")
 
         // And it survives a reload from disk (the index is the authority the UI reads).
+        // The index write is now debounced+off-main, so drain it before reloading.
+        await store.flush()
         let reloaded = makeStore()
         XCTAssertEqual(reloaded.meetings.first?.transcript, "we discussed the claude.md rollout",
                        "the edit is durable across a reload of meetings.json")

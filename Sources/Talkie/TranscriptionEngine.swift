@@ -732,7 +732,7 @@ actor TranscriptionEngine {
     }
 
     /// Convert a single PCM buffer to `target`. Mirrors `AudioCapture.convert`.
-    nonisolated private static func convertOne(
+    nonisolated fileprivate static func convertOne(
         _ buffer: AVAudioPCMBuffer,
         using converter: AVAudioConverter,
         to target: AVAudioFormat
@@ -753,5 +753,78 @@ actor TranscriptionEngine {
         }
         if status == .error || error != nil { return nil }
         return output
+    }
+}
+
+// MARK: - Cached per-call-site conversion
+
+extension TranscriptionEngine {
+    /// Caches an `AVAudioConverter` keyed by its (source, target) format pair, so a
+    /// call site that re-samples many buffers in a row (a decode loop, a streamed
+    /// language lane) reuses the same converter — and its internal resampler state
+    /// — instead of rebuilding one on every buffer. `TranscriptionEngine.conform`
+    /// above stays a stateless, always-fresh fallback: fine for the occasional
+    /// whole-utterance re-transcription pass (`transcribeScored`), but wasteful
+    /// when invoked once per ~1s decode chunk (`FileImportEngine`) or once per
+    /// streamed input buffer per language lane (`MultiLangStreamTranscriber`),
+    /// where the (source, target) pair never actually changes across the whole
+    /// loop. Own ONE instance per decode loop / per `Lane` and call
+    /// `convert(_:to:)` for every buffer there instead.
+    ///
+    /// Not `Sendable`, like the `AVAudioFile`/`AVAssetReader` instances the decode
+    /// loops already hold: an instance must stay confined to the single actor/task
+    /// that owns it and never be shared across concurrent callers.
+    final class ConformingConverter {
+        private var converter: AVAudioConverter?
+        // The (source, target) format pair the cached `converter` was built for,
+        // compared field-by-field rather than via `AVAudioFormat` equality — same
+        // fields `conform`'s pass-through fast path below already keys off.
+        private var cachedSourceRate: Double = 0
+        private var cachedSourceChannels: AVAudioChannelCount = 0
+        private var cachedSourceCommon: AVAudioCommonFormat = .otherFormat
+        private var cachedTargetRate: Double = 0
+        private var cachedTargetChannels: AVAudioChannelCount = 0
+        private var cachedTargetCommon: AVAudioCommonFormat = .otherFormat
+
+        init() {}
+
+        /// Re-sample `buffer` to `target`. Same semantics as `conform(_:to:)` for a
+        /// single buffer: a pass-through (no copy, no conversion) when `buffer`'s
+        /// format already matches `target`; `nil` if no converter can be built or
+        /// the conversion fails. Rebuilds the underlying `AVAudioConverter` only
+        /// when `(source, target)` differs from the previous call — the common
+        /// case across a decode loop or a lane's whole stream is that it never does.
+        func convert(_ buffer: AVAudioPCMBuffer, to target: AVAudioFormat) -> AVAudioPCMBuffer? {
+            let source = buffer.format
+            if source.sampleRate == target.sampleRate,
+               source.channelCount == target.channelCount,
+               source.commonFormat == target.commonFormat {
+                return buffer
+            }
+
+            let stale = converter == nil
+                || cachedSourceRate != source.sampleRate
+                || cachedSourceChannels != source.channelCount
+                || cachedSourceCommon != source.commonFormat
+                || cachedTargetRate != target.sampleRate
+                || cachedTargetChannels != target.channelCount
+                || cachedTargetCommon != target.commonFormat
+            if stale {
+                guard let fresh = AVAudioConverter(from: source, to: target) else { return nil }
+                fresh.primeMethod = .none // avoid timestamp drift on streamed buffers
+                converter = fresh
+                cachedSourceRate = source.sampleRate
+                cachedSourceChannels = source.channelCount
+                cachedSourceCommon = source.commonFormat
+                cachedTargetRate = target.sampleRate
+                cachedTargetChannels = target.channelCount
+                cachedTargetCommon = target.commonFormat
+            }
+
+            guard let converter,
+                  let converted = TranscriptionEngine.convertOne(buffer, using: converter, to: target),
+                  converted.frameLength > 0 else { return nil }
+            return converted
+        }
     }
 }

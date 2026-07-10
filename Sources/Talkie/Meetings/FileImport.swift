@@ -318,9 +318,14 @@ actor FileImportEngine: FileImporting {
         guard totalFrames > 0 else { throw FileImportError.emptyTranscript }
 
         // A chunk of source frames sized to ~chunkSeconds of the SOURCE audio (the read
-        // happens in the source format; `conform` handles the resample afterwards).
+        // happens in the source format; the converter below handles the resample
+        // afterwards).
         let chunkFrames = AVAudioFrameCount(max(1, Int(sourceFormat.sampleRate * Self.chunkSeconds)))
         var framesRead: AVAudioFramePosition = 0
+        // One converter for the whole file: source/target formats never change across
+        // chunks, so this reuses a single `AVAudioConverter` (and its resampler state)
+        // instead of rebuilding one per ~1s chunk.
+        let converter = TranscriptionEngine.ConformingConverter()
 
         while framesRead < totalFrames {
             try Task.checkCancellation()
@@ -334,7 +339,7 @@ actor FileImportEngine: FileImporting {
             guard got > 0 else { break }
             framesRead += AVAudioFramePosition(got)
 
-            for converted in TranscriptionEngine.conform([chunk], to: target) where converted.frameLength > 0 {
+            if let converted = converter.convert(chunk, to: target), converted.frameLength > 0 {
                 feed(converted)
             }
             let fraction = totalFrames > 0 ? min(1, Double(framesRead) / Double(totalFrames)) : 1
@@ -369,7 +374,7 @@ actor FileImportEngine: FileImporting {
         }
 
         // Ask the reader for deinterleaved float32 PCM so we can wrap each output sample
-        // buffer as an AVAudioPCMBuffer and reuse the existing `conform` resampler.
+        // buffer as an AVAudioPCMBuffer and reuse the existing resampling converter.
         let outputSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMBitDepthKey: 32,
@@ -386,11 +391,16 @@ actor FileImportEngine: FileImporting {
         let totalDuration = (try? await asset.load(.duration).seconds) ?? 0
         let duration = totalDuration.isFinite ? max(0, totalDuration) : 0
 
+        // One converter for the whole demux: source/target formats never change
+        // across sample buffers, so this reuses a single `AVAudioConverter` instead
+        // of rebuilding one per (of potentially tens of thousands of) sample buffer.
+        let converter = TranscriptionEngine.ConformingConverter()
+
         while reader.status == .reading {
             try Task.checkCancellation()
             guard let sample = output.copyNextSampleBuffer() else { break }
             guard let pcm = Self.pcmBuffer(from: sample) else { continue }
-            for converted in TranscriptionEngine.conform([pcm], to: target) where converted.frameLength > 0 {
+            if let converted = converter.convert(pcm, to: target), converted.frameLength > 0 {
                 feed(converted)
             }
             // Progress by presentation time / total duration — the reader has no frame

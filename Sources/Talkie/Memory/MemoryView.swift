@@ -37,6 +37,13 @@ struct MemoryView: View {
     /// that don't wire it still compile.
     var nicheVocab: NicheVocabStore? = nil
     @State private var query = ""
+    /// Cached result of the debounced search below — `body` only ever renders
+    /// this, it never calls `SearchEngine.search` itself. Before this cache
+    /// existed, `searchResults` called `searchEngine.search(trimmedQuery)`
+    /// directly inline in `body`, which reran the full semantic scan not just on
+    /// every keystroke but on every unrelated re-render too (any `@Published`
+    /// change on `history`/`contextGraph`/`meetingStore`/etc. recomputes `body`).
+    @State private var hits: [SearchHit] = []
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -57,6 +64,30 @@ struct MemoryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.canvas)
+        // Debounced off-render search: `.task(id:)` re-runs `runSearch` only when
+        // `trimmedQuery` actually changes, and automatically cancels the previous
+        // run first — a fast typer's intermediate queries never reach a scan.
+        .task(id: trimmedQuery) {
+            await runSearch(for: trimmedQuery)
+        }
+    }
+
+    /// Waits ~200ms (debounce), then runs the same `SearchEngine.search` the old
+    /// inline-in-`body` call used — same query in, same results out — and caches
+    /// them into `hits` for `body` to render. `.task(id:)` cancels this task the
+    /// instant `trimmedQuery` changes again, so both the sleep and the scan below
+    /// bail out via `Task.isCancelled` for a superseded query rather than racing
+    /// a newer one to `hits`.
+    private func runSearch(for query: String) async {
+        guard !query.isEmpty else {
+            hits = []
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(200))
+        guard !Task.isCancelled else { return }
+        let results = searchEngine.search(query)
+        guard !Task.isCancelled else { return }
+        hits = results
     }
 
     // MARK: Page content (header + search + history)
@@ -164,10 +195,10 @@ struct MemoryView: View {
 
     /// With a query: real search (dictations + meetings + graph entities,
     /// semantic+keyword blended) via the shared `SearchEngine` — the same engine
-    /// that used to power a standalone Search tab.
+    /// that used to power a standalone Search tab. Renders the debounced `hits`
+    /// populated by `runSearch(for:)` — `body` never scans inline.
     @ViewBuilder
     private var searchResults: some View {
-        let hits = searchEngine.search(trimmedQuery)
         if hits.isEmpty {
             emptyPrompt(title: "No matches",
                         subtitle: "Try a different word — this searches what you've said, your meetings, and what Talkie's picked up from them.",

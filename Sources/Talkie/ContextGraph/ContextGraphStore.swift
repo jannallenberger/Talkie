@@ -1,5 +1,36 @@
 import Foundation
 
+/// Serializes the graph's encode+write off the main actor so folding in a
+/// dictation/meeting's extracted candidates never blocks the UI on JSON + disk
+/// I/O for the (up to ~2 000-entity) graph. Mirrors `HistoryFileWriter`
+/// (`HistoryStore.swift`): each write carries a monotonic `generation`; a write
+/// whose generation is already stale (a newer snapshot arrived first) is
+/// dropped, so a burst of ingests collapses to the last state and writes can't
+/// reorder. `Entity`/`Provenance`/`ProvenanceSource` are all Sendable value
+/// types, so the snapshots handed across the actor boundary copy, never share.
+actor ContextGraphWriter {
+    private let fileURL: URL
+    private let watermarkURL: URL
+    private var latestWritten = 0
+
+    init(fileURL: URL, watermarkURL: URL) {
+        self.fileURL = fileURL
+        self.watermarkURL = watermarkURL
+    }
+
+    func write(entities: [Entity], watermark: [ProvenanceSource: Double], generation: Int) {
+        guard generation > latestWritten else { return }
+        latestWritten = generation
+        // Persist as an array (JSON can't key an object by the composite EntityID).
+        if let data = try? JSONEncoder().encode(entities) {
+            try? data.write(to: fileURL, options: .atomic)
+        }
+        if let data = try? JSONEncoder().encode(watermark) {
+            try? data.write(to: watermarkURL, options: .atomic)
+        }
+    }
+}
+
 /// The on-device **Personal Context Graph** — the keystone shared brain. It
 /// accumulates entities (people, projects, terms, commitments) extracted from
 /// dictations and meetings, each with provenance, persisted as inspectable JSON
@@ -34,6 +65,16 @@ final class ContextGraphStore: ObservableObject {
     /// than re-ingesting (and inflating `mentions` on) every source each launch.
     private var backfillWatermark: [ProvenanceSource: Double] = [:]
 
+    /// Off-main JSON encode + atomic write. Callers are unchanged: `save()` still
+    /// looks synchronous to them, but it only schedules — the cost moves here.
+    private let writer: ContextGraphWriter
+    /// Debounce so a burst of mutations coalesces into one disk write. Mirrors
+    /// `HistoryStore`'s `saveDebounce`.
+    private let saveDebounce: Duration = .milliseconds(250)
+    private var pendingSave: Task<Void, Never>?
+    /// Monotonic save token; the writer drops any write older than the newest.
+    private var saveGeneration = 0
+
     convenience init() {
         self.init(directory: AppPaths.supportDirectory().appendingPathComponent("graph", isDirectory: true))
     }
@@ -44,6 +85,7 @@ final class ContextGraphStore: ObservableObject {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("entities.json")
         watermarkURL = dir.appendingPathComponent("backfill-watermark.json")
+        writer = ContextGraphWriter(fileURL: fileURL, watermarkURL: watermarkURL)
         load()
     }
 
@@ -195,21 +237,44 @@ final class ContextGraphStore: ObservableObject {
         }
     }
 
+    /// Schedule a coalesced, off-main persist. Synchronous to callers — it only
+    /// snapshots the current entities/watermark and debounces; the JSON encode +
+    /// atomic writes run on `ContextGraphWriter`, never on the main actor. Mirrors
+    /// `HistoryStore.save()`.
     private func save() {
         // Enforce the hard cap before persisting: evict the lowest-value non-pinned
         // entities so neither the file nor the in-memory map grows without bound.
+        // This mutates the @Published `entities` dictionary, so it stays here on
+        // the main actor; only the encode+write below moves off it.
         if entities.count > entityCap {
             let now = Date().timeIntervalSince1970
             let kept = ContextGraphPolicy.enforceCap(Array(entities.values), nowUnix: now, cap: entityCap)
             entities = Dictionary(kept.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         }
-        // Persist as an array (JSON can't key an object by the composite EntityID).
-        if let data = try? JSONEncoder().encode(Array(entities.values)) {
-            try? data.write(to: fileURL, options: .atomic)
+        saveGeneration += 1
+        let generation = saveGeneration
+        let entitiesSnapshot = Array(entities.values)     // value-type copy — Sendable across the hop
+        let watermarkSnapshot = backfillWatermark          // value-type copy — Sendable across the hop
+        let writer = self.writer
+        let delay = saveDebounce
+        pendingSave?.cancel()
+        pendingSave = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await writer.write(entities: entitiesSnapshot, watermark: watermarkSnapshot, generation: generation)
+            // Only clear the handle if a newer save hasn't already replaced it.
+            if let self, self.saveGeneration == generation { self.pendingSave = nil }
         }
-        if let data = try? JSONEncoder().encode(backfillWatermark) {
-            try? data.write(to: watermarkURL, options: .atomic)
-        }
+    }
+
+    /// Force any pending debounced save to complete now (app teardown / tests that
+    /// need to observe the on-disk file synchronously after a mutation). Mirrors
+    /// `HistoryStore.flush()`.
+    func flush() async {
+        pendingSave?.cancel()
+        pendingSave = nil
+        saveGeneration += 1
+        await writer.write(entities: Array(entities.values), watermark: backfillWatermark, generation: saveGeneration)
     }
 }
 
