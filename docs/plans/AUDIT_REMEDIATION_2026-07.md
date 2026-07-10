@@ -547,22 +547,58 @@ translation. Bare literals being wrapped in `.loc` must be added as new keys in 
 
 ---
 
+## Execution outcome (what actually shipped)
+
+This PR implemented Waves 1–5 as six commits (plan + five waves). Every wave was gated
+by `swift build` + `swift test` (1205 tests) + `scripts/check-no-network.sh`, all green;
+Wave 4 also builds the `TALKIE_CONNECTED` flavor. Shipped:
+
+- **Wave 1** — removed the "Clear everything" control (owner ask); neutralized the
+  `/tmp` transcript log; fixed the AudioCapture double-tap crash, the "note this"
+  overwrite, the corrupt-JSON wipe (7 stores), the niche-vocab true-delete hole, the
+  "scratch that" cascade, the unbounded AX walk, and the updater `rm -rf`-on-timeout.
+- **Wave 2** — session-generation token, `isProcessing` latch release, meeting-start
+  guard, meeting close/watchdog latches, regenerate-summary confirmation.
+- **Wave 3** — O(n log n) language merge, converter cache, off-main MeetingStore/
+  ContextGraph writers, LazyVStack + debounced Memory search + LiveBackground throttle.
+- **Wave 4** — deleted 4 dead types + 19 unused PNGs, gated TalkieBridge, tightened
+  PrivacyWall at 5 sites, fixed stale comments.
+- **Wave 5** — humanized + localized the HUD error strings and terminology; lifted
+  `inkTertiary` to WCAG AA; token + accessibility-label consistency.
+
 ## Deferred (documented, not in this PR)
 
-Large or judgment-heavy; safer as their own reviewed PRs. Do not attempt inside this
-remediation:
+Large or judgment-heavy; safer as their own reviewed PRs.
 
+- `perf-app-4` — **staged off-main launch loads** (deferred during execution): reorders
+  app startup and needs careful empty-state handling in every view; unverified and the
+  riskiest perf item. Own PR.
+- **l10n-integrity refactor** (`l10n-integrity-3/4/5/6/7/8/9/10/11/12`) — CommandsView
+  full localization, routing `SettingsRow`/`SettingsToggleRow`/`SettingsCard`
+  `Text(String)` through `.loc`, dashboard chips, menu items, the split "Press ⌘⇧V"
+  string, and a `.stringsdict` for plurals. Mechanical but touches hundreds of keys ×
+  10 languages; a dedicated localization pass with native review.
+- **Pre-existing catalog drift** — 9 milestone-tier keys (e.g. `Fledgling`,
+  `Golden Voice`) differ between `en` and the other 9 catalogs *at the base commit* —
+  not introduced here. Fold into the l10n pass above.
+- **Non-English translation review** — the Wave 5 error/calendar strings were
+  translated by the model into de/es/fr/it/ja/ko/nl/pt-BR/zh-Hans and want a
+  native-speaker check before shipping.
+- **Chart/heatmap accessibility** — the Dashboard bar chart and streak heatmap expose
+  data only via hover tooltips; a grouped/summarized VoiceOver treatment is a follow-up
+  (a task chip was spawned during Wave 5).
 - `simplify-ui-1` — split the 2,509-line `SettingsView.swift` God-file (mechanical but
   huge; own PR).
 - `simplify-ui-2` — extract a dependency-free `TalkieCore` leaf target to de-dup the
   MCP/CLI "mirror-don't-import" copies (aligns with the Windows-port shared text brain;
   own PR).
-- `simplify-ui-4` — generic JSON load/save store helper (10 stores). Do *after* Wave 1.5
-  lands the quarantine-load, so the helper includes it.
+- `simplify-ui-4` — generic JSON load/save store helper (10 stores). Builds on Wave 1's
+  `StoreLoad` quarantine helper.
 - `design-consistency-2` — full fixed→Dynamic-Type migration (179 `.font(.system(size:))`
   call sites).
 - `simplify-core-2/7/8/10/11`, `simplify-ui-5/6/7/8` — de-dup passes (converter, chunker,
   notch-panel math, locale helper, SRT/VTT renderers, language tiles). Nice-to-have.
+- The rest of the low-severity long tail in the appendix — triage per release priority.
 
 ---
 
