@@ -804,6 +804,12 @@ private struct WordsPerDayCard: View {
             }
         }
         .frame(maxHeight: .infinity)
+        // VoiceOver: fold the 14 individual bars — whose per-day counts are exposed
+        // only through mouse `.help` tooltips — into a single element with a spoken
+        // summary, so VO users get the data without tabbing past 14 unlabeled shapes.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Words per day, last \(dayCount) days")
+        .accessibilityValue(DashboardChartSummary.wordsPerDay(series: series, total: total))
     }
 
     /// A bar's drawn height: a faint 3-pt stub for an empty day; otherwise the
@@ -1161,6 +1167,14 @@ private struct Heatmap: View {
                 }
             }
         }
+        // VoiceOver: the grid can hold up to ~182 cells (26 weeks × 7 days) plus the
+        // weekday/month axis labels. Exposing each as its own element would be an
+        // impassable wall of stops, and today only the mouse `.help` tooltips carry
+        // the per-day counts. Collapse the whole grid into one element with a spoken
+        // summary instead; the streak counts already live in `StreakCard`'s header.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Activity heatmap")
+        .accessibilityValue(DashboardChartSummary.heatmap(data))
     }
 }
 
