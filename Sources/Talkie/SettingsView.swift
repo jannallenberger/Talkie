@@ -280,7 +280,7 @@ struct MainView: View {
                        wordFreq: wordFreq, scratchpad: scratchpad,
                        autoAddPreviewLog: autoAddPreviewLog,
                        contextSummary: contextSummary,
-                       jobTitle: jobTitle, profileImage: profileImage)
+                       nicheVocab: nicheVocab)
         case .commands:
             CommandsView(settings: settings, macros: macros,
                          commandRouter: commandRouter, hud: hud,

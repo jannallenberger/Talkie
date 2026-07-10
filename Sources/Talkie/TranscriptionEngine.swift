@@ -3,17 +3,60 @@ import Foundation
 import Speech
 
 /// Best-effort debug log to a file — the unified log doesn't reliably capture
-/// this app's NSLog, so language auto-detect diagnostics go here instead. Reads
-/// with `cat /tmp/talkie-lang.log`. TEMPORARY: remove once tuning is settled.
+/// this app's NSLog, so language auto-detect diagnostics go here instead. OPT-IN
+/// ONLY: a normal run (Debug or Release) writes nothing. Enable for a session
+/// with `TALKIE_DEBUG_LOG=1 ./scripts/run.sh` (or export it before launching
+/// Talkie.app directly), then read with
+/// `cat ~/Library/Application\ Support/Talkie/debug.log`. Gated on an env var
+/// rather than `Dev.isEnabled` because this is a free function called from
+/// many non-actor-isolated contexts (no cross-actor hop needed to check it).
+/// The write itself is dispatched onto a private serial queue so callers on
+/// the insert-critical path never block on disk I/O; see `TalkieDebugLogSink`.
+private let talkieDebugLogEnabled = ProcessInfo.processInfo.environment["TALKIE_DEBUG_LOG"] != nil
+
 func talkieDebugLog(_ message: String) {
+    guard talkieDebugLogEnabled else { return }
     guard let data = (message + "\n").data(using: .utf8) else { return }
-    let url = URL(fileURLWithPath: "/tmp/talkie-lang.log")
-    if let handle = try? FileHandle(forWritingTo: url) {
-        defer { try? handle.close() }
+    TalkieDebugLogSink.queue.async {
+        TalkieDebugLogSink.append(data)
+    }
+}
+
+/// Single serialized sink for `talkieDebugLog`: one long-lived `FileHandle`
+/// behind one serial queue, so concurrent callers never race the same append
+/// (the old per-call open/seek/write/close was not thread-safe). Lives in
+/// `~/Library/Application Support/Talkie/debug.log`, created owner-only
+/// (0600) since it can contain dictated text and other apps' AX field text.
+/// Truncated back to empty once it crosses ~1 MB — best-effort diagnostics,
+/// not an audit trail, so unbounded growth isn't worth the complexity of
+/// numbered rotation.
+private enum TalkieDebugLogSink {
+    static let queue = DispatchQueue(label: "com.coralate.talkie.debuglog", qos: .utility)
+    private static let maxBytes: UInt64 = 1_000_000
+    private static let fileURL = AppPaths.supportDirectory().appendingPathComponent("debug.log")
+    // Mutated only from inside `append`, which is itself only ever run on
+    // `queue` (a serial queue) — that serialization is what makes this safe,
+    // not actor isolation, so Swift 6 needs the explicit opt-out below.
+    nonisolated(unsafe) private static var handle: FileHandle?
+
+    /// Must only be called on `queue`.
+    static func append(_ data: Data) {
+        if handle == nil {
+            let path = fileURL.path
+            if !FileManager.default.fileExists(atPath: path) {
+                FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
+            } else {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+            }
+            handle = try? FileHandle(forWritingTo: fileURL)
+        }
+        guard let handle else { return }
+        if let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.size] as? UInt64,
+           size > maxBytes {
+            try? handle.truncate(atOffset: 0)
+        }
         _ = try? handle.seekToEnd()
         try? handle.write(contentsOf: data)
-    } else {
-        try? data.write(to: url)
     }
 }
 
@@ -335,8 +378,19 @@ actor TranscriptionEngine {
             return nil
         }
         let confidence = collected.confCount > 0 ? collected.confSum / Double(collected.confCount) : 0
-        let wordStr = collected.words.map { "\($0.0):\(String(format: "%.2f", $0.1))" }.joined(separator: " ")
-        talkieDebugLog("reTx[\(id)] mean=\(String(format: "%.2f", confidence)) text='\(text)'\n    words=[\(wordStr)]")
+        // Per-word text is dictated content — never log it, even when the sink
+        // is enabled. The min/max spread (vs. the mean above) is what actually
+        // showed whether confidence separates right-vs-wrong model per word;
+        // building it is skipped entirely when the sink is off since scanning
+        // every word is real work on the re-transcription hot path.
+        if talkieDebugLogEnabled {
+            let confidences = collected.words.map(\.1)
+            let minConf = confidences.min() ?? 0
+            let maxConf = confidences.max() ?? 0
+            talkieDebugLog("reTx[\(id)] mean=\(String(format: "%.2f", confidence)) " +
+                "min=\(String(format: "%.2f", minConf)) max=\(String(format: "%.2f", maxConf)) " +
+                "words=\(collected.words.count)")
+        }
         return (text: text, confidence: confidence)
     }
 

@@ -19,9 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// are pruned after 7 days, so "most used" can't be recomputed from history).
     let wordFreq = WordFrequencyStore()
     /// L5-b: the on-device *invented* job title for the Milestones page. Owned here
-    /// (not by the view) so its cache and generation state survive navigation. Its
-    /// inputs are content-derived (vocabulary + app usage), so it joins the
-    /// true-delete cascade — `MemoryView`'s "Clear everything" wipes `job_title.json`.
+    /// (not by the view) so its cache and generation state survive navigation.
     let jobTitle = JobTitleStore()
     /// L3a: rolling per-dictation software-latency record (last 50, numeric only —
     /// no transcript text). Populated from the post-release `ProcessingTrace`; the
@@ -38,8 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let scratchpad = ScratchpadStore()
     /// L7: the user's optional profile picture (`profile.png` in Application Support).
     /// Photo-only and opt-in — no default avatar. Shown in-app on the dashboard header
-    /// and meeting rows; never written into exports. Its `clear()` joins the
-    /// "Clear everything" cascade in `MemoryView`.
+    /// and meeting rows; never written into exports.
     let profileImage = ProfileImageStore()
     /// L2-b (LOG-ONLY / PREVIEW): a calibration log of what the "added by Chirp"
     /// auto-add gate WOULD do for each extracted commitment. It writes ONLY to its own
@@ -2561,6 +2558,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: True-delete cascade (shared by Memory's per-item delete + "scratch that")
+
+    /// Delete one dictation everywhere it left a trace: the history entry, the
+    /// context graph's provenance snippets that quoted its text, the lifetime
+    /// word-frequency counts, any Scratchpad line rescued from it, its AI-auto-add
+    /// preview-log records, the niche vocabulary harvested from it, and the
+    /// persisted Brief (regenerated from literal history text, so it could
+    /// otherwise still quote words you just deleted). "Scratch that" is exactly as
+    /// much of a user-initiated erase as a manual delete in Memory, so both call
+    /// this one cascade rather than each independently deciding what "delete" means.
+    private func deleteDictationEverywhere(_ entry: DictationEntry) {
+        history.delete(entry)
+        contextGraph.purge(source: .dictation, sourceID: entry.id.uuidString)
+        wordFreq.purge(text: entry.text)
+        scratchpad.purge(sourceID: entry.id.uuidString)
+        autoAddPreviewLog.purge(sourceID: entry.id.uuidString)
+        nicheVocab.purge(sourceID: entry.id.uuidString)
+        contextSummary.clearSummary()
+    }
+
     // MARK: Voice editing of just-inserted text (B9)
 
     /// Execute a B9 in-place edit ("scratch that" / "replace X with Y") against the
@@ -2602,8 +2619,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = scratch // carries `original`; we use `target.text` (identical) directly
             let outcome = TextInjector.deleteBackward(graphemeCount: originalCount, mode: mode)
             guard case .inserted = outcome else { return false }
-            // The scratched text is no longer on screen and no longer in history.
-            self.history.delete(target)
+            // The scratched text is no longer on screen and no longer in history —
+            // and nowhere else Talkie's memory quoted it either (same cascade as
+            // Memory's per-item delete).
+            self.deleteDictationEverywhere(target)
             // A scratch consumes the edit target: a second "scratch that" must not
             // re-fire against a now-deleted entry.
             if self.lastInsertedDictationID == target.id { self.lastInsertedDictationID = nil }

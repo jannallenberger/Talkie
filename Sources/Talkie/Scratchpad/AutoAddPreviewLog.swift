@@ -169,8 +169,7 @@ final class AutoAddPreviewLog: ObservableObject {
     // MARK: - Persistence
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([Record].self, from: data) else { return }
+        guard let decoded = StoreLoad.loadJSONWithQuarantine([Record].self, from: fileURL) else { return }
         // Defensively hold to the cap in case a hand-edited file exceeds it.
         records = decoded.count > Self.maxRecords
             ? Array(decoded.suffix(Self.maxRecords))

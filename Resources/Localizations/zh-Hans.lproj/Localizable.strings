@@ -19,7 +19,7 @@
 "Clear" = "清除";
 "Connected" = "已连接";
 "Copied" = "已复制";
-"Copy All" = "全部复制";
+"Copy all" = "全部复制";
 "Copy this dictation" = "复制此听写";
 "Copy transcript" = "复制转录文本";
 "Cross-surface commands" = "跨界面命令";
@@ -376,10 +376,7 @@
 
 // I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "删除";
-"Clear everything" = "全部清除";
-"Clear your dictation history?" = "清除你的听写历史？";
 "Delete this meeting?" = "删除这场会议？";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "删除你的听写历史，以及 Talkie 的记忆从中提取的一切。你教过的词典规则会保留。Talkie 会在删除前覆盖该文件。为防你的 Mac 丢失或被扣押，请保持 FileVault 开启。";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "删除转录文本，以及 Talkie 的记忆从这场会议中提取的一切。Talkie 会在删除前覆盖该文件。为防你的 Mac 丢失或被扣押，请保持 FileVault 开启。";
 /* A9 — Vibe Coding in-context offer */
 "Index %@ filenames?" = "索引 %@ 的文件名？";
@@ -459,7 +456,6 @@
 "Mark as not done" = "标记为未完成";
 "Delete this line" = "删除此行";
 " · saved to your Scratchpad" = " · 已保存到你的便签";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "删除你的听写历史以及 Talkie 记忆从中提取的一切。你教过的词典规则，以及你在便签中写下的笔记，都会保留。Talkie 会在删除前覆盖该文件。为防止你的 Mac 丢失或被扣押，请保持 FileVault 开启。";
 
 // L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
 "Plumage" = "羽翼";

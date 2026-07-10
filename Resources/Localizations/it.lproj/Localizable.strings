@@ -19,7 +19,7 @@
 "Clear" = "Cancella";
 "Connected" = "Connesso";
 "Copied" = "Copiato";
-"Copy All" = "Copia tutto";
+"Copy all" = "Copia tutto";
 "Copy this dictation" = "Copia questa dettatura";
 "Copy transcript" = "Copia trascrizione";
 "Cross-surface commands" = "Comandi tra superfici";
@@ -376,10 +376,7 @@
 
 // I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "Elimina";
-"Clear everything" = "Cancella tutto";
-"Clear your dictation history?" = "Cancellare la cronologia delle dettature?";
 "Delete this meeting?" = "Eliminare questa riunione?";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Cancella la cronologia delle tue dettature e tutto ciò che la memoria di Talkie ne ha estratto. Le regole del dizionario che hai insegnato restano. Talkie sovrascrive il file prima di eliminarlo. Per proteggerti se il Mac viene perso o sequestrato, tieni FileVault attivo.";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Cancella la trascrizione e tutto ciò che la memoria di Talkie ha estratto da questa riunione. Talkie sovrascrive il file prima di eliminarlo. Per proteggerti se il Mac viene perso o sequestrato, tieni FileVault attivo.";
 /* A9 — Vibe Coding in-context offer */
 "Index %@ filenames?" = "Indicizzare i nomi dei file di %@?";
@@ -459,7 +456,6 @@
 "Mark as not done" = "Segna come non completata";
 "Delete this line" = "Elimina questa riga";
 " · saved to your Scratchpad" = " · salvato nel tuo Blocco note";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Elimina la cronologia delle dettature e tutto ciò che la memoria di Talkie ne ha estratto. Le regole del dizionario che hai insegnato, e le note che hai scritto nel Blocco note, restano. Talkie sovrascrive il file prima di eliminarlo. Per proteggerti se il tuo Mac viene perso o sequestrato, tieni FileVault attivo.";
 
 // L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
 "Plumage" = "Piumaggio";

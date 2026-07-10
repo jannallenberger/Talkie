@@ -19,7 +19,7 @@
 "Clear" = "Löschen";
 "Connected" = "Verbunden";
 "Copied" = "Kopiert";
-"Copy All" = "Alles kopieren";
+"Copy all" = "Alles kopieren";
 "Copy this dictation" = "Dieses Diktat kopieren";
 "Copy transcript" = "Transkript kopieren";
 "Cross-surface commands" = "Anwendungsübergreifende Befehle";
@@ -376,10 +376,7 @@
 
 // I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "Löschen";
-"Clear everything" = "Alles löschen";
-"Clear your dictation history?" = "Diktatverlauf löschen?";
 "Delete this meeting?" = "Dieses Meeting löschen?";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Löscht deinen Diktatverlauf und alles, was sich Talkies Gedächtnis daraus gemerkt hat. Wörterbuch-Regeln, die du beigebracht hast, bleiben erhalten. Talkie überschreibt die Datei vor dem Löschen. Zum Schutz, falls dein Mac verloren geht oder beschlagnahmt wird, lass FileVault aktiviert.";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Löscht das Transkript und alles, was sich Talkies Gedächtnis aus diesem Meeting gemerkt hat. Talkie überschreibt die Datei vor dem Löschen. Zum Schutz, falls dein Mac verloren geht oder beschlagnahmt wird, lass FileVault aktiviert.";
 /* A9 — Vibe Coding in-context offer */
 "Index %@ filenames?" = "Dateinamen von %@ indizieren?";
@@ -459,7 +456,6 @@
 "Mark as not done" = "Als nicht erledigt markieren";
 "Delete this line" = "Diese Zeile löschen";
 " · saved to your Scratchpad" = " · im Notizzettel gesichert";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Löscht deinen Diktatverlauf und alles, was Talkies Gedächtnis daraus gewonnen hat. Wörterbuchregeln, die du beigebracht hast, und Notizen in deinem Notizzettel bleiben erhalten. Talkie überschreibt die Datei vor dem Löschen. Zum Schutz, falls dein Mac verloren geht oder beschlagnahmt wird, lass FileVault aktiviert.";
 
 // L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
 "Plumage" = "Gefieder";

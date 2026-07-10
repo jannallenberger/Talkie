@@ -238,8 +238,7 @@ final class StatsStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let p = try? JSONDecoder().decode(Payload.self, from: data) else { return }
+        guard let p = StoreLoad.loadJSONWithQuarantine(Payload.self, from: fileURL) else { return }
         totalWords = p.totalWords
         totalDictations = p.totalDictations
         totalDurationSec = p.totalDurationSec

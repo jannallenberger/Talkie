@@ -78,6 +78,73 @@ final class NicheVocabStore: ObservableObject {
         save()
     }
 
+    // MARK: Purge (true delete — the provenance join key is `Provenance.sourceID`)
+
+    /// Forget everything harvested from one deleted dictation — the true-delete
+    /// counterpart to `ingest`. For each term, drop the dictation-sourced provenance
+    /// entries that quoted this dictation's text, decrement `occurrences` by exactly
+    /// the number of snippets removed (floored at 0), and drop the term entirely once
+    /// it has no provenance left AND the user never confirmed it directly — a
+    /// user-confirmed term was taught, not merely harvested, so it outlives the
+    /// dictation that happened to first surface it (same contract as
+    /// `ContextGraphStore.purge`).
+    func purge(sourceID: String) {
+        var changed = false
+        for (key, bucket) in terms {
+            var kept: [NicheTerm] = []
+            kept.reserveCapacity(bucket.count)
+            for var term in bucket {
+                let before = term.provenance.count
+                term.provenance.removeAll { $0.source == .dictation && $0.sourceID == sourceID }
+                let removed = before - term.provenance.count
+                if removed > 0 {
+                    term.occurrences = max(0, term.occurrences - removed)
+                    changed = true
+                }
+                if !term.provenance.isEmpty || term.userConfirmed > 0 {
+                    kept.append(term)
+                } else {
+                    changed = true
+                }
+            }
+            terms[key] = kept
+        }
+        guard changed else { return }
+        save()
+    }
+
+    /// Drop every dictation-sourced provenance across every term, keeping the
+    /// pinned/user-confirmed ones — they graduated because the user taught them
+    /// directly, not because a dictation happened to be lying around. The bulk
+    /// counterpart to `purge(sourceID:)`, matching the same true-delete contract
+    /// `ScratchpadStore`/`AutoAddPreviewLog` expose (for a future "clear all history"
+    /// entry point — nothing calls this yet since Memory's bulk-wipe control was
+    /// removed).
+    func purgeAllDictationSourced() {
+        var changed = false
+        for (key, bucket) in terms {
+            var kept: [NicheTerm] = []
+            kept.reserveCapacity(bucket.count)
+            for var term in bucket {
+                let before = term.provenance.count
+                term.provenance.removeAll { $0.source == .dictation }
+                let removed = before - term.provenance.count
+                if removed > 0 {
+                    term.occurrences = max(0, term.occurrences - removed)
+                    changed = true
+                }
+                if !term.provenance.isEmpty || term.userConfirmed > 0 {
+                    kept.append(term)
+                } else {
+                    changed = true
+                }
+            }
+            terms[key] = kept
+        }
+        guard changed else { return }
+        save()
+    }
+
     // MARK: Upsert / niche bookkeeping
 
     private func upsert(_ rawTerm: String, nicheKey: String, provenance: Provenance,

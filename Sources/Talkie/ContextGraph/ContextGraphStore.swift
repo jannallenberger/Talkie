@@ -157,8 +157,12 @@ final class ContextGraphStore: ObservableObject {
     }
 
     private func load() {
-        if let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode([Entity].self, from: data) {
+        // entities.json: absent -> start empty (normal first run). Present but
+        // undecodable -> `loadOutcome` has already quarantined it to a `.corrupt`
+        // sibling; the graph starts empty here too, but see the watermark reset
+        // below — otherwise the graph would stay empty forever.
+        let entitiesOutcome = StoreLoad.loadOutcome([Entity].self, from: fileURL)
+        if case .loaded(let decoded) = entitiesOutcome {
             // Prune stale, low-value entities on load so the graph self-heals from
             // older files that predate the cap (and so eviction has headroom).
             let now = Date().timeIntervalSince1970
@@ -166,9 +170,28 @@ final class ContextGraphStore: ObservableObject {
                                                 stalenessSeconds: stalenessSeconds, cap: entityCap)
             entities = Dictionary(kept.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         }
-        if let data = try? Data(contentsOf: watermarkURL),
-           let decoded = try? JSONDecoder().decode([ProvenanceSource: Double].self, from: data) {
+
+        if let decoded = StoreLoad.loadJSONWithQuarantine([ProvenanceSource: Double].self, from: watermarkURL) {
             backfillWatermark = decoded
+        }
+
+        // entities.json existed but was just quarantined (undecodable), so the
+        // graph above starts empty. If the watermark file just loaded above still
+        // records dictations/meetings as "already ingested" from BEFORE the
+        // corruption, `backfill(dictations:meetings:)` would see every entry at or
+        // below those marks and skip it — permanently leaving the newly-emptied
+        // graph empty, since the very sources that could re-seed it are treated as
+        // already-done. Reset the two backfill-tracked sources (regardless of what
+        // the watermark file said) so the next backfill call re-ingests everything
+        // still retained in history/meetings. Persisted immediately — not left to
+        // the next `save()` — so a crash before any mutation can't leave the stale,
+        // pre-corruption marks on disk to reproduce the same dead end next launch.
+        if case .quarantined = entitiesOutcome {
+            backfillWatermark[.dictation] = nil
+            backfillWatermark[.meeting] = nil
+            if let data = try? JSONEncoder().encode(backfillWatermark) {
+                try? data.write(to: watermarkURL, options: .atomic)
+            }
         }
     }
 

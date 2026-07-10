@@ -276,7 +276,9 @@ actor CleanupEngine {
                 talkieDebugLog("cleanup[\(pinnedCode)]: rejected → \(outCode) language flip — keeping raw")
                 return nil
             }
-            talkieDebugLog("cleanup[\(pinnedCode ?? "?")]: in='\(trimmed)' out='\(cleaned)'")
+            // Lengths + language only — never the dictated text itself, even in
+            // the opt-in debug sink (see talkieDebugLog).
+            talkieDebugLog("cleanup[\(pinnedCode ?? "?")]: in=\(trimmed.count) out=\(cleaned.count) lang=\(pinnedCode ?? "?")")
             return cleaned
         } catch {
             return nil

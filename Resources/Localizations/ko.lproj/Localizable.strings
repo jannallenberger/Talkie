@@ -19,7 +19,7 @@
 "Clear" = "지우기";
 "Connected" = "연결됨";
 "Copied" = "복사됨";
-"Copy All" = "모두 복사";
+"Copy all" = "모두 복사";
 "Copy this dictation" = "이 받아쓰기 복사";
 "Copy transcript" = "전사 복사";
 "Cross-surface commands" = "크로스 서피스 명령";
@@ -376,10 +376,7 @@
 
 // I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "삭제";
-"Clear everything" = "전체 지우기";
-"Clear your dictation history?" = "받아쓰기 기록을 지울까요?";
 "Delete this meeting?" = "이 회의를 삭제할까요?";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "받아쓰기 기록과 Talkie의 메모리가 거기서 추출한 모든 것을 삭제합니다. 직접 가르친 사전 규칙은 유지됩니다. Talkie는 삭제하기 전에 파일을 덮어씁니다. Mac을 분실하거나 압수당했을 때를 대비해 FileVault를 켜 두세요.";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "이 회의의 전사본과 Talkie의 메모리가 거기서 추출한 모든 것을 삭제합니다. Talkie는 삭제하기 전에 파일을 덮어씁니다. Mac을 분실하거나 압수당했을 때를 대비해 FileVault를 켜 두세요.";
 /* A9 — Vibe Coding in-context offer */
 "Index %@ filenames?" = "%@의 파일 이름을 인덱싱할까요?";
@@ -459,7 +456,6 @@
 "Mark as not done" = "미완료로 표시";
 "Delete this line" = "이 줄 삭제";
 " · saved to your Scratchpad" = " · 스크래치패드에 저장됨";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "받아쓰기 기록과 Talkie의 메모리가 거기서 추출한 모든 것을 삭제합니다. 직접 가르친 사전 규칙과 스크래치패드에 작성한 메모는 유지됩니다. Talkie는 삭제하기 전에 파일을 덮어씁니다. Mac을 분실하거나 압수당할 경우를 대비해 FileVault를 켜 두세요.";
 
 // L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
 "Plumage" = "깃털";

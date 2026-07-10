@@ -120,6 +120,7 @@ enum UpdateInstaller {
     private static func spawnSwap(newApp: URL, dest: URL) throws {
         let pid = ProcessInfo.processInfo.processIdentifier
         let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+        let updatesDir = UpdaterPaths.updatesDir().path
         let script = """
         #!/bin/sh
         # Wait for the old Talkie to exit, swap the bundle, re-register, relaunch.
@@ -127,11 +128,19 @@ enum UpdateInstaller {
         SRC=\(shQuote(newApp.path))
         DEST=\(shQuote(dest.path))
         LSREGISTER=\(shQuote(lsregister))
+        UPDATES_DIR=\(shQuote(updatesDir))
         i=0
         while kill -0 "$PID" 2>/dev/null; do
           sleep 0.2
           i=$((i + 1))
-          [ "$i" -gt 150 ] && break
+          if [ "$i" -gt 150 ]; then
+            # The old process never exited after ~30s. Abort instead of falling
+            # through to rm -rf: that would delete the running app out from under
+            # itself. Leave the staged copy in place so a retry (or the next
+            # relaunch) can pick it up.
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) update aborted: PID $PID still running after 30s, staged app left at $SRC" >> "$UPDATES_DIR/swap-timeout.log" 2>/dev/null
+            exit 1
+          fi
         done
         rm -rf "$DEST.tmp-update"
         /usr/bin/ditto "$SRC" "$DEST.tmp-update" || exit 1

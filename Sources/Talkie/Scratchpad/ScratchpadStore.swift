@@ -152,8 +152,7 @@ final class ScratchpadStore: ObservableObject {
     // MARK: Persistence
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([ScratchpadLine].self, from: data) else { return }
+        guard let decoded = StoreLoad.loadJSONWithQuarantine([ScratchpadLine].self, from: fileURL) else { return }
         lines = decoded
     }
 
