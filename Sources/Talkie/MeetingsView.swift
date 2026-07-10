@@ -473,7 +473,12 @@ struct MeetingsView: View {
     /// Re-runs on-device summarization for one past meeting and persists the
     /// result — the fix for meetings recorded before the map-reduce change (or
     /// while the on-device model briefly wasn't ready), which are otherwise
-    /// stuck with an empty or generic summary forever.
+    /// stuck with an empty or generic summary forever. This REPLACES the whole
+    /// `summary` field, which is also where the user's typed meeting notes live
+    /// (fused into the prose, or verbatim under "## Your notes") — `Meeting` has
+    /// no separate notes field to preserve independently, so `MeetingRow` confirms
+    /// with the user before calling this whenever there's an existing, non-empty
+    /// summary to lose.
     private func regenerateSummary(_ meeting: Meeting) async {
         guard let summary = await MeetingSummarizer().summarize(meeting.transcript) else { return }
         var updated = meeting
@@ -557,6 +562,16 @@ private struct MeetingRow: View {
     @State private var expanded = false
     @State private var hovering = false
     @State private var regenerating = false
+    /// Gates "Regenerate summary" behind an explicit confirmation whenever there's an
+    /// existing summary to lose. `regenerateSummary` replaces the WHOLE `summary`
+    /// field with a fresh transcript-only pass — and that field is also where the
+    /// user's live meeting notes end up (fused into the prose via the Granola-style
+    /// fusion, or verbatim under a "## Your notes" heading when fusion was
+    /// unavailable). Neither form is separable back out of `summary` after the fact,
+    /// so silently regenerating used to discard real user-typed content with no
+    /// warning and no undo. Shown only when `meeting.summary` isn't already empty —
+    /// nothing to lose for a genuinely blank summary.
+    @State private var confirmRegenerate = false
     /// A8 transcript edit mode: nil when viewing; the working draft while editing.
     @State private var draft: String?
     /// The learn chips offered after a save, and which have been accepted/added.
@@ -588,7 +603,16 @@ private struct MeetingRow: View {
                 } else if hovering {
                     if !meeting.transcript.isEmpty, MeetingSummarizer.isAvailable {
                         Button {
-                            Task { regenerating = true; await onRegenerate(); regenerating = false }
+                            // Nothing to lose when the summary is already blank — skip
+                            // the confirmation and regenerate straight away (the
+                            // original "meetings stuck with an empty summary" fix).
+                            // Otherwise the existing summary may hold fused/typed notes
+                            // that a regenerate would silently replace, so confirm first.
+                            if meeting.summary.isEmpty {
+                                Task { regenerating = true; await onRegenerate(); regenerating = false }
+                            } else {
+                                confirmRegenerate = true
+                            }
                         } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.plain)
                         .help("Regenerate summary")
@@ -665,6 +689,18 @@ private struct MeetingRow: View {
         }
         .talkieCard(padding: 14)
         .onHover { hovering = $0 }
+        .confirmationDialog(
+            "Regenerate summary?",
+            isPresented: $confirmRegenerate,
+            titleVisibility: .visible
+        ) {
+            Button("Regenerate", role: .destructive) {
+                Task { regenerating = true; await onRegenerate(); regenerating = false }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone.")
+        }
     }
 
     // MARK: Transcript edit mode (A8)

@@ -144,6 +144,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sessionID = 0
     /// True only once audio is actually flowing into a live analyzer session.
     private var sessionLive = false
+    /// The `TranscriptionEngine` generation token for the session currently
+    /// installed on the engine (set the instant `beginSessionTracked` returns
+    /// successfully), or nil before that / after teardown. Lets an
+    /// abandoned-path teardown — including `handleCaptureFailure`, which runs
+    /// from its own later async hop — guard its `cancelSession` call so it can
+    /// never destroy a NEWER session that has since taken over the engine (see
+    /// FIX 1 / `TranscriptionEngine.cancelSession(ifGeneration:)`).
+    private var currentSessionGeneration: Int?
 
     // MARK: Onboarding try-it sink (H5)
 
@@ -1007,8 +1015,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // The meeting recorder shares the transcription engine — don't dictate
         // over an active recording, nor while one is still finalizing (the
-        // finalize pass is still using the shared engine/audio).
-        guard meetingRecorder?.isRecording != true, meetingRecorder?.isFinishing != true else {
+        // finalize pass is still using the shared engine/audio), nor during its
+        // `isStarting` window (FIX 3 / concurrency-1): `start()` awaits mic
+        // permission + model load + two `beginSession`s before `isRecording`
+        // ever flips true, and a dictation press in that gap would make both
+        // sessions stomp the shared engine with no guard catching it.
+        guard meetingRecorder?.isRecording != true, meetingRecorder?.isFinishing != true,
+              meetingRecorder?.isStarting != true else {
             // K1: localized + light voice pass; still names the exact blocker.
             hud.showError("Wrap up the meeting recording first — then I’m all ears.".loc)
             return
@@ -1252,6 +1265,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.clearTryItSinks()
                 return
             }
+            // FIX 1 (concurrency-2): the generation `beginSessionTracked` stamps
+            // when THIS call's session state is installed on the engine. Every
+            // abandoned-path cancel below is guarded by it (via
+            // `cancelSession(ifGeneration:)`) rather than calling the plain
+            // `cancelSession()`, so a stale abort — reaching the engine only
+            // after a newer session has already taken over, via ordinary actor
+            // reentrancy — can never tear down that newer session out from under
+            // the user. nil only if `beginSessionTracked` itself threw before
+            // returning (nothing was installed for this call, so there is no
+            // session to protect).
+            var capturedGeneration: Int?
             do {
                 // Re-pin the engine to our baseline locale. The shared engine may
                 // have been left on another language by a meeting recording (which
@@ -1260,11 +1284,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // they must agree at the start of every session.
                 await engine.setLocaleIdentifier(self.currentLocaleID)
                 await engine.setContextualStrings(phrases)
-                let session = try await engine.beginSession(segmentHandler: segmentHandler)
+                let session = try await engine.beginSessionTracked(segmentHandler: segmentHandler)
+                capturedGeneration = session.generation
+                self.currentSessionGeneration = session.generation
                 // Re-check after the (async) model load / session setup.
                 guard self.isDictating, self.sessionID == myID else {
                     streaming?.cancel()
-                    await engine.cancelSession()
+                    await engine.cancelSession(ifGeneration: session.generation)
                     self.clearTryItSinks() // H5: abandoned try-it — reset its sink/UI.
                     return
                 }
@@ -1312,7 +1338,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // flashing an error pill for a session they already abandoned.
                 guard self.isDictating, self.sessionID == myID else {
                     streaming?.cancel()
-                    await engine.cancelSession()
+                    if let capturedGeneration {
+                        await engine.cancelSession(ifGeneration: capturedGeneration)
+                    } else {
+                        // beginSessionTracked itself threw before installing
+                        // anything for this call — there is no session state to
+                        // guard, so an unconditional cancel is a safe no-op in
+                        // the common case (nothing to tear down).
+                        await engine.cancelSession()
+                    }
                     self.clearTryItSinks() // H5: abandoned try-it — reset its sink/UI.
                     return
                 }
@@ -1321,7 +1355,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.birdBuddy.setActive(false)
                 self.hud.showError(error.localizedDescription)
                 streaming?.cancel()
-                await engine.cancelSession()
+                if let capturedGeneration {
+                    await engine.cancelSession(ifGeneration: capturedGeneration)
+                } else {
+                    await engine.cancelSession()
+                }
                 // H5: engine/audio start failed for a try-it — clear the sink and
                 // reset the onboarding button; the HUD already shows the error.
                 self.clearTryItSinks()
@@ -1351,7 +1389,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionCleanup = nil
         sessionStyleOverride = nil
         sessionFrontApp = nil   // L2-b: drop the gate snapshot too (no ingest on this path).
-        Task { await engine.cancelSession() }
+        // FIX 1: guard by generation, not just the `sessionID` check already
+        // done above — this `Task` reaches the engine on its own later hop, and
+        // a newer session can install itself (and its own generation) in that
+        // gap. `capturedGeneration` is read now, synchronously, before any of
+        // that can happen.
+        let capturedGeneration = currentSessionGeneration
+        Task {
+            if let capturedGeneration {
+                await engine.cancelSession(ifGeneration: capturedGeneration)
+            } else {
+                await engine.cancelSession()
+            }
+        }
         isProcessing = false
         updateStatusUI()
         birdBuddy.setActive(false)
@@ -2330,119 +2380,142 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // `.inserted`). Detection already happened in the stores above; this
                 // just picks the single highest-priority record and displays it.
                 self.maybeShowRecordChip(brokenRecords)
-                // Self-healing insertion (B2): a paste that returned `.inserted` did so
-                // optimistically — the ⌘V may never have landed (some apps swallow it).
-                // When the resolved mode was paste, ask the verifier whether our text
-                // actually made it into the focused field; if it verifiably did NOT,
-                // silently re-insert by typing and remember `.type` for this app so it
-                // fails at most once. The HUD stays on `.inserting` throughout — the
-                // healing is invisible. Guard rails (never fire when the caret is no
-                // longer trustworthy or a retry can't help): only for a plain paste
-                // (`mode == .paste`, so `.type` sessions are out), never after the
-                // optimistic replace-backward swap, and only when we know which app to
-                // remember the fix for (`target.bundleID != nil`). One retry max — this
-                // is a straight-line path, no loop. `.leftOnClipboard`/`.empty` never
-                // reach here. Verification runs to completion BEFORE the learn-watcher
-                // below starts, so the two never poll Accessibility concurrently.
-                if mode == .paste, optimistic == nil, let healBundleID = target.bundleID {
-                    // Privacy: the verifier reads the focused field's value via
-                    // Accessibility ONLY to check whether the exact text Talkie just
-                    // inserted is present. It compares against our own `finalText` and
-                    // never stores or forwards what it read.
-                    let verdict = await InsertionVerifier.verify(inserted: finalText)
-                    if verdict == .notLanded {
-                        talkieDebugLog("heal: paste did not land in \(target.name) — retrying by typing, learning .type")
-                        // Fire-and-forget type retry (its per-character loop runs off
-                        // the main actor inside TextInjector); verifying the retry is
-                        // out of scope — the goal is to get the text in, then remember.
-                        _ = TextInjector.insert(finalText, mode: .type)
-                        // Persist the learned winner: read-modify-write the app's
-                        // existing sheet so unrelated overrides (cleanup, vocabulary…)
-                        // are preserved; refresh the display name while we're here.
-                        var learned = self.profiles.profile(for: healBundleID)
-                            ?? AppProfile(bundleID: healBundleID, displayName: target.name)
-                        learned.displayName = target.name
-                        learned.insertionMode = .type
-                        self.profiles.upsert(learned)
-                    }
-                }
-                // Watch the field for the next few seconds: the instant the user
-                // fixes a word Talkie misrecognized, add it to the dictionary and
-                // ping them with an Undo (WhisperFlow-style live learning). A
-                // "Private app" (I1) learns nothing, so the watcher (and the Claude
-                // Code transcript scan it schedules) never arms — fixing a word right
-                // after dictating into a Private app adds nothing to the dictionary.
-                // E8: also skip the watcher when the inserted text was TRANSLATED — a
-                // user edit to translated output is not a recognition correction (they
-                // spoke L1; we inserted L2), so feeding it to `CorrectionExtractor`
-                // would poison the dictionary with bogus L1→L2 "fixes".
-                if self.settings.learnFromEdits, !neverStore, !translated {
-                    let fixTargets = nicheFixTargets
-                    // Shared per-insertion latch: the AX watcher and the Claude Code
-                    // scan run side by side (the scan only matters where the watcher
-                    // is blind), so whichever learns first flips this and the other
-                    // stands down — no double rule, no double ping.
-                    let learnedOnce = LearnOnceFlag()
-                    self.learning.beginWatching(inserted: finalText) { [weak self] from, to in
-                        guard let self else { return }
-                        if self.applyLearnedCorrection(
-                            from: from, to: to, dictationID: dictationID,
-                            snippet: String(finalText.prefix(120)), fixTargets: fixTargets
-                        ) {
-                            learnedOnce.value = true
+                // FIX 2 (bugs-dictation-2): release the processing latch NOW — the
+                // insert outcome is fully handled above. The self-heal verify below
+                // polls up to ~1s (4×250ms) with no early exit in AX-unreadable apps
+                // (VS Code's terminal, Slack, Electron), and holding `isProcessing`
+                // through that whole poll used to silently swallow a press that
+                // landed during it: `beginDictation`'s `guard !isProcessing` rejected
+                // it, but the HUD had already left `.processing` for `.inserting`, so
+                // `nudgeBusy()` — gated on `.processing` — fired nothing (see the
+                // fix to `nudgeBusy` in HUD.swift). Everything from here down is
+                // fire-and-forget follow-up work (self-heal + live learning + the
+                // post-insert offer chips) that must not gate the next dictation, so
+                // it moves into its own Task that does not hold `isProcessing`.
+                self.isProcessing = false
+                // @MainActor so this follow-up keeps the exact isolation the code had
+                // when it ran inline in `endDictation` — the only change is that it no
+                // longer holds `isProcessing`, not where it runs.
+                Task { @MainActor in
+                    // Snapshot the (mutable) `finalText` into an immutable task-local: the
+                    // insert is already done, so the follow-up work below only ever reads
+                    // the final value, and a `let` lets it be captured into the escaping
+                    // learn-watcher closures without tripping Swift 6 region isolation.
+                    let insertedText = finalText
+                    // Self-healing insertion (B2): a paste that returned `.inserted` did so
+                    // optimistically — the ⌘V may never have landed (some apps swallow it).
+                    // When the resolved mode was paste, ask the verifier whether our text
+                    // actually made it into the focused field; if it verifiably did NOT,
+                    // silently re-insert by typing and remember `.type` for this app so it
+                    // fails at most once. The HUD stays on `.inserting` throughout — the
+                    // healing is invisible. Guard rails (never fire when the caret is no
+                    // longer trustworthy or a retry can't help): only for a plain paste
+                    // (`mode == .paste`, so `.type` sessions are out), never after the
+                    // optimistic replace-backward swap, and only when we know which app to
+                    // remember the fix for (`target.bundleID != nil`). One retry max — this
+                    // is a straight-line path, no loop. `.leftOnClipboard`/`.empty` never
+                    // reach here. Verification runs to completion BEFORE the learn-watcher
+                    // below starts, so the two never poll Accessibility concurrently.
+                    if mode == .paste, optimistic == nil, let healBundleID = target.bundleID {
+                        // Privacy: the verifier reads the focused field's value via
+                        // Accessibility ONLY to check whether the exact text Talkie just
+                        // inserted is present. It compares against our own `insertedText` and
+                        // never stores or forwards what it read.
+                        let verdict = await InsertionVerifier.verify(inserted: insertedText)
+                        if verdict == .notLanded {
+                            talkieDebugLog("heal: paste did not land in \(target.name) — retrying by typing, learning .type")
+                            // Fire-and-forget type retry (its per-character loop runs off
+                            // the main actor inside TextInjector); verifying the retry is
+                            // out of scope — the goal is to get the text in, then remember.
+                            _ = TextInjector.insert(insertedText, mode: .type)
+                            // Persist the learned winner: read-modify-write the app's
+                            // existing sheet so unrelated overrides (cleanup, vocabulary…)
+                            // are preserved; refresh the display name while we're here.
+                            var learned = self.profiles.profile(for: healBundleID)
+                                ?? AppProfile(bundleID: healBundleID, displayName: target.name)
+                            learned.displayName = target.name
+                            learned.insertionMode = .type
+                            self.profiles.upsert(learned)
                         }
                     }
-                    // Cure the AX-blind spot: when we dictated into a coding/terminal
-                    // surface (Claude Code in Terminal/iTerm/Warp or a VS Code/Cursor
-                    // integrated terminal), the field watcher above learns nothing —
-                    // schedule the opportunistic transcript scan instead. Gated behind
-                    // the same `learnFromEdits` toggle AND its own one-time consent.
-                    if target.category == .terminal || target.category == .coding {
-                        self.claudeLearner.scheduleScan(
-                            inserted: finalText,
-                            insertionUnix: Date().timeIntervalSince1970,
-                            alreadyLearned: { learnedOnce.value },
-                            offerConsent: { [weak self] in self?.offerClaudeTranscriptConsent() },
-                            onLearned: { [weak self] from, to in
-                                guard let self else { return }
-                                _ = self.applyLearnedCorrection(
-                                    from: from, to: to, dictationID: dictationID,
-                                    snippet: String(finalText.prefix(120)), fixTargets: fixTargets,
-                                    source: .claudeCode
-                                )
+                    // Watch the field for the next few seconds: the instant the user
+                    // fixes a word Talkie misrecognized, add it to the dictionary and
+                    // ping them with an Undo (WhisperFlow-style live learning). A
+                    // "Private app" (I1) learns nothing, so the watcher (and the Claude
+                    // Code transcript scan it schedules) never arms — fixing a word right
+                    // after dictating into a Private app adds nothing to the dictionary.
+                    // E8: also skip the watcher when the inserted text was TRANSLATED — a
+                    // user edit to translated output is not a recognition correction (they
+                    // spoke L1; we inserted L2), so feeding it to `CorrectionExtractor`
+                    // would poison the dictionary with bogus L1→L2 "fixes".
+                    if self.settings.learnFromEdits, !neverStore, !translated {
+                        let fixTargets = nicheFixTargets
+                        // Shared per-insertion latch: the AX watcher and the Claude Code
+                        // scan run side by side (the scan only matters where the watcher
+                        // is blind), so whichever learns first flips this and the other
+                        // stands down — no double rule, no double ping.
+                        let learnedOnce = LearnOnceFlag()
+                        self.learning.beginWatching(inserted: insertedText) { [weak self] from, to in
+                            guard let self else { return }
+                            if self.applyLearnedCorrection(
+                                from: from, to: to, dictationID: dictationID,
+                                snippet: String(insertedText.prefix(120)), fixTargets: fixTargets
+                            ) {
+                                learnedOnce.value = true
                             }
-                        )
+                        }
+                        // Cure the AX-blind spot: when we dictated into a coding/terminal
+                        // surface (Claude Code in Terminal/iTerm/Warp or a VS Code/Cursor
+                        // integrated terminal), the field watcher above learns nothing —
+                        // schedule the opportunistic transcript scan instead. Gated behind
+                        // the same `learnFromEdits` toggle AND its own one-time consent.
+                        if target.category == .terminal || target.category == .coding {
+                            self.claudeLearner.scheduleScan(
+                                inserted: insertedText,
+                                insertionUnix: Date().timeIntervalSince1970,
+                                alreadyLearned: { learnedOnce.value },
+                                offerConsent: { [weak self] in self?.offerClaudeTranscriptConsent() },
+                                onLearned: { [weak self] from, to in
+                                    guard let self else { return }
+                                    _ = self.applyLearnedCorrection(
+                                        from: from, to: to, dictationID: dictationID,
+                                        snippet: String(insertedText.prefix(120)), fixTargets: fixTargets,
+                                        source: .claudeCode
+                                    )
+                                }
+                            )
+                        }
                     }
+                    // A9 — offer to turn on Vibe Coding for the repo we discovered at
+                    // session start (if any). Queued behind the insertion/learning pills
+                    // so it never collides with them; a no-op when there's nothing to
+                    // offer or the throttle/decline gates say no.
+                    self.maybeOfferVibeIndexing()
+                    // A12 — if the recognizer was visibly unsure about a word or two,
+                    // offer the tap-to-fix review chip. Queued behind everything else on
+                    // the single-phase HUD: it waits out the brief insert/learn pings,
+                    // then shows ONLY if nothing interactive is on screen (a learned pill,
+                    // copy prompt, command preview, or the Vibe offer above all suppress
+                    // it) — a nagging chip is worse than none. Works with no AX at all:
+                    // it's driven purely by the confidence numbers, so it fires the same
+                    // when dictating into Claude/Electron where the edit-watcher is blind.
+                    // Suppressed for a Private app (I1): tapping "Fix" would teach the
+                    // dictionary, and a Private app learns nothing from what you dictate.
+                    if !neverStore { self.maybeOfferLowConfidenceReview(reviewFlagged) }
+                    // H8 — once ever, after a 3-day streak of real use, offer to start
+                    // Talkie at login (so the hotkey stops dying silently after a reboot).
+                    // Queued LAST and with the longest settle, so it loses to the insertion
+                    // pill and to the A9/A12 offers above; a resolved flag persists so an
+                    // ignored offer never reappears. A no-op unless the streak/settings
+                    // gates pass. Runs for Private apps too — it carries no transcript
+                    // content and the streak was already recorded above (I1-safe).
+                    self.maybeOfferLaunchAtLogin()
+                    // H3 — if the user cycled the in-pill cleanup switcher this dictation
+                    // to a non-default style, offer to keep it for this app. Nil unless a
+                    // real, differing override happened; the helper adds the bundle-id and
+                    // no-stacking gates (it loses to a learned ping / copy prompt).
+                    self.maybeOfferKeepStyle(keepStyleOverride, target: target)
                 }
-                // A9 — offer to turn on Vibe Coding for the repo we discovered at
-                // session start (if any). Queued behind the insertion/learning pills
-                // so it never collides with them; a no-op when there's nothing to
-                // offer or the throttle/decline gates say no.
-                self.maybeOfferVibeIndexing()
-                // A12 — if the recognizer was visibly unsure about a word or two,
-                // offer the tap-to-fix review chip. Queued behind everything else on
-                // the single-phase HUD: it waits out the brief insert/learn pings,
-                // then shows ONLY if nothing interactive is on screen (a learned pill,
-                // copy prompt, command preview, or the Vibe offer above all suppress
-                // it) — a nagging chip is worse than none. Works with no AX at all:
-                // it's driven purely by the confidence numbers, so it fires the same
-                // when dictating into Claude/Electron where the edit-watcher is blind.
-                // Suppressed for a Private app (I1): tapping "Fix" would teach the
-                // dictionary, and a Private app learns nothing from what you dictate.
-                if !neverStore { self.maybeOfferLowConfidenceReview(reviewFlagged) }
-                // H8 — once ever, after a 3-day streak of real use, offer to start
-                // Talkie at login (so the hotkey stops dying silently after a reboot).
-                // Queued LAST and with the longest settle, so it loses to the insertion
-                // pill and to the A9/A12 offers above; a resolved flag persists so an
-                // ignored offer never reappears. A no-op unless the streak/settings
-                // gates pass. Runs for Private apps too — it carries no transcript
-                // content and the streak was already recorded above (I1-safe).
-                self.maybeOfferLaunchAtLogin()
-                // H3 — if the user cycled the in-pill cleanup switcher this dictation
-                // to a non-default style, offer to keep it for this app. Nil unless a
-                // real, differing override happened; the helper adds the bundle-id and
-                // no-stacking gates (it loses to a learned ping / copy prompt).
-                self.maybeOfferKeepStyle(keepStyleOverride, target: target)
             case .leftOnClipboard(let reason):
                 // B9: the text is on the clipboard, NOT in the field — a caret-relative
                 // edit would corrupt whatever is focused, so clear the edit target.

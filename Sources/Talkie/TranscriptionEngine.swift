@@ -121,6 +121,14 @@ actor TranscriptionEngine {
     private var analyzer: SpeechAnalyzer?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var resultsTask: Task<Void, Never>?
+    /// Monotonic token bumped every time `beginSessionTracked` installs a new
+    /// session's state on this actor. Lets a caller that captured the token at
+    /// install time (`AppDelegate`'s dictation path) later guard a teardown call
+    /// so it can never destroy a NEWER session that has since taken over — see
+    /// `cancelSession(ifGeneration:)`. Bumped BEFORE the first `await` inside
+    /// `beginSessionTracked`, so nothing can interleave between "state installed"
+    /// and "token bumped": actor reentrancy only happens at suspension points.
+    private var sessionGeneration: Int = 0
 
     private var finalizedText: String = ""
     /// Each finalized segment, in spoken order. A new segment is committed every
@@ -402,6 +410,21 @@ actor TranscriptionEngine {
         segmentHandler: (@Sendable (String) -> Void)? = nil,
         timedSegmentHandler: (@Sendable (TimedSegment) -> Void)? = nil
     ) async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation) {
+        let (format, continuation, _) = try await beginSessionTracked(
+            segmentHandler: segmentHandler, timedSegmentHandler: timedSegmentHandler)
+        return (format, continuation)
+    }
+
+    /// Same as `beginSession`, but additionally returns the generation token
+    /// stamped the instant this session's state is installed (see
+    /// `sessionGeneration`). Only the dictation caller (`AppDelegate`) needs the
+    /// token — meeting/import teardown is same-session and non-reentrant — so
+    /// this is a separate entry point rather than changing `beginSession`'s
+    /// signature (and every one of its other callers) for everyone.
+    func beginSessionTracked(
+        segmentHandler: (@Sendable (String) -> Void)? = nil,
+        timedSegmentHandler: (@Sendable (TimedSegment) -> Void)? = nil
+    ) async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation, generation: Int) {
         guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
 
         // Exclusivity: never run two sessions on one engine. Tear down any
@@ -417,7 +440,11 @@ actor TranscriptionEngine {
             self.transcriber = nil
         }
 
-        // Reset accumulators + bind the per-session segment handlers.
+        // Reset accumulators + bind the per-session segment handlers, and claim
+        // this session's generation — everything from here on belongs to THIS
+        // call, and nothing else can touch the actor until the first `await`
+        // below, so a caller that captures `generation` now is guaranteed it
+        // names exactly the session being installed.
         finalizedText = ""
         finalizedSegments = []
         finalizedTimedSegments = []
@@ -425,6 +452,8 @@ actor TranscriptionEngine {
         volatileText = ""
         onSegment = segmentHandler
         onTimedSegment = timedSegmentHandler
+        sessionGeneration += 1
+        let generation = sessionGeneration
 
         let loc = try await resolvedLocale()
         let transcriber = makeTranscriber(locale: loc)
@@ -488,7 +517,7 @@ actor TranscriptionEngine {
         }
 
         try await analyzer.start(inputSequence: stream)
-        return (format, continuation)
+        return (format, continuation, generation)
     }
 
     /// Fold one recognizer result into the running transcript and notify the UI.
@@ -647,6 +676,24 @@ actor TranscriptionEngine {
         onTimedSegment = nil
         analyzer = nil
         transcriber = nil
+    }
+
+    /// Same as `cancelSession()`, but no-ops if `generation` no longer matches
+    /// `sessionGeneration` — i.e. a NEWER session has since been installed via
+    /// `beginSessionTracked`. Guards the dictation caller's ABANDONED-session
+    /// teardown paths (rapid press→release→press): a `beginSession` task whose
+    /// owning dictation was already released can finish and try to cancel AFTER
+    /// a newer session has taken over the engine, via plain actor reentrancy —
+    /// nothing orders the two relative to each other. Checking the generation
+    /// HERE, at the exact moment the cancel would take effect on the actor, is
+    /// what closes the race; a check on the caller's side (e.g. comparing its own
+    /// session id before making this call) can't, because the newer session can
+    /// still install itself in the gap between that check and this call actually
+    /// running. The plain `cancelSession()` above stays unguarded for legitimate
+    /// same-session teardown (`handleCaptureFailure`, meeting/import paths).
+    func cancelSession(ifGeneration generation: Int) async {
+        guard generation == sessionGeneration else { return }
+        await cancelSession()
     }
 
     // MARK: Buffer re-sampling (for cross-locale re-transcription)

@@ -421,11 +421,22 @@ final class HUDController {
         model.phase = .processing
     }
 
-    /// Key pressed again while still processing — flash the pill so the press is
-    /// acknowledged, without starting a second (overlapping) session.
+    /// Key pressed again while still busy — flash the pill so the press is
+    /// acknowledged, without starting a second (overlapping) session. Fires for
+    /// `.processing` (polishing/inserting) AND `.inserting` (the brief
+    /// post-paste self-heal/verify window): a guard rejection during EITHER
+    /// phase must be visibly acknowledged, not silently dropped. Before this,
+    /// a press that landed once the pill had moved on to `.inserting` (but the
+    /// pipeline was still busy under the hood — see the `isProcessing` /
+    /// `InsertionVerifier` note in `AppDelegate.endDictation`) hit this guard
+    /// and got nothing: the whole utterance vanished with zero feedback.
     func nudgeBusy() {
-        guard model.phase == .processing else { return }
-        model.busyNudge &+= 1
+        switch model.phase {
+        case .processing, .inserting:
+            model.busyNudge &+= 1
+        default:
+            break
+        }
     }
 
     /// `privateSession` (I1) is true when the app dictated into was marked "Private":
@@ -1293,6 +1304,12 @@ private struct HUDView: View {
                     }
                 }
             }
+            // The pill shows "Inserted" here, but the pipeline can still be busy
+            // behind the scenes for up to ~1s (self-heal verify + live-learning
+            // watch, see `AppDelegate.endDictation`'s follow-up Task) — so a press
+            // that lands during that window and gets rejected still needs a
+            // visible acknowledgment. See `nudgeBusy()`.
+            .modifier(BusyShake(trigger: model.busyNudge))
             .transition(.blurReplace)
             // Read as one confirmation; name the corrected words so a VoiceOver user
             // hears what Talkie fixed, not just "inserted". For a Private app, say so —
