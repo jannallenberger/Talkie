@@ -2042,7 +2042,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if !intent.needsSelection || (selection?.isEmpty == false) {
                     let ctx = CommandContext(
                         spokenCommand: finalText, selection: selection, target: target,
-                        graph: self.contextGraph.snapshot(), summarizer: OnDeviceLLM()
+                        graph: self.contextGraph.snapshot(), summarizer: PrivacyWall.assertLocal(OnDeviceLLM())
                     )
                     if let result = await intent.run(ctx) {
                         self.isProcessing = false

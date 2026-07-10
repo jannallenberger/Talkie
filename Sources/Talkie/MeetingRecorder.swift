@@ -418,7 +418,7 @@ final class MeetingRecorder: ObservableObject {
             }
             if farMulti == nil {
                 let locale = farLocale
-                let far = TranscriptionEngine(localeIdentifier: locale)
+                let far = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: locale))
                 do {
                     await far.setContextualStrings(eventAttendees)
                     // Timed handler (see the mic stream above): the far-end audio clock
@@ -799,7 +799,7 @@ final class MeetingRecorder: ObservableObject {
         // never silently discarded.
         let fused: String?
         if !userNotes.isEmpty {
-            fused = await MeetingNotesFusion().fuse(notes: userNotes, transcript: clean, using: OnDeviceLLM())?.bodyMarkdown
+            fused = await MeetingNotesFusion().fuse(notes: userNotes, transcript: clean, using: PrivacyWall.assertLocal(OnDeviceLLM()))?.bodyMarkdown
         } else {
             fused = nil
         }

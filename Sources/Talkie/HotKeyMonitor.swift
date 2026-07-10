@@ -19,10 +19,10 @@ final class HotKeyMonitor: @unchecked Sendable {
 
     private let onActivate: @Sendable () -> Void
     private let onDeactivate: @Sendable () -> Void
-    /// Fired when a tap-tap locks recording hands-free. Recording is already
-    /// running (it began on the first tap's key-down), so this only tells the app
-    /// to switch to the locked/hands-free presentation — it must NOT start a second
-    /// session.
+    /// Fired when holding past the latch threshold locks recording hands-free.
+    /// Recording is already running (it began on the press's key-down), so this
+    /// only tells the app to switch to the locked/hands-free presentation — it
+    /// must NOT start a second session.
     private let onLock: @Sendable () -> Void
     /// Fired on a global "paste my last transcript" chord — ⌘ + (Control or Option,
     /// whichever the activation key does NOT use) + V, so it can't double as a
@@ -41,14 +41,15 @@ final class HotKeyMonitor: @unchecked Sendable {
     private var runLoopSource: CFRunLoopSource?
     private var threadRunLoop: CFRunLoop?
     private var isStarted = false
-    /// The one activation gesture family (hold / tap-tap-lock / tap-stop), driven
+    /// The one activation gesture family (hold / hold-to-latch / tap-stop), driven
     /// entirely by the timestamped edges `handle()` feeds it. All access is under
-    /// `lock` because `handle()` runs on the tap thread while the deferred-end timer
+    /// `lock` because `handle()` runs on the tap thread while the latch timer
     /// and the health/reconcile timer run on other queues.
     private var gesture = ActivationGesture()
-    /// The one-shot timer that resolves an ambiguous quick tap: if it fires before a
-    /// second press arrives, the tap was lone → end. Rearmed on each new quick tap,
-    /// cancelled when a second press locks. Guarded by `lock`.
+    /// The one-shot timer that resolves the latch deadline: if the key is still held
+    /// when it fires, recording latches hands-free; a release before then cancels it
+    /// and the hold ends as a plain push-to-talk press. Rearmed on each new hold,
+    /// cancelled on release or lock. Guarded by `lock`.
     private var deferTimer: DispatchSourceTimer?
     // -----------------------------
 
@@ -272,11 +273,11 @@ final class HotKeyMonitor: @unchecked Sendable {
 
     /// Feed one down/up edge into the pure gesture machine and fire whatever it
     /// decides. **Must be called with `lock` already held** (the tap thread must
-    /// not race the deferred-end / health timers); it unlocks before invoking the
+    /// not race the latch / health timers); it unlocks before invoking the
     /// callback so no app code runs under the tap-thread lock. Shared by the
     /// keyboard-modifier and mouse-button paths so both drive the identical machine.
     private func feedEdgeLocked(down: Bool) {
-        // One monotonic seconds clock for edges AND the deferred-end timer, so the
+        // One monotonic seconds clock for edges AND the latch timer, so the
         // pure machine can compare an edge's timestamp against the timer's fire
         // timestamp. (The event's own timestamp is in different units; using uptime
         // for both keeps them commensurable.)
@@ -311,9 +312,9 @@ final class HotKeyMonitor: @unchecked Sendable {
         }
     }
 
-    /// Arm (or re-arm) the one-shot deferred-end timer to fire at uptime `fireAt`.
-    /// When it fires it feeds `timerFired` back into the machine on the same lock;
-    /// if the machine still wants to end (no second tap came) we fire `onDeactivate`.
+    /// Arm (or re-arm) the one-shot latch timer to fire at uptime `fireAt`. When it
+    /// fires it feeds `timerFired` back into the machine on the same lock; if the
+    /// key is still held, the machine returns `.lock` and we fire `onLock`.
     /// Must be called with `lock` held.
     private func armDeferTimerLocked(fireAt: TimeInterval) {
         deferTimer?.cancel()
@@ -336,7 +337,7 @@ final class HotKeyMonitor: @unchecked Sendable {
         timer.resume()
     }
 
-    /// Cancel any pending deferred-end timer. Must be called with `lock` held.
+    /// Cancel any pending latch timer. Must be called with `lock` held.
     private func cancelDeferTimerLocked() {
         deferTimer?.cancel()
         deferTimer = nil
@@ -345,9 +346,8 @@ final class HotKeyMonitor: @unchecked Sendable {
     /// If we think a key is physically *held* but the live modifier state says it
     /// isn't (a key-up event was dropped), synthesize the release so a hold can't
     /// latch on forever. ONLY the held phase is eligible: a locked hands-free
-    /// session has no key down (ending it here would kill the lock), and an
-    /// awaiting-second-tap window also has the key already up (ending it would
-    /// pre-empt a legitimate tap-tap). So we gate strictly on `gesture.isHeld`.
+    /// session has no key down (ending it here would kill the lock), and idle has
+    /// no session to end at all. So we gate strictly on `gesture.isHeld`.
     private func reconcileLiveState() {
         lock.lock()
         let cfg = config

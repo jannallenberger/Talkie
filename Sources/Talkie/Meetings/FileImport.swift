@@ -203,7 +203,7 @@ actor FileImportEngine: FileImporting {
         primaryLocale: String,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> FileImportResult {
-        let engine = TranscriptionEngine(localeIdentifier: primaryLocale)
+        let engine = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: primaryLocale))
         let log = TurnLog(startedAt: Date())
         let session: (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation)
         do {
