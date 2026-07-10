@@ -19,7 +19,7 @@
 "Clear" = "清除";
 "Connected" = "已连接";
 "Copied" = "已复制";
-"Copy All" = "全部复制";
+"Copy all" = "全部复制";
 "Copy this dictation" = "复制此听写";
 "Copy transcript" = "复制转录文本";
 "Cross-surface commands" = "跨界面命令";
@@ -376,10 +376,7 @@
 
 // I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "删除";
-"Clear everything" = "全部清除";
-"Clear your dictation history?" = "清除你的听写历史？";
 "Delete this meeting?" = "删除这场会议？";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "删除你的听写历史，以及 Talkie 的记忆从中提取的一切。你教过的词典规则会保留。Talkie 会在删除前覆盖该文件。为防你的 Mac 丢失或被扣押，请保持 FileVault 开启。";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "删除转录文本，以及 Talkie 的记忆从这场会议中提取的一切。Talkie 会在删除前覆盖该文件。为防你的 Mac 丢失或被扣押，请保持 FileVault 开启。";
 /* A9 — Vibe Coding in-context offer */
 "Index %@ filenames?" = "索引 %@ 的文件名？";
@@ -459,7 +456,6 @@
 "Mark as not done" = "标记为未完成";
 "Delete this line" = "删除此行";
 " · saved to your Scratchpad" = " · 已保存到你的便签";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "删除你的听写历史以及 Talkie 记忆从中提取的一切。你教过的词典规则，以及你在便签中写下的笔记，都会保留。Talkie 会在删除前覆盖该文件。为防止你的 Mac 丢失或被扣押，请保持 FileVault 开启。";
 
 // L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
 "Plumage" = "羽翼";
@@ -548,8 +544,8 @@
 "Instant" = "即时";
 "Fast" = "快速";
 "Slow" = "缓慢";
-"median of your last dictation" = "你最近一次听写的中位数";
-"median of your last %d dictations" = "你最近 %d 次听写的中位数";
+"your last dictation" = "你最近一次听写";
+"typical across your last %d dictations" = "你最近 %d 次听写的一般速度";
 "Dictate a few times and your typical end-to-end speed shows up here." = "多听写几次，你从头到尾的典型速度就会显示在这里。";
 "Once you've dictated a few times, the per-stage breakdown shows up here." = "听写几次之后，各阶段的明细就会显示在这里。";
 "Where the time goes between you stopping and your words landing — measured on this Mac, nothing shared." = "从你停止说话到文字落定之间，时间花在了哪里——在这台 Mac 上测量，不会分享任何内容。";
@@ -572,8 +568,8 @@
 "These apps are using the most memory right now. Read on demand, never stored, never leaves this Mac." = "这些 App 目前占用内存最多。按需读取，从不存储，绝不离开这台 Mac。";
 "Your last dictations" = "你最近的听写";
 "cold start" = "冷启动";
-"optimistic" = "预插入";
-"%d chars" = "%d 个字符";
+"shown first" = "先行显示";
+"%d characters" = "%d 个字符";
 "%.0f ms" = "%.0f 毫秒";
 "%.1f s" = "%.1f 秒";
 
@@ -738,7 +734,7 @@
 "Biases recognition toward attendee names so they’re spelled correctly." = "使识别偏向与会者的姓名，从而正确拼写。";
 "Falls back to the timestamp title whenever access is off — nothing breaks." = "只要访问权限关闭，就回退到时间戳标题——不会出任何问题。";
 "Denied in System Settings" = "已在“系统设置”中拒绝";
-"Write-only — Talkie needs read access" = "只写——Talkie 需要读取权限";
+"Talkie can only see your calendar to match meetings — it never changes anything. Turn on Calendar access for Talkie in System Settings → Privacy & Security → Calendars." = "Talkie 只能查看你的日历以匹配会议 — 它绝不会修改任何内容。请在“系统设置 → 隐私与安全性 → 日历”中为 Talkie 开启日历访问权限。";
 "Requesting…" = "正在请求…";
 "Plain Markdown in ~/Talkie Meetings — a folder you own that any tool can read. No other app needed." = "位于 ~/Talkie Meetings 的纯 Markdown——这是属于你的文件夹，任何工具都能读取。无需其他应用。";
 "Writes Markdown into the folder you pick. Point it at an Obsidian vault and Talkie formats for Obsidian on its own." = "将 Markdown 写入你选择的文件夹。将其指向 Obsidian 仓库，Talkie 会自动按 Obsidian 格式排版。";
@@ -828,3 +824,15 @@
 "Fastest speed" = "最快速度";
 "Longest dictation" = "最长口述";
 "Biggest word day" = "字数最多的一天";
+
+/* copy-humanize-1/2/3 — TalkieEngineError descriptions surfaced in the HUD error pill */
+"Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again." = "这台 Mac 目前还不支持听写。请确保 macOS 已更新到最新版本，然后重试。";
+"Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again." = "这台 Mac 上暂不支持你所用语言的听写。请在“设置 → 语言”中选择其他语言，然后重试。";
+"Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)" = "无法获取语音模型 — macOS 只需下载一次。请检查你的网络连接和可用磁盘空间，然后重试。(%@)";
+"Talkie couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "Talkie 无法从该麦克风获取音频。请在“设置 → 输入设备”中选择其他麦克风，然后重试。";
+"Talkie couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "Talkie 找不到麦克风。请在“系统设置 → 声音”中检查输入设备，然后重试。";
+
+/* copy-humanize-9 — CleanupEngine on-device availability messages */
+"Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "请开启 Apple Intelligence（系统设置 → Apple Intelligence 与 Siri）以启用整理功能。";
+"Apple Intelligence is still downloading its model — cleanup will work once it's ready." = "Apple Intelligence 仍在下载模型 — 准备就绪后即可使用整理功能。";
+"This Mac can't run on-device cleanup." = "这台 Mac 无法运行设备端整理功能。";

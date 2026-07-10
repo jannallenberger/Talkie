@@ -186,7 +186,7 @@ struct CommandsView: View {
                 selection: selection.isEmpty ? nil : selection,
                 target: .unknown,
                 graph: .empty,
-                summarizer: OnDeviceLLM()
+                summarizer: PrivacyWall.assertLocal(OnDeviceLLM())
             )
             guard let result = await intent.run(ctx) else {
                 tryFeedback = "The command matched, but the on-device model didn't return anything — it may be unavailable right now."

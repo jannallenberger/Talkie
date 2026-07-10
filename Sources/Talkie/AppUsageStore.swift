@@ -140,8 +140,7 @@ final class AppUsageStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([String: AppUsage].self, from: data) else { return }
+        guard let decoded = StoreLoad.loadJSONWithQuarantine([String: AppUsage].self, from: fileURL) else { return }
         apps = decoded
     }
 

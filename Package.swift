@@ -14,6 +14,18 @@ import Foundation
 //   ./scripts/release_dev.sh             → publishes a dev build for collaborators
 let devTools = (ProcessInfo.processInfo.environment["TALKIE_DEV_TOOLS"]?.isEmpty == false)
 
+// Connected flavor. When TALKIE_CONNECTED is set at build time, the opt-in Claude
+// bridge (Sources/TalkieBridge) — a SEPARATE networked module, exactly like
+// TalkieUpdater — is compiled in and linked into the app, and the app target gets
+// the `TALKIE_CONNECTED` compilation condition so `PrivacyWall`'s gate lifts (see
+// PrivacyWall.isAllowed) and the bridge is reachable. The DEFAULT build links
+// neither networked module, so the shipped core stays provably offline (feature 15 /
+// scripts/check-no-network.sh).
+//
+//   ./scripts/run.sh                    → default (zero-network) build
+//   TALKIE_CONNECTED=1 ./scripts/run.sh → connected build with the Claude bridge
+let connected = (ProcessInfo.processInfo.environment["TALKIE_CONNECTED"]?.isEmpty == false)
+
 // macOS 26's Swift concurrency runtime crashes *inside* the dynamic main-actor
 // isolation check that Swift 6 injects at @objc / SwiftUI callback boundaries —
 // `swift_task_isCurrentExecutor` → `swift_task_isMainExecutorImpl` →
@@ -29,8 +41,10 @@ let talkieSwiftSettings: [SwiftSetting] =
         .swiftLanguageMode(.v6),
         .unsafeFlags(["-Xfrontend", "-disable-dynamic-actor-isolation"]),
     ] + (devTools ? [.define("TALKIE_DEV_TOOLS")] : [])
+        + (connected ? [.define("TALKIE_CONNECTED")] : [])
 
-let talkieDependencies: [Target.Dependency] = devTools ? ["TalkieUpdater"] : []
+let talkieDependencies: [Target.Dependency] =
+    (devTools ? ["TalkieUpdater"] : []) + (connected ? ["TalkieBridge"] : [])
 
 var targets: [Target] = [
     .executableTarget(
@@ -86,16 +100,6 @@ var targets: [Target] = [
             .swiftLanguageMode(.v6),
         ]
     ),
-    // Feature 18: the ONLY always-considered networked module (opt-in Claude
-    // bridge). The app core never imports it; compiled in only for a connected
-    // build flavor.
-    .target(
-        name: "TalkieBridge",
-        path: "Sources/TalkieBridge",
-        swiftSettings: [
-            .swiftLanguageMode(.v6),
-        ]
-    ),
     // Pure-logic unit tests (no Core Audio, no model): the meeting-detection
     // state machine and the live-subtopic confidence gating. Bootstraps the
     // repo's first test target.
@@ -129,6 +133,21 @@ if devTools {
             name: "TalkieUpdaterTests",
             dependencies: ["TalkieUpdater"],
             path: "Tests/TalkieUpdaterTests",
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        )
+    )
+}
+
+// The Claude bridge target exists only in the connected flavor, so the default
+// package graph never even builds networked bridge code (Feature 18: the opt-in
+// Claude bridge — the app core never imports it).
+if connected {
+    targets.append(
+        .target(
+            name: "TalkieBridge",
+            path: "Sources/TalkieBridge",
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ]

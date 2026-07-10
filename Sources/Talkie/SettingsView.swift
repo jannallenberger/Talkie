@@ -280,7 +280,7 @@ struct MainView: View {
                        wordFreq: wordFreq, scratchpad: scratchpad,
                        autoAddPreviewLog: autoAddPreviewLog,
                        contextSummary: contextSummary,
-                       jobTitle: jobTitle, profileImage: profileImage)
+                       nicheVocab: nicheVocab)
         case .commands:
             CommandsView(settings: settings, macros: macros,
                          commandRouter: commandRouter, hud: hud,
@@ -503,8 +503,9 @@ private struct SettingsHome: View {
     }
 
     /// Consume `SettingsRouter.pendingPage`: push it onto the nav path and clear
-    /// it. No-op when nothing is pending (the common case). Additive scaffolding —
-    /// nothing sets `pendingPage` until L6c.
+    /// it. No-op when nothing is pending (the common case). Set by MeetingsView's
+    /// "Meeting settings" deep link (`router.pendingPage = .meetings`) — live
+    /// wiring, not dead scaffolding.
     private func drainPendingPage() {
         guard let page = router.pendingPage else { return }
         path = [page]
@@ -570,27 +571,6 @@ struct SettingsSectionHeader: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 4)
-    }
-}
-
-/// A stand-in destination for the three HYBRID subpages until L6b/L6c/L6d build
-/// the real panes (L6a scaffold). Reuses `SubPage` so the placeholder already
-/// wears the app's serif header + canvas, and a `back`-able `NavigationStack`
-/// push is demonstrably working. Not shipped to users in normal flow — nothing
-/// links to these routes yet; they exist so the scaffold is verifiable.
-private struct SubpagePlaceholder: View {
-    let title: String
-    var subtitle: String? = nil
-
-    var body: some View {
-        SubPage(title: title, subtitle: subtitle) {
-            SettingsCard {
-                SettingsNote(
-                    text: "This settings page is coming soon.".loc,
-                    tone: Theme.inkTertiary,
-                    icon: "hammer")
-            }
-        }
     }
 }
 

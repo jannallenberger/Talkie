@@ -13,6 +13,12 @@ import Combine
 // • Honors Reduce Motion (freezes to a still frame) and pauses when Talkie isn't
 //   the active app, so an idle dashboard costs ~nothing.
 
+/// The TimelineView schedule shared by `Backdrop` and `DriftingGlow`. The drift
+/// is a ~100s-cycle ember breath — imperceptibly slow — so 12fps reads exactly
+/// like 30fps to the eye while cutting the steady CPU/GPU cost of an all-day
+/// menu-bar app by well over half whenever the dashboard is visible.
+private let driftFrameInterval: TimeInterval = 1.0 / 12.0
+
 struct LiveBackground: View {
     enum Mood {
         /// Behind the dashboard — a touch more scrim so the content cards lead.
@@ -27,31 +33,91 @@ struct LiveBackground: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Pause the drift when Talkie isn't frontmost.
     @State private var active = true
+    /// Pause the drift when the hosting window is occluded (covered by another
+    /// window, minimized, or on another Space) — catches the case app-active/
+    /// inactive alone misses: Talkie can stay the frontmost app while this
+    /// particular window sits hidden behind something else.
+    @State private var occluded = false
+    /// The hosting `NSWindow`, captured by the probe below, so the occlusion
+    /// notification can recompute `occluded` from its live `occlusionState`.
+    @State private var hostWindow: NSWindow?
+
+    /// Whichever of the two "not worth animating" conditions applies, freeze to
+    /// a still frame — Reduce Motion, app inactive, or window occluded.
+    private var animating: Bool { !reduceMotion && active && !occluded }
 
     var body: some View {
         ZStack {
             if scheme == .dark {
                 Color(nsColor: NSColor(hex: 0x030304))               // true-black floor
-                Backdrop(animate: !reduceMotion && active)
+                Backdrop(animate: animating)
                 // A gentle, even scrim keeps the whole thing subtle and lifts
                 // whatever floats on top.
                 Color.black.opacity(mood == .ambient ? 0.16 : 0.06)
                     .allowsHitTesting(false)
                 // A few slow, warm glows drifting low over the ember — the bit of
                 // life, kept to the lower half so the dark top stays clean.
-                DriftingGlow(animate: !reduceMotion && active)
+                DriftingGlow(animate: animating)
             } else {
                 Theme.canvas
             }
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
+        .background(WindowOcclusionReader { window in
+            hostWindow = window
+            occluded = !(window?.occlusionState.contains(.visible) ?? true)
+        })
+        // The occlusion notification fires on the main run loop; `.onReceive`'s
+        // closure is main-actor, so reading `occlusionState` here is safe (no
+        // manual observer capturing a non-Sendable window in a @Sendable block).
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { _ in
+            occluded = !(hostWindow?.occlusionState.contains(.visible) ?? true)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             active = false
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             active = true
         }
+    }
+}
+
+// MARK: - Window occlusion reader
+
+/// An otherwise-inert `NSView` whose only job is reporting when AppKit attaches
+/// or detaches it from a real `NSWindow` — `viewDidMoveToWindow` is the correct
+/// AppKit hook for this (fires on insertion AND any later reparenting), unlike
+/// reading `.window` once at construction time (still nil then: the view isn't
+/// in the hierarchy yet).
+private final class OcclusionProbeView: NSView {
+    var onWindowChange: ((NSWindow?) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindowChange?(window)
+    }
+}
+
+/// Bridges to the hosting `NSWindow` so `LiveBackground` can pause its drift when
+/// that window isn't actually visible on screen. There's no SwiftUI-native way to
+/// read occlusion state, so this is the standard trick: an invisible probe view
+/// hands its `.window` up to the SwiftUI layer, which watches
+/// `NSWindow.didChangeOcclusionStateNotification` via `.onReceive`. Zero footprint —
+/// it draws nothing and doesn't affect layout (used via `.background(...)`).
+private struct WindowOcclusionReader: NSViewRepresentable {
+    /// Called (on the main thread, from `viewDidMoveToWindow`) whenever the probe
+    /// is attached to or moved between windows.
+    var onWindow: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> OcclusionProbeView {
+        let view = OcclusionProbeView(frame: .zero)
+        view.onWindowChange = onWindow
+        return view
+    }
+
+    func updateNSView(_ nsView: OcclusionProbeView, context: Context) {
+        nsView.onWindowChange = onWindow
     }
 }
 
@@ -64,7 +130,7 @@ private struct Backdrop: View {
     var body: some View {
         GeometryReader { geo in
             if let img = Brand.image("Backdrop") {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !animate)) { ctx in
+                TimelineView(.animation(minimumInterval: driftFrameInterval, paused: !animate)) { ctx in
                     let t = animate ? ctx.date.timeIntervalSinceReferenceDate : 0
                     picture(img, size: geo.size, t: t)
                 }
@@ -118,7 +184,7 @@ private struct DriftingGlow: View {
 
     var body: some View {
         GeometryReader { geo in
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !animate)) { ctx in
+            TimelineView(.animation(minimumInterval: driftFrameInterval, paused: !animate)) { ctx in
                 let t = animate ? ctx.date.timeIntervalSinceReferenceDate : 0
                 let w = geo.size.width, h = geo.size.height
                 let base = min(w, h)

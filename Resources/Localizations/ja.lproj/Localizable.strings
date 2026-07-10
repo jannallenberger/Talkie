@@ -19,7 +19,7 @@
 "Clear" = "消去";
 "Connected" = "接続済み";
 "Copied" = "コピーしました";
-"Copy All" = "すべてコピー";
+"Copy all" = "すべてコピー";
 "Copy this dictation" = "この音声入力をコピー";
 "Copy transcript" = "文字起こしをコピー";
 "Cross-surface commands" = "サーフェス横断コマンド";
@@ -376,10 +376,7 @@
 
 // I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "削除";
-"Clear everything" = "すべて消去";
-"Clear your dictation history?" = "ディクテーション履歴を消去しますか？";
 "Delete this meeting?" = "このミーティングを削除しますか？";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "ディクテーション履歴と、そこからTalkieのメモリが抽出したすべてを削除します。あなたが教えた辞書ルールは残ります。Talkieは削除前にファイルを上書きします。Macを紛失または押収された場合に備え、FileVaultは有効にしておいてください。";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "文字起こしと、このミーティングからTalkieのメモリが抽出したすべてを削除します。Talkieは削除前にファイルを上書きします。Macを紛失または押収された場合に備え、FileVaultは有効にしておいてください。";
 /* A9 — Vibe Coding in-context offer */
 "Index %@ filenames?" = "%@ のファイル名をインデックスしますか？";
@@ -459,7 +456,6 @@
 "Mark as not done" = "未完了にする";
 "Delete this line" = "この行を削除";
 " · saved to your Scratchpad" = " · スクラッチパッドに保存しました";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "ディクテーション履歴と、Talkie のメモリがそこから抽出したすべてを削除します。あなたが教えた辞書ルールと、スクラッチパッドに書いたメモは残ります。Talkie は削除前にファイルを上書きします。Mac を紛失または押収された場合の保護のため、FileVault は有効のままにしてください。";
 
 // L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
 "Plumage" = "羽ばたき";
@@ -548,8 +544,8 @@
 "Instant" = "瞬時";
 "Fast" = "高速";
 "Slow" = "遅い";
-"median of your last dictation" = "直近の音声入力の中央値";
-"median of your last %d dictations" = "直近 %d 回の音声入力の中央値";
+"your last dictation" = "直近の音声入力";
+"typical across your last %d dictations" = "直近 %d 回の音声入力の平均的な速さ";
 "Dictate a few times and your typical end-to-end speed shows up here." = "何回か音声入力すると、全体としての典型的な速度がここに表示されます。";
 "Once you've dictated a few times, the per-stage breakdown shows up here." = "何回か音声入力すると、段階ごとの内訳がここに表示されます。";
 "Where the time goes between you stopping and your words landing — measured on this Mac, nothing shared." = "話し終えてから文字が入力されるまで、時間がどこにかかっているか。この Mac 上で計測し、何も共有されません。";
@@ -572,8 +568,8 @@
 "These apps are using the most memory right now. Read on demand, never stored, never leaves this Mac." = "現在、これらのアプリが最も多くメモリを使用しています。必要なときにのみ読み取り、保存はせず、この Mac の外には出ません。";
 "Your last dictations" = "直近の音声入力";
 "cold start" = "コールドスタート";
-"optimistic" = "先行挿入";
-"%d chars" = "%d 文字";
+"shown first" = "先行表示";
+"%d characters" = "%d 文字";
 "%.0f ms" = "%.0f ms";
 "%.1f s" = "%.1f 秒";
 
@@ -738,7 +734,7 @@
 "Biases recognition toward attendee names so they’re spelled correctly." = "認識を出席者の名前に寄せて、正しくつづれるようにします。";
 "Falls back to the timestamp title whenever access is off — nothing breaks." = "アクセスがオフのときはタイムスタンプのタイトルに戻ります。何も壊れません。";
 "Denied in System Settings" = "システム設定で拒否";
-"Write-only — Talkie needs read access" = "書き込み専用 — Talkie には読み取りアクセスが必要です";
+"Talkie can only see your calendar to match meetings — it never changes anything. Turn on Calendar access for Talkie in System Settings → Privacy & Security → Calendars." = "Talkie はミーティングと照合するためだけにカレンダーを閲覧します — 何も変更することはありません。システム設定 → プライバシーとセキュリティ → カレンダー で Talkie のカレンダーアクセスをオンにしてください。";
 "Requesting…" = "リクエスト中…";
 "Plain Markdown in ~/Talkie Meetings — a folder you own that any tool can read. No other app needed." = "~/Talkie Meetings 内のプレーンな Markdown。あなたのフォルダで、どんなツールでも読めます。ほかのアプリは不要です。";
 "Writes Markdown into the folder you pick. Point it at an Obsidian vault and Talkie formats for Obsidian on its own." = "選んだフォルダに Markdown を書き込みます。Obsidian の保管庫を指定すれば、Talkie が自動で Obsidian 用に整えます。";
@@ -828,3 +824,15 @@
 "Fastest speed" = "最速";
 "Longest dictation" = "最長の口述";
 "Biggest word day" = "最多語数の日";
+
+/* copy-humanize-1/2/3 — TalkieEngineError descriptions surfaced in the HUD error pill */
+"Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again." = "この Mac ではまだディクテーションを利用できません。macOS を最新の状態にしてから、もう一度お試しください。";
+"Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again." = "この Mac では、お使いの言語でのディクテーションはまだ利用できません。設定 → 言語 で別の言語を選んでから、もう一度お試しください。";
+"Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)" = "音声モデルを取得できませんでした — macOS が一度だけダウンロードします。インターネット接続と空き容量を確認して、もう一度お試しください。(%@)";
+"Talkie couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "Talkie はそのマイクから音声を取得できませんでした。設定 → 入力デバイス で別のマイクを選んでから、もう一度お試しください。";
+"Talkie couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "Talkie はマイクを見つけられませんでした。システム設定 → サウンド で入力デバイスを確認し、もう一度お試しください。";
+
+/* copy-humanize-9 — CleanupEngine on-device availability messages */
+"Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "整形を使うには、Apple Intelligence を有効にしてください（システム設定 → Apple Intelligence & Siri）。";
+"Apple Intelligence is still downloading its model — cleanup will work once it's ready." = "Apple Intelligence がモデルをダウンロード中です — 準備が整うと整形が使えるようになります。";
+"This Mac can't run on-device cleanup." = "この Mac ではオンデバイスの整形を実行できません。";
