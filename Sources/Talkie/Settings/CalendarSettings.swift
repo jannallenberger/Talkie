@@ -48,7 +48,7 @@ struct CalendarSettings: View {
         switch status {
         case .fullAccess: return "Connected".loc
         case .denied, .restricted: return "Denied in System Settings".loc
-        case .writeOnly: return "Write-only — Talkie needs read access".loc
+        case .writeOnly: return "Talkie can only see your calendar to match meetings — it never changes anything. Turn on Calendar access for Talkie in System Settings → Privacy & Security → Calendars.".loc
         case .notDetermined: return "Off".loc
         @unknown default: return "Off".loc
         }

@@ -37,7 +37,13 @@ enum Theme {
 
     static let ink           = dyn(light: 0x1C1D20, dark: 0xF4F5F6)
     static let inkSecondary  = dyn(light: 0x5E626A, dark: 0xA6AAB0)
-    static let inkTertiary   = dyn(light: 0x969AA1, dark: 0x70747B)
+    /// Darkened/lightened from the original 0x969AA1 / 0x70747B (~2.6:1 light,
+    /// ~3.7:1 dark against `surface` — fails WCAG AA) to ~4.5:1+ against both
+    /// `surface` and `canvas` in each mode. Same cool undertone (hue ratio
+    /// preserved, only luminance shifted) so the small body text this styles
+    /// everywhere (captions, hints, meta lines) stays legible without looking
+    /// like a different color.
+    static let inkTertiary   = dyn(light: 0x6A6E76, dark: 0x80848B)
     /// Row dividers only — never an element outline.
     static let hairline      = dyn(light: 0xE6E8EB, dark: 0x2B2B2F)
 

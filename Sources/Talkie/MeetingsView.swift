@@ -527,7 +527,7 @@ private struct RecordingDot: View {
     @State private var on = false
     var body: some View {
         Circle()
-            .fill(Color.red)
+            .fill(Theme.featherRed)
             .frame(width: 12, height: 12)
             .opacity(on ? 1 : 0.35)
             .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: on)
@@ -766,6 +766,7 @@ private struct MeetingRow: View, Equatable {
                         } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.plain)
                         .help("Regenerate summary")
+                        .accessibilityLabel("Regenerate summary")
                     }
                     // Edit the transcript (A8) — fixing a misrecognition here fixes the
                     // note AND can teach the dictionary. Only for meetings that actually
@@ -774,8 +775,10 @@ private struct MeetingRow: View, Equatable {
                         Button { beginEditing() } label: { Image(systemName: "pencil") }
                             .buttonStyle(.plain)
                             .help("Edit transcript")
+                            .accessibilityLabel("Edit transcript")
                     }
                     Button(action: onCopy) { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("Copy transcript")
+                        .accessibilityLabel("Copy transcript")
                     // Timestamped exports (D3) — only when this meeting actually has
                     // timed segments (recorded/imported after D2). Pre-D2 notes simply
                     // don't show the menu, so there's no dead UI and no migration.
@@ -797,8 +800,10 @@ private struct MeetingRow: View, Equatable {
                         .buttonStyle(.plain)
                         .fixedSize()
                         .help("Export…")
+                        .accessibilityLabel("Export…")
                     }
                     Button(action: onReveal) { Image(systemName: "folder") }.buttonStyle(.plain).help("Reveal note in Finder")
+                        .accessibilityLabel("Reveal note in Finder")
                 }
             }
 
@@ -1263,6 +1268,7 @@ struct MeetingAppChip: View {
                     .foregroundStyle(Theme.inkTertiary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(String(format: "Remove %@".loc, app.displayName))
         }
         .padding(.leading, 10)
         .padding(.trailing, 7)
@@ -1294,6 +1300,7 @@ struct MutedAppChip: View {
         }
         .buttonStyle(.plain)
         .help("Un-mute".loc)
+        .accessibilityLabel(String(format: "Un-mute %@".loc, name))
     }
 }
 
@@ -1416,6 +1423,7 @@ private struct ImportControls: View {
             }
             .buttonStyle(.plain)
             .help("Dismiss".loc)
+            .accessibilityLabel("Dismiss".loc)
         }
         .talkieCard(padding: 12)
     }

@@ -544,8 +544,8 @@
 "Instant" = "Direct";
 "Fast" = "Snel";
 "Slow" = "Traag";
-"median of your last dictation" = "mediaan van je laatste dictaat";
-"median of your last %d dictations" = "mediaan van je laatste %d dictaten";
+"your last dictation" = "je laatste dictaat";
+"typical across your last %d dictations" = "typisch voor je laatste %d dictaten";
 "Dictate a few times and your typical end-to-end speed shows up here." = "Dicteer een paar keer en je typische snelheid van begin tot eind verschijnt hier.";
 "Once you've dictated a few times, the per-stage breakdown shows up here." = "Zodra je een paar keer hebt gedicteerd, verschijnt hier de uitsplitsing per fase.";
 "Where the time goes between you stopping and your words landing — measured on this Mac, nothing shared." = "Waar de tijd naartoe gaat tussen het stoppen en het verschijnen van je woorden — gemeten op deze Mac, niets gedeeld.";
@@ -568,8 +568,8 @@
 "These apps are using the most memory right now. Read on demand, never stored, never leaves this Mac." = "Deze apps gebruiken op dit moment het meeste geheugen. Op aanvraag gelezen, nooit opgeslagen, verlaten deze Mac nooit.";
 "Your last dictations" = "Je laatste dictaten";
 "cold start" = "koude start";
-"optimistic" = "optimistisch";
-"%d chars" = "%d tekens";
+"shown first" = "eerst getoond";
+"%d characters" = "%d tekens";
 "%.0f ms" = "%.0f ms";
 "%.1f s" = "%.1f s";
 
@@ -734,7 +734,7 @@
 "Biases recognition toward attendee names so they’re spelled correctly." = "Stuurt de herkenning naar de namen van deelnemers zodat ze correct worden gespeld.";
 "Falls back to the timestamp title whenever access is off — nothing breaks." = "Valt terug op de titel met tijdstempel zodra toegang uit is — er gaat niets stuk.";
 "Denied in System Settings" = "Geweigerd in Systeeminstellingen";
-"Write-only — Talkie needs read access" = "Alleen-schrijven — Talkie heeft leestoegang nodig";
+"Talkie can only see your calendar to match meetings — it never changes anything. Turn on Calendar access for Talkie in System Settings → Privacy & Security → Calendars." = "Talkie kan je agenda alleen bekijken om vergaderingen te matchen — het verandert nooit iets. Zet agendatoegang voor Talkie aan bij Systeeminstellingen → Privacy en beveiliging → Agenda's.";
 "Requesting…" = "Aanvragen…";
 "Plain Markdown in ~/Talkie Meetings — a folder you own that any tool can read. No other app needed." = "Platte Markdown in ~/Talkie Meetings — een map die van jou is en die elk hulpmiddel kan lezen. Geen andere app nodig.";
 "Writes Markdown into the folder you pick. Point it at an Obsidian vault and Talkie formats for Obsidian on its own." = "Schrijft Markdown naar de map die je kiest. Wijs die naar een Obsidian-kluis en Talkie maakt vanzelf op voor Obsidian.";
@@ -824,3 +824,15 @@
 "Fastest speed" = "Hoogste snelheid";
 "Longest dictation" = "Langste dictaat";
 "Biggest word day" = "Meeste woorden op een dag";
+
+/* copy-humanize-1/2/3 — TalkieEngineError descriptions surfaced in the HUD error pill */
+"Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again." = "Dicteren is nog niet beschikbaar op deze Mac. Zorg dat macOS up-to-date is en probeer het opnieuw.";
+"Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again." = "Dicteren in jouw taal is nog niet beschikbaar op deze Mac. Kies een andere taal bij Instellingen → Talen en probeer het opnieuw.";
+"Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)" = "Kon het spraakmodel niet ophalen — macOS downloadt dit eenmalig. Controleer je internetverbinding en vrije schijfruimte en probeer het opnieuw. (%@)";
+"Talkie couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "Talkie kon geen audio van die microfoon ontvangen. Kies een andere microfoon bij Instellingen → Invoerapparaat en probeer het opnieuw.";
+"Talkie couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "Talkie kon geen microfoon vinden. Controleer je invoerapparaat bij Systeeminstellingen → Geluid en probeer het opnieuw.";
+
+/* copy-humanize-9 — CleanupEngine on-device availability messages */
+"Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "Zet Apple Intelligence aan (Systeeminstellingen → Apple Intelligence & Siri) om opschonen in te schakelen.";
+"Apple Intelligence is still downloading its model — cleanup will work once it's ready." = "Apple Intelligence downloadt zijn model nog — opschonen werkt zodra dit klaar is.";
+"This Mac can't run on-device cleanup." = "Deze Mac kan opschonen niet on-device uitvoeren.";

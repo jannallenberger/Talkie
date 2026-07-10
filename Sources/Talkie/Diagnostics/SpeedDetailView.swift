@@ -370,9 +370,9 @@ private struct RecentRow: View {
                     .foregroundStyle(Theme.ink)
                     .monospacedDigit()
                 if record.coldStart { TagChip(text: "cold start".loc, tint: Theme.featherBlue) }
-                if record.optimistic { TagChip(text: "optimistic".loc, tint: Theme.featherPlum) }
+                if record.optimistic { TagChip(text: "shown first".loc, tint: Theme.featherPlum) }
                 Spacer()
-                Text(String(format: "%d chars".loc, record.chars))
+                Text(String(format: "%d characters".loc, record.chars))
                     .font(.talkieHeading(11, weight: .regular))
                     .foregroundStyle(Theme.inkTertiary)
                     .monospacedDigit()

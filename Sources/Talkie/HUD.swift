@@ -994,6 +994,13 @@ enum GestureHint {
 
 // MARK: - SwiftUI HUD content
 
+/// The HUD pill's fixed corner radius (deliberately not a `Capsule` — see the
+/// comment on `HUDView.pill`: a capsule's radius grows with height as the live
+/// transcript expands it downward, which ballooned the corners rounder). Shared
+/// by the pill background, its hit-test shape, the hold-to-lock progress fill,
+/// and the learned-correction ring so they all trace the exact same rounded rect.
+private let hudPillRadius: CGFloat = 17
+
 private struct HUDView: View {
     @ObservedObject var model: HUDModel
     let pillFrame: PillFrameBox
@@ -1094,7 +1101,7 @@ private struct HUDView: View {
                 // A FIXED corner radius (not a Capsule): as the pill grows DOWNWARD with
                 // the live transcript, the radius must stay constant — a capsule's radius
                 // is half its height, so it ballooned rounder as the pill got taller.
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                RoundedRectangle(cornerRadius: hudPillRadius, style: .continuous)
                     .fill(.black)
                     // Change #2: hold-to-lock progress. A subtle coral fill sweeps in
                     // from the leading edge over exactly `latchThreshold`; if the user
@@ -1102,10 +1109,10 @@ private struct HUDView: View {
                     // the pill pops (below). A quick release leaves the capture phase
                     // and the fill vanishes — so a plain push-to-talk tap barely shows it.
                     .overlay(alignment: .leading) {
-                        LatchProgressFill(model: model, cornerRadius: 17)
+                        LatchProgressFill(model: model, cornerRadius: hudPillRadius)
                     }
                     .overlay(
-                        RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        RoundedRectangle(cornerRadius: hudPillRadius, style: .continuous)
                             .strokeBorder(
                                 .white.opacity(model.highContrast ? 0.9 : 0.10),
                                 lineWidth: model.highContrast ? 1.5 : 0.5
@@ -1149,7 +1156,7 @@ private struct HUDView: View {
             }
             .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
             .fixedSize()
-            .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: hudPillRadius, style: .continuous))
             .background(
                 // Publish the pill's frame (SwiftUI top-left coords) so the panel's
                 // hosting view only claims clicks here — the transparent headroom
@@ -1615,7 +1622,7 @@ private struct HUDView: View {
             HStack(spacing: 7) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: model.highContrast ? 14 : 13, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
                     .accessibilityHidden(true)
                 Text(message)
                     .font(.system(size: model.highContrast ? 13 : 12, weight: .regular))
@@ -1688,9 +1695,9 @@ private struct CountdownRing: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
+            RoundedRectangle(cornerRadius: hudPillRadius, style: .continuous)
                 .stroke(.white.opacity(0.08), lineWidth: 2)
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
+            RoundedRectangle(cornerRadius: hudPillRadius, style: .continuous)
                 .trim(from: 0, to: depleted ? 0 : 1)
                 .stroke(Theme.coral, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .shadow(color: Theme.coral.opacity(0.6), radius: 4)

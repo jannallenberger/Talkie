@@ -97,15 +97,15 @@ enum TalkieEngineError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .transcriberUnavailable:
-            return "On-device speech recognition is not available on this Mac."
+            return "Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again.".loc
         case .noSupportedLocale:
-            return "No supported speech locale could be resolved."
+            return "Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again.".loc
         case .modelInstallFailed(let detail):
-            return "The speech model could not be installed: \(detail)"
+            return String(format: "Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)".loc, detail)
         case .noCompatibleAudioFormat:
-            return "No compatible audio format was found for the microphone."
+            return "Talkie couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again.".loc
         case .noInputDevice:
-            return "No microphone is available. Check your input device in System Settings → Sound."
+            return "Talkie couldn't find a microphone. Check your input device in System Settings → Sound, then try again.".loc
         }
     }
 }
