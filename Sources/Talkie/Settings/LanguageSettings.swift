@@ -205,11 +205,8 @@ private struct AllLanguagesTile: View {
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(Theme.surface)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .strokeBorder(Theme.hairline, lineWidth: 1)
-            )
             .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
             .scaleEffect(hovering ? 1.03 : 1)
             .animation(.easeOut(duration: 0.12), value: hovering)
             .contentShape(Rectangle())

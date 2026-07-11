@@ -72,6 +72,9 @@ enum Theme {
     /// Clearer alias for the macaw red.
     static var featherRed: Color { featherCoral }
 
+    /// The single shared warm gold→red data-viz ramp (gauges, progress fills).
+    static var emberRamp: Gradient { Gradient(colors: [featherGold, featherCoral]) }
+
     /// Ordered categorical ramp for charts (app-usage bars, etc).
     static let categorical: [Color] = [featherCoral, featherGold, featherBlue, featherGreen, featherPlum]
 
@@ -182,6 +185,46 @@ extension View {
             .padding(padding)
             .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil, alignment: fill ? .topLeading : .leading)
             .talkieSurface()
+    }
+}
+
+extension View {
+    /// Pins a ~52pt top-edge material band over scroll content so it fades
+    /// into a blur as it passes under the top edge, rather than clipping hard.
+    /// Honors Reduce Transparency: falls back to a solid `Theme.canvas` → clear
+    /// gradient (no blur) so it never reads as an opaque haze — mirrors the
+    /// reduce-transparency pattern in `GlassCard` (LiveBackground.swift ~239-266).
+    func scrollTopBlur() -> some View {
+        modifier(ScrollTopBlurModifier())
+    }
+}
+
+private struct ScrollTopBlurModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    private let bandHeight: CGFloat = 52
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .top) {
+            Group {
+                if reduceTransparency {
+                    LinearGradient(
+                        colors: [Theme.canvas, Theme.canvas.opacity(0)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                } else {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .mask(
+                            LinearGradient(
+                                colors: [.black, .black.opacity(0)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                }
+            }
+            .frame(height: bandHeight)
+            .allowsHitTesting(false)
+        }
     }
 }
 

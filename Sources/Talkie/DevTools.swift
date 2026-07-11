@@ -32,4 +32,14 @@ enum Dev {
     static var llmJargonRepair: Bool {
         isEnabled && UserDefaults.standard.bool(forKey: llmJargonRepairKey)
     }
+
+    /// Experimental Settings glass toolbar. DARK by default (unshipped visual
+    /// spike) — opt-in ONLY via an explicit defaults key AND only honored while
+    /// dev mode is on:
+    ///     defaults write com.coralate.talkie TalkieGlassSettingsToolbar -bool YES
+    static let glassSettingsToolbarKey = "TalkieGlassSettingsToolbar"
+
+    static var glassSettingsToolbar: Bool {
+        isEnabled && UserDefaults.standard.bool(forKey: glassSettingsToolbarKey)
+    }
 }

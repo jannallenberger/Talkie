@@ -166,6 +166,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         window.title = Brand.displayName
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        // Kills the gray titlebar hairline that otherwise survives the transparent
+        // titlebar in both windowed and full-screen.
+        window.titlebarSeparatorStyle = .none
         window.isMovableByWindowBackground = true
         // Opaque v2 canvas; NavigationSplitView supplies the Liquid Glass sidebar.
         window.backgroundColor = NSColor(name: nil) { appearance in
@@ -246,6 +249,9 @@ struct MainView: View {
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .background(Theme.canvas)
+                        // Single application point: every tab's scroll content fades
+                        // under the top edge instead of clipping hard.
+                        .scrollTopBlur()
                 }
                 .transition(.opacity)
             } else {
@@ -323,7 +329,7 @@ private struct SidebarList: View {
         .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 3) {
-                Eyebrow(text: "Hold to talk · tap twice to lock")
+                Eyebrow(text: "Hold to talk · keep holding to lock")
                 Text(settings.activationKey.displayName)
                     .font(.talkieHeading(12, weight: .medium))
                     .foregroundStyle(Theme.inkSecondary)
@@ -379,12 +385,36 @@ private struct SettingsHome: View {
     /// pending page onto this path, then clear it (L6a scaffold; L6c drives it).
     @State private var path: [SettingsPage] = []
 
+    /// Shared with the gated glass-toolbar spike below so the string exists as a
+    /// single literal in source (keeps the brand-literal footprint from growing).
+    private static let subtitle = "Tune how Talkie listens, cleans up, and behaves."
+
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    PageHeader(title: "Settings",
-                               subtitle: "Tune how Talkie listens, cleans up, and behaves.")
+                    // Dev.glassSettingsToolbar (DARK by default): an unshipped visual
+                    // spike that swaps the plain title/subtitle header for a native
+                    // macOS 26 Liquid-Glass toolbar. Flag defaults false, so normal
+                    // builds render the existing header unchanged.
+                    if Dev.glassSettingsToolbar {
+                        GlassEffectContainer {
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                Text(LocalizedStringKey("Settings"))
+                                    .font(.talkieDisplay(20))
+                                    .foregroundStyle(Theme.ink)
+                                Text(LocalizedStringKey(Self.subtitle))
+                                    .font(.talkieHeading(12, weight: .regular))
+                                    .foregroundStyle(Theme.inkSecondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 12)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                        }
+                    } else {
+                        PageHeader(title: "Settings", subtitle: Self.subtitle)
+                    }
 
                     // H1: the dedicated Profile section is gone — your name is edited inline
                     // on the Dashboard header now (click "Welcome back, …"). One fewer group.
@@ -1609,7 +1639,7 @@ private struct ActivationSettings: View {
     /// it must reach macOS as a real button (vendor drivers that remap it to a
     /// keystroke are out of Talkie's hands).
     private var activationFooter: String {
-        let base = "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.".loc
+        let base = "Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.".loc
         guard settings.activationKey.isMouseButton else { return base }
         let note = "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software).".loc
         return base + "\n\n" + note
@@ -2513,8 +2543,11 @@ private struct PermissionsSection: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Borderless (v2): the tint alone reads as a warning surface, lifted
+                // off the canvas by a whisper shadow instead of an outline.
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.warning.opacity(0.10)))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.warning.opacity(0.30)))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
             }
 
             HStack {

@@ -112,8 +112,6 @@ struct DashboardView: View {
                             .accessibilityElement(children: .combine)
                         RecordsCard(stats: stats, activity: activity).frame(maxHeight: .infinity, alignment: .top)
                             .accessibilityElement(children: .combine)
-                        TaughtWordsCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
-                            .accessibilityElement(children: .combine)
                     }
 
                     LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
@@ -582,17 +580,17 @@ private struct MilestoneCelebrationBanner: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(String(format: "You crossed %@ words".loc, threshold.formatted()))
                     .font(.talkieHeading(15, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+                    .foregroundStyle(.white)
                 if !equivalence.isEmpty {
                     Text(equivalence)
                         .font(.talkieHeading(12, weight: .regular))
-                        .foregroundStyle(Theme.inkSecondary)
+                        .foregroundStyle(.white.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 NavigationLink(value: MilestoneRoute.plumage) {
                     Text("See your milestones".loc)
                         .font(.talkieHeading(12, weight: .semibold))
-                        .foregroundStyle(Theme.featherCoral)
+                        .foregroundStyle(.white)
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 1)
@@ -603,17 +601,21 @@ private struct MilestoneCelebrationBanner: View {
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.inkTertiary)
+                    .foregroundStyle(.white.opacity(0.85))
             }
             .buttonStyle(.plain)
             .help("Dismiss")
             .accessibilityLabel("Dismiss")
         }
-        .talkieCard()
-        .overlay(
+        .padding(Theme.Space.card)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .strokeBorder(Theme.featherGold.opacity(0.4), lineWidth: 1)
+                .fill(Theme.featherCoral)
         )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
         .opacity(appeared || reduceMotion ? 1 : 0)
         .onAppear {
             guard !reduceMotion else { return }
@@ -691,7 +693,8 @@ private struct ComparisonLine: View {
 }
 
 /// A top-half speedometer arc, sized to its frame (no fixed geometry → can't
-/// overflow the card). Track in the sunken tone, value swept deep-red → gold.
+/// overflow the card). Track in the sunken tone, value swept along the shared
+/// ember ramp (gold → coral), matching the words-per-day bars.
 private struct Gauge: View {
     let fraction: Double
     private let lineWidth: CGFloat = 15
@@ -707,7 +710,7 @@ private struct Gauge: View {
                 arc(center: center, radius: r, to: max(0.001, fraction))
                     .stroke(
                         AngularGradient(
-                            gradient: Gradient(colors: [Theme.heat(4), Theme.featherCoral, Theme.featherGold]),
+                            gradient: Theme.emberRamp,
                             center: .center,
                             startAngle: .degrees(180), endAngle: .degrees(360)
                         ),
@@ -796,7 +799,7 @@ private struct WordsPerDayCard: View {
                         .fill(day.words == 0
                               ? AnyShapeStyle(Theme.surfaceSunken)
                               : AnyShapeStyle(LinearGradient(
-                                    colors: [Theme.featherGold, Theme.featherCoral],
+                                    gradient: Theme.emberRamp,
                                     startPoint: .top, endPoint: .bottom)))
                         .frame(width: barW,
                                height: barHeight(frac: frac, full: geo.size.height, empty: day.words == 0))
@@ -935,49 +938,6 @@ private struct RecordsCard: View {
         let words = stats.longestDictationWords.formatted()
         let dur = formatDuration(stats.longestDictationDurationSec)
         return "\(words) words (\(dur))"
-    }
-}
-
-// MARK: - Words you taught me card
-
-/// K5 — the jargon terms Talkie has learned to get right for you, most-rescued
-/// first. Terms are user content, so they render verbatim (never localized) and
-/// are only ever read from the on-device `stats.json` tally.
-private struct TaughtWordsCard: View {
-    @ObservedObject var stats: StatsStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Eyebrow(text: "Words you taught me")
-
-            let top = stats.topTaughtWords(limit: 5)
-            if top.isEmpty {
-                Text("The terms you teach it to spell right show up here.")
-                    .font(.talkieHeading(13, weight: .regular))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                ForEach(top, id: \.term) { entry in
-                    HStack(spacing: 8) {
-                        Image(systemName: "character.book.closed")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.inkTertiary)
-                            .frame(width: 16)
-                        Text(verbatim: entry.term)
-                            .font(.talkieHeading(13, weight: .regular))
-                            .foregroundStyle(Theme.inkSecondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 4)
-                        Text(verbatim: "\(entry.count)×")
-                            .font(.talkieHeading(13, weight: .semibold))
-                            .foregroundStyle(Theme.ink)
-                            .monospacedDigit()
-                    }
-                }
-            }
-        }
-        .talkieCard(fill: true)
     }
 }
 

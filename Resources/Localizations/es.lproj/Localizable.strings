@@ -338,6 +338,9 @@
 "Hold %@ to talk · tap twice to lock" = "Mantén %@ para hablar · toca dos veces para fijar";
 "Hold to talk · tap twice to lock" = "Mantén para hablar · toca dos veces para fijar";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Mantén pulsada la tecla y habla, luego suéltala para insertar. Tócala dos veces para fijarla en manos libres: la grabación continúa sin mantener nada pulsado; toca una vez para detener e insertar.";
+/* Track 4 — hold-to-latch replaces the old double-tap gesture */
+"Hold to talk · keep holding to lock" = "Mantén para hablar · sigue manteniendo para fijar";
+"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Mantén pulsada la tecla y habla, luego suéltala para insertar. Sigue manteniéndola pulsada para fijarla en manos libres: la grabación continúa sin mantener nada pulsado; toca una vez para detener e insertar.";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "El botón lateral sigue haciendo su función normal en la app que estás usando — Talkie solo lo escucha, y debe llegar a macOS como un botón real (algunos ratones lo reasignan en su propio software).";
 "Hold, speak, release — or tap twice to go hands-free" = "Mantén, habla, suelta — o toca dos veces para manos libres";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Mantén tu tecla, di lo que quieres escribir y suéltala: Talkie coloca el texto donde estés escribiendo. ¿Con prisa? Toca la tecla dos veces para fijar la grabación en manos libres y una vez para detenerla.";

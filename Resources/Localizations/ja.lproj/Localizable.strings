@@ -338,6 +338,9 @@
 "Hold %@ to talk · tap twice to lock" = "%@ を押し続けて話す・2回タップで固定";
 "Hold to talk · tap twice to lock" = "押し続けて話す・2回タップで固定";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "キーを押しながら話し、離すと挿入されます。2回タップするとハンズフリーで固定され、何も押さなくても録音が続きます。もう一度タップすると停止して挿入します。";
+/* Track 4 — hold-to-latch replaces the old double-tap gesture */
+"Hold to talk · keep holding to lock" = "押し続けて話す・そのまま押し続けて固定";
+"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "キーを押しながら話し、離すと挿入されます。そのまま押し続けるとハンズフリーで固定され、何も押さなくても録音が続きます。もう一度タップすると停止して挿入します。";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "サイドボタンは使用中のアプリで通常どおり機能します。Talkie はそれを聞き取るだけで、ボタンは実際のボタンとして macOS に届く必要があります（一部のマウスは独自のソフトウェアでボタンを再割り当てします）。";
 "Hold, speak, release — or tap twice to go hands-free" = "押して、話して、離す — または2回タップでハンズフリー";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "キーを押しながら書きたいことを話し、離すだけ — Talkie が入力中の場所にテキストを挿入します。急いでいるときは、キーを2回タップして録音をハンズフリーで固定し、1回タップで停止します。";
