@@ -221,19 +221,32 @@ fi
 # stop emitting the bundle, the build FAILS here rather than silently shipping an
 # app whose actions quietly vanished from Shortcuts. (Only skipped if the const
 # protocol list couldn't be built above — that path already warned.)
+#
+# The const values come in two shapes depending on the compilation mode: release
+# (whole-module optimization) aggregates the whole target into one
+# Talkie.swiftconstvalues, while debug (incremental) emits one sidecar per source
+# file (Foo.swift.swiftconstvalues) inside Talkie.build/. --swift-const-vals-list
+# is a file of paths, one per line, so both shapes feed the processor directly.
 CONST_VALS_FILE="$(find "$ROOT/.build" -path "*${CONFIG}*" -name "Talkie.swiftconstvalues" 2>/dev/null | head -1)"
 if [[ -n "$CONST_PROTO_FILE" ]]; then
   echo "▶ Extracting App Intents metadata…"
-  if [[ -z "$CONST_VALS_FILE" || ! -f "$CONST_VALS_FILE" ]]; then
-    echo "✗ Talkie.swiftconstvalues not found under .build — the const-value emission" >&2
+  APPINTENTS_CONST_LIST="$(mktemp -t talkie-appintents-constvals)"
+  if [[ -n "$CONST_VALS_FILE" && -f "$CONST_VALS_FILE" ]]; then
+    echo "$CONST_VALS_FILE" > "$APPINTENTS_CONST_LIST"
+  else
+    # No aggregated file (debug build) — collect the per-source sidecars, scoped
+    # to the Talkie app module (NOT TalkieCore.build etc., whose const values
+    # would be misattributed under --module-name Talkie).
+    find "$ROOT/.build" -path "*${CONFIG}*/Talkie.build/*" -name "*.swiftconstvalues" 2>/dev/null | sort > "$APPINTENTS_CONST_LIST"
+  fi
+  if [[ ! -s "$APPINTENTS_CONST_LIST" ]]; then
+    echo "✗ No .swiftconstvalues found under .build — the const-value emission" >&2
     echo "  step didn't run or the build layout changed. App Intents metadata cannot be" >&2
     echo "  produced, so Shortcuts/Spotlight/Raycast would not see Talkie's actions." >&2
     exit 1
   fi
   APPINTENTS_SRC_LIST="$(mktemp -t talkie-appintents-sources)"
   find "$ROOT/Sources/Talkie" -name "*.swift" > "$APPINTENTS_SRC_LIST"
-  APPINTENTS_CONST_LIST="$(mktemp -t talkie-appintents-constvals)"
-  echo "$CONST_VALS_FILE" > "$APPINTENTS_CONST_LIST"
   # The processor CREATES a `Metadata.appintents` dir inside --output, so point
   # --output at Contents/Resources to land Contents/Resources/Metadata.appintents.
   APPINTENTS_TOOLCHAIN_DIR="$(dirname "$(dirname "$(xcrun --find swiftc)")")"
