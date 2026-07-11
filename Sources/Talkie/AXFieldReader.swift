@@ -44,23 +44,57 @@ enum AXFieldReader {
     }
 
     static func focusedElement() -> AXUIElement? {
-        let system = AXUIElementCreateSystemWide()
+        let system = bounded(AXUIElementCreateSystemWide())
         return copyElement(system, kAXFocusedUIElementAttribute as CFString)
     }
 
     static func focusedAppElement() -> AXUIElement? {
         guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
-        return AXUIElementCreateApplication(pid)
+        return bounded(AXUIElementCreateApplication(pid))
+    }
+
+    /// Every AX call has a default ~6s messaging timeout; a single unresponsive app
+    /// (a hung Electron renderer) can otherwise block a caller for that long, and
+    /// callers here are @MainActor and poll repeatedly. Every `AXUIElement` this
+    /// reader obtains gets a tight 0.5s timeout instead, so a hung app degrades to
+    /// "nothing found" quickly rather than freezing the read. Purely a bound on
+    /// worst-case latency — it doesn't change what a responsive app returns.
+    @discardableResult
+    private static func bounded(_ el: AXUIElement) -> AXUIElement {
+        AXUIElementSetMessagingTimeout(el, 0.5)
+        return el
+    }
+
+    /// Total node-visit budget for one `findTextDescendant` search, so a deep
+    /// *and* wide Electron tree (Slack/VS Code/Claude) can't block on depth(8) ×
+    /// breadth(40) worst-case nodes — each carrying its own (bounded) AX round
+    /// trip. A reference type so the count is shared and mutated across the
+    /// recursive calls of a single top-level search, not reset per frame.
+    fileprivate final class NodeBudget {
+        var remaining: Int
+        init(_ n: Int) { remaining = n }
+        /// Returns true (and decrements) if a node may still be visited.
+        func consume() -> Bool {
+            guard remaining > 0 else { return false }
+            remaining -= 1
+            return true
+        }
     }
 
     /// Bounded DFS for an editable text element under `el` — a text-role node that
-    /// exposes a non-empty string value.
-    static func findTextDescendant(_ el: AXUIElement, depth: Int) -> (AXUIElement, String)? {
+    /// exposes a non-empty string value. Bounded two ways: depth (≤8) and a total
+    /// node-visit budget (`budget`, default 500 — fresh per top-level call since it's
+    /// a default argument) so the walk is linear-bounded rather than depth×breadth-
+    /// bounded. On a responsive app this never comes close to either cap; it only
+    /// changes behavior for a pathologically deep/wide tree, where it now returns
+    /// nil instead of continuing to walk.
+    fileprivate static func findTextDescendant(_ el: AXUIElement, depth: Int, budget: NodeBudget = NodeBudget(500)) -> (AXUIElement, String)? {
         if depth > 8 { return nil }
+        guard budget.consume() else { return nil }
         let textRoles: Set<String> = ["AXTextArea", "AXTextField", "AXComboBox", "AXWebArea", "AXTextView"]
         if textRoles.contains(roleOf(el)), let v = stringValue(of: el) { return (el, v) }
         for child in children(el).prefix(40) {
-            if let hit = findTextDescendant(child, depth: depth + 1) { return hit }
+            if let hit = findTextDescendant(child, depth: depth + 1, budget: budget) { return hit }
         }
         return nil
     }
@@ -71,7 +105,7 @@ enum AXFieldReader {
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(el, attr, &ref) == .success, let r = ref,
               CFGetTypeID(r) == AXUIElementGetTypeID() else { return nil }
-        return (r as! AXUIElement)
+        return bounded(r as! AXUIElement)
     }
 
     static func stringValue(of el: AXUIElement) -> String? {
@@ -92,7 +126,7 @@ enum AXFieldReader {
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &ref) == .success,
               let arr = ref as? [AXUIElement] else { return [] }
-        return arr
+        return arr.map(bounded)
     }
 
     /// One-shot diagnostic: dump the focused subtree's roles + value presence to the

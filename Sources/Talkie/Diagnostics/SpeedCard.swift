@@ -103,13 +103,14 @@ struct SpeedCard: View {
         .buttonStyle(.plain)
     }
 
-    /// The honest "median of your last N" line — says the REAL N when fewer than a
-    /// full window of steady-state samples has accumulated, and only claims "50"
-    /// once it truly has 50. Never rounds the count up.
+    /// The honest "your last dictation" / "typical across your last N dictations" line —
+    /// says the REAL N when fewer than a full window of steady-state samples has
+    /// accumulated, and only claims "50" once it truly has 50. Never rounds the count
+    /// up. Avoids "median of one", which reads as nonsense when there's a single sample.
     private func subtitle(count: Int) -> String {
         let n = min(count, LatencyStore.maxRecords)
-        if n == 1 { return "median of your last dictation".loc }
-        return String(format: "median of your last %d dictations".loc, n)
+        if n == 1 { return "your last dictation".loc }
+        return String(format: "typical across your last %d dictations".loc, n)
     }
 }
 

@@ -42,7 +42,8 @@ enum OutputTranslator {
         /// The translation cleared every guard — insert `text`.
         case accept(String)
         /// A guard tripped — insert the ORIGINAL untranslated text. `reason` is a
-        /// short marker for `/tmp/talkie-lang.log`, never shown to the user.
+        /// short marker for the opt-in debug log (`talkieDebugLog`), never shown
+        /// to the user.
         case fallback(reason: String)
     }
 
@@ -193,7 +194,9 @@ enum OutputTranslator {
 
         switch decideOutput(input: text, output: out, target: target, mustSurvive: mustSurvive) {
         case .accept(let translated):
-            talkieDebugLog("translate[→\(target)]: in='\(text)' out='\(translated)'")
+            // Lengths + language only — never the dictated/translated text
+            // itself, even in the opt-in debug sink (see talkieDebugLog).
+            talkieDebugLog("translate[→\(target)]: in=\(text.count) out=\(translated.count) lang=\(target)")
             return (translated, true)
         case .fallback(let reason):
             talkieDebugLog("translate[→\(target)]: rejected (\(reason)) — keeping spoken text")

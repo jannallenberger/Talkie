@@ -441,6 +441,7 @@ private struct DashboardAvatar: View {
             .menuIndicator(.hidden)
             .menuStyle(.borderlessButton)
             .help("Change your photo".loc)
+            .accessibilityLabel(Text("Change your photo".loc))
         } else {
             // No photo: an "add a photo" affordance revealed while the header is hovered
             // (or while a drag is over the slot). Clicking opens the picker directly —
@@ -606,6 +607,7 @@ private struct MilestoneCelebrationBanner: View {
             }
             .buttonStyle(.plain)
             .help("Dismiss")
+            .accessibilityLabel("Dismiss")
         }
         .talkieCard()
         .overlay(

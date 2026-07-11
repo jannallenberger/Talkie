@@ -4,8 +4,9 @@ import Foundation
 ///
 /// The whole feature is privacy optics: a good bug report needs version,
 /// environment, a settings snapshot, permission states, and a tail of the debug
-/// log — but Talkie's debug log (`/tmp/talkie-lang.log`, written by
-/// `talkieDebugLog`) records LEARNED corrections that embed the user's *actual*
+/// log — but Talkie's debug log (`~/Library/Application Support/Talkie/debug.log`,
+/// written by `talkieDebugLog`, opt-in via `TALKIE_DEBUG_LOG`) records LEARNED
+/// corrections that embed the user's *actual*
 /// dictated words (e.g. `learn: ✓ LEARNED 'higgs field' → 'Higgsfield'`, see
 /// `LearningEngine.swift:88,107`). Shipping that raw would leak private speech.
 ///
@@ -200,9 +201,9 @@ enum BugBundle {
     // MARK: - Impure gather (the only side-effecting entry point)
 
     /// Path of the best-effort debug log `talkieDebugLog` writes to. Kept in one
-    /// place so this and `talkieDebugLog` can't drift. (Moving the log location is
-    /// explicitly out of K8's scope.)
-    static let debugLogPath = "/tmp/talkie-lang.log"
+    /// place so this and `talkieDebugLog` can't drift — must match
+    /// `TalkieDebugLogSink.fileURL` in TranscriptionEngine.swift.
+    static let debugLogPath = AppPaths.supportDirectory().appendingPathComponent("debug.log").path
 
     /// How many trailing log lines to include. Enough to show recent behavior,
     /// small enough to stay reviewable in the preview sheet.

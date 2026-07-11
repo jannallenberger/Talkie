@@ -3,17 +3,60 @@ import Foundation
 import Speech
 
 /// Best-effort debug log to a file — the unified log doesn't reliably capture
-/// this app's NSLog, so language auto-detect diagnostics go here instead. Reads
-/// with `cat /tmp/talkie-lang.log`. TEMPORARY: remove once tuning is settled.
+/// this app's NSLog, so language auto-detect diagnostics go here instead. OPT-IN
+/// ONLY: a normal run (Debug or Release) writes nothing. Enable for a session
+/// with `TALKIE_DEBUG_LOG=1 ./scripts/run.sh` (or export it before launching
+/// Talkie.app directly), then read with
+/// `cat ~/Library/Application\ Support/Talkie/debug.log`. Gated on an env var
+/// rather than `Dev.isEnabled` because this is a free function called from
+/// many non-actor-isolated contexts (no cross-actor hop needed to check it).
+/// The write itself is dispatched onto a private serial queue so callers on
+/// the insert-critical path never block on disk I/O; see `TalkieDebugLogSink`.
+private let talkieDebugLogEnabled = ProcessInfo.processInfo.environment["TALKIE_DEBUG_LOG"] != nil
+
 func talkieDebugLog(_ message: String) {
+    guard talkieDebugLogEnabled else { return }
     guard let data = (message + "\n").data(using: .utf8) else { return }
-    let url = URL(fileURLWithPath: "/tmp/talkie-lang.log")
-    if let handle = try? FileHandle(forWritingTo: url) {
-        defer { try? handle.close() }
+    TalkieDebugLogSink.queue.async {
+        TalkieDebugLogSink.append(data)
+    }
+}
+
+/// Single serialized sink for `talkieDebugLog`: one long-lived `FileHandle`
+/// behind one serial queue, so concurrent callers never race the same append
+/// (the old per-call open/seek/write/close was not thread-safe). Lives in
+/// `~/Library/Application Support/Talkie/debug.log`, created owner-only
+/// (0600) since it can contain dictated text and other apps' AX field text.
+/// Truncated back to empty once it crosses ~1 MB — best-effort diagnostics,
+/// not an audit trail, so unbounded growth isn't worth the complexity of
+/// numbered rotation.
+private enum TalkieDebugLogSink {
+    static let queue = DispatchQueue(label: "com.coralate.talkie.debuglog", qos: .utility)
+    private static let maxBytes: UInt64 = 1_000_000
+    private static let fileURL = AppPaths.supportDirectory().appendingPathComponent("debug.log")
+    // Mutated only from inside `append`, which is itself only ever run on
+    // `queue` (a serial queue) — that serialization is what makes this safe,
+    // not actor isolation, so Swift 6 needs the explicit opt-out below.
+    nonisolated(unsafe) private static var handle: FileHandle?
+
+    /// Must only be called on `queue`.
+    static func append(_ data: Data) {
+        if handle == nil {
+            let path = fileURL.path
+            if !FileManager.default.fileExists(atPath: path) {
+                FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
+            } else {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+            }
+            handle = try? FileHandle(forWritingTo: fileURL)
+        }
+        guard let handle else { return }
+        if let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.size] as? UInt64,
+           size > maxBytes {
+            try? handle.truncate(atOffset: 0)
+        }
         _ = try? handle.seekToEnd()
         try? handle.write(contentsOf: data)
-    } else {
-        try? data.write(to: url)
     }
 }
 
@@ -54,15 +97,15 @@ enum TalkieEngineError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .transcriberUnavailable:
-            return "On-device speech recognition is not available on this Mac."
+            return "Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again.".loc
         case .noSupportedLocale:
-            return "No supported speech locale could be resolved."
+            return "Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again.".loc
         case .modelInstallFailed(let detail):
-            return "The speech model could not be installed: \(detail)"
+            return String(format: "Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)".loc, detail)
         case .noCompatibleAudioFormat:
-            return "No compatible audio format was found for the microphone."
+            return String(format: "%@ couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again.".loc, Brand.displayName)
         case .noInputDevice:
-            return "No microphone is available. Check your input device in System Settings → Sound."
+            return String(format: "%@ couldn't find a microphone. Check your input device in System Settings → Sound, then try again.".loc, Brand.displayName)
         }
     }
 }
@@ -78,6 +121,14 @@ actor TranscriptionEngine {
     private var analyzer: SpeechAnalyzer?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var resultsTask: Task<Void, Never>?
+    /// Monotonic token bumped every time `beginSessionTracked` installs a new
+    /// session's state on this actor. Lets a caller that captured the token at
+    /// install time (`AppDelegate`'s dictation path) later guard a teardown call
+    /// so it can never destroy a NEWER session that has since taken over — see
+    /// `cancelSession(ifGeneration:)`. Bumped BEFORE the first `await` inside
+    /// `beginSessionTracked`, so nothing can interleave between "state installed"
+    /// and "token bumped": actor reentrancy only happens at suspension points.
+    private var sessionGeneration: Int = 0
 
     private var finalizedText: String = ""
     /// Each finalized segment, in spoken order. A new segment is committed every
@@ -335,8 +386,19 @@ actor TranscriptionEngine {
             return nil
         }
         let confidence = collected.confCount > 0 ? collected.confSum / Double(collected.confCount) : 0
-        let wordStr = collected.words.map { "\($0.0):\(String(format: "%.2f", $0.1))" }.joined(separator: " ")
-        talkieDebugLog("reTx[\(id)] mean=\(String(format: "%.2f", confidence)) text='\(text)'\n    words=[\(wordStr)]")
+        // Per-word text is dictated content — never log it, even when the sink
+        // is enabled. The min/max spread (vs. the mean above) is what actually
+        // showed whether confidence separates right-vs-wrong model per word;
+        // building it is skipped entirely when the sink is off since scanning
+        // every word is real work on the re-transcription hot path.
+        if talkieDebugLogEnabled {
+            let confidences = collected.words.map(\.1)
+            let minConf = confidences.min() ?? 0
+            let maxConf = confidences.max() ?? 0
+            talkieDebugLog("reTx[\(id)] mean=\(String(format: "%.2f", confidence)) " +
+                "min=\(String(format: "%.2f", minConf)) max=\(String(format: "%.2f", maxConf)) " +
+                "words=\(collected.words.count)")
+        }
         return (text: text, confidence: confidence)
     }
 
@@ -348,6 +410,21 @@ actor TranscriptionEngine {
         segmentHandler: (@Sendable (String) -> Void)? = nil,
         timedSegmentHandler: (@Sendable (TimedSegment) -> Void)? = nil
     ) async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation) {
+        let (format, continuation, _) = try await beginSessionTracked(
+            segmentHandler: segmentHandler, timedSegmentHandler: timedSegmentHandler)
+        return (format, continuation)
+    }
+
+    /// Same as `beginSession`, but additionally returns the generation token
+    /// stamped the instant this session's state is installed (see
+    /// `sessionGeneration`). Only the dictation caller (`AppDelegate`) needs the
+    /// token — meeting/import teardown is same-session and non-reentrant — so
+    /// this is a separate entry point rather than changing `beginSession`'s
+    /// signature (and every one of its other callers) for everyone.
+    func beginSessionTracked(
+        segmentHandler: (@Sendable (String) -> Void)? = nil,
+        timedSegmentHandler: (@Sendable (TimedSegment) -> Void)? = nil
+    ) async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation, generation: Int) {
         guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
 
         // Exclusivity: never run two sessions on one engine. Tear down any
@@ -363,7 +440,11 @@ actor TranscriptionEngine {
             self.transcriber = nil
         }
 
-        // Reset accumulators + bind the per-session segment handlers.
+        // Reset accumulators + bind the per-session segment handlers, and claim
+        // this session's generation — everything from here on belongs to THIS
+        // call, and nothing else can touch the actor until the first `await`
+        // below, so a caller that captures `generation` now is guaranteed it
+        // names exactly the session being installed.
         finalizedText = ""
         finalizedSegments = []
         finalizedTimedSegments = []
@@ -371,6 +452,8 @@ actor TranscriptionEngine {
         volatileText = ""
         onSegment = segmentHandler
         onTimedSegment = timedSegmentHandler
+        sessionGeneration += 1
+        let generation = sessionGeneration
 
         let loc = try await resolvedLocale()
         let transcriber = makeTranscriber(locale: loc)
@@ -434,7 +517,7 @@ actor TranscriptionEngine {
         }
 
         try await analyzer.start(inputSequence: stream)
-        return (format, continuation)
+        return (format, continuation, generation)
     }
 
     /// Fold one recognizer result into the running transcript and notify the UI.
@@ -595,6 +678,24 @@ actor TranscriptionEngine {
         transcriber = nil
     }
 
+    /// Same as `cancelSession()`, but no-ops if `generation` no longer matches
+    /// `sessionGeneration` — i.e. a NEWER session has since been installed via
+    /// `beginSessionTracked`. Guards the dictation caller's ABANDONED-session
+    /// teardown paths (rapid press→release→press): a `beginSession` task whose
+    /// owning dictation was already released can finish and try to cancel AFTER
+    /// a newer session has taken over the engine, via plain actor reentrancy —
+    /// nothing orders the two relative to each other. Checking the generation
+    /// HERE, at the exact moment the cancel would take effect on the actor, is
+    /// what closes the race; a check on the caller's side (e.g. comparing its own
+    /// session id before making this call) can't, because the newer session can
+    /// still install itself in the gap between that check and this call actually
+    /// running. The plain `cancelSession()` above stays unguarded for legitimate
+    /// same-session teardown (`handleCaptureFailure`, meeting/import paths).
+    func cancelSession(ifGeneration generation: Int) async {
+        guard generation == sessionGeneration else { return }
+        await cancelSession()
+    }
+
     // MARK: Buffer re-sampling (for cross-locale re-transcription)
 
     /// Holds one buffer for AVAudioConverter's pull-style input block.
@@ -631,7 +732,7 @@ actor TranscriptionEngine {
     }
 
     /// Convert a single PCM buffer to `target`. Mirrors `AudioCapture.convert`.
-    nonisolated private static func convertOne(
+    nonisolated fileprivate static func convertOne(
         _ buffer: AVAudioPCMBuffer,
         using converter: AVAudioConverter,
         to target: AVAudioFormat
@@ -652,5 +753,78 @@ actor TranscriptionEngine {
         }
         if status == .error || error != nil { return nil }
         return output
+    }
+}
+
+// MARK: - Cached per-call-site conversion
+
+extension TranscriptionEngine {
+    /// Caches an `AVAudioConverter` keyed by its (source, target) format pair, so a
+    /// call site that re-samples many buffers in a row (a decode loop, a streamed
+    /// language lane) reuses the same converter — and its internal resampler state
+    /// — instead of rebuilding one on every buffer. `TranscriptionEngine.conform`
+    /// above stays a stateless, always-fresh fallback: fine for the occasional
+    /// whole-utterance re-transcription pass (`transcribeScored`), but wasteful
+    /// when invoked once per ~1s decode chunk (`FileImportEngine`) or once per
+    /// streamed input buffer per language lane (`MultiLangStreamTranscriber`),
+    /// where the (source, target) pair never actually changes across the whole
+    /// loop. Own ONE instance per decode loop / per `Lane` and call
+    /// `convert(_:to:)` for every buffer there instead.
+    ///
+    /// Not `Sendable`, like the `AVAudioFile`/`AVAssetReader` instances the decode
+    /// loops already hold: an instance must stay confined to the single actor/task
+    /// that owns it and never be shared across concurrent callers.
+    final class ConformingConverter {
+        private var converter: AVAudioConverter?
+        // The (source, target) format pair the cached `converter` was built for,
+        // compared field-by-field rather than via `AVAudioFormat` equality — same
+        // fields `conform`'s pass-through fast path below already keys off.
+        private var cachedSourceRate: Double = 0
+        private var cachedSourceChannels: AVAudioChannelCount = 0
+        private var cachedSourceCommon: AVAudioCommonFormat = .otherFormat
+        private var cachedTargetRate: Double = 0
+        private var cachedTargetChannels: AVAudioChannelCount = 0
+        private var cachedTargetCommon: AVAudioCommonFormat = .otherFormat
+
+        init() {}
+
+        /// Re-sample `buffer` to `target`. Same semantics as `conform(_:to:)` for a
+        /// single buffer: a pass-through (no copy, no conversion) when `buffer`'s
+        /// format already matches `target`; `nil` if no converter can be built or
+        /// the conversion fails. Rebuilds the underlying `AVAudioConverter` only
+        /// when `(source, target)` differs from the previous call — the common
+        /// case across a decode loop or a lane's whole stream is that it never does.
+        func convert(_ buffer: AVAudioPCMBuffer, to target: AVAudioFormat) -> AVAudioPCMBuffer? {
+            let source = buffer.format
+            if source.sampleRate == target.sampleRate,
+               source.channelCount == target.channelCount,
+               source.commonFormat == target.commonFormat {
+                return buffer
+            }
+
+            let stale = converter == nil
+                || cachedSourceRate != source.sampleRate
+                || cachedSourceChannels != source.channelCount
+                || cachedSourceCommon != source.commonFormat
+                || cachedTargetRate != target.sampleRate
+                || cachedTargetChannels != target.channelCount
+                || cachedTargetCommon != target.commonFormat
+            if stale {
+                guard let fresh = AVAudioConverter(from: source, to: target) else { return nil }
+                fresh.primeMethod = .none // avoid timestamp drift on streamed buffers
+                converter = fresh
+                cachedSourceRate = source.sampleRate
+                cachedSourceChannels = source.channelCount
+                cachedSourceCommon = source.commonFormat
+                cachedTargetRate = target.sampleRate
+                cachedTargetChannels = target.channelCount
+                cachedTargetCommon = target.commonFormat
+            }
+
+            guard let converter,
+                  let converted = TranscriptionEngine.convertOne(buffer, using: converter, to: target),
+                  converted.frameLength > 0 else { return nil }
+            return converted
+        }
     }
 }

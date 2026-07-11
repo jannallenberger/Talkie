@@ -129,8 +129,7 @@ final class ContextSummaryStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let p = try? JSONDecoder().decode(Payload.self, from: data) else { return }
+        guard let p = StoreLoad.loadJSONWithQuarantine(Payload.self, from: fileURL) else { return }
         summary = p.summary
         generatedAt = p.generatedAtUnix.map { Date(timeIntervalSince1970: $0) }
     }

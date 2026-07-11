@@ -249,8 +249,7 @@ final class ActivityStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([String: DayStat].self, from: data) else { return }
+        guard let decoded = StoreLoad.loadJSONWithQuarantine([String: DayStat].self, from: fileURL) else { return }
         days = decoded
     }
 

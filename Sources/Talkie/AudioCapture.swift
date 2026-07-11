@@ -152,7 +152,18 @@ final class AudioCapture: @unchecked Sendable {
         lastBufferHostTime = 0
         bufferClockLock.unlock()
 
-        try installAndStart()
+        do {
+            try installAndStart()
+        } catch {
+            // installAndStart may have installed the tap before `engine.start()`
+            // threw (a device flake) — remove it now. Left in place, the next
+            // `start()` installs a second tap on the same bus, which is an
+            // uncatchable NSException ("nullptr == Tap()"), not a throwable error —
+            // it crashes the process instead of merely failing the next session.
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+            throw error
+        }
 
         // Watch for mid-session device/config changes. When the active input device
         // changes (unplug a headset, AirPods connect, default flips), AVAudioEngine
@@ -183,6 +194,13 @@ final class AudioCapture: @unchecked Sendable {
         guard let targetFormat, let continuation else {
             throw TalkieEngineError.noCompatibleAudioFormat
         }
+
+        // Belt-and-braces: a tap can only be leaked here if a previous
+        // `installAndStart()` installed one and then failed before `start()`'s
+        // catch could remove it (or before this guard existed). Removing
+        // unconditionally is a safe no-op when no tap exists, and guarantees we
+        // never call `installTap` on a bus that already has one.
+        engine.inputNode.removeTap(onBus: 0)
 
         let inputNode = engine.inputNode
 

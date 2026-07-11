@@ -95,6 +95,9 @@ enum ContextCapture {
     /// name in an editor or the conversation name in a chat app.
     private static func focusedWindowTitle(pid: pid_t) -> String? {
         let appEl = AXUIElementCreateApplication(pid)
+        // Bound the worst case: a hung app would otherwise block each AX call for the
+        // default ~6s. This read is best-effort, so degrade to nil quickly instead.
+        AXUIElementSetMessagingTimeout(appEl, 0.5)
         func title(of attribute: String) -> String? {
             var windowRef: CFTypeRef?
             guard AXUIElementCopyAttributeValue(appEl, attribute as CFString, &windowRef) == .success,
@@ -112,9 +115,11 @@ enum ContextCapture {
     /// doesn't flood the bias set.
     private static func focusedText() -> String? {
         let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.5)
         var focusedRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
               let focused = focusedRef, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+        AXUIElementSetMessagingTimeout(focused as! AXUIElement, 0.5)
         var valueRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(focused as! AXUIElement, kAXValueAttribute as CFString, &valueRef) == .success,
               let str = valueRef as? String else { return nil }

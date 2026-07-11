@@ -23,6 +23,13 @@ final class MeetingAudioFileWriter: @unchecked Sendable {
     private var file: AVAudioFile?
     private var failed = false
     private var started = false
+    /// Latched true inside `close()`. A mic-tap buffer can still be queued (or already
+    /// in flight on `queue`) at the moment `close()` runs — `AudioCapture.stop()` does
+    /// not drain in-flight tap callbacks the way `SystemAudioCapture` does — and without
+    /// this latch that late `append` would see `file == nil` and re-create the just-
+    /// finalized AVAudioFile, truncating (and resurrecting) the finished m4a. Checked
+    /// alongside `failed` in `append`'s guard so a post-close buffer is a silent no-op.
+    private var closed = false
 
     init(url: URL) {
         self.url = url
@@ -35,7 +42,7 @@ final class MeetingAudioFileWriter: @unchecked Sendable {
     /// file work runs serialized on `queue`.
     func append(_ buffer: AVAudioPCMBuffer) {
         queue.async { [self] in
-            guard !failed else { return }
+            guard !failed, !closed else { return }
             if file == nil {
                 // Create the AAC file from the first buffer's format. `settings` asks for
                 // MPEG-4 AAC in the same channel/rate as the incoming PCM; AVAudioFile
@@ -71,6 +78,7 @@ final class MeetingAudioFileWriter: @unchecked Sendable {
     func close() -> Bool {
         queue.sync {
             file = nil // releasing the AVAudioFile finalizes the m4a container
+            closed = true // latch: any append still in flight/queued becomes a no-op
         }
         return started && !failed
     }
@@ -148,6 +156,18 @@ final class MeetingRecorder: ObservableObject {
     /// torn down on stop. Nil when recording mic-only.
     private var farEngine: TranscriptionEngine?
 
+    /// True once the far-end stream has actually started at any point during THIS
+    /// recording — set the moment `farActive` first becomes true in `start()` (either
+    /// the multilingual lanes or the single-locale fallback) and, unlike the live
+    /// `capturingFarEnd` flag, NEVER reset by the zero-PCM watchdog giving up mid-
+    /// meeting. `stop()` gates the far-end multilingual merge/language correction and
+    /// the meeting's `participants`/`source` on THIS flag rather than the live
+    /// `capturingFarEnd`, so a watchdog give-up mid-call can no longer discard the
+    /// real far-end transcript already captured before the tap died, nor mislabel a
+    /// meeting that genuinely captured both sides as mic-only. Reset to false at the
+    /// top of every `start()` attempt.
+    private var farEverActive = false
+
     /// Multilingual mode: one recognizer per spoken language per stream, live, with
     /// a per-segment confidence vote at stop. Set when the user speaks >1 language
     /// (and the lanes start); nil falls back to the single-locale `engine`/`farEngine`.
@@ -184,8 +204,10 @@ final class MeetingRecorder: ObservableObject {
     /// Guards the async `start()` window: `start()` does several `await`s (mic
     /// permission, model load, two `beginSession`s). `isStarting` blocks a second
     /// start during that window; `cancelStart` lets a `stop()` tapped mid-start
-    /// abort the in-flight setup so it never goes live unstopped.
-    private var isStarting = false
+    /// abort the in-flight setup so it never goes live unstopped. Exposed read-only
+    /// (`private(set)`) so AppDelegate can guard dictation-start against this same
+    /// startup window — a meeting mid-`start()` also holds the shared mic engine.
+    @Published private(set) var isStarting = false
     private var cancelStart = false
 
     /// Snapshotted at start() so a mid-recording settings change can't skew the
@@ -241,6 +263,7 @@ final class MeetingRecorder: ObservableObject {
         guard isDictating?() != true, isProcessingDictation?() != true else { return false }
         isStarting = true
         cancelStart = false
+        farEverActive = false
         defer { isStarting = false }
 
         guard await AudioCapture.requestMicrophoneAccess() else { return false }
@@ -388,13 +411,14 @@ final class MeetingRecorder: ObservableObject {
                                            onBuffer: farTap)) != nil {
                     farMulti = fm
                     farActive = true
+                    farEverActive = true
                 } else {
                     await fm.cancel()
                 }
             }
             if farMulti == nil {
                 let locale = farLocale
-                let far = TranscriptionEngine(localeIdentifier: locale)
+                let far = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: locale))
                 do {
                     await far.setContextualStrings(eventAttendees)
                     // Timed handler (see the mic stream above): the far-end audio clock
@@ -410,6 +434,7 @@ final class MeetingRecorder: ObservableObject {
                                           onBuffer: farTap)
                     farEngine = far
                     farActive = true
+                    farEverActive = true
                     farLocale = locale
                 } catch {
                     await far.cancelSession()
@@ -558,12 +583,26 @@ final class MeetingRecorder: ObservableObject {
         // timecode. A no-op when there are no lanes; single-locale streams rely on the
         // renderer's stall-collapse safeguard. The rotation runs off the main actor;
         // `stop()` awaits `rotationTask` before finalizing so the two never overlap.
-        if elapsed - lastRotationElapsed >= Self.meetingRotationInterval,
+        //
+        // Gated on `!isFinishing`: a tick queued on the run loop before `stop()`
+        // invalidated the timer can still fire (and this `tick()` body run) while
+        // `stop()` is suspended at one of its later `await`s — `isFinishing` flips
+        // true synchronously at the very top of `stop()`, before any of those awaits,
+        // so a tick landing in that window sees it and must not START a new rotation:
+        // one racing `mic.rotate()`/`far.rotate()` against `stop()`'s own
+        // `mic.finish()`/`farM.finish()` on the same transcriber actor is exactly the
+        // reentrancy that can wedge `isFinishing` forever. The in-flight-rotation
+        // guards below re-check `!isFinishing` after each await, before touching the
+        // analyzers, so a rotation that started just before `stop()` set the flag
+        // still bails rather than mutating lane state `stop()` is about to finalize.
+        if !isFinishing, elapsed - lastRotationElapsed >= Self.meetingRotationInterval,
            micMulti != nil || farMulti != nil {
             lastRotationElapsed = elapsed
             let far = farMulti, mic = micMulti
-            rotationTask = Task {
+            rotationTask = Task { @MainActor [weak self] in
+                guard self?.isFinishing != true else { return }
                 await far?.rotate()
+                guard self?.isFinishing != true else { return }
                 await mic?.rotate()
             }
         }
@@ -634,7 +673,6 @@ final class MeetingRecorder: ObservableObject {
         let start = startedAt ?? Date()
         let duration = Date().timeIntervalSince(start)
         let log = turnLog
-        let wasFarEnd = capturingFarEnd
         let langs = langsAtStart
         let userNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         // Snapshot the chapters SYNCHRONOUSLY here, before the first `await` below, so
@@ -670,7 +708,12 @@ final class MeetingRecorder: ObservableObject {
         let far = farEngine
         if let farM = farMulti {
             let spans = await farM.finish(anchorLocale: farLocale)
-            if let log, wasFarEnd { applyMergedSpans(spans, speaker: .them, log: log) }
+            // Gate on `farEverActive` — whether the far stream ran at ANY point this
+            // meeting — not the live `capturingFarEnd`: a mid-meeting watchdog give-up
+            // already flipped that to false, and gating here on the live flag used to
+            // silently discard a real far-end multilingual merge whenever the far tap
+            // died before stop().
+            if let log, farEverActive { applyMergedSpans(spans, speaker: .them, log: log) }
             farMulti = nil
         } else if let far {
             _ = await far.finishSession()
@@ -683,7 +726,9 @@ final class MeetingRecorder: ObservableObject {
                 await correctStreamLanguage(.me, engine: engine, buffers: audio.bufferedAudio(),
                                             streamLocale: micLocale, langs: langs, log: log)
             }
-            if !farWasMulti, let far, wasFarEnd {
+            // Same `farEverActive` gate as above — a watchdog give-up mid-meeting must
+            // not skip the language correction for a far stream that genuinely ran.
+            if !farWasMulti, let far, farEverActive {
                 await correctStreamLanguage(.them, engine: far, buffers: systemAudio.bufferedAudio(),
                                             streamLocale: farLocale, langs: langs, log: log)
             }
@@ -739,10 +784,13 @@ final class MeetingRecorder: ObservableObject {
             return
         }
 
-        // Participants reflect what was *captured*, not just who happened to speak,
-        // so a captured-but-silent far end is still reported honestly (and stays
-        // consistent with `source`).
-        let participants = wasFarEnd ? ["Me", "Them"] : ["Me"]
+        // Participants reflect whether the far end was EVER captured this meeting
+        // (`farEverActive`), not just who happened to speak or whether capture was
+        // still live at the moment of stop() — so a captured-but-silent far end is
+        // still reported honestly, and a mid-meeting watchdog give-up no longer
+        // mislabels a meeting that genuinely captured both sides as mic-only (stays
+        // consistent with `source` below and with the merge/correction gates above).
+        let participants = farEverActive ? ["Me", "Them"] : ["Me"]
 
         // Granola magic: if you jotted notes during the call, fuse them with the
         // transcript (expanded, never invented); otherwise the plain on-device summary.
@@ -751,7 +799,7 @@ final class MeetingRecorder: ObservableObject {
         // never silently discarded.
         let fused: String?
         if !userNotes.isEmpty {
-            fused = await MeetingNotesFusion().fuse(notes: userNotes, transcript: clean, using: OnDeviceLLM())?.bodyMarkdown
+            fused = await MeetingNotesFusion().fuse(notes: userNotes, transcript: clean, using: PrivacyWall.assertLocal(OnDeviceLLM()))?.bodyMarkdown
         } else {
             fused = nil
         }
@@ -807,7 +855,7 @@ final class MeetingRecorder: ObservableObject {
             transcript: clean,
             summary: summary,
             participants: participants,
-            source: wasFarEnd ? "talkie (mic + system audio)" : "talkie (mic-only)",
+            source: farEverActive ? "talkie (mic + system audio)" : "talkie (mic-only)",
             fileName: MeetingStore.fileName(for: start, id: id),
             segments: segments,
             chapters: chapters,

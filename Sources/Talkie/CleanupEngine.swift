@@ -183,11 +183,11 @@ actor CleanupEngine {
         case .available:
             return nil
         case .unavailable(.appleIntelligenceNotEnabled):
-            return "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable smart cleanup."
+            return "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup.".loc
         case .unavailable(.modelNotReady):
-            return "Apple Intelligence is still downloading its model — smart cleanup will work once it's ready."
+            return "Apple Intelligence is still downloading its model — cleanup will work once it's ready.".loc
         case .unavailable:
-            return "This Mac can't run on-device smart cleanup."
+            return "This Mac can't run on-device cleanup.".loc
         }
     }
 
@@ -276,7 +276,9 @@ actor CleanupEngine {
                 talkieDebugLog("cleanup[\(pinnedCode)]: rejected → \(outCode) language flip — keeping raw")
                 return nil
             }
-            talkieDebugLog("cleanup[\(pinnedCode ?? "?")]: in='\(trimmed)' out='\(cleaned)'")
+            // Lengths + language only — never the dictated text itself, even in
+            // the opt-in debug sink (see talkieDebugLog).
+            talkieDebugLog("cleanup[\(pinnedCode ?? "?")]: in=\(trimmed.count) out=\(cleaned.count) lang=\(pinnedCode ?? "?")")
             return cleaned
         } catch {
             return nil

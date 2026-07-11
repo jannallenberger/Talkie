@@ -280,7 +280,7 @@ struct MainView: View {
                        wordFreq: wordFreq, scratchpad: scratchpad,
                        autoAddPreviewLog: autoAddPreviewLog,
                        contextSummary: contextSummary,
-                       jobTitle: jobTitle, profileImage: profileImage)
+                       nicheVocab: nicheVocab)
         case .commands:
             CommandsView(settings: settings, macros: macros,
                          commandRouter: commandRouter, hud: hud,
@@ -503,8 +503,9 @@ private struct SettingsHome: View {
     }
 
     /// Consume `SettingsRouter.pendingPage`: push it onto the nav path and clear
-    /// it. No-op when nothing is pending (the common case). Additive scaffolding —
-    /// nothing sets `pendingPage` until L6c.
+    /// it. No-op when nothing is pending (the common case). Set by MeetingsView's
+    /// "Meeting settings" deep link (`router.pendingPage = .meetings`) — live
+    /// wiring, not dead scaffolding.
     private func drainPendingPage() {
         guard let page = router.pendingPage else { return }
         path = [page]
@@ -570,27 +571,6 @@ struct SettingsSectionHeader: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 4)
-    }
-}
-
-/// A stand-in destination for the three HYBRID subpages until L6b/L6c/L6d build
-/// the real panes (L6a scaffold). Reuses `SubPage` so the placeholder already
-/// wears the app's serif header + canvas, and a `back`-able `NavigationStack`
-/// push is demonstrably working. Not shipped to users in normal flow — nothing
-/// links to these routes yet; they exist so the scaffold is verifiable.
-private struct SubpagePlaceholder: View {
-    let title: String
-    var subtitle: String? = nil
-
-    var body: some View {
-        SubPage(title: title, subtitle: subtitle) {
-            SettingsCard {
-                SettingsNote(
-                    text: "This settings page is coming soon.".loc,
-                    tone: Theme.inkTertiary,
-                    icon: "hammer")
-            }
-        }
     }
 }
 
@@ -713,10 +693,95 @@ private struct MCPConnectorCard: View {
         """
     }
 
-    /// `claude mcp add <name> -- <command>`; quote the path in case it lives
-    /// somewhere with spaces.
+    /// A copy-paste terminal recipe that works even when a `talkie` server is ALREADY
+    /// registered — the common case after an app upgrade, and the exact trap where a
+    /// plain `claude mcp add` errors "already exists" and silently leaves the old
+    /// (stale) registration in place. It first drops any user-scope `talkie`
+    /// (harmless — `2>/dev/null` and `;` so it runs the add regardless), then adds the
+    /// current binary at **user scope** so it resolves from every directory, not just
+    /// the one the command is run in (the scope confusion is what made re-pointing so
+    /// fiddly). Kept identical to `MCPSetupPrompt.addCommand` so the card's "Copy
+    /// command" button and the paste-into-Claude prompt never disagree.
     private static func claudeAddCommand(_ path: String) -> String {
-        "claude mcp add talkie -- \"\(path)\""
+        MCPSetupPrompt.addCommand(binaryPath: path)
+    }
+
+    // MARK: Claude Desktop connector staleness (the silent-upgrade trap)
+
+    /// notInstalled / upToDate / stale — whether the connector already registered in
+    /// Claude Desktop matches the one THIS app bundles. After a Talkie upgrade the old
+    /// `.mcpb` extension keeps running until the user reinstalls; without this the card
+    /// would cheerfully say "Install" while a months-old, fewer-tool connector stayed
+    /// live (and dictionary tools appeared missing). Surfacing it turns invisible skew
+    /// into a one-line nudge.
+    enum DesktopConnectorState: Equatable {
+        case notInstalled
+        case upToDate(String)
+        case stale(installed: String, bundled: String)
+    }
+
+    /// The version of the `.mcpb` extension the user has already installed into Claude
+    /// Desktop, read from its on-disk manifest — or nil if none is installed. Claude
+    /// Desktop unpacks each extension to a stable path under Application Support keyed
+    /// by the manifest id (`local.mcpb.<author>.<name>`); ours is `…talkie.talkie`.
+    /// Pure read of one small JSON file; no network, nothing mutated.
+    private static func installedDesktopVersion() -> String? {
+        let path = NSHomeDirectory()
+            + "/Library/Application Support/Claude/Claude Extensions/local.mcpb.talkie.talkie/manifest.json"
+        guard let data = FileManager.default.contents(atPath: path),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let v = (obj["version"] as? String)?.trimmingCharacters(in: .whitespaces),
+              !v.isEmpty else { return nil }
+        return v
+    }
+
+    /// Compare the installed extension's version to `Brand.mcpConnectorVersion` (what
+    /// this app's bundled `.mcpb` carries — locked in lockstep by check-mcp-drift.sh).
+    private static func desktopConnectorState() -> DesktopConnectorState {
+        guard let installed = installedDesktopVersion() else { return .notInstalled }
+        let bundled = Brand.mcpConnectorVersion
+        return semanticLess(installed, than: bundled)
+            ? .stale(installed: installed, bundled: bundled)
+            : .upToDate(installed)
+    }
+
+    /// True if `a` is an earlier version than `b`, comparing dot-separated numeric
+    /// components (missing → 0, non-numeric tails ignored). Plain string `<` would rank
+    /// "0.10.0" below "0.4.0"; this doesn't.
+    private static func semanticLess(_ a: String, than b: String) -> Bool {
+        func parts(_ s: String) -> [Int] {
+            s.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 }
+        }
+        let pa = parts(a), pb = parts(b)
+        for i in 0..<max(pa.count, pb.count) {
+            let x = i < pa.count ? pa[i] : 0
+            let y = i < pb.count ? pb[i] : 0
+            if x != y { return x < y }
+        }
+        return false
+    }
+
+    /// The Desktop row's subtitle for a given state (falls back to English when a
+    /// catalog entry is absent, like every `.loc`).
+    private static func desktopSubtitle(_ state: DesktopConnectorState) -> String {
+        switch state {
+        case .notInstalled:
+            return "Install the connector with one click".loc
+        case .upToDate(let v):
+            return String(format: "Connector is up to date (v%@)".loc, v)
+        case .stale(let installed, let bundled):
+            return String(format: "Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools".loc,
+                          installed, bundled)
+        }
+    }
+
+    /// The Desktop button's label — "Update…" shouts loudest for the stale case.
+    private static func desktopButtonLabel(_ state: DesktopConnectorState) -> String {
+        switch state {
+        case .stale:       return "Update…".loc
+        case .upToDate:    return "Reinstall…".loc
+        case .notInstalled: return "Install…".loc
+        }
     }
 
     /// One chip in the "What Claude can do" strip. `write == true` marks a tool that
@@ -751,6 +816,7 @@ private struct MCPConnectorCard: View {
     @State private var copiedCommand = false
     @State private var copiedPrompt = false
     @State private var desktopStatus: String?
+    @State private var desktopState: DesktopConnectorState = .notInstalled
 
     private var path: String? { Self.binaryPath() }
 
@@ -760,12 +826,14 @@ private struct MCPConnectorCard: View {
             footer: String(format: "%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc, Brand.mcpDisplayName)
         ) {
             if let path {
-                // (a) Claude Desktop — one double-click via the bundled .mcpb.
+                // (a) Claude Desktop — one double-click via the bundled .mcpb. The
+                // subtitle/button reflect whether an installed connector is fresh,
+                // stale (upgrade nudge), or absent — computed on appear.
                 SettingsRow(
                     title: "Claude Desktop".loc,
-                    subtitle: desktopStatus ?? "Install the connector with one click".loc
+                    subtitle: desktopStatus ?? Self.desktopSubtitle(desktopState)
                 ) {
-                    Button("Install…") { openDesktopConnector() }
+                    Button(Self.desktopButtonLabel(desktopState)) { openDesktopConnector() }
                         .buttonStyle(.borderedProminent)
                         .tint(Theme.coral)
                         .disabled(Self.mcpbURL() == nil)
@@ -855,6 +923,7 @@ private struct MCPConnectorCard: View {
                 )
             }
         }
+        .onAppear { desktopState = Self.desktopConnectorState() }
     }
 
     /// Hands the bundled `.mcpb` to the OS. Claude Desktop registers itself as the

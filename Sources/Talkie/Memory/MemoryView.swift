@@ -15,38 +15,35 @@ struct MemoryView: View {
     @ObservedObject var searchEngine: SearchEngine
     let meetingStore: MeetingStore
     /// L4: kept in step with the visible history — deleting a dictation decrements
-    /// its word/phrase counts, and "Clear everything" wipes the store, so the
-    /// lifetime vocabulary never outlives the history it was built from.
+    /// its word/phrase counts, so the lifetime vocabulary never outlives the history
+    /// it was built from.
     @ObservedObject var wordFreq: WordFrequencyStore
     /// L2-a: transcripts rescued to the Scratchpad (failed insertions) are part of
-    /// the dictation record — deleting a dictation purges the lines it sourced, and
-    /// "Clear everything" drops all dictation-sourced lines. Notes/tasks the user
-    /// typed here (sourceDictationID == nil) survive, matching the "rules you taught
-    /// stay" contract.
+    /// the dictation record — deleting a dictation purges the lines it sourced.
+    /// Notes/tasks the user typed here (sourceDictationID == nil) survive, matching
+    /// the "rules you taught stay" contract.
     @ObservedObject var scratchpad: ScratchpadStore
     /// L2-b (LOG-ONLY): the AI-auto-add calibration log stores commitment TEXT
     /// extracted from dictations, so — like the scratchpad's rescued lines — it is
-    /// content-derived and joins true-delete: deleting a dictation purges its records,
-    /// and "Clear everything" drops all dictation-sourced records. Defaulted so
-    /// previews/tests that don't wire it still compile.
+    /// content-derived and joins true-delete: deleting a dictation purges its
+    /// records. Defaulted so previews/tests that don't wire it still compile.
     var autoAddPreviewLog: AutoAddPreviewLog? = nil
     /// Cleared on every delete so `context_summary.json` can't keep quoting text you
     /// just deleted. Defaulted so previews/tests that don't wire it still compile.
     var contextSummary: ContextSummaryStore? = nil
-    /// L5-b: the invented job title is derived from your vocabulary + app usage, so
-    /// "Clear everything" wipes its cache alongside the word-frequency store — a
-    /// coinage can't outlive the inputs it was made from. Defaulted so previews/tests
+    /// The niche-vocabulary store harvests up to 120 chars of each dictation as
+    /// provenance, so deleting a dictation must drop those snippets too — otherwise a
+    /// deleted transcript survives in `niche/vocab.json`. Defaulted so previews/tests
     /// that don't wire it still compile.
-    var jobTitle: JobTitleStore? = nil
-    /// L7: the user's profile picture is personal data on disk, so a full wipe removes
-    /// it too — "Clear everything" calls `clear()`, deleting `profile.png`. Defaulted so
-    /// previews/tests that don't wire it still compile.
-    var profileImage: ProfileImageStore? = nil
-
+    var nicheVocab: NicheVocabStore? = nil
     @State private var query = ""
-    /// Drives the "Clear everything" confirmation — clearing history also erases what
-    /// Talkie's memory extracted from it, so we ask first and state the scope honestly.
-    @State private var showingClearConfirm = false
+    /// Cached result of the debounced search below — `body` only ever renders
+    /// this, it never calls `SearchEngine.search` itself. Before this cache
+    /// existed, `searchResults` called `searchEngine.search(trimmedQuery)`
+    /// directly inline in `body`, which reran the full semantic scan not just on
+    /// every keystroke but on every unrelated re-render too (any `@Published`
+    /// change on `history`/`contextGraph`/`meetingStore`/etc. recomputes `body`).
+    @State private var hits: [SearchHit] = []
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -67,18 +64,35 @@ struct MemoryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.canvas)
-        .confirmationDialog("Clear your dictation history?",
-                            isPresented: $showingClearConfirm, titleVisibility: .visible) {
-            Button("Clear everything", role: .destructive) { clearEverything() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on.")
+        // Debounced off-render search: `.task(id:)` re-runs `runSearch` only when
+        // `trimmedQuery` actually changes, and automatically cancels the previous
+        // run first — a fast typer's intermediate queries never reach a scan.
+        .task(id: trimmedQuery) {
+            await runSearch(for: trimmedQuery)
         }
+    }
+
+    /// Waits ~200ms (debounce), then runs the same `SearchEngine.search` the old
+    /// inline-in-`body` call used — same query in, same results out — and caches
+    /// them into `hits` for `body` to render. `.task(id:)` cancels this task the
+    /// instant `trimmedQuery` changes again, so both the sleep and the scan below
+    /// bail out via `Task.isCancelled` for a superseded query rather than racing
+    /// a newer one to `hits`.
+    private func runSearch(for query: String) async {
+        guard !query.isEmpty else {
+            hits = []
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(200))
+        guard !Task.isCancelled else { return }
+        let results = searchEngine.search(query)
+        guard !Task.isCancelled else { return }
+        hits = results
     }
 
     // MARK: Page content (header + search + history)
 
-    /// The header (title + Copy All / Clear), the search bar, and the history / search
+    /// The header (title + Copy all), the search bar, and the history / search
     /// results feed — the whole Memory page.
     private var pageContent: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -89,13 +103,7 @@ struct MemoryView: View {
                 Button {
                     copyToClipboard(history.allAsText())
                 } label: {
-                    Label("Copy All", systemImage: "doc.on.doc")
-                }
-                .disabled(history.entries.isEmpty)
-                Button(role: .destructive) {
-                    showingClearConfirm = true
-                } label: {
-                    Label("Clear", systemImage: "trash")
+                    Label("Copy all", systemImage: "doc.on.doc")
                 }
                 .disabled(history.entries.isEmpty)
             }
@@ -120,32 +128,10 @@ struct MemoryView: View {
         // L2-b (LOG-ONLY): the AI-auto-add preview log quoted this dictation's
         // commitments — purge them so a deleted transcript leaves no trace there.
         autoAddPreviewLog?.purge(sourceID: entry.id.uuidString)
+        // The niche-vocab store quoted up to 120 chars of this dictation as provenance —
+        // drop them so the deleted transcript leaves no trace in niche/vocab.json.
+        nicheVocab?.purge(sourceID: entry.id.uuidString)
         contextSummary?.clearSummary()
-    }
-
-    /// Clear all history AND everything the memory graph learned from dictations,
-    /// then wipe the Brief. Pinned dictionary terms the user taught survive (the graph
-    /// purge keeps them). Meetings are a separate source and are untouched here.
-    private func clearEverything() {
-        history.clearAll()
-        contextGraph.purge(source: .dictation, sourceID: nil)
-        wordFreq.clearAll()
-        // L5-b: the invented job title is derived from the vocabulary/usage being
-        // cleared, so drop its cache too — right beside the word-freq wipe it tracks.
-        jobTitle?.clearCache()
-        scratchpad.purgeAllDictationSourced()
-        // L2-b (LOG-ONLY): drop every dictation-sourced AI-auto-add preview record —
-        // it's derived from the dictation history being cleared.
-        autoAddPreviewLog?.purgeAllDictationSourced()
-        contextSummary?.clearSummary()
-        // L13-a: wipe the on-disk sentence-vector sidecar now, so the search cache
-        // doesn't keep vectors for text you just cleared until the debounced rebuild
-        // eventually rewrites it. (A delete of a single dictation ages out via that
-        // rebuild; a full clear shouldn't have to wait for the debounce.)
-        searchEngine.clearSidecar()
-        // L7: a full wipe removes the profile picture too — it's personal data on disk.
-        // Deletes `profile.png` and clears every surface instantly.
-        profileImage?.clear()
     }
 
     private var searchField: some View {
@@ -209,10 +195,10 @@ struct MemoryView: View {
 
     /// With a query: real search (dictations + meetings + graph entities,
     /// semantic+keyword blended) via the shared `SearchEngine` — the same engine
-    /// that used to power a standalone Search tab.
+    /// that used to power a standalone Search tab. Renders the debounced `hits`
+    /// populated by `runSearch(for:)` — `body` never scans inline.
     @ViewBuilder
     private var searchResults: some View {
-        let hits = searchEngine.search(trimmedQuery)
         if hits.isEmpty {
             emptyPrompt(title: "No matches",
                         subtitle: "Try a different word — this searches what you've said, your meetings, and what Talkie's picked up from them.",
