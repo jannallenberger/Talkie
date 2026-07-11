@@ -31,6 +31,8 @@ public final class AppUpdater: ObservableObject {
     /// the latter compared against `dev-<build>` tags to detect a newer release.
     public let currentVersion: String
     public let currentBuild: Int
+    public let currentSHA: String
+    public let currentBranch: String
 
     private static let autoKey = "TalkieUpdaterAutoCheck"
 
@@ -38,6 +40,8 @@ public final class AppUpdater: ObservableObject {
         let info = Bundle.main.infoDictionary
         currentVersion = (info?["CFBundleShortVersionString"] as? String) ?? "—"
         currentBuild = Int((info?["CFBundleVersion"] as? String) ?? "") ?? 0
+        currentSHA = (info?["TalkieGitSHA"] as? String) ?? "—"
+        currentBranch = (info?["TalkieGitBranch"] as? String) ?? "—"
         // Default ON for the dev flavor: collaborators should land on the newest
         // build without thinking about it.
         if UserDefaults.standard.object(forKey: Self.autoKey) == nil {

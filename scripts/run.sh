@@ -9,6 +9,21 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${1:-release}"
 DEST="/Applications/Talkie.app"
 
+echo "▶ Build provenance:"
+CUR="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+ORIGIN="$(git -C "$ROOT" rev-parse origin/main 2>/dev/null || echo unknown)"
+DIRTY="$(git -C "$ROOT" status --porcelain 2>/dev/null)"
+echo "   HEAD=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null) branch=$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+if [[ "$CUR" != "$ORIGIN" || -n "$DIRTY" ]]; then
+  echo "⚠  This tree is NOT at origin/main${DIRTY:+ and has uncommitted changes}."
+  echo "   You are about to install a build that does not match origin/main."
+  if [[ "${TALKIE_ALLOW_STALE:-0}" != "1" ]]; then
+    echo "   Refusing to install. Re-run with TALKIE_ALLOW_STALE=1 to override." >&2
+    exit 1
+  fi
+  echo "   TALKIE_ALLOW_STALE=1 set — continuing."
+fi
+
 "$ROOT/scripts/build_app.sh" "$CONFIG"
 
 echo "▶ Stopping any running Talkie…"

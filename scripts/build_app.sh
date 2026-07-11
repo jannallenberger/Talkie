@@ -87,6 +87,21 @@ cp "$BIN" "$APP/Contents/MacOS/Talkie"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
+echo "▶ Stamping build fingerprint…"
+GIT_SHA="$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+GIT_BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]]; then GIT_DIRTY=1; else GIT_DIRTY=0; fi
+BUILD_COUNT="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 0)"
+BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+PB=/usr/libexec/PlistBuddy
+"$PB" -c "Set :CFBundleVersion $BUILD_COUNT" "$APP/Contents/Info.plist" 2>/dev/null \
+  || "$PB" -c "Add :CFBundleVersion string $BUILD_COUNT" "$APP/Contents/Info.plist"
+for kv in "TalkieGitSHA:$GIT_SHA" "TalkieGitBranch:$GIT_BRANCH" "TalkieGitDirty:$GIT_DIRTY" "TalkieBuildDate:$BUILD_DATE"; do
+  k="${kv%%:*}"; v="${kv#*:}"
+  "$PB" -c "Set :$k $v" "$APP/Contents/Info.plist" 2>/dev/null || "$PB" -c "Add :$k string $v" "$APP/Contents/Info.plist"
+done
+echo "  ✓ $GIT_BRANCH @ $GIT_SHA (build $BUILD_COUNT, dirty=$GIT_DIRTY)"
+
 # Bundle the `talkie-mcp` connector binary INSIDE the app (Contents/MacOS/talkie-mcp)
 # so every installed Talkie ships a working "Connect to Claude" experience — no
 # checkout, no `swift build`, no maker-specific paths. The Settings connector card
