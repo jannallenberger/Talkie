@@ -1801,7 +1801,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                               crossSurfaceEnabled: self.settings.crossSurfaceCommandsEnabled) == nil,
                    case .inserted = TextInjector.insert(interim, mode: mode) {
                     optimistic = (interim.count, interim)
-                    self.hud.showInserting(changedWords: [], privateSession: neverStore)
+                    // Interim optimistic pill: NO auto-dismiss — its dismissal is
+                    // owned by the final showInserting call after the cleanup pass,
+                    // which replaces it in place. Auto-dismissing here would blink
+                    // the pill out mid-cleanup and pop it back in at stop.
+                    self.hud.showInserting(changedWords: [], privateSession: neverStore,
+                                           autoDismisses: false)
                 }
             }
 

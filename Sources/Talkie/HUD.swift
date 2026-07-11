@@ -486,13 +486,18 @@ final class HUDController {
     /// confirmation that Talkie kept no history and learned nothing from it.
     /// `onRejectFix` fires when the user taps a rejectable (niche-origin) chip; the
     /// hub wires it to `nicheVocab.recordRejection` + a brief confirmation (WP6).
-    /// Owns its own auto-dismiss — `changedWords.isEmpty ? 0.4 : 1.4`s, matching the
-    /// timing every caller already used — but routes it through the same
-    /// hover-pausable clock every other interactive pill uses (`autoDismiss`)
-    /// whenever a chip is actually rejectable, so reaching across for Reject can
-    /// never lose the race against the timeout. A non-interactive insert (the
-    /// overwhelming common case) keeps the plain fixed-delay dismiss, unchanged.
+    /// When `autoDismisses` (the default) it owns its own dismiss —
+    /// `changedWords.isEmpty ? 0.4 : 1.4`s, matching the timing every caller already
+    /// used — routed through the same hover-pausable clock every other interactive
+    /// pill uses (`autoDismiss`) whenever a chip is actually rejectable, so reaching
+    /// across for Reject can never lose the race against the timeout; a
+    /// non-interactive insert (the overwhelming common case) keeps the plain
+    /// fixed-delay dismiss, unchanged. Pass `autoDismisses: false` when a LATER
+    /// `showInserting` call owns the dismissal (the optimistic-interim pill) — the
+    /// pill then persists until that call replaces it, exactly as it did before this
+    /// method owned any timing.
     func showInserting(changedWords: [ChangedWord] = [], privateSession: Bool = false,
+                       autoDismisses: Bool = true,
                        onRejectFix: @escaping (ChangedWord) -> Void = { _ in }) {
         cancelHide()
         model.onRejectFix = { [weak self] change in
@@ -504,6 +509,7 @@ final class HUDController {
             panel?.ignoresMouseEvents = false   // let the user tap Reject
         }
         model.phase = .inserting(changedWords, privateSession: privateSession)
+        guard autoDismisses else { return }
         let dismissDelay: TimeInterval = changedWords.isEmpty ? 0.4 : 1.4
         if hasRejectable {
             autoDismiss(after: dismissDelay, drivesRing: false)
