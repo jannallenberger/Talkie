@@ -253,6 +253,10 @@
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "Installez le connecteur en un clic";
 "Install…" = "Installer…";
+"Reinstall…" = "Réinstaller…";
+"Update…" = "Mettre à jour…";
+"Connector is up to date (v%@)" = "Le connecteur est à jour (v%@)";
+"Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "Votre connecteur est obsolète (v%@ → v%@) — réinstallez-le pour obtenir les outils les plus récents";
 "Claude Code & other MCP clients" = "Claude Code et autres clients MCP";
 "Add this to your .mcp.json, or run the command" = "Ajoutez ceci à votre .mcp.json, ou lancez la commande";
 "Copy config" = "Copier la config";

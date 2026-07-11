@@ -253,6 +253,10 @@
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "一键安装连接器";
 "Install…" = "安装…";
+"Reinstall…" = "重新安装…";
+"Update…" = "更新…";
+"Connector is up to date (v%@)" = "连接器已是最新 (v%@)";
+"Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "你的连接器已过时 (v%@ → v%@)——重新安装以获取最新工具";
 "Claude Code & other MCP clients" = "Claude Code 及其他 MCP 客户端";
 "Add this to your .mcp.json, or run the command" = "将其添加到你的 .mcp.json，或运行该命令";
 "Copy config" = "复制配置";
