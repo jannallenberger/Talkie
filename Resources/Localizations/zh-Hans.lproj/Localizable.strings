@@ -253,6 +253,10 @@
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "一键安装连接器";
 "Install…" = "安装…";
+"Reinstall…" = "重新安装…";
+"Update…" = "更新…";
+"Connector is up to date (v%@)" = "连接器已是最新 (v%@)";
+"Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "你的连接器已过时 (v%@ → v%@)——重新安装以获取最新工具";
 "Claude Code & other MCP clients" = "Claude Code 及其他 MCP 客户端";
 "Add this to your .mcp.json, or run the command" = "将其添加到你的 .mcp.json，或运行该命令";
 "Copy config" = "复制配置";
@@ -829,8 +833,8 @@
 "Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again." = "这台 Mac 目前还不支持听写。请确保 macOS 已更新到最新版本，然后重试。";
 "Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again." = "这台 Mac 上暂不支持你所用语言的听写。请在“设置 → 语言”中选择其他语言，然后重试。";
 "Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)" = "无法获取语音模型 — macOS 只需下载一次。请检查你的网络连接和可用磁盘空间，然后重试。(%@)";
-"Talkie couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "Talkie 无法从该麦克风获取音频。请在“设置 → 输入设备”中选择其他麦克风，然后重试。";
-"Talkie couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "Talkie 找不到麦克风。请在“系统设置 → 声音”中检查输入设备，然后重试。";
+"%@ couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "%@ 无法从该麦克风获取音频。请在“设置 → 输入设备”中选择其他麦克风，然后重试。";
+"%@ couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "%@ 找不到麦克风。请在“系统设置 → 声音”中检查输入设备，然后重试。";
 
 /* copy-humanize-9 — CleanupEngine on-device availability messages */
 "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "请开启 Apple Intelligence（系统设置 → Apple Intelligence 与 Siri）以启用整理功能。";

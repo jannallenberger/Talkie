@@ -235,7 +235,13 @@ enum Brand {
     /// protocol id `"talkie"`, the support/meetings directories, the `.talkiepack`
     /// UTType, the keychain service, the repo slug — is deliberately FROZEN and must
     /// never be derived from this value. See the FREEZE list in `docs/REBRAND.md`.
-    @MainActor static var displayName: String {
+    ///
+    /// `nonisolated`: this only reads `Bundle.main` (thread-safe), so it never needed
+    /// the main actor. Making that explicit lets nonisolated contexts route brand text
+    /// through it — notably `LocalizedError.errorDescription`, which the protocol
+    /// declares nonisolated (so a `@MainActor`-only `displayName` could not be used to
+    /// build a localized error message, the compile error that blocked that path).
+    nonisolated static var displayName: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }
@@ -254,6 +260,17 @@ enum Brand {
     /// literal `"talkie"` (see `MCPServer.swift` serverInfo and `BrandMirror`);
     /// only the human-readable label follows the display name.
     @MainActor static var mcpDisplayName: String { displayName }
+
+    /// The version of the MCP connector THIS app bundles — the single in-app copy of
+    /// the number that also lives in `connector/manifest.json` (the `.mcpb`),
+    /// `MCPServer.swift` serverInfo, and the Claude Code plugin/marketplace manifests.
+    /// `scripts/check-mcp-drift.sh` fails CI if these disagree, so this constant can
+    /// be trusted as "what a freshly-installed connector reports". The connector card
+    /// compares it against the version of an ALREADY-installed Claude Desktop
+    /// extension to tell the user, honestly, whether theirs is stale after an app
+    /// upgrade — the trap that otherwise leaves a months-old 6-tool connector running
+    /// silently. Bump all copies together via `scripts/bump-connector-version.sh`.
+    static let mcpConnectorVersion = "0.4.0"
 
     /// Decoded-once cache. Without it, `image(_:)` re-read the PNG from the
     /// bundle on every SwiftUI `body` pass, handing `Image` a fresh `NSImage`

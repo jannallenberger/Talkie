@@ -103,9 +103,9 @@ enum TalkieEngineError: LocalizedError {
         case .modelInstallFailed(let detail):
             return String(format: "Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)".loc, detail)
         case .noCompatibleAudioFormat:
-            return "Talkie couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again.".loc
+            return String(format: "%@ couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again.".loc, Brand.displayName)
         case .noInputDevice:
-            return "Talkie couldn't find a microphone. Check your input device in System Settings → Sound, then try again.".loc
+            return String(format: "%@ couldn't find a microphone. Check your input device in System Settings → Sound, then try again.".loc, Brand.displayName)
         }
     }
 }

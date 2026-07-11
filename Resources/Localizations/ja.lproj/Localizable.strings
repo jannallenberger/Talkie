@@ -253,6 +253,10 @@
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "ワンクリックでコネクタをインストール";
 "Install…" = "インストール…";
+"Reinstall…" = "再インストール…";
+"Update…" = "アップデート…";
+"Connector is up to date (v%@)" = "コネクタは最新です (v%@)";
+"Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "コネクタが古くなっています (v%@ → v%@)。再インストールして最新のツールを入手してください";
 "Claude Code & other MCP clients" = "Claude Code とその他の MCP クライアント";
 "Add this to your .mcp.json, or run the command" = ".mcp.json に追加するか、コマンドを実行してください";
 "Copy config" = "設定をコピー";
@@ -829,8 +833,8 @@
 "Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again." = "この Mac ではまだディクテーションを利用できません。macOS を最新の状態にしてから、もう一度お試しください。";
 "Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again." = "この Mac では、お使いの言語でのディクテーションはまだ利用できません。設定 → 言語 で別の言語を選んでから、もう一度お試しください。";
 "Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)" = "音声モデルを取得できませんでした — macOS が一度だけダウンロードします。インターネット接続と空き容量を確認して、もう一度お試しください。(%@)";
-"Talkie couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "Talkie はそのマイクから音声を取得できませんでした。設定 → 入力デバイス で別のマイクを選んでから、もう一度お試しください。";
-"Talkie couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "Talkie はマイクを見つけられませんでした。システム設定 → サウンド で入力デバイスを確認し、もう一度お試しください。";
+"%@ couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "%@ はそのマイクから音声を取得できませんでした。設定 → 入力デバイス で別のマイクを選んでから、もう一度お試しください。";
+"%@ couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "%@ はマイクを見つけられませんでした。システム設定 → サウンド で入力デバイスを確認し、もう一度お試しください。";
 
 /* copy-humanize-9 — CleanupEngine on-device availability messages */
 "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "整形を使うには、Apple Intelligence を有効にしてください（システム設定 → Apple Intelligence & Siri）。";

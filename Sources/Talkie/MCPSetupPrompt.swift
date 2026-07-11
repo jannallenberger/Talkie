@@ -19,11 +19,16 @@ import Foundation
 /// everything you say" or that Claude changes the dictionary silently.
 enum MCPSetupPrompt {
 
-    /// The resolved `claude mcp add talkie -- "<path>"` line, built the same way the
-    /// card builds it (path quoted for spaces). Kept beside the prompt so the two
-    /// L9 surfaces — the card's "Copy command" button and this prompt — never disagree.
+    /// The resolved connect recipe — the single source both L9 surfaces use (the card's
+    /// "Copy command" button delegates here), so they never disagree. It's an
+    /// *idempotent replace at user scope*, not a bare add, because the real-world case
+    /// is a returning user who already has a (now-stale) `talkie` registered: a plain
+    /// `claude mcp add` would error "already exists" and silently keep the old one.
+    /// Dropping any user-scope copy first (`2>/dev/null; ` so the add always runs) and
+    /// adding at `-s user` — resolvable from every directory, not just the cwd — is
+    /// exactly what removes the stale-registration + wrong-scope trap.
     static func addCommand(binaryPath: String) -> String {
-        "claude mcp add talkie -- \"\(binaryPath)\""
+        "claude mcp remove talkie -s user 2>/dev/null; claude mcp add talkie -s user -- \"\(binaryPath)\""
     }
 
     /// The `.mcp.json` fallback block, matching the card's `mcpServersJSON` shape, for
@@ -61,7 +66,9 @@ enum MCPSetupPrompt {
         MCP is a tiny bundled binary that runs 100% on-device with zero network — nothing \
         it exposes leaves my Mac.
 
-        Connect it, then reconnect your MCP servers:
+        First run `claude mcp list`. If a `talkie` is already there (stale after an app \
+        update), remove it in whatever scope it shows, then add the current one and \
+        reconnect your MCP servers:
         \(addCommand(binaryPath: binaryPath))
         Or, if you can't run commands, add this to my `.mcp.json`:
         \(mcpServersJSON(binaryPath: binaryPath))
@@ -90,7 +97,9 @@ enum MCPSetupPrompt {
         Call get_dictionary before suggesting so you don't duplicate what I have; keep \
         it high-signal — one call per genuinely new or wrong term, no common words.
 
-        Verify by calling `search` once (try "recent") and tell me it came back.
+        Verify: confirm `get_dictionary` is in your tools (if missing, you're on an old \
+        build — tell me to update Talkie.app), then call `search` once and tell me it \
+        came back.
         """
     }
 }
