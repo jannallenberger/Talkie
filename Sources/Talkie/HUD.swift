@@ -1432,7 +1432,7 @@ private struct HUDView: View {
                             CommandChip(title: "\(word.from ?? word.to) → \(word.to)",
                                         prominent: false,
                                         fill: chipFill(0.13), ink: ink(0.72),
-                                        hint: "Rejects this correction so Talkie stops making it.".loc,
+                                        hint: "Rejects this correction so it stops being made.".loc,
                                         identifier: "talkie.pill.rejectFix") { model.onRejectFix(word) }
                         } else {
                             Text(word.to)
