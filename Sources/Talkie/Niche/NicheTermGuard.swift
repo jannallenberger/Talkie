@@ -20,8 +20,14 @@ struct NicheTermGuard: Sendable {
         // Too short to be distinctive jargon; biasing it is all risk, no reward.
         guard word.count >= 3 else { return false }
         // Multi-word phrases (e.g. "context graph") don't collide with a single
-        // common word and are inherently low-risk — admit them.
-        if word.contains(" ") { return true }
+        // common word, but only admit one that carries at least one distinctive
+        // token (≥4 chars and not a high-frequency common word) — a phrase made
+        // entirely of short/common words ("for me", "and the") is a recognizer
+        // no-op and only risks stamping caps/spacing onto ordinary speech.
+        if word.contains(" ") {
+            let parts = word.split(separator: " ").map(String.init)
+            return parts.contains { $0.count >= 4 && !commonWords.contains($0) }
+        }
         // It *is* a common word: the model already nails it, and boosting it risks
         // crowding the budget / overriding nearby words. Skip.
         if commonWords.contains(word) { return false }
