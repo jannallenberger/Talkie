@@ -354,11 +354,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // flag so this never re-runs and never touches anything curated or
         // confirmed repeatedly (see `sanitizeOrdinaryWords`).
         Task { @MainActor in
-            guard !UserDefaults.standard.bool(forKey: "TalkieNicheSanitizedV1") else { return }
+            // A persisted one-shot UserDefaults key: deliberately carries the frozen
+            // "Talkie" prefix like the other persisted flags (cf. the frozen
+            // "TalkieUpdaterConsent" precedent in the brand-literal allowlist) and
+            // must stay byte-stable forever, so it can never route through
+            // Brand.displayName. One constant so the brand-literal guard counts
+            // exactly one unavoidable occurrence.
+            let sanitizedFlagKey = "TalkieNicheSanitizedV1"
+            guard !UserDefaults.standard.bool(forKey: sanitizedFlagKey) else { return }
             let protected = Set(dictionary.vocabulary.map { $0.lowercased() }
                 + dictionary.replacements.filter { !$0.isWeighted }.map { $0.to.lowercased() })
             nicheVocab.sanitizeOrdinaryWords(isOrdinary: DictionaryStore.isOrdinaryPhraseOrWord, protected: protected)
-            UserDefaults.standard.set(true, forKey: "TalkieNicheSanitizedV1")
+            UserDefaults.standard.set(true, forKey: sanitizedFlagKey)
         }
 
         permissions.refresh()
