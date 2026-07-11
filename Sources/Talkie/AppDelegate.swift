@@ -881,10 +881,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // is COMPUTED — H1's toggle sweep wrongly conflated the two and re-gated
         // computation here, silently starving chapters for pill-hidden users. The
         // engine no-ops when its on-device model is unavailable, so this is cheap.
-        meetingRecorder.onLiveSegment = { [weak self] _, text in
+        meetingRecorder.onLiveSegment = { [weak self] speaker, text in
             Task { @MainActor in
                 guard let self else { return }
                 await self.subtopicEngine.ingest(text)
+
+                // B2: the OTHER person's questions get an instant, deterministic
+                // flash on the pill — no model call, no hysteresis wait, unlike
+                // `current` above. Only `.them` counts (the interview win is
+                // surfacing what THEY asked); `.me` stays out so the user's own
+                // dictated questions don't fight for the same slot.
+                guard speaker == .them, Interrogative.isQuestion(text) else { return }
+                self.subtopicModel.liveQuestion = text
+                let mirror = self.subtopicModel
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(7))
+                    // Only clear if this is still OUR question — a newer one that
+                    // arrived while we slept must not be wiped out by a stale timer.
+                    if mirror.liveQuestion == text { mirror.liveQuestion = nil }
+                }
             }
         }
 

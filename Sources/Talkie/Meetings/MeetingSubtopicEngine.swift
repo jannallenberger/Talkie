@@ -9,6 +9,23 @@ import Foundation
 @MainActor
 final class MeetingSubtopicModel: ObservableObject {
     @Published var current: String?
+
+    /// A one-sentence gloss of the CURRENT topic (e.g. "Discussing the Q3 budget
+    /// rollover and hiring freeze"), for DISPLAY only. Set alongside `current` on the
+    /// same accept transition — never instead of it. `current` (the short phrase)
+    /// stays the sole source of truth for gating and for `Chapter(title:)`, so
+    /// chapter titles are unaffected no matter what this holds; this is purely
+    /// additive. Falls back to `current` itself when the model's gloss line is
+    /// missing, empty, or overflows the bounds — a full sentence would jitter the
+    /// gate if it were keyed on directly, hence the separate short phrase for gating.
+    @Published var currentGloss: String?
+
+    /// The OTHER person's most recent question, shown the instant a far-end
+    /// segment matches `Interrogative.isQuestion` — no LLM confidence, no
+    /// hysteresis wait, unlike `current`. Ephemeral: the wiring layer auto-clears
+    /// it a few seconds after it's set (see `AppDelegate.setupMeetingDetection`),
+    /// so a lull in the conversation doesn't leave a stale question on the pill.
+    @Published var liveQuestion: String?
 }
 
 /// Derives a live "subtopic" — a short, section-heading-style label of the topic
@@ -23,13 +40,19 @@ final class MeetingSubtopicModel: ObservableObject {
 ///
 ///   1. The model must self-report `CONFIDENCE|HIGH` *and* name a concrete topic;
 ///      any doubt → `TOPIC|NONE` / `CONFIDENCE|LOW`, which is ignored.
-///   2. A new topic must clear that bar on **two consecutive** evaluations before it
-///      replaces what's shown (`step`). One-off blips never surface; the current
-///      topic holds until a genuinely new one is sustained.
+///   2. Two-tier hysteresis (`step`): the FIRST topic (nothing shown yet) is accepted
+///      eagerly on a single high-confidence hit, so the pill doesn't sit empty for
+///      the better part of a minute. Once a topic IS shown, *replacing* it still
+///      needs **two consecutive** high-confidence evaluations — one-off blips never
+///      surface; the current topic holds until a genuinely new one is sustained.
 ///
 /// Evaluation is throttled (a slow poll loop that only fires once enough new speech
-/// has accumulated) so the shared on-device model isn't hammered, and the `actor`
-/// serializes everything so at most one evaluation runs at a time.
+/// has accumulated) so the shared on-device model isn't hammered. The `actor` alone
+/// does NOT guarantee only one evaluation runs at a time -- `tick()` suspends at its
+/// `await summarizer.generate(...)` call, which is a reentrancy point, so a second
+/// `tick()` (woken by `ingest`'s adaptive poll, or the timer loop) could otherwise
+/// start a second, overlapping on-device call while the first is still in flight.
+/// `isEvaluating` (below) closes that gap explicitly.
 actor MeetingSubtopicEngine {
 
     // MARK: Tunables
@@ -40,11 +63,14 @@ actor MeetingSubtopicEngine {
     private static let maxInputChars = 1800
     /// Don't evaluate until at least this much *new* speech has arrived since the
     /// last evaluation — avoids re-labeling identical text and bounds model calls.
-    private static let minNewCharsToEval = 180
-    /// How often the loop wakes to consider an evaluation. With the new-chars gate
-    /// this yields an effective cadence of ~12 s+ of fresh speech per model call.
-    private static let evalInterval: Duration = .seconds(12)
-    /// Consecutive high-confidence evaluations a *new* topic needs before it shows.
+    private static let minNewCharsToEval = 90
+    /// How often the loop wakes to consider an evaluation. `ingest(_:)` also wakes
+    /// the evaluator early once `minNewCharsToEval` is reached, so this interval is
+    /// really just the ceiling on latency during a quiet stretch of the meeting —
+    /// a fast-moving conversation gets evaluated sooner via that adaptive poll.
+    private static let evalInterval: Duration = .seconds(5)
+    /// Consecutive high-confidence evaluations needed to *replace* an already-shown
+    /// topic. Does NOT gate the very first topic — see `step`'s eager-first-accept.
     static let requiredStreak = 2
 
     // MARK: State
@@ -65,6 +91,14 @@ actor MeetingSubtopicEngine {
     private var charsSinceEval = 0
     private var gate = GateState()
     private var loop: Task<Void, Never>?
+    /// True while a `tick()` is between its synchronous guard/reset and the return
+    /// from `summarizer.generate(...)`. Actor isolation alone only serializes the
+    /// SYNCHRONOUS stretches of `tick()`; once it suspends at that `await`, the actor
+    /// is reentrant and would otherwise happily start a second `tick()` (from either
+    /// the timer loop or `ingest`'s adaptive wake) with its own overlapping in-flight
+    /// model call. This flag makes "at most one evaluation in flight" an explicit
+    /// invariant instead of an accidental one that reentrancy quietly breaks.
+    private var isEvaluating = false
 
     init(summarizer: any Summarizer = PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.2)),
          model: MeetingSubtopicModel,
@@ -100,8 +134,17 @@ actor MeetingSubtopicEngine {
         windowChars = 0
         charsSinceEval = 0
         gate = GateState()
+        // This instance is reused across recordings (AppDelegate builds it once), so
+        // a `tick()` still in flight when `stop()` lands must not leave the actor
+        // permanently believing an evaluation is running -- that would silently wedge
+        // every future `tick()` for the rest of the app's lifetime.
+        isEvaluating = false
         let m = model
-        Task { @MainActor in m.current = nil }
+        Task { @MainActor in
+            m.current = nil
+            m.currentGloss = nil
+            m.liveQuestion = nil   // no stale question can linger into the next recording
+        }
     }
 
     /// Feed one finalized transcript segment (speaker-tagged upstream). Cheap and
@@ -116,12 +159,29 @@ actor MeetingSubtopicEngine {
             let dropped = window.removeFirst()
             windowChars -= dropped.count + 1
         }
+        // Adaptive poll: don't make a fast-moving conversation wait out the rest of
+        // `evalInterval` once there's already enough fresh speech to evaluate. Skip
+        // spawning while an evaluation is already in flight -- `tick()`'s
+        // `isEvaluating` guard would just no-op it anyway, and `charsSinceEval` keeps
+        // accumulating untouched (it's only reset when a `tick()` actually proceeds),
+        // so the backlog is picked up by the next `ingest` once the in-flight call
+        // finishes, or by the periodic timer loop. This also avoids spawning a Task
+        // per segment while a call is running, which would otherwise pile up no-ops.
+        if charsSinceEval >= Self.minNewCharsToEval, !isEvaluating {
+            Task { await self.tick() }
+        }
     }
 
     // MARK: Evaluation
 
     private func tick() async {
-        guard charsSinceEval >= Self.minNewCharsToEval else { return }
+        // `isEvaluating` is checked and set synchronously here, before the only
+        // suspension point below (`summarizer.generate`) -- so this whole guard+set
+        // is atomic from the actor's perspective and a second `tick()` racing in via
+        // reentrancy during the `await` can never pass it while this one is in flight.
+        guard !isEvaluating, charsSinceEval >= Self.minNewCharsToEval else { return }
+        isEvaluating = true
+        defer { isEvaluating = false }
         charsSinceEval = 0
 
         let input = String(window.joined(separator: " ").suffix(Self.maxInputChars))
@@ -143,11 +203,19 @@ actor MeetingSubtopicEngine {
         let before = gate.accepted
         gate = Self.step(gate, topic: parsed.topic, high: parsed.high)
         if gate.accepted != before, let now = gate.accepted {
+            // The gloss is display-only: fall back to the short phrase itself when
+            // the model's gloss line is missing/empty/overflows, so the pill always
+            // has *something* sentence-shaped to show rather than going blank.
+            let gloss = parsed.gloss ?? now
             let m = model
-            Task { @MainActor in m.current = now }
+            Task { @MainActor in
+                m.current = now
+                m.currentGloss = gloss
+            }
             // Same instant the pill updates: notify the chapter collector. The
             // callback stamps the accept time itself, so the engine stays free of
             // any clock/recorder dependency and the pill behavior is untouched.
+            // Carries the SHORT phrase only — chapters must never see the gloss.
             onAccepted?(now)
         }
     }
@@ -168,8 +236,9 @@ actor MeetingSubtopicEngine {
     Identify the SINGLE subject being discussed in the MOST RECENT part of the \
     conversation — a short, section-heading-style noun phrase.
 
-    Respond with EXACTLY two lines and nothing else:
+    Respond with EXACTLY three lines and nothing else:
     TOPIC|<2 to 5 word phrase, or NONE>
+    GLOSS|<one sentence, max ~12-14 words, describing what's being discussed right now>
     CONFIDENCE|<HIGH or LOW>
 
     Rules:
@@ -182,6 +251,9 @@ actor MeetingSubtopicEngine {
     invent or guess a plausible-sounding topic.
     - Keep TOPIC short (max 5 words), a plain noun phrase: no punctuation, no quotes, \
     no trailing period.
+    - GLOSS is a natural sentence (not a heading) describing the same current topic in \
+    a bit more detail — same rules as TOPIC: only what's actually being discussed right \
+    now, never a summary of the whole meeting, never invented or guessed.
     """
 
     // MARK: - Pure logic (independently testable, no model / no I/O)
@@ -196,10 +268,14 @@ actor MeetingSubtopicEngine {
         var streak: Int = 0             // consecutive high-confidence hits for `candidate`
     }
 
-    /// Parse the model's two-line response. Tolerant: unknown lines are ignored, and
-    /// a `TOPIC` that's empty, `NONE`, or out of bounds yields `nil` (no topic).
-    static func parse(_ response: String) -> (topic: String?, high: Bool) {
+    /// Parse the model's three-line response. Tolerant: unknown lines are ignored, a
+    /// `TOPIC` that's empty, `NONE`, or out of bounds yields `nil` (no topic), and a
+    /// missing/empty/overflowing `GLOSS` line yields `nil` (the caller falls back to
+    /// the topic phrase) rather than breaking parsing — callers that only ever sent
+    /// TOPIC+CONFIDENCE (older prompts, existing tests) must keep parsing cleanly.
+    static func parse(_ response: String) -> (topic: String?, gloss: String?, high: Bool) {
         var topic: String?
+        var gloss: String?
         var high = false
         for rawLine in response.split(whereSeparator: \.isNewline) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
@@ -210,13 +286,16 @@ actor MeetingSubtopicEngine {
             case "TOPIC":
                 let cleaned = cleanTopic(value)
                 if !cleaned.isEmpty, cleaned.uppercased() != "NONE" { topic = cleaned }
+            case "GLOSS":
+                let cleaned = cleanGloss(value)
+                if !cleaned.isEmpty { gloss = cleaned }
             case "CONFIDENCE":
                 high = value.uppercased().hasPrefix("HIGH")
             default:
                 continue
             }
         }
-        return (topic, high)
+        return (topic, gloss, high)
     }
 
     /// Tidy a topic: strip wrapping quotes / trailing punctuation, then bound it to a
@@ -234,17 +313,37 @@ actor MeetingSubtopicEngine {
         return s
     }
 
+    /// Tidy a gloss: same quote-stripping as `cleanTopic` but a looser bound (≤ 14
+    /// words, ≤ 80 chars) since it's a full sentence, not a noun phrase. Returns ""
+    /// (→ `nil`) if it's empty or overflows, so a runaway/missing gloss just means
+    /// "no gloss, fall back to the topic phrase" rather than a garbled label ever
+    /// showing on the pill.
+    static func cleanGloss(_ value: String) -> String {
+        var s = value.trimmingCharacters(in: .whitespaces)
+        if s.count >= 2, let f = s.first, let l = s.last,
+           (f == "\"" && l == "\"") || (f == "'" && l == "'") {
+            s = String(s.dropFirst().dropLast())
+        }
+        s = s.trimmingCharacters(in: .whitespaces)
+        let words = s.split(whereSeparator: \.isWhitespace)
+        guard !s.isEmpty, s.count <= 80, words.count <= 14 else { return "" }
+        return s
+    }
+
     private static func normalize(_ s: String) -> String {
         s.lowercased().trimmingCharacters(in: .whitespaces)
     }
 
-    /// Advance the hysteresis state by one evaluation result.
+    /// Advance the hysteresis state by one evaluation result. Two-tier:
     ///
     /// - A low-confidence or topic-less result is a "miss": it clears the pending
     ///   candidate streak but never disturbs the already-accepted topic.
     /// - A high-confidence topic equal to what's shown is a no-op (resets the streak).
-    /// - A high-confidence *new* topic builds a streak; once it reaches
-    ///   `requiredStreak` consecutive hits it's accepted and becomes what's shown.
+    /// - A high-confidence *new* topic builds a streak. If nothing is accepted yet,
+    ///   ONE hit is enough — the empty pill shouldn't wait through a hysteresis
+    ///   window for its very first label. If a topic is already shown, *replacing*
+    ///   it still needs `requiredStreak` (2) consecutive hits, so genuine topic-shift
+    ///   detection stays damped against flicker.
     static func step(_ state: GateState, topic: String?, high: Bool,
                      requiredStreak: Int = MeetingSubtopicEngine.requiredStreak) -> GateState {
         var s = state
@@ -265,7 +364,12 @@ actor MeetingSubtopicEngine {
             s.candidateOriginal = topic
             s.streak = 1
         }
-        if s.streak >= requiredStreak {
+        // Eager first accept: nothing is shown yet, so don't make the user wait through
+        // a hysteresis window for the FIRST label -- one confident hit fills the empty
+        // pill immediately. Replacing an already-accepted topic still needs the full
+        // streak below, so a genuine topic shift stays damped against flicker.
+        let effectiveStreak = (s.accepted == nil) ? 1 : requiredStreak
+        if s.streak >= effectiveStreak {
             s.accepted = s.candidateOriginal
             s.candidate = nil; s.candidateOriginal = nil; s.streak = 0
         }
