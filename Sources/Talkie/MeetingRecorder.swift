@@ -154,6 +154,15 @@ final class MeetingRecorder: ObservableObject {
     private var micMulti: MultiLangStreamTranscriber?
     private var farMulti: MultiLangStreamTranscriber?
 
+    /// Incremental map + graph-extraction over the live transcript (plan 22 Part A),
+    /// built in `start()` only for single-language meetings (see `langsAtStart` below
+    /// — multilingual meetings may re-transcribe a stream's audio at stop, which would
+    /// invalidate anything mapped from it early) so `stop()` pays only for the final
+    /// reduce instead of re-running the whole map phase over the complete transcript.
+    /// Nil for multilingual meetings or when the on-device model is unavailable — the
+    /// stop-time fallback path is exactly today's `summarizeCondensed` + Stage-2 loop.
+    private var digestBuilder: MeetingDigestBuilder?
+
     /// Analyzer-rotation clock (far-end diarization-stall fix). A single `SpeechAnalyzer`
     /// stops finalizing on a long continuous stream (~30 min in), collapsing the rest of
     /// the transcript under one timecode. `tick()` rotates the live multilingual lanes
@@ -276,6 +285,44 @@ final class MeetingRecorder: ObservableObject {
         micLocale = pinned ?? (primaryLocale?() ?? "en-US")
         farLocale = micLocale
 
+        // Incremental digest (plan 22 Part A): eligible exactly when the legacy
+        // whole-stream language correction below (gated on `langs.count > 1` at the
+        // top of `stop()`) will NOT run — a re-transcribed stream would invalidate any
+        // text already mapped from it. `langsAtStart.count <= 1` also guarantees
+        // `multiLang` is false (it requires `langs.count > 1` with `pinned == nil`,
+        // exactly when `langsAtStart` carries `langs`), so only the single-locale
+        // engine's live-segment handlers ever need to feed this builder.
+        let digestEligible = langsAtStart.count <= 1
+        if digestEligible, MeetingSummarizer.isAvailable {
+            let graphExtractor: GraphLLMExtractor?
+            if contextGraph != nil, OnDeviceLLM.isAvailable {
+                graphExtractor = GraphLLMExtractor(summarizer: PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.1)))
+            } else {
+                graphExtractor = nil
+            }
+            digestBuilder = MeetingDigestBuilder(summarizer: self.summarizer, graphExtractor: graphExtractor)
+        } else {
+            digestBuilder = nil
+        }
+        // Snapshotted alongside `liveFeed` for the same reason: the stream handlers
+        // below run on the transcriber's @Sendable executor, off the main actor, so
+        // they capture this Sendable optional rather than hopping back to `self`.
+        // `feedSegment` preserves the existing `liveFeed?(...)` behavior exactly and
+        // additionally feeds the digest builder when one exists (a no-op otherwise).
+        // `digest.ingest` is a genuinely synchronous call (see MeetingDigestBuilder's
+        // doc comment) -- no `Task` wrapper needed, so segment order into the digest's
+        // buffer is exactly call order, and a straggler can no longer race `finish()`.
+        // `elapsed` is the segment's audio-clock start when the caller has one (the
+        // single-locale timed handlers below); the multilingual live-lane handlers only
+        // have wall-clock arrival, but those never feed a digest builder (digest is nil
+        // whenever `multiLang` is true — see `digestEligible` above), so the fallback
+        // value there is never actually consumed by `ingest`.
+        let digest = digestBuilder
+        let feedSegment: @Sendable (MeetingSpeaker, String, TimeInterval) -> Void = { speaker, text, elapsed in
+            liveFeed?(speaker, text)
+            digest?.ingest(speaker, text, at: elapsed)
+        }
+
         // Keep-audio (D9): snapshot the toggle ONCE, now — mid-call flips don't count.
         // Fix the meeting id here too so the audio filenames share the `.md` basename the
         // meeting gets at stop(). The mic writer is opened eagerly (the mic stream always
@@ -320,7 +367,13 @@ final class MeetingRecorder: ObservableObject {
                 let mm = MultiLangStreamTranscriber()
                 if let session = try? await mm.start(
                     localeIDs: distinctLangs, contextualStrings: eventAttendees,
-                    onLiveSegment: { segment in log.add(.me, segment); liveFeed?(.me, segment) }
+                    onLiveSegment: { segment in
+                        log.add(.me, segment)
+                        // Wall-clock elapsed: this lane has no audio-clock span, but a
+                        // digest builder never exists alongside multiLang anyway (see
+                        // `feedSegment`'s doc comment), so this value is never read.
+                        feedSegment(.me, segment, Date().timeIntervalSince(start))
+                    }
                 ) {
                     try audio.start(targetFormat: session.format, continuation: session.continuation,
                                     onBuffer: micTap,
@@ -342,7 +395,7 @@ final class MeetingRecorder: ObservableObject {
                 // bare text.
                 let session = try await engine.beginSession(timedSegmentHandler: { seg in
                     log.add(.me, seg.text, at: seg.start, end: seg.end)
-                    liveFeed?(.me, seg.text)
+                    feedSegment(.me, seg.text, seg.start)
                 })
                 try audio.start(targetFormat: session.format, continuation: session.continuation,
                                 bufferAudio: multiLang, bufferSeconds: 600,
@@ -355,6 +408,7 @@ final class MeetingRecorder: ObservableObject {
             await engine.cancelSession()
             if let mic = micMulti { await mic.cancel(); micMulti = nil }
             closeAudioWriters(record: false) // discard any partial mic tee
+            digestBuilder?.cancel(); digestBuilder = nil
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
@@ -364,6 +418,7 @@ final class MeetingRecorder: ObservableObject {
             if let mic = micMulti { await mic.cancel(); micMulti = nil }
             else { _ = await engine.finishSession() }
             closeAudioWriters(record: false) // discard any partial mic tee
+            digestBuilder?.cancel(); digestBuilder = nil
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
@@ -383,7 +438,12 @@ final class MeetingRecorder: ObservableObject {
                 let fm = MultiLangStreamTranscriber()
                 if let farSession = try? await fm.start(
                     localeIDs: distinctLangs, contextualStrings: eventAttendees,
-                    onLiveSegment: { segment in log.add(.them, segment); liveFeed?(.them, segment) }
+                    onLiveSegment: { segment in
+                        log.add(.them, segment)
+                        // See the mic lane above: no digest builder exists alongside
+                        // multiLang, so this wall-clock fallback is never consumed.
+                        feedSegment(.them, segment, Date().timeIntervalSince(start))
+                    }
                 ), (try? systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
                                            onBuffer: farTap)) != nil {
                     farMulti = fm
@@ -403,7 +463,7 @@ final class MeetingRecorder: ObservableObject {
                     // interleaving, not promised sample-accurate.
                     let farSession = try await far.beginSession(timedSegmentHandler: { seg in
                         log.add(.them, seg.text, at: seg.start, end: seg.end)
-                        liveFeed?(.them, seg.text)
+                        feedSegment(.them, seg.text, seg.start)
                     })
                     try systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
                                           bufferAudio: multiLang, bufferSeconds: 600,
@@ -435,6 +495,7 @@ final class MeetingRecorder: ObservableObject {
             if let farM = farMulti { await farM.cancel(); farMulti = nil }
             else if let farEngine { _ = await farEngine.finishSession(); self.farEngine = nil }
             closeAudioWriters(record: false) // discard any partial mic/far tee
+            digestBuilder?.cancel(); digestBuilder = nil
             try? FileManager.default.removeItem(at: pURL)
             return false
         }
@@ -704,6 +765,11 @@ final class MeetingRecorder: ObservableObject {
         // rendered transcript and `.md` are unchanged (segments live only in the index).
         let segments = MeetingTranscriptRenderer.segments(from: finalTurns, duration: duration)
         guard !clean.isEmpty else {
+            // Discarded recording: any in-flight map/graph-extract jobs are for a note
+            // that will never be saved, so cancel them rather than let them keep
+            // running in the background pointlessly.
+            digestBuilder?.cancel()
+            digestBuilder = nil
             // Nothing was transcribed → any kept audio has no transcript to verify against
             // and no meeting will reference it (a notes-only meeting has no segments, so it
             // isn't playable). Discard the files so we never orphan audio on disk that
@@ -756,32 +822,46 @@ final class MeetingRecorder: ObservableObject {
             fused = nil
         }
         // Summarize AND get back a condensed view (transcript when short, else the
-        // map partials) sized for the Stage-2 extractor's 4000-char cap.
-        let (transcriptSummaryOpt, condensed) = await summarizer.summarizeCondensed(clean)
-        let transcriptSummary = transcriptSummaryOpt ?? ""
-        var summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
-
-        // Stage-2 LLM extraction: pull real people / projects / commitments out of
-        // the meeting so the graph, the Brief, and `list_commitments` have data
-        // worth querying — layered on top of the Stage-1 heuristics below. Runs the
-        // extractor over each ≤4000-char chunk of `condensed` (already within budget
-        // for short meetings; the joined map partials for long ones), then dedupes
-        // by (kind, lowercased name). When Apple Intelligence is unavailable the
-        // extractor returns [] for every chunk → no section, Stage-1-only ingest →
-        // finalize output is byte-identical to today. ALL of these awaits happen
-        // BEFORE store.add so the store.add→partial-removal block stays await-free
-        // (crash-atomic), per plan 01's finalize ordering.
+        // map partials) sized for the Stage-2 extractor's 4000-char cap, plus the
+        // graph candidates — either already gathered incrementally during the
+        // recording (plan 22 Part A) or, for a multilingual meeting / unavailable
+        // model, computed the same way stop() always has.
+        let transcriptSummary: String
+        let condensed: String
         var graphCandidates: [ContextGraphExtractor.Candidate] = []
-        if contextGraph != nil, OnDeviceLLM.isAvailable {
-            let extractor = GraphLLMExtractor(summarizer: PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.1)))
-            var seenGraph = Set<String>()
-            for chunk in MeetingSummarizer.chunkForSinglePass(condensed) {
-                for candidate in await extractor.extract(from: chunk) {
-                    let key = "\(candidate.kind.rawValue)|\(candidate.displayName.lowercased())"
-                    if seenGraph.insert(key).inserted { graphCandidates.append(candidate) }
+        if let digestBuilder {
+            let result = await digestBuilder.finish()
+            transcriptSummary = result.summary ?? ""
+            condensed = result.condensed
+            graphCandidates = result.graphCandidates
+        } else {
+            let (transcriptSummaryOpt, condensedOpt) = await summarizer.summarizeCondensed(clean)
+            transcriptSummary = transcriptSummaryOpt ?? ""
+            condensed = condensedOpt
+
+            // Stage-2 LLM extraction: pull real people / projects / commitments out of
+            // the meeting so the graph, the Brief, and `list_commitments` have data
+            // worth querying — layered on top of the Stage-1 heuristics below. Runs the
+            // extractor over each ≤4000-char chunk of `condensed` (already within budget
+            // for short meetings; the joined map partials for long ones), then dedupes
+            // by (kind, lowercased name). When Apple Intelligence is unavailable the
+            // extractor returns [] for every chunk → no section, Stage-1-only ingest →
+            // finalize output is byte-identical to today. ALL of these awaits happen
+            // BEFORE store.add so the store.add→partial-removal block stays await-free
+            // (crash-atomic), per plan 01's finalize ordering.
+            if contextGraph != nil, OnDeviceLLM.isAvailable {
+                let extractor = GraphLLMExtractor(summarizer: PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.1)))
+                var seenGraph = Set<String>()
+                for chunk in MeetingSummarizer.chunkForSinglePass(condensed) {
+                    for candidate in await extractor.extract(from: chunk) {
+                        let key = "\(candidate.kind.rawValue)|\(candidate.displayName.lowercased())"
+                        if seenGraph.insert(key).inserted { graphCandidates.append(candidate) }
+                    }
                 }
             }
         }
+        digestBuilder = nil
+        var summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
 
         // Append an "## Action items" section built from the extracted commitments,
         // but only when there's ≥1 AND the summary doesn't already list action items
