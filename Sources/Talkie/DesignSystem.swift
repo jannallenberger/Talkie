@@ -255,6 +255,17 @@ enum Brand {
     /// only the human-readable label follows the display name.
     @MainActor static var mcpDisplayName: String { displayName }
 
+    /// The version of the MCP connector THIS app bundles — the single in-app copy of
+    /// the number that also lives in `connector/manifest.json` (the `.mcpb`),
+    /// `MCPServer.swift` serverInfo, and the Claude Code plugin/marketplace manifests.
+    /// `scripts/check-mcp-drift.sh` fails CI if these disagree, so this constant can
+    /// be trusted as "what a freshly-installed connector reports". The connector card
+    /// compares it against the version of an ALREADY-installed Claude Desktop
+    /// extension to tell the user, honestly, whether theirs is stale after an app
+    /// upgrade — the trap that otherwise leaves a months-old 6-tool connector running
+    /// silently. Bump all copies together via `scripts/bump-connector-version.sh`.
+    static let mcpConnectorVersion = "0.4.0"
+
     /// Decoded-once cache. Without it, `image(_:)` re-read the PNG from the
     /// bundle on every SwiftUI `body` pass, handing `Image` a fresh `NSImage`
     /// each time — so a hover-driven re-render re-decoded the bitmap and the tile
