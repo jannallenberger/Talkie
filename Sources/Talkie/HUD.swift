@@ -1397,6 +1397,7 @@ private struct HUDView: View {
             .accessibilityHint("Activate to copy your transcript to the clipboard.".loc)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { model.onCopyTap() }
+            .accessibilityIdentifier("talkie.pill.copy")
         case .copied:
             HStack(spacing: 6) {
                 Image(systemName: "checkmark")
@@ -1517,7 +1518,8 @@ private struct HUDView: View {
                     .accessibilityLabel(message)
                 CommandChip(title: "Undo", prominent: false,
                             fill: chipFill(0.13), ink: ink(0.72),
-                            hint: "Removes this learned correction.".loc) { model.onLearnedUndo() }
+                            hint: "Removes this learned correction.".loc,
+                            identifier: "talkie.pill.undo") { model.onLearnedUndo() }
             }
             .transition(.blurReplace)
             .accessibilityElement(children: .contain)
@@ -1540,10 +1542,12 @@ private struct HUDView: View {
                         String(format: "Index the project %@ so spoken filenames snap to its real files?".loc, repo))
                 CommandChip(title: "Index", prominent: true,
                             fill: chipFill(0.18), ink: ink(0.72),
-                            hint: "Turns on Vibe Coding and indexes this project's filenames.".loc) { model.onVibeAccept() }
+                            hint: "Turns on Vibe Coding and indexes this project's filenames.".loc,
+                            identifier: "talkie.pill.vibeIndex") { model.onVibeAccept() }
                 CommandChip(title: "Not now", prominent: false,
                             fill: chipFill(0.13), ink: ink(0.72),
-                            hint: "Dismisses the offer for this project.".loc) { model.onVibeDecline() }
+                            hint: "Dismisses the offer for this project.".loc,
+                            identifier: "talkie.pill.vibeDecline") { model.onVibeDecline() }
             }
             .transition(.blurReplace)
             .accessibilityElement(children: .contain)
@@ -1623,7 +1627,8 @@ private struct HUDView: View {
                         String(format: "Keep the %@ cleanup style as the default for %@?".loc, style, app))
                 CommandChip(title: "Keep", prominent: true,
                             fill: chipFill(0.18), ink: ink(0.72),
-                            hint: "Makes this cleanup style the default for this app.".loc) {
+                            hint: "Makes this cleanup style the default for this app.".loc,
+                            identifier: "talkie.pill.keepStyle") {
                     model.onKeepStyle()
                 }
             }
@@ -1758,6 +1763,7 @@ private struct CommandChip: View {
     let fill: Color
     let ink: Color
     let hint: String
+    var identifier: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -1765,6 +1771,22 @@ private struct CommandChip: View {
             .buttonStyle(PressableChipStyle(prominent: prominent, fill: fill, ink: ink))
             .accessibilityLabel(Text(title))
             .accessibilityHint(hint)
+            .modifier(OptionalAccessibilityIdentifier(identifier: identifier))
+    }
+}
+
+/// Applies `.accessibilityIdentifier` only when a non-nil identifier is supplied,
+/// so chips without one (most of them — identifiers are opt-in for UI-test hooks)
+/// don't pick up a spurious empty identifier.
+private struct OptionalAccessibilityIdentifier: ViewModifier {
+    let identifier: String?
+
+    func body(content: Content) -> some View {
+        if let identifier {
+            content.accessibilityIdentifier(identifier)
+        } else {
+            content
+        }
     }
 }
 
@@ -1906,6 +1928,7 @@ private struct CleanupSwitcher: View {
             .accessibilityLabel(String(format: "Cleanup style: %@.".loc, label))
             .accessibilityHint("Double-tap to cycle to the next cleanup style.".loc)
             .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("talkie.pill.cleanupSwitch")
         }
     }
 }
@@ -2066,13 +2089,22 @@ private final class PassthroughHostingView<Content: View>: NSHostingView<Content
     override func hitTest(_ point: NSPoint) -> NSView? {
         let rect = pillFrame.rect
         guard !rect.isNull else { return nil }
-        // `point` is in this view's superview coordinates (the content view), which
-        // is flipped vs. SwiftUI's top-left frame. Convert into top-left space, with
-        // a small slop so the pill's edge is comfortably tappable.
-        let local = convert(point, from: superview)
-        let topLeftY = bounds.height - local.y
-        let probe = CGPoint(x: local.x, y: topLeftY)
+        // `point` is in the superview's coordinates. NSHostingView is flipped
+        // (isFlipped == true), so converting into our own space already yields a
+        // top-left-origin point matching the frame the pill publishes in the
+        // "talkieHUD" space — no manual y-flip. (The old `bounds.height - local.y`
+        // mirrored the probe and dropped every pill click.)
+        let probe = pillHitProbe(convertedLocalPoint: convert(point, from: superview),
+                                 boundsHeight: bounds.height,
+                                 isFlipped: isFlipped)
         guard rect.insetBy(dx: -4, dy: -4).contains(probe) else { return nil }
         return super.hitTest(point)
     }
+}
+
+/// Maps a point already converted into this view's local space into the top-left
+/// coordinate space the pill frame is published in. A flipped view needs no
+/// adjustment; a non-flipped one is mirrored across its height.
+func pillHitProbe(convertedLocalPoint p: CGPoint, boundsHeight: CGFloat, isFlipped: Bool) -> CGPoint {
+    isFlipped ? p : CGPoint(x: p.x, y: boundsHeight - p.y)
 }
