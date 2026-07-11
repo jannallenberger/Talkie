@@ -20,7 +20,12 @@
 # updater's validation of Contents/MacOS/Talkie, the repo slug). Those must NOT be
 # converted — see the FREEZE list in docs/REBRAND.md.
 #
-4 Sources/Talkie/AppDelegate.swift
+# WP4: +1 for the frozen "TalkieNicheSanitizedV1" UserDefaults key — the one-shot
+# niche-store sanitation latch. A persisted identifier (same tier as the frozen
+# "TalkieUpdaterConsent" key below): never user-visible, must stay byte-stable
+# across a rebrand, so it cannot route through Brand.displayName. Held to a single
+# literal occurrence via a local constant at the launch call site.
+5 Sources/Talkie/AppDelegate.swift
 2 Sources/Talkie/AppPaths.swift
 1 Sources/Talkie/BugBundle.swift
 1 Sources/Talkie/CommandsView.swift

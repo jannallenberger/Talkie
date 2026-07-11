@@ -187,14 +187,35 @@ final class DictionaryStore: ObservableObject {
     /// deterministic floor; `NSSpellChecker` broadens it to the full system
     /// dictionary. Multi-word targets are treated as jargon (hard rule) — a phrase
     /// isn't a single lexical item the recognizer confuses with a common word.
+    ///
+    /// Ordinary in EN or DE (the user dictates both). Uses the language-parameterized
+    /// `NSSpellChecker` API and only trusts a language whose dictionary is actually
+    /// installed — the previous single, ambient-language `checkSpelling(of:startingAt:)`
+    /// under-covered German dictation.
     static func isOrdinaryDictionaryWord(_ word: String) -> Bool {
         let w = word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !w.isEmpty, !w.contains(" ") else { return false }
         if NicheTermGuard.default.commonWords.contains(w) { return true }
         // `checkSpelling` returns the range of the first misspelling; NSNotFound
-        // means the whole word is known-good (i.e. it's in the dictionary).
-        let misspelling = NSSpellChecker.shared.checkSpelling(of: w, startingAt: 0)
-        return misspelling.location == NSNotFound
+        // means the whole word is known-good (i.e. it's in that language's dictionary).
+        let checker = NSSpellChecker.shared
+        let available = Set(checker.availableLanguages)
+        for lang in ["en", "de"] where available.contains(where: { $0.hasPrefix(lang) }) {
+            let misspelling = checker.checkSpelling(of: w, startingAt: 0, language: lang,
+                                                     wrap: false, inSpellDocumentWithTag: 0, wordCount: nil)
+            if misspelling.location == NSNotFound { return true }
+        }
+        return false
+    }
+
+    /// Ordinary word, or a phrase whose every component is ordinary (EN/DE). Feeds
+    /// the harvest filter (multi-word candidates like "For me" that PhraseMiner
+    /// otherwise mines from ordinary prose) — a phrase with even one distinctive,
+    /// non-ordinary component (e.g. "context graph") still counts as jargon.
+    static func isOrdinaryPhraseOrWord(_ s: String) -> Bool {
+        let parts = s.split(separator: " ").map(String.init)
+        if parts.count <= 1 { return isOrdinaryDictionaryWord(s) }
+        return parts.allSatisfy { isOrdinaryDictionaryWord($0) }
     }
 
     /// Undo a just-learned correction: remove the matching learned rule. Only

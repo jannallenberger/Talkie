@@ -78,6 +78,39 @@ final class NicheVocabStore: ObservableObject {
         save()
     }
 
+    // MARK: One-time sanitation
+
+    /// One-time heal: remove auto-learned terms whose surface is an ordinary word
+    /// (EN/DE) and that the user never explicitly curated. Ordinary words are never
+    /// rare jargon — they only entered via a harvest/confirm bug — so removing them
+    /// fixes a poisoned store and every fresh install. NEVER removes a term the user
+    /// curated (in `protected`) or one confirmed repeatedly (userConfirmed >= 2), so
+    /// a real ordinary-looking jargon word the user kept re-confirming survives.
+    /// `isOrdinary` is injected (rather than calling `DictionaryStore` directly) so
+    /// this store stays free of a MainActor spellchecker dependency in tests; the
+    /// live call site passes `DictionaryStore.isOrdinaryPhraseOrWord`.
+    @discardableResult
+    func sanitizeOrdinaryWords(isOrdinary: (String) -> Bool, protected: Set<String>) -> [String] {
+        var removed: [String] = []
+        for (key, bucket) in terms {
+            var kept: [NicheTerm] = []
+            kept.reserveCapacity(bucket.count)
+            for term in bucket {
+                let isProtected = protected.contains(term.term.lowercased())
+                if !isProtected, term.userConfirmed < 2, isOrdinary(term.term) {
+                    removed.append(term.term)
+                } else {
+                    kept.append(term)
+                }
+            }
+            terms[key] = kept
+        }
+        guard !removed.isEmpty else { return removed }
+        save()
+        talkieDebugLog("NicheVocabStore.sanitizeOrdinaryWords: removed \(removed.count) poisoned term(s): \(removed.joined(separator: ", "))")
+        return removed
+    }
+
     // MARK: Purge (true delete — the provenance join key is `Provenance.sourceID`)
 
     /// Forget everything harvested from one deleted dictation — the true-delete
