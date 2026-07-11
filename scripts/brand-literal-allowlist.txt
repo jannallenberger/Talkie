@@ -65,7 +65,11 @@
 8 Sources/TalkieMCP/MCPServer.swift
 3 Sources/TalkieMCP/SemanticSelfTest.swift
 12 Sources/TalkieMCP/TalkieStore.swift
-2 Sources/TalkieUpdater/AppUpdater.swift
+# WP2: +2 for the frozen "TalkieGitSHA" / "TalkieGitBranch" Info.plist keys — load-
+# bearing identifiers that must byte-match what scripts/build_app.sh stamps into the
+# bundle (same tier as "TalkieUpdaterAutoCheck" below), never user-visible, must not
+# be routed through brandName (DISPLAY only; the stamp key is rebrand-frozen).
+4 Sources/TalkieUpdater/AppUpdater.swift
 1 Sources/TalkieUpdater/GitHubReleases.swift
 4 Sources/TalkieUpdater/UpdateInstaller.swift
 # J2: +1 for the frozen "TalkieUpdaterConsent" UserDefaults key — a load-bearing
