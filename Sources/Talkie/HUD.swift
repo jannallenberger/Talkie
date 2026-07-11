@@ -135,17 +135,19 @@ final class HUDModel: ObservableObject {
     /// How long the learned-correction ping stays up; the countdown ring depletes
     /// over exactly this window before the pill collapses.
     static let learnedDuration: TimeInterval = 5
-    /// Bumped on each learned ping so the countdown ring restarts its animation
-    /// from full even if two pings land back to back.
-    @Published var learnedTick: Int = 0
-    /// Bumped when the earned launch-at-login offer (H8) is shown, so its countdown
-    /// ring restarts from full. Separate from `learnedTick` so the two never fight
-    /// over the ring's animation identity.
-    @Published var launchOfferTick: Int = 0
-    /// Bumped when the keep-style chip (H3) is shown, so its countdown ring restarts
-    /// from full. Its own tick so it never fights the learned/launch rings over the
-    /// ring's animation identity.
-    @Published var keepStyleTick: Int = 0
+
+    /// True while the pointer is over the pill. Every auto-dismissing interactive pill
+    /// (learned ping, launch/keep/vibe offers, review + copy prompts) pauses its
+    /// countdown — and the coral ring's drain — while this is true, so a pill you're
+    /// reading or reaching for a chip on never vanishes out from under the pointer. Set
+    /// by the pill's `.onHover`; reset on every show and hide.
+    @Published var isHoveringPill: Bool = false
+    /// The active auto-dismiss countdown's remaining fraction (1 → 0), published by the
+    /// controller's single hover-pausable ticker. The coral `CountdownRing` and the
+    /// actual dismissal both read this one clock, so they can never desync — and
+    /// pausing the ticker on hover freezes the ring and the deadline together. Sits at
+    /// 1 whenever no ring countdown is running.
+    @Published var countdownProgress: Double = 1
 
     /// True while a hands-free-locked session (B4) is in its silence auto-stop
     /// countdown (B5). It does NOT change `phase` — the pill stays in `.listening` —
@@ -359,6 +361,7 @@ final class HUDController {
         cancelHide()
         resetLevels()
         model.handsFreeLocked = false   // fresh session starts un-locked
+        model.isHoveringPill = false    // nor a stale hover carried in from a prior pill
         model.silenceCountingDown = false   // and never inherits a stale auto-stop countdown
         model.latchArmedTick &+= 1      // (re)start the hold-to-lock progress fill from empty
         model.phase = .arming
@@ -469,7 +472,7 @@ final class HUDController {
         } else {
             announce(message)
         }
-        hide(after: 6)
+        autoDismiss(after: 6, drivesRing: false)
     }
 
     private func handleCopyTap() {
@@ -531,7 +534,6 @@ final class HUDController {
             onUndo()
         }
         Feedback.learned()                 // chime so the ping is noticed
-        model.learnedTick &+= 1            // restart the countdown ring
         panel.ignoresMouseEvents = false   // let the user tap Undo
         model.phase = .learned(message)
         reposition()
@@ -539,7 +541,7 @@ final class HUDController {
         // The ping auto-dismisses, so announce the learned term (and that Undo is
         // there) for a VoiceOver user who can't see the transient pill.
         announce(String(format: "%@ Activate Undo to remove it.".loc, message))
-        hide(after: HUDModel.learnedDuration)
+        autoDismiss(after: HUDModel.learnedDuration, drivesRing: true)
     }
 
     /// How long the Vibe Coding offer stays up. A touch longer than a learned ping
@@ -573,7 +575,7 @@ final class HUDController {
         // The offer auto-dismisses, so spell it out for a VoiceOver user who can't
         // see the transient pill.
         announce(String(format: "Talkie found the project %@. Activate Index to snap spoken filenames to its real files, or Not now to dismiss.".loc, repo))
-        hide(after: HUDController.vibeOfferDuration)
+        autoDismiss(after: HUDController.vibeOfferDuration, drivesRing: false)
     }
 
     /// How long the earned launch-at-login offer (H8) stays up. Matches the Vibe
@@ -599,7 +601,6 @@ final class HUDController {
             // and marks it resolved, so the timeout-driven resolve below is a no-op.
             onEnable()
         }
-        model.launchOfferTick &+= 1        // restart the countdown ring from full
         panel.ignoresMouseEvents = false   // let the user tap Enable
         model.phase = .launchOffer
         reposition()
@@ -609,31 +610,9 @@ final class HUDController {
         announce("Three days of dictation in a row. Activate Enable to start Talkie at login so your hotkey always works.".loc)
         // Resolve exactly once, whichever ends the offer first — the tap or this
         // timeout. `onResolve` is idempotent, so a tap that already resolved makes this
-        // a harmless no-op.
-        hideLaunchOffer(after: HUDController.launchOfferDuration, onResolve: onResolve)
-    }
-
-    /// Auto-hide for the launch offer that also fires `onResolve` when the timeout
-    /// elapses (unless the pill was already replaced by another state). Mirrors
-    /// `hide(after:)` but threads the once-ever resolve through, so an ignored offer is
-    /// still marked resolved and never shown again.
-    private func hideLaunchOffer(after delay: TimeInterval, onResolve: @escaping () -> Void) {
-        hideTask?.cancel()
-        hideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled else { return }
-            // Only resolve-by-timeout if the offer is still the thing on screen; if a
-            // superseding pill took over, THAT transition already resolved it (the hub
-            // resolves before showing anything that would preempt the offer).
-            if case .launchOffer = self.model.phase {
-                onResolve()
-                self.panel?.ignoresMouseEvents = true
-                self.model.handsFreeLocked = false
-                self.model.phase = .hidden
-                self.panel?.orderOut(nil)
-            }
-            self.hideTask = nil
-        }
+        // a harmless no-op. Runs only on a natural (not superseded) expiry; a
+        // superseding pill cancels the ticker, and the hub resolves before it shows one.
+        autoDismiss(after: HUDController.launchOfferDuration, drivesRing: true, onExpire: onResolve)
     }
 
     /// How long the post-insert keep-style chip (H3) stays up. Matches the learned
@@ -656,7 +635,6 @@ final class HUDController {
             self?.panel?.ignoresMouseEvents = true
             onKeep()
         }
-        model.keepStyleTick &+= 1          // restart the countdown ring from full
         panel.ignoresMouseEvents = false   // let the user tap Keep
         model.phase = .keepStyle(style: style, app: app)
         reposition()
@@ -664,7 +642,7 @@ final class HUDController {
         // The chip auto-dismisses and its panel may never take focus, so spell it out
         // for a VoiceOver user: which style, which app, and that Keep persists it.
         announce(String(format: "Keep the %@ cleanup style for %@? Activate Keep to make it this app's default.".loc, style, app))
-        hide(after: HUDController.keepStyleDuration)
+        autoDismiss(after: HUDController.keepStyleDuration, drivesRing: true)
     }
 
     /// How long the low-confidence review chip stays up before auto-dismissing.
@@ -694,7 +672,7 @@ final class HUDController {
         // for a VoiceOver user: which words were unsure and that Fix teaches them.
         let list = words.prefix(2).joined(separator: ", ")
         announce(String(format: "Not sure about %@. Activate Fix to correct the spelling for next time.".loc, list))
-        hide(after: HUDController.reviewDuration)
+        autoDismiss(after: HUDController.reviewDuration, drivesRing: false)
     }
 
     /// Brief "Reverted" confirmation after an Undo — mirrors `.copied`.
@@ -902,13 +880,62 @@ final class HUDController {
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
-            self.panel?.ignoresMouseEvents = true
-            self.model.handsFreeLocked = false   // never carry a lock glyph into the next session
-            self.model.silenceCountingDown = false   // nor a stale auto-stop countdown
-            self.model.phase = .hidden
-            self.panel?.orderOut(nil)
-            self.hideTask = nil
+            self.finishHide()
         }
+    }
+
+    /// Auto-dismiss the *current interactive* pill after `duration`, pausing the whole
+    /// time the pointer is over the pill so it never vanishes out from under a hover
+    /// that's reading it or reaching for a chip (the user's explicit ask). This is the
+    /// single clock behind both the dismissal and — when `drivesRing` is true — the
+    /// coral `CountdownRing`: it publishes `model.countdownProgress` (1 → 0) as it
+    /// drains, so the ring and the deadline share one source of truth and can't desync.
+    /// While `model.isHoveringPill` is true the elapsed clock simply doesn't advance,
+    /// which freezes both the ring and the deadline; moving off resumes exactly where it
+    /// paused. `onExpire` runs once on a *natural* completion (used by the launch offer
+    /// to mark itself resolved); a cancel — any superseding `showX`, which cancels
+    /// `hideTask` — skips it, preserving the old `hideLaunchOffer` semantics.
+    private func autoDismiss(after duration: TimeInterval,
+                             drivesRing: Bool,
+                             onExpire: (() -> Void)? = nil) {
+        hideTask?.cancel()
+        model.isHoveringPill = false
+        model.countdownProgress = drivesRing ? 1 : model.countdownProgress
+        hideTask = Task { @MainActor in
+            var elapsed: TimeInterval = 0
+            var last = Date()
+            // ~33 fps: fine enough for a smooth ring drain, light enough that a 5–8 s
+            // window is a few hundred ticks, not thousands.
+            while elapsed < duration {
+                try? await Task.sleep(for: .milliseconds(33))
+                if Task.isCancelled { return }
+                let now = Date()
+                let dt = now.timeIntervalSince(last)
+                last = now
+                // Paused while hovering: advance neither the clock nor the ring, but keep
+                // `last` current so the pause doesn't count as elapsed once it resumes.
+                if self.model.isHoveringPill { continue }
+                elapsed += dt
+                if drivesRing {
+                    self.model.countdownProgress = max(0, 1 - elapsed / duration)
+                }
+            }
+            onExpire?()
+            self.finishHide()
+        }
+    }
+
+    /// Tear the pill down and clear every transient flag so nothing bleeds into the
+    /// next session. Shared by `hide(after:)` and the hover-pausable `autoDismiss`.
+    private func finishHide() {
+        panel?.ignoresMouseEvents = true
+        model.handsFreeLocked = false     // never carry a lock glyph into the next session
+        model.silenceCountingDown = false // nor a stale auto-stop countdown
+        model.isHoveringPill = false      // nor a stale hover (which would freeze the next timer)
+        model.countdownProgress = 1
+        model.phase = .hidden
+        panel?.orderOut(nil)
+        hideTask = nil
     }
 }
 
@@ -1129,24 +1156,17 @@ private struct HUDView: View {
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) { lockPop = false }
                 }
             }
-            // Learned-correction ping: a coral ring that traces the pill and
-            // visibly drains over the dismiss window — a wordless countdown. Keyed
-            // by `learnedTick` so it restarts from full on each new ping.
+            // Learned/launch/keep pings all drain the SAME coral ring — a wordless
+            // "this dismisses itself" that traces the pill. It reads `countdownProgress`
+            // straight from the controller's hover-pausable ticker, so the ring and the
+            // real deadline share one clock: hovering freezes both together (the ask),
+            // and there's no per-phase `.id()` restart to keep in sync anymore.
             .overlay {
-                if case .learned = model.phase {
-                    CountdownRing(duration: HUDModel.learnedDuration)
-                        .id(model.learnedTick)
-                } else if case .launchOffer = model.phase {
-                    // H8: the earned launch-at-login offer drains the same coral ring
-                    // over its (longer) window — a wordless "this dismisses itself".
-                    CountdownRing(duration: HUDController.launchOfferDuration)
-                        .id(model.launchOfferTick)
-                } else if case .keepStyle = model.phase {
-                    // H3: the post-insert keep-style chip drains the same coral ring
-                    // over its window — a wordless "ignore this and the change is
-                    // dropped". Keyed by `keepStyleTick` so it restarts from full.
-                    CountdownRing(duration: HUDController.keepStyleDuration)
-                        .id(model.keepStyleTick)
+                switch model.phase {
+                case .learned, .launchOffer, .keepStyle:
+                    CountdownRing(progress: model.countdownProgress)
+                default:
+                    EmptyView()
                 }
                 // The silence auto-stop no longer draws a draining ring — the "closing
                 // in" countdown read as stressful. A quiet latched session instead shows
@@ -1176,6 +1196,14 @@ private struct HUDView: View {
             )
             .onTapGesture {
                 if case .copyPrompt = model.phase { model.onCopyTap() }
+            }
+            // Hovering the pill pauses every auto-dismiss countdown (and freezes the
+            // coral ring) via the controller's ticker — so a pill you're reading, or
+            // reaching across to tap a chip on, never disappears mid-reach. Moving off
+            // resumes it exactly where it paused. Only the interactive phases run a
+            // ticker, so for the capture/brief states this is a harmless no-op.
+            .onHover { hovering in
+                model.isHoveringPill = hovering
             }
     }
 
@@ -1683,36 +1711,47 @@ private struct LatchProgressFill: View {
     }
 }
 
-/// A coral capsule outline that traces the learned-correction pill and visibly
-/// drains away over `duration` — a wordless timer for how long the ping stays
-/// before it auto-collapses. A faint static track sits underneath so the
-/// depleting arc reads as a countdown, and a soft coral glow makes it a "ring of
-/// light" rather than a hard stroke. Created fresh per ping (keyed by
-/// `learnedTick`), so `onAppear` restarts the drain from full every time.
+/// A coral outline that traces the pill and drains as `progress` falls 1 → 0 — a
+/// wordless timer for how long an auto-dismissing ping stays. `progress` is fed by
+/// the controller's single hover-pausable ticker (`autoDismiss`), so the ring can't
+/// desync from the real deadline and it freezes the instant the pointer is over the
+/// pill. A faint static track underneath makes the depleting arc read as a countdown;
+/// a soft coral glow makes it a "ring of light" rather than a hard stroke. The whole
+/// ring is inset by half its line width so the 2 pt stroke sits fully *inside* the
+/// pill's hairline — a crisp, symmetric outline instead of one that spills past the
+/// edge. A short linear tween smooths the ~33 fps steps between ticks.
 private struct CountdownRing: View {
-    let duration: TimeInterval
-    @State private var depleted = false
+    /// Remaining fraction, 1 (full) → 0 (dismissing). Driven by `model.countdownProgress`.
+    let progress: Double
+
+    private let lineWidth: CGFloat = 2
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: hudPillRadius, style: .continuous)
-                .stroke(.white.opacity(0.08), lineWidth: 2)
-            RoundedRectangle(cornerRadius: hudPillRadius, style: .continuous)
-                .trim(from: 0, to: depleted ? 0 : 1)
-                .stroke(Theme.coral, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            RoundedRectangle(cornerRadius: hudPillRadius - lineWidth, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: lineWidth)
+            RoundedRectangle(cornerRadius: hudPillRadius - lineWidth, style: .continuous)
+                .trim(from: 0, to: max(0, min(1, progress)))
+                .stroke(Theme.coral, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .shadow(color: Theme.coral.opacity(0.6), radius: 4)
         }
-        .animation(.linear(duration: duration), value: depleted)
-        .onAppear { depleted = true }
+        .padding(lineWidth / 2)
+        .animation(.linear(duration: 0.05), value: progress)
+        .allowsHitTesting(false)
     }
 }
 
-/// A tappable capsule chip used in the command-preview pill (Insert / Undo).
-/// Reuses the `.inserting` chip treatment — a `.white.opacity(0.13)` capsule — so
-/// it sits in the same visual family as the replaced-word chips. The primary
-/// action carries a coral tint to read as the affirmative choice. `fill`/`ink` come
-/// from the parent's accessibility-aware helpers so the chip honors Increase
-/// Contrast / Reduce Transparency; `hint` is the VoiceOver hint for the action.
+/// A tappable capsule chip used across the interactive pills (Insert / Undo / Fix /
+/// Keep / Enable / Index / Not now). Reuses the `.inserting` chip treatment — a
+/// `.white.opacity(0.13)` capsule — so it sits in the same visual family as the
+/// replaced-word chips. The primary action carries a coral tint to read as the
+/// affirmative choice. `fill`/`ink` come from the parent's accessibility-aware helpers
+/// so the chip honors Increase Contrast / Reduce Transparency; `hint` is the VoiceOver
+/// hint. It's a real `Button` (so VoiceOver gets the button trait + activation for
+/// free) styled by `PressableChipStyle`, which makes a press unmistakable — the chip
+/// dips in scale, deepens with a coral wash, and fires a light haptic the instant the
+/// pointer goes down, so the tap is seen and felt before the action's own confirmation
+/// even lands.
 private struct CommandChip: View {
     let title: LocalizedStringKey
     let prominent: Bool
@@ -1720,32 +1759,71 @@ private struct CommandChip: View {
     let ink: Color
     let hint: String
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
-        Text(title)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(prominent ? Theme.coral : ink)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 3)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(fill)
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(Theme.coral.opacity(prominent ? 0.5 : 0), lineWidth: 1)
-            )
-            .opacity(hovering ? 0.85 : 1)
-            .contentShape(Capsule(style: .continuous))
-            .onTapGesture(perform: action)
-            .onHover { hovering = $0 }
-            // A real, activatable control for VoiceOver: the title is the label, the
-            // caller-supplied `hint` explains the outcome, and the button trait tells
-            // the user it can be activated.
+        Button(action: action) { Text(title) }
+            .buttonStyle(PressableChipStyle(prominent: prominent, fill: fill, ink: ink))
             .accessibilityLabel(Text(title))
             .accessibilityHint(hint)
-            .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// The shared press response for every in-pill chip. A press dips the scale, lays a
+/// coral wash over the fill (and firms the prominent chip's border), and fires one
+/// light haptic on the *down* edge — so the tap registers visibly and physically the
+/// moment it lands, not only via whatever confirmation the action produces after.
+/// Hover lifts the chip a hair. Rendered through a nested view so its hover `@State`
+/// is actually tracked (a bare `ButtonStyle` can't hold view state).
+private struct PressableChipStyle: ButtonStyle {
+    let prominent: Bool
+    let fill: Color
+    let ink: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        ChipBody(configuration: configuration, prominent: prominent, fill: fill, ink: ink)
+    }
+
+    private struct ChipBody: View {
+        let configuration: ButtonStyleConfiguration
+        let prominent: Bool
+        let fill: Color
+        let ink: Color
+        @State private var hovering = false
+
+        var body: some View {
+            let pressed = configuration.isPressed
+            configuration.label
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(prominent ? Theme.coral : ink)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(fill)
+                        // The press deepens the chip with a coral wash so the tap is
+                        // visible immediately — heavier under the prominent (affirmative)
+                        // chip so "Insert"/"Keep"/"Fix" read as the committed choice.
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .fill(Theme.coral.opacity(pressed ? (prominent ? 0.30 : 0.16) : 0))
+                        )
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(
+                            Theme.coral.opacity(prominent ? (pressed ? 0.95 : 0.5) : (pressed ? 0.4 : 0)),
+                            lineWidth: 1
+                        )
+                )
+                .scaleEffect(pressed ? 0.92 : (hovering ? 1.03 : 1))
+                .contentShape(Capsule(style: .continuous))
+                .onHover { hovering = $0 }
+                .animation(.spring(response: 0.22, dampingFraction: 0.6), value: pressed)
+                .animation(.easeOut(duration: 0.12), value: hovering)
+                .onChange(of: pressed) { _, nowPressed in
+                    if nowPressed { Feedback.haptic(.alignment) }
+                }
+        }
     }
 }
 
@@ -1795,25 +1873,31 @@ private struct CleanupSwitcher: View {
         // `cleanupNudge` is read so the label re-resolves after each cycle.
         let _ = model.cleanupNudge
         if let label = model.cleanupLabel() {
-            HStack(spacing: 4) {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(ink.opacity(0.7))
-                    .accessibilityHidden(true)
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(ink)
-                    .lineLimit(1)
+            // A real Button so the tap gets the same press response as the other chips
+            // (a scale dip via `PressableStyle`); the cycle already fires its own haptic
+            // in `cycleCleanup`, so the style suppresses a second one here.
+            Button { model.cycleCleanup() } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(ink.opacity(0.7))
+                        .accessibilityHidden(true)
+                    Text(label)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(ink)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(hovering ? chipFill.opacity(0.9) : chipFill)
+                )
+                .contentShape(Capsule(style: .continuous))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(hovering ? chipFill.opacity(0.9) : chipFill)
-            )
-            .contentShape(Capsule(style: .continuous))
-            .onTapGesture { model.cycleCleanup() }
+            .buttonStyle(PressableStyle(haptics: false))
             .onHover { hovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: hovering)
             .help("Cleanup style — tap to change how Talkie polishes this dictation")
             .transition(.blurReplace)
             // A labeled, activatable control for VoiceOver: state the current style
@@ -1822,6 +1906,34 @@ private struct CleanupSwitcher: View {
             .accessibilityLabel(String(format: "Cleanup style: %@.".loc, label))
             .accessibilityHint("Double-tap to cycle to the next cleanup style.".loc)
             .accessibilityAddTraits(.isButton)
+        }
+    }
+}
+
+/// A chrome-free press response for buttons that already carry their own background
+/// (the cleanup switcher). It only dips the scale and dims slightly on press — and,
+/// unless `haptics` is off, fires one light haptic on the down edge — leaving the
+/// button's label to draw its own fill. Rendered through a nested view so any future
+/// `@State` here is tracked (a bare `ButtonStyle` can't hold view state).
+private struct PressableStyle: ButtonStyle {
+    var haptics: Bool = true
+
+    func makeBody(configuration: Configuration) -> some View {
+        PressBody(configuration: configuration, haptics: haptics)
+    }
+
+    private struct PressBody: View {
+        let configuration: ButtonStyleConfiguration
+        let haptics: Bool
+
+        var body: some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 0.9 : 1)
+                .opacity(configuration.isPressed ? 0.85 : 1)
+                .animation(.spring(response: 0.22, dampingFraction: 0.6), value: configuration.isPressed)
+                .onChange(of: configuration.isPressed) { _, nowPressed in
+                    if nowPressed && haptics { Feedback.haptic(.alignment) }
+                }
         }
     }
 }
