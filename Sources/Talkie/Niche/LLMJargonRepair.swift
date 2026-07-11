@@ -85,16 +85,18 @@ struct LLMJargonRepair: Sendable {
         // (1) Refusal guard — the model declined and returned boilerplate.
         if CleanupEngine.isRefusal(candidate) { return input }
 
-        // (2) Language guard — a repair must never translate. Only enforced when both
-        // sides are long enough to language-ID reliably (short strings score as nil).
-        if LanguageDetector.canScore(input), LanguageDetector.canScore(candidate),
-           let inCode = LanguageDetector.dominantLanguageCode(input),
-           let outCode = LanguageDetector.dominantLanguageCode(candidate),
-           inCode != outCode {
-            return input
-        }
-
-        // (3) Diff guard — the kill-switch.
+        // (2) Diff guard — the kill-switch, and the only structural gate needed.
+        //
+        // There used to be a language guard here that rejected any candidate whose
+        // dominant language differed from the input's, to stop the model translating.
+        // It's removed for two reasons. It was NON-DETERMINISTIC: it relied on open-set
+        // `NLLanguageRecognizer`, which scores short strings differently across
+        // environments — on CI it read "open the cloud MD file" and "open the
+        // Claude.md file" as different languages and dropped a valid fix, though both
+        // score as English on a normal Mac. And it was REDUNDANT: a real translation
+        // rewrites the words *around* any known term, so its multi-token, non-known-term
+        // hunks already fail the diff guard below. `testLanguageFlipFallsBack` pins this
+        // — an English→German rewrite is still rejected with the language guard gone.
         return diffGuardAccepts(input: input, candidate: candidate, terms: knownTerms) ? candidate : input
     }
 

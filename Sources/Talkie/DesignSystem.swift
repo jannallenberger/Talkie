@@ -235,7 +235,13 @@ enum Brand {
     /// protocol id `"talkie"`, the support/meetings directories, the `.talkiepack`
     /// UTType, the keychain service, the repo slug — is deliberately FROZEN and must
     /// never be derived from this value. See the FREEZE list in `docs/REBRAND.md`.
-    @MainActor static var displayName: String {
+    ///
+    /// `nonisolated`: this only reads `Bundle.main` (thread-safe), so it never needed
+    /// the main actor. Making that explicit lets nonisolated contexts route brand text
+    /// through it — notably `LocalizedError.errorDescription`, which the protocol
+    /// declares nonisolated (so a `@MainActor`-only `displayName` could not be used to
+    /// build a localized error message, the compile error that blocked that path).
+    nonisolated static var displayName: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty ? nil : $0 }

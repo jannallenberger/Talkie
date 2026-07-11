@@ -833,8 +833,8 @@
 "Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again." = "La dictée n'est pas encore disponible sur ce Mac. Vérifiez que macOS est à jour, puis réessayez.";
 "Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again." = "La dictée n'est pas encore disponible dans votre langue sur ce Mac. Choisissez une autre langue dans Réglages → Langues, puis réessayez.";
 "Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)" = "Impossible de récupérer le modèle vocal — macOS le télécharge une seule fois. Vérifiez votre connexion internet et l'espace disque disponible, puis réessayez. (%@)";
-"Talkie couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "Talkie n'a pas pu récupérer l'audio de ce micro. Choisissez un autre micro dans Réglages → Périphérique d'entrée, puis réessayez.";
-"Talkie couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "Talkie n'a trouvé aucun micro. Vérifiez votre périphérique d'entrée dans Réglages Système → Son, puis réessayez.";
+"%@ couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "%@ n'a pas pu récupérer l'audio de ce micro. Choisissez un autre micro dans Réglages → Périphérique d'entrée, puis réessayez.";
+"%@ couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "%@ n'a trouvé aucun micro. Vérifiez votre périphérique d'entrée dans Réglages Système → Son, puis réessayez.";
 
 /* copy-humanize-9 — CleanupEngine on-device availability messages */
 "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "Activez Apple Intelligence (Réglages Système → Apple Intelligence et Siri) pour activer le nettoyage.";

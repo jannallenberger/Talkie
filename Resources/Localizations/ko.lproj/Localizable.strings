@@ -833,8 +833,8 @@
 "Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again." = "이 Mac에서는 아직 받아쓰기를 사용할 수 없습니다. macOS를 최신 버전으로 업데이트한 후 다시 시도하세요.";
 "Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again." = "이 Mac에서는 사용 언어로 받아쓰기를 아직 사용할 수 없습니다. 설정 → 언어에서 다른 언어를 선택한 후 다시 시도하세요.";
 "Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)" = "음성 모델을 가져오지 못했습니다 — macOS가 한 번만 다운로드합니다. 인터넷 연결과 여유 디스크 공간을 확인한 후 다시 시도하세요. (%@)";
-"Talkie couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "Talkie가 해당 마이크에서 오디오를 가져오지 못했습니다. 설정 → 입력 장치에서 다른 마이크를 선택한 후 다시 시도하세요.";
-"Talkie couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "Talkie가 마이크를 찾지 못했습니다. 시스템 설정 → 사운드에서 입력 장치를 확인한 후 다시 시도하세요.";
+"%@ couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "%@가 해당 마이크에서 오디오를 가져오지 못했습니다. 설정 → 입력 장치에서 다른 마이크를 선택한 후 다시 시도하세요.";
+"%@ couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "%@가 마이크를 찾지 못했습니다. 시스템 설정 → 사운드에서 입력 장치를 확인한 후 다시 시도하세요.";
 
 /* copy-humanize-9 — CleanupEngine on-device availability messages */
 "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "정리 기능을 사용하려면 Apple Intelligence를 켜세요 (시스템 설정 → Apple Intelligence 및 Siri).";
