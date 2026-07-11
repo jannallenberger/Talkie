@@ -154,8 +154,11 @@ final class LLMJargonRepairTests: XCTestCase {
         XCTAssertEqual(out, input)
     }
 
-    /// A rewrite that flips the dominant language is discarded — a repair must never
-    /// translate. (Both sides are long enough to language-ID.)
+    /// A rewrite that translates the text is discarded — a repair must never translate.
+    /// This is now enforced by the DIFF guard alone (the former, environment-sensitive
+    /// language guard was removed): translating rewrites the words around any known
+    /// term, so the many multi-token, non-known-term hunks fail the known-term
+    /// substitution check. No language-ID involved, so it holds identically on CI.
     func testLanguageFlipFallsBack() {
         let input = "please open the configuration file and read the settings there"
         let llm = "bitte öffne die Konfigurationsdatei und lies die Einstellungen dort"
