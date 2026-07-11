@@ -207,19 +207,29 @@ final class LLMJargonRepairTests: XCTestCase {
         func generate(instructions: String, input: String) async -> String? { output }
     }
 
-    /// `repair` accepts a good known-term fix from the (fake) model.
-    func testRepairAcceptsGoodFix() async {
-        // NB: guarding, not the live-availability check, is what we test here — the
-        // fake reports available, so the pass runs deterministically.
-        let repair = LLMJargonRepair(model: FakeModel(output: "open the Claude.md file"))
-        let out = await repair.repair("open the cloud MD file", knownTerms: ["Claude.md"])
+    /// The guard ACCEPTS a good known-term fix. Tested through `guardedResult` — the
+    /// pure static kill-switch — NOT `repair()`: `repair` first gates on the live
+    /// on-device model (`Self.isAvailable` → `OnDeviceLLM.isAvailable`), so on any
+    /// machine without the model (e.g. a CI runner) it returns the input untouched
+    /// before the guard runs — which is not what this test is about, and is exactly
+    /// what made the old `repair()`-based version fail on CI. `guardedResult` takes the
+    /// model's output as a plain argument, so the guard is deterministic and needs no
+    /// model (as the type doc promises).
+    func testRepairAcceptsGoodFix() {
+        let out = LLMJargonRepair.guardedResult(
+            input: "open the cloud MD file",
+            llmOutput: "open the Claude.md file",
+            knownTerms: ["Claude.md"])
         XCTAssertEqual(out, "open the Claude.md file")
     }
 
-    /// `repair` rejects an over-edit from the (fake) model and returns the input.
-    func testRepairRejectsOverEdit() async {
-        let repair = LLMJargonRepair(model: FakeModel(output: "open the Claude.md document"))
-        let out = await repair.repair("open the cloud MD file", knownTerms: ["Claude.md"])
+    /// The guard REJECTS an over-edit ('file' → 'document' is not a known-term change)
+    /// and returns the input. Tested via `guardedResult` directly (see above).
+    func testRepairRejectsOverEdit() {
+        let out = LLMJargonRepair.guardedResult(
+            input: "open the cloud MD file",
+            llmOutput: "open the Claude.md document",
+            knownTerms: ["Claude.md"])
         XCTAssertEqual(out, "open the cloud MD file", "'file'→'document' is a non-term edit → fall back")
     }
 
