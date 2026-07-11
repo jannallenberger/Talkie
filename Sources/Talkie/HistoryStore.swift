@@ -225,8 +225,7 @@ final class HistoryStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([DictationEntry].self, from: data) else { return }
+        guard let decoded = StoreLoad.loadJSONWithQuarantine([DictationEntry].self, from: fileURL) else { return }
         entries = decoded
         prune()
         save() // persist the pruned set so the file doesn't grow unbounded

@@ -406,6 +406,34 @@ actor MeetingSummarizer {
     }
 }
 
+/// Serializes the encode+write off the main actor so mutating a meeting (adding
+/// one, editing a transcript, renaming, deleting) never blocks the UI encoding
+/// the full retained index — up to `MeetingStore.maxRetainedMeetings` meetings
+/// with full transcripts and timed segments inlined, which can run 10-30 MB.
+/// Each `write` carries a monotonic `generation`; a write whose generation is
+/// already stale (a newer snapshot arrived first) is dropped, so a burst of
+/// saves collapses to the last state and writes can't reorder. The `[Meeting]`
+/// snapshot is a value type (Sendable — every stored field is a Sendable value
+/// type, so `Meeting` gets implicit `Sendable` conformance same as
+/// `DictationEntry`), so handing it across the actor boundary copies, never
+/// shares. Mirrors `HistoryFileWriter` exactly, except it does NOT add
+/// `.sortedKeys` to the encoder — that would change the on-disk byte layout of
+/// `meetings.json`, and the fix here is scoped to moving the existing encode
+/// off the main actor, not to changing its output.
+actor MeetingIndexWriter {
+    private let fileURL: URL
+    private var latestWritten = 0
+
+    init(fileURL: URL) { self.fileURL = fileURL }
+
+    func write(_ meetings: [Meeting], generation: Int) {
+        guard generation > latestWritten else { return }
+        latestWritten = generation
+        guard let data = try? JSONEncoder().encode(meetings) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+    }
+}
+
 /// Persisted list of meetings + their markdown files in ~/Talkie Meetings/.
 @MainActor
 final class MeetingStore: ObservableObject {
@@ -424,10 +452,22 @@ final class MeetingStore: ObservableObject {
     private let indexURL: URL
     private let meetingsDirectoryURL: URL
 
+    /// Off-main JSON encode + atomic write. Callers are unchanged: `save()` still
+    /// looks synchronous to them, but it only schedules — the cost moves here.
+    private let writer: MeetingIndexWriter
+    /// Debounce so a burst of mutations (e.g. the retention-cap sweep during a
+    /// bulk import) coalesces into one disk write.
+    private let saveDebounce: Duration = .milliseconds(250)
+    private var pendingSave: Task<Void, Never>?
+    /// Monotonic save token; the writer drops any write older than the newest.
+    private var saveGeneration = 0
+
     init(supportDirectory: URL = AppPaths.supportDirectory(),
          meetingsDirectory: URL = AppPaths.meetingsDirectory()) {
-        indexURL = supportDirectory.appendingPathComponent("meetings.json")
+        let url = supportDirectory.appendingPathComponent("meetings.json")
+        indexURL = url
         meetingsDirectoryURL = meetingsDirectory
+        writer = MeetingIndexWriter(fileURL: url)
         load()
     }
 
@@ -671,8 +711,36 @@ final class MeetingStore: ObservableObject {
             .replacingOccurrences(of: "\\\\", with: "\\")
     }
 
+    /// Schedule a coalesced, off-main persist. Synchronous to callers — it only
+    /// snapshots the current meetings and debounces; the JSON encode + atomic write
+    /// run on `MeetingIndexWriter`, never on the main actor. Mirrors
+    /// `HistoryStore.save()`.
     private func save() {
-        guard let data = try? JSONEncoder().encode(meetings) else { return }
-        try? data.write(to: indexURL, options: .atomic)
+        saveGeneration += 1
+        let generation = saveGeneration
+        let snapshot = meetings          // value-type copy — Sendable across the hop
+        let writer = self.writer
+        let delay = saveDebounce
+        pendingSave?.cancel()
+        pendingSave = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await writer.write(snapshot, generation: generation)
+            // Only clear the handle if a newer save hasn't already replaced it.
+            if let self, self.saveGeneration == generation { self.pendingSave = nil }
+        }
+    }
+
+    /// Force any pending debounced save to complete now (app teardown / tests that
+    /// need the on-disk file to reflect the latest mutation without waiting out the
+    /// debounce). Writes the latest snapshot synchronously-from-the-caller's-await;
+    /// the encode + disk write still happen off the main actor on the writer.
+    /// Mirrors `HistoryStore.flush()`. Not yet wired to app teardown — nothing
+    /// currently calls it, same as `HistoryStore.flush()` before this change.
+    func flush() async {
+        pendingSave?.cancel()
+        pendingSave = nil
+        saveGeneration += 1
+        await writer.write(meetings, generation: saveGeneration)
     }
 }

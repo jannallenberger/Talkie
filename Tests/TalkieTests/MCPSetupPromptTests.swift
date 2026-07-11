@@ -5,15 +5,18 @@ import XCTest
 ///
 /// The prompt BODY is machine-directed English the user pastes into a fresh Claude
 /// conversation; Claude then wires the `talkie` MCP up itself, learns the tools, and
-/// verifies with `search`. Read as one author with L16 (JargonInstallPrompt), these
+/// verifies the hookup. Read as one author with L16 (JargonInstallPrompt), these
 /// tests pin the contract that keeps it correct and honest:
-///   • it embeds the exact `claude mcp add talkie -- "<path>"` line with the resolved
-///     binary path (so the hookup Claude runs is the right one),
+///   • it embeds the exact idempotent connect command — drop any user-scope `talkie`,
+///     then add at user scope — with the resolved binary path (so a returning user's
+///     stale registration is replaced, not left in place by an "already exists" error),
+///   • it tells Claude to check `claude mcp list` for an old copy first,
 ///   • it carries the `.mcp.json` fallback block for a Claude that can't run commands,
 ///   • it names every real MCP tool verbatim (so Claude calls tools that exist),
 ///   • it frames the WRITES honestly — queued, confirmed in Talkie with an Undo, not
 ///     applied until the user confirms — and never claims silent/automatic correction,
-///   • it tells Claude to verify by calling `search` once, and
+///   • it tells Claude to verify it's on the current build (get_dictionary present)
+///     and then call `search` once, and
 ///   • it contains no `http(s)://` literal (scripts/check-no-network.sh greps Sources
 ///     for the scheme even inside comments/strings).
 final class MCPSetupPromptTests: XCTestCase {
@@ -23,16 +26,42 @@ final class MCPSetupPromptTests: XCTestCase {
     private let path = "/Applications/Talkie.app/Contents/MacOS/talkie-mcp"
     private var prompt: String { MCPSetupPrompt.setupPrompt(binaryPath: path) }
 
-    /// The whole point of L9: the prompt must contain the exact add command, built with
-    /// the resolved path, so the connection Claude performs targets the right binary.
+    /// The whole point of L9: the prompt must contain the exact connect command, built
+    /// with the resolved path, so the connection Claude performs targets the right
+    /// binary. It's an idempotent replace at user scope, not a bare add — that's what
+    /// makes it survive a returning user's already-registered (stale) `talkie`.
     func testContainsTheResolvedAddCommand() {
-        let expected = "claude mcp add talkie -- \"\(path)\""
+        let expected = "claude mcp remove talkie -s user 2>/dev/null; claude mcp add talkie -s user -- \"\(path)\""
         XCTAssertTrue(prompt.contains(expected),
-                      "prompt must embed the exact resolved `claude mcp add` command")
+                      "prompt must embed the exact resolved connect command")
         XCTAssertEqual(MCPSetupPrompt.addCommand(binaryPath: path), expected,
                        "addCommand must match the card's claudeAddCommand shape")
         // And the resolved path itself must appear (belt-and-braces on the injection).
         XCTAssertTrue(prompt.contains(path), "prompt must contain the resolved binary path")
+    }
+
+    /// The stale-registration fix: the command replaces any existing user-scope
+    /// `talkie` (rather than erroring "already exists" and leaving the old one), pins
+    /// user scope so it resolves from every directory, and the prose tells Claude to
+    /// look for an old copy with `claude mcp list` first.
+    func testReplacesAnyExistingRegistrationAtUserScope() {
+        XCTAssertTrue(prompt.contains("claude mcp remove talkie -s user"),
+                      "connect command must drop any existing user-scope talkie first")
+        XCTAssertTrue(prompt.contains("claude mcp add talkie -s user"),
+                      "connect command must add at user scope (resolves from any dir)")
+        XCTAssertTrue(prompt.contains("claude mcp list"),
+                      "prompt must tell Claude to check for an old copy first")
+    }
+
+    /// Version-aware verify: the prompt has Claude confirm it's on the current build by
+    /// checking `get_dictionary` is present, and fall back to "update Talkie.app" when
+    /// it isn't — the exact stale-binary symptom this whole change exists to prevent.
+    func testVerifiesCurrentBuildViaGetDictionary() {
+        XCTAssertTrue(prompt.contains("get_dictionary"),
+                      "prompt must have Claude confirm get_dictionary is present")
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("update Talkie.app")
+                        || prompt.localizedCaseInsensitiveContains("old build"),
+                      "prompt must tell the user to update when on an old build")
     }
 
     /// The can't-run-commands fallback: the `.mcp.json` block with the same shape the

@@ -61,19 +61,34 @@ enum StreamLanguageVoter {
         let frameCount = max(1, Int(((t1 - t0) / frame).rounded(.up)))
 
         // 1. Raw winner per frame: the locale of the highest-confidence word
-        //    covering the frame's midpoint.
+        //    covering the frame's midpoint. Computed via a time-ordered interval
+        //    sweep rather than scanning every word for every frame: `valid` is
+        //    sorted by start once, then as `mid` advances monotonically across
+        //    frames, a cursor admits words whose start has been reached into a
+        //    max-heap keyed by (confidence desc, original-index asc — the same
+        //    tie-break the old linear scan's strict `>` gave: the first
+        //    highest-confidence word in input order wins), while a lazy-deletion
+        //    pass evicts words whose end has already passed. A heap's root is
+        //    always the true max of whatever it currently holds, and only
+        //    permanently-stale entries (their end can't un-pass) are ever
+        //    discarded, so the root after eviction is exactly the highest-
+        //    confidence word still covering `mid` — identical to the old scan's
+        //    winner, but in O((frames + words) log words) instead of O(frames ×
+        //    words).
+        let byStart = valid.enumerated().sorted { $0.element.start < $1.element.start }
         var raw = [String?](repeating: nil, count: frameCount)
+        var admitCursor = 0
+        var active = WordHeap()
         for i in 0..<frameCount {
             let mid = t0 + (Double(i) + 0.5) * frame
-            var bestConf = -1.0
-            var bestLocale: String?
-            for w in valid where w.start <= mid && w.end >= mid {
-                if w.confidence > bestConf {
-                    bestConf = w.confidence
-                    bestLocale = w.localeID
-                }
+            while admitCursor < byStart.count, byStart[admitCursor].element.start <= mid {
+                active.push(index: byStart[admitCursor].offset, word: byStart[admitCursor].element)
+                admitCursor += 1
             }
-            raw[i] = bestLocale
+            while let top = active.top, top.end < mid {
+                active.pop()
+            }
+            raw[i] = active.top?.localeID
         }
 
         // 2. Smooth: each frame's winner becomes the majority within ±window.
@@ -126,6 +141,54 @@ enum StreamLanguageVoter {
     }
 
     // MARK: - helpers
+
+    /// Array-based max-heap of (original index, word) pairs, ordered by confidence
+    /// (descending) and tie-broken by the smaller original index — matching the
+    /// strict `>` compare the previous linear-scan `mergeWords` used (first
+    /// highest-confidence word in the caller's order wins a tie). Used by
+    /// `mergeWords`'s frame sweep for two operations: push a newly-admitted word,
+    /// and drop the top once it's no longer active. That second operation is lazy
+    /// deletion — a heap's root is always the true maximum of whatever it still
+    /// holds, so repeatedly popping a stale (expired) root before reading `top`
+    /// leaves exactly the maximum among the still-active entries.
+    private struct WordHeap {
+        private var items: [(index: Int, word: TimedWord)] = []
+
+        var top: TimedWord? { items.first?.word }
+
+        private func higherPriority(_ a: (index: Int, word: TimedWord), _ b: (index: Int, word: TimedWord)) -> Bool {
+            if a.word.confidence != b.word.confidence { return a.word.confidence > b.word.confidence }
+            return a.index < b.index
+        }
+
+        mutating func push(index: Int, word: TimedWord) {
+            items.append((index, word))
+            var i = items.count - 1
+            while i > 0 {
+                let parent = (i - 1) / 2
+                guard higherPriority(items[i], items[parent]) else { break }
+                items.swapAt(i, parent)
+                i = parent
+            }
+        }
+
+        /// Drop the current top (used only when it's been found stale/expired).
+        mutating func pop() {
+            guard !items.isEmpty else { return }
+            items[0] = items[items.count - 1]
+            items.removeLast()
+            var i = 0
+            while true {
+                let l = 2 * i + 1, r = 2 * i + 2
+                var largest = i
+                if l < items.count, higherPriority(items[l], items[largest]) { largest = l }
+                if r < items.count, higherPriority(items[r], items[largest]) { largest = r }
+                guard largest != i else { break }
+                items.swapAt(i, largest)
+                i = largest
+            }
+        }
+    }
 
     private static func code(_ id: String) -> String {
         Locale(identifier: id).language.languageCode?.identifier ?? id

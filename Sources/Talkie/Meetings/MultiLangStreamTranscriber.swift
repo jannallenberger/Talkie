@@ -39,6 +39,10 @@ actor MultiLangStreamTranscriber {
         var results: Task<[StreamLanguageVoter.TimedWord], Never>
         var offset: Double
         var collected: [StreamLanguageVoter.TimedWord] = []
+        /// One converter per lane, reused across every fed buffer for the lane's
+        /// whole lifetime (including across `rotate()`, since the target format
+        /// never changes) — avoids rebuilding an `AVAudioConverter` per buffer.
+        let converter = TranscriptionEngine.ConformingConverter()
 
         init(localeID: String, locale: Locale, format: AVAudioFormat,
              contextualStrings: [String], liveCb: (@Sendable (String) -> Void)?,
@@ -310,7 +314,10 @@ actor MultiLangStreamTranscriber {
     private func fanout(_ input: AnalyzerInput) {
         audioSecondsFed += Double(input.buffer.frameLength) / referenceSampleRate
         for lane in lanes {
-            for buf in TranscriptionEngine.conform([input.buffer], to: lane.format) {
+            // Each lane's converter is cached (source/target formats are fixed for
+            // the lane's lifetime), so this reuses one `AVAudioConverter` across the
+            // whole stream instead of building one per buffer per lane.
+            if let buf = lane.converter.convert(input.buffer, to: lane.format) {
                 lane.continuation.yield(AnalyzerInput(buffer: buf))
             }
         }

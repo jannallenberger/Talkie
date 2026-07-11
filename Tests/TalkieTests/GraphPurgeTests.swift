@@ -110,7 +110,7 @@ final class GraphPurgeTests: XCTestCase {
     /// criterion — a `grep` of the purged dictation's snippet over the on-disk
     /// `entities.json` finds NOTHING, while the surviving dictation's text remains.
     @MainActor
-    func testStorePurgeRemovesSnippetFromDiskKeepsShared() throws {
+    func testStorePurgeRemovesSnippetFromDiskKeepsShared() async throws {
         let (store, fileURL) = makeTempStore()
         let secret = "the quarterly budget was slashed by forty percent"
         let survivor = "we also touched on hiring plans"
@@ -120,7 +120,9 @@ final class GraphPurgeTests: XCTestCase {
         store.ingest([ContextGraphExtractor.Candidate(kind: .term, displayName: "Budget")],
                      provenance: prov(.dictation, "KEEP", snippet: survivor, at: now + 1))
 
-        // Precondition: both snippets are on disk before the purge.
+        // Precondition: both snippets are on disk before the purge. `save()` is now
+        // debounced+off-main, so drain the pending write before reading the file.
+        await store.flush()
         let before = try String(contentsOf: fileURL, encoding: .utf8)
         XCTAssertTrue(before.contains(secret), "sanity: the to-be-deleted snippet was persisted")
         XCTAssertTrue(before.contains(survivor))
@@ -133,6 +135,7 @@ final class GraphPurgeTests: XCTestCase {
         XCTAssertEqual(entity?.mentions, 1, "mentions dropped from 2 to 1")
 
         // THE HEADLINE: the deleted dictation's text is gone from the on-disk graph.
+        await store.flush()
         let after = try String(contentsOf: fileURL, encoding: .utf8)
         XCTAssertFalse(after.contains(secret),
                        "grep of the deleted dictation's snippet over entities.json must find nothing")
@@ -142,7 +145,7 @@ final class GraphPurgeTests: XCTestCase {
     /// Purging the only source of an entity removes the entity from the persisted
     /// graph entirely (not just its provenance).
     @MainActor
-    func testStorePurgeOnlySourceRemovesEntityFromDisk() throws {
+    func testStorePurgeOnlySourceRemovesEntityFromDisk() async throws {
         let (store, fileURL) = makeTempStore()
         let text = "a fact mentioned exactly once"
         store.ingest([ContextGraphExtractor.Candidate(kind: .term, displayName: "Solo")],
@@ -151,6 +154,7 @@ final class GraphPurgeTests: XCTestCase {
         store.purge(source: .dictation, sourceID: "ONLY")
 
         XCTAssertNil(store.snapshot().lookup("Solo"), "entity with no remaining provenance is gone")
+        await store.flush()
         let after = try String(contentsOf: fileURL, encoding: .utf8)
         XCTAssertFalse(after.contains(text), "its snippet is gone from disk too")
     }

@@ -19,7 +19,7 @@
 "Clear" = "Limpar";
 "Connected" = "Conectado";
 "Copied" = "Copiado";
-"Copy All" = "Copiar tudo";
+"Copy all" = "Copiar tudo";
 "Copy this dictation" = "Copiar este ditado";
 "Copy transcript" = "Copiar transcrição";
 "Cross-surface commands" = "Comandos entre superfícies";
@@ -253,6 +253,10 @@
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "Instale o conector com um clique";
 "Install…" = "Instalar…";
+"Reinstall…" = "Reinstalar…";
+"Update…" = "Atualizar…";
+"Connector is up to date (v%@)" = "O conector está atualizado (v%@)";
+"Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "Seu conector está desatualizado (v%@ → v%@) — reinstale para obter as ferramentas mais recentes";
 "Claude Code & other MCP clients" = "Claude Code e outros clientes MCP";
 "Add this to your .mcp.json, or run the command" = "Adicione isto ao seu .mcp.json ou execute o comando";
 "Copy config" = "Copiar configuração";
@@ -376,10 +380,7 @@
 
 // I3 — true delete (purge + best-effort shred) confirmations
 "Delete" = "Excluir";
-"Clear everything" = "Apagar tudo";
-"Clear your dictation history?" = "Apagar seu histórico de ditado?";
 "Delete this meeting?" = "Excluir esta reunião?";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Apaga seu histórico de ditado e tudo o que a memória do Talkie extraiu dele. As regras de dicionário que você ensinou permanecem. O Talkie sobrescreve o arquivo antes de excluí-lo. Para se proteger caso seu Mac seja perdido ou apreendido, mantenha o FileVault ativado.";
 "Deletes the transcript and everything Talkie's memory extracted from this meeting. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Apaga a transcrição e tudo o que a memória do Talkie extraiu desta reunião. O Talkie sobrescreve o arquivo antes de excluí-lo. Para se proteger caso seu Mac seja perdido ou apreendido, mantenha o FileVault ativado.";
 /* A9 — Vibe Coding in-context offer */
 "Index %@ filenames?" = "Indexar os nomes de arquivo de %@?";
@@ -459,7 +460,6 @@
 "Mark as not done" = "Marcar como não concluída";
 "Delete this line" = "Excluir esta linha";
 " · saved to your Scratchpad" = " · salvo no seu Bloco de rascunho";
-"Deletes your dictation history and everything Talkie's memory extracted from it. Dictionary rules you taught, and notes you wrote in your Scratchpad, stay. Talkie overwrites the file before deleting it. For protection if your Mac is lost or seized, keep FileVault on." = "Exclui seu histórico de ditados e tudo o que a memória do Talkie extraiu dele. As regras do dicionário que você ensinou, e as notas que você escreveu no seu Bloco de rascunho, permanecem. O Talkie sobrescreve o arquivo antes de excluí-lo. Para proteção caso seu Mac seja perdido ou apreendido, mantenha o FileVault ativado.";
 
 // L5-a — Milestones ("Plumage") page + dashboard entry + crossing celebration
 "Plumage" = "Plumagem";
@@ -548,8 +548,8 @@
 "Instant" = "Instantâneo";
 "Fast" = "Rápido";
 "Slow" = "Lento";
-"median of your last dictation" = "mediana do seu último ditado";
-"median of your last %d dictations" = "mediana dos seus últimos %d ditados";
+"your last dictation" = "seu último ditado";
+"typical across your last %d dictations" = "típico nos seus últimos %d ditados";
 "Dictate a few times and your typical end-to-end speed shows up here." = "Dite algumas vezes e sua velocidade típica de ponta a ponta aparecerá aqui.";
 "Once you've dictated a few times, the per-stage breakdown shows up here." = "Depois de ditar algumas vezes, o detalhamento por etapa aparecerá aqui.";
 "Where the time goes between you stopping and your words landing — measured on this Mac, nothing shared." = "Para onde vai o tempo entre você parar e suas palavras aparecerem — medido neste Mac, nada é compartilhado.";
@@ -572,8 +572,8 @@
 "These apps are using the most memory right now. Read on demand, never stored, never leaves this Mac." = "Estes apps estão usando mais memória no momento. Lidos sob demanda, nunca armazenados, nunca saem deste Mac.";
 "Your last dictations" = "Seus últimos ditados";
 "cold start" = "início a frio";
-"optimistic" = "otimista";
-"%d chars" = "%d caracteres";
+"shown first" = "exibido primeiro";
+"%d characters" = "%d caracteres";
 "%.0f ms" = "%.0f ms";
 "%.1f s" = "%.1f s";
 
@@ -738,7 +738,7 @@
 "Biases recognition toward attendee names so they’re spelled correctly." = "Direciona o reconhecimento para os nomes dos participantes para que sejam escritos corretamente.";
 "Falls back to the timestamp title whenever access is off — nothing breaks." = "Recorre ao título com carimbo de data/hora sempre que o acesso está desligado — nada quebra.";
 "Denied in System Settings" = "Negado nos Ajustes do Sistema";
-"Write-only — Talkie needs read access" = "Somente escrita — o Talkie precisa de acesso de leitura";
+"Talkie can only see your calendar to match meetings — it never changes anything. Turn on Calendar access for Talkie in System Settings → Privacy & Security → Calendars." = "O Talkie só pode ver seu calendário para relacionar reuniões — ele nunca altera nada. Ative o acesso ao calendário para o Talkie em Ajustes do Sistema → Privacidade e segurança → Calendários.";
 "Requesting…" = "Solicitando…";
 "Plain Markdown in ~/Talkie Meetings — a folder you own that any tool can read. No other app needed." = "Markdown simples em ~/Talkie Meetings — uma pasta sua que qualquer ferramenta pode ler. Nenhum outro app necessário.";
 "Writes Markdown into the folder you pick. Point it at an Obsidian vault and Talkie formats for Obsidian on its own." = "Grava Markdown na pasta que você escolher. Aponte-a para um cofre do Obsidian e o Talkie formata para o Obsidian sozinho.";
@@ -828,3 +828,15 @@
 "Fastest speed" = "Velocidade máxima";
 "Longest dictation" = "Ditado mais longo";
 "Biggest word day" = "Dia com mais palavras";
+
+/* copy-humanize-1/2/3 — TalkieEngineError descriptions surfaced in the HUD error pill */
+"Dictation isn't available on this Mac yet. Make sure macOS is up to date, then try again." = "O ditado ainda não está disponível neste Mac. Verifique se o macOS está atualizado e tente novamente.";
+"Dictation isn't available for your language on this Mac yet. Pick another language in Settings → Languages, then try again." = "O ditado ainda não está disponível para o seu idioma neste Mac. Escolha outro idioma em Ajustes → Idiomas e tente novamente.";
+"Couldn't get the speech model — macOS downloads it once. Check your internet connection and free disk space, then try again. (%@)" = "Não foi possível obter o modelo de fala — o macOS o baixa uma única vez. Verifique sua conexão com a internet e o espaço livre em disco e tente novamente. (%@)";
+"%@ couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again." = "O %@ não conseguiu captar áudio desse microfone. Escolha outro microfone em Ajustes → Dispositivo de entrada e tente novamente.";
+"%@ couldn't find a microphone. Check your input device in System Settings → Sound, then try again." = "O %@ não encontrou nenhum microfone. Verifique seu dispositivo de entrada em Ajustes do Sistema → Som e tente novamente.";
+
+/* copy-humanize-9 — CleanupEngine on-device availability messages */
+"Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "Ative o Apple Intelligence (Ajustes do Sistema → Apple Intelligence e Siri) para habilitar a limpeza.";
+"Apple Intelligence is still downloading its model — cleanup will work once it's ready." = "O Apple Intelligence ainda está baixando seu modelo — a limpeza funcionará assim que estiver pronto.";
+"This Mac can't run on-device cleanup." = "Este Mac não consegue executar a limpeza no dispositivo.";
