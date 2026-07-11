@@ -175,7 +175,12 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
                 ? NSColor(hex: 0x000000) : NSColor(hex: 0xFFFFFF)
         }
-        window.contentView = NSHostingView(rootView: root)
+        // NSHostingController (not NSHostingView) so SwiftUI `.toolbar {}` bridges to a
+        // real macOS window toolbar — the native Liquid-Glass bar (like Finder), with
+        // the system scroll-edge gradient as content passes under it.
+        let hostingController = NSHostingController(rootView: root)
+        window.contentViewController = hostingController
+        window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("TalkieMainWindow")
         window.center()
@@ -249,9 +254,17 @@ struct MainView: View {
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .background(Theme.canvas)
-                        // Single application point: every tab's scroll content fades
-                        // under the top edge instead of clipping hard.
-                        .scrollTopBlur()
+                        // Native macOS 26 window toolbar (Liquid Glass, like Finder):
+                        // shows where you are; content scrolls under it with the system
+                        // scroll-edge gradient. NSHostingController (above) is what lets
+                        // SwiftUI `.toolbar` bridge to a real window toolbar here.
+                        .toolbar {
+                            ToolbarItem(placement: .principal) {
+                                Text(router.selectedTab.title.loc)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Theme.ink)
+                            }
+                        }
                 }
                 .transition(.opacity)
             } else {
@@ -385,37 +398,13 @@ private struct SettingsHome: View {
     /// pending page onto this path, then clear it (L6a scaffold; L6c drives it).
     @State private var path: [SettingsPage] = []
 
-    /// Shared with the gated glass-toolbar spike below so the string exists as a
-    /// single literal in source (keeps the brand-literal footprint from growing).
-    private static let subtitle = "Tune how Talkie listens, cleans up, and behaves."
-
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    // Dev.glassSettingsToolbar (DARK by default): an unshipped visual
-                    // spike that swaps the plain title/subtitle header for a native
-                    // macOS 26 Liquid-Glass toolbar. Flag defaults false, so normal
-                    // builds render the existing header unchanged.
-                    if Dev.glassSettingsToolbar {
-                        GlassEffectContainer {
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Text(LocalizedStringKey("Settings"))
-                                    .font(.talkieDisplay(20))
-                                    .foregroundStyle(Theme.ink)
-                                Text(LocalizedStringKey(Self.subtitle))
-                                    .font(.talkieHeading(12, weight: .regular))
-                                    .foregroundStyle(Theme.inkSecondary)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 12)
-                            .glassEffect(.regular, in: .rect(cornerRadius: 18))
-                        }
-                    } else {
-                        PageHeader(title: "Settings", subtitle: Self.subtitle)
-                    }
-
+                    // The page title lives in the native window toolbar now (Finder-style),
+                    // so no in-content header here — the first section leads.
+                    //
                     // H1: the dedicated Profile section is gone — your name is edited inline
                     // on the Dashboard header now (click "Welcome back, …"). One fewer group.
                     //
@@ -502,6 +491,10 @@ private struct SettingsHome: View {
                 .padding(28)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // Native macOS 26 scroll-edge effect: softly blurs this page's own
+            // content as it passes under the top edge, replacing the old custom
+            // `.scrollTopBlur()` overlay (which read as a flat grey band).
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Theme.canvas)
             // HYBRID push destinations (L6a scaffold). Each case resolves to a
             // placeholder subpage for now; L6b/L6c/L6d swap in the real panes. The

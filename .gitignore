@@ -12,3 +12,4 @@ DerivedData/
 
 # built Claude Desktop connector bundle (produced by scripts/build_mcpb.sh)
 /connector/Talkie.mcpb
+.serena/

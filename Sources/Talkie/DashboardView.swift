@@ -127,6 +127,7 @@ struct DashboardView: View {
             }
             .background(LiveBackground(mood: .ambient))
             .scrollContentBackground(.hidden)
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .navigationDestination(for: MilestoneRoute.self) { route in
                 switch route {
                 case .plumage:
@@ -575,7 +576,7 @@ private struct MilestoneCelebrationBanner: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "sparkles")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Theme.featherGold)
+                .foregroundStyle(.white)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(String(format: "You crossed %@ words".loc, threshold.formatted()))
@@ -611,7 +612,7 @@ private struct MilestoneCelebrationBanner: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .fill(Theme.featherCoral)
+                .fill(LinearGradient(gradient: Theme.emberRamp, startPoint: .leading, endPoint: .trailing))
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
@@ -986,8 +987,8 @@ private struct UsageCard: View {
                           text: "Dictate into your apps and they'll show up here.")
             } else {
                 VStack(spacing: 11) {
-                    ForEach(Array(slices.enumerated()), id: \.element.id) { idx, slice in
-                        UsageRow(slice: slice, color: Theme.categorical[idx % Theme.categorical.count])
+                    ForEach(slices, id: \.id) { slice in
+                        UsageRow(slice: slice)
                     }
                 }
             }
@@ -998,7 +999,6 @@ private struct UsageCard: View {
 
 private struct UsageRow: View {
     let slice: UsageSlice
-    let color: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -1013,7 +1013,7 @@ private struct UsageRow: View {
                     } else {
                         Image(systemName: slice.category.symbol)
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(color)
+                            .foregroundStyle(Theme.inkTertiary)
                     }
                 }
                 .frame(width: 16, height: 16)
@@ -1030,7 +1030,8 @@ private struct UsageRow: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.surfaceSunken)
-                    Capsule().fill(color)
+                    Capsule()
+                        .fill(LinearGradient(gradient: Theme.emberRamp, startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(6, geo.size.width * slice.fraction))
                 }
             }
@@ -1067,7 +1068,7 @@ private struct StreakCard: View {
                 Text("Less").font(.system(size: 10)).foregroundStyle(Theme.inkTertiary)
                 ForEach(0..<5) { lvl in
                     RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                        .fill(Theme.heat(lvl))
+                        .fill(Theme.emberHeat(lvl))
                         .frame(width: 11, height: 11)
                 }
                 Text("More").font(.system(size: 10)).foregroundStyle(Theme.inkTertiary)
@@ -1119,7 +1120,7 @@ private struct Heatmap: View {
                         VStack(spacing: gap) {
                             ForEach(week) { cellData in
                                 RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                                    .fill(cellData.isFuture ? Color.clear : Theme.heat(cellData.level))
+                                    .fill(cellData.isFuture ? Color.clear : Theme.emberHeat(cellData.level))
                                     .frame(width: cell, height: cell)
                                     .help(cellData.date != nil && cellData.words > 0
                                           ? "\(cellData.words) words" : "")
