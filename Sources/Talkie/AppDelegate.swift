@@ -1510,9 +1510,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var nicheTerms = dictionary.vocabulary
         // The user's EXPLICIT canonical terms — every vocabulary entry PLUS each
         // replacement rule's target — are high-intent, so they earn the corrector's
-        // looser phonetic gate (see NicheCorrector): they added these deliberately, so a
-        // close-but-not-tight recognizer miss ("church" ← "Chirp") should still snap to
-        // them. We also fold the replacement targets into the correction target list so a
+        // looser phonetic gate (see NicheCorrector): a close-but-not-tight recognizer
+        // miss on genuine jargon still snaps to them. When the recognized word is
+        // itself an ordinary EN/DE word (e.g. "church"), the gate tightens further —
+        // `bestMatch`'s `ordinaryWords` clamp only rescues an IDENTICAL-skeleton match
+        // even for a trusted target, so "Chirp" no longer snaps a plain "church" back;
+        // an explicit hard replacement rule remains the escape hatch for that case. We
+        // also fold the replacement targets into the correction target list so a
         // rule's canonical spelling gets phonetically rescued even when it isn't also a
         // standalone vocabulary entry.
         var trustedCores = Set(dictionary.vocabulary.map { NicheCorrector.core($0) })
@@ -1864,13 +1868,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // corrector itself stays pure/Sendable and never touches the spellchecker.
                 // Passed in so an auto-graduated (untrusted) term can never rewrite a real
                 // word the user said, even if it somehow slipped into `nicheTerms` some
-                // other way than the trusted-fold path.
-                var ordinaryWords = Set<String>()
+                // other way than the trusted-fold path. Dedup the candidate tokens BEFORE
+                // spellchecking — a repeated word (common on a longer dictation)
+                // otherwise pays its 1-2 XPC `NSSpellChecker` calls once per occurrence
+                // instead of once total, and this runs on the MainActor at stop-time.
+                var candidateTokens = Set<String>()
                 for token in cleaned.split(whereSeparator: { !$0.isLetter }) {
                     let word = String(token).lowercased()
                     guard word.count >= 4 else { continue }
-                    if DictionaryStore.isOrdinaryDictionaryWord(word) { ordinaryWords.insert(word) }
+                    candidateTokens.insert(word)
                 }
+                let ordinaryWords = Set(candidateTokens.filter(DictionaryStore.isOrdinaryDictionaryWord))
                 let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms, trusted: trustedCores,
                                                        ordinaryWords: ordinaryWords)
                 cleaned = corrected.text

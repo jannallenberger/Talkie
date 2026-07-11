@@ -199,9 +199,13 @@ final class DictionaryStore: ObservableObject {
         // `checkSpelling` returns the range of the first misspelling; NSNotFound
         // means the whole word is known-good (i.e. it's in that language's dictionary).
         let checker = NSSpellChecker.shared
-        let available = Set(checker.availableLanguages)
-        for lang in ["en", "de"] where available.contains(where: { $0.hasPrefix(lang) }) {
-            let misspelling = checker.checkSpelling(of: w, startingAt: 0, language: lang,
+        let available = checker.availableLanguages
+        for lang in ["en", "de"] {
+            // Pass the actual installed identifier ("en_US"/"de_DE"), not the bare
+            // "en"/"de" prefix — more robust across `NSSpellChecker` versions than
+            // hoping the bare prefix is itself a language `checkSpelling` accepts.
+            guard let installed = available.first(where: { $0.hasPrefix(lang) }) else { continue }
+            let misspelling = checker.checkSpelling(of: w, startingAt: 0, language: installed,
                                                      wrap: false, inSpellDocumentWithTag: 0, wordCount: nil)
             if misspelling.location == NSNotFound { return true }
         }
