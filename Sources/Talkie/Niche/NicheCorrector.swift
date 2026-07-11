@@ -96,6 +96,7 @@ enum NicheCorrector {
     /// user's typed list). Never mutates `text` in place — rebuilds it from slices,
     /// so all replacements use valid original indices.
     static func correct(_ text: String, terms: [String], trusted: Set<String> = [],
+                        ordinaryWords: Set<String> = [],
                         termGuard: NicheTermGuard = .default) -> NicheCorrection {
         let targets = buildTargets(terms, trusted: trusted)
         guard !targets.isEmpty else { return NicheCorrection(text: text, fixes: []) }
@@ -112,7 +113,7 @@ enum NicheCorrector {
             if i + 1 < words.count,
                separatedBySpacesOnly(text, words[i].range, words[i + 1].range),
                let term = bestMatch(words[i].text + words[i + 1].text, targets: targets,
-                                    termGuard: termGuard, isMultiWord: true) {
+                                    termGuard: termGuard, ordinaryWords: ordinaryWords, isMultiWord: true) {
                 let range = words[i].range.lowerBound..<words[i + 1].range.upperBound
                 spans.append((range, String(text[range]), term))
                 i += 2
@@ -133,13 +134,14 @@ enum NicheCorrector {
                separatedBySpacesOnly(text, words[i].range, words[i + 1].range),
                separatedBySpacesOnly(text, words[i + 1].range, words[i + 2].range),
                let term = bestMatch(words[i].text + words[i + 2].text, targets: targets,
-                                    termGuard: termGuard, isMultiWord: true) {
+                                    termGuard: termGuard, ordinaryWords: ordinaryWords, isMultiWord: true) {
                 let range = words[i].range.lowerBound..<words[i + 2].range.upperBound
                 spans.append((range, String(text[range]), term))
                 i += 3
                 continue
             }
-            if let term = bestMatch(words[i].text, targets: targets, termGuard: termGuard, isMultiWord: false) {
+            if let term = bestMatch(words[i].text, targets: targets, termGuard: termGuard,
+                                    ordinaryWords: ordinaryWords, isMultiWord: false) {
                 spans.append((words[i].range, words[i].text, term))
             }
             i += 1
@@ -175,7 +177,8 @@ enum NicheCorrector {
 
     /// Best canonical term for a recognized span, or nil if nothing matches closely.
     private static func bestMatch(_ raw: String, targets: [Target],
-                                  termGuard: NicheTermGuard, isMultiWord: Bool) -> String? {
+                                  termGuard: NicheTermGuard, ordinaryWords: Set<String>,
+                                  isMultiWord: Bool) -> String? {
         let core = lettersLower(raw)
         guard core.count >= 4 else { return nil }
         let skel = NichePhonetics.skeleton(core)
@@ -197,9 +200,17 @@ enum NicheCorrector {
             let rawDist = NichePhonetics.editDistance(core, t.core)
             let cap = max(1, Int((t.trusted ? 0.5 : 0.34) * Double(max(core.count, t.core.count))))
             if rawDist > cap { continue }
-            // A single real common word might be what the user meant — only correct
-            // it on an exact-sounding match (skeleton identical).
-            if !isMultiWord, termGuard.commonWords.contains(core), skelDist != 0 { continue }
+            // A single real word the user actually said might be what they meant —
+            // an ordinary word (per the caller's spellchecker-backed set) is only
+            // ever corrected by a TRUSTED term (explicit dictionary intent), and
+            // even then only on an exact-sounding match (skeleton identical). An
+            // auto-graduated term must never rewrite a real word at all — this is
+            // exactly the defense that would have stopped a learned poll→pull rule
+            // from rewriting the correctly-heard "pill" to "pull".
+            if !isMultiWord, ordinaryWords.contains(core) {
+                if !t.trusted { continue }
+                if skelDist != 0 { continue }
+            }
             if best == nil || (skelDist, rawDist) < (best!.skelDist, best!.rawDist) {
                 best = (t.display, skelDist, rawDist)
             }

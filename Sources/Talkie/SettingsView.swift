@@ -1176,7 +1176,7 @@ private struct AppUpdateSection: View {
 
     /// The full updater UI, shown once consent is granted.
     @ViewBuilder private var grantedBody: some View {
-        SettingsRow(title: "This build", subtitle: "Version \(updater.currentVersion)") {
+        SettingsRow(title: "This build", subtitle: "Version \(updater.currentVersion) · \(updater.currentBranch)@\(updater.currentSHA)") {
             Text("build \(updater.currentBuild)")
                 .font(.talkieHeading(13, weight: .semibold))
                 .foregroundStyle(Theme.inkSecondary)

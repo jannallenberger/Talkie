@@ -183,7 +183,7 @@ actor MeetingSummarizer {
     /// window at 8000 chars, while equivalent English fits comfortably. 4000
     /// chars leaves headroom even for dense text; `mapExcerpt` below still
     /// adapts if a chunk overflows anyway.
-    private static let chunkChars = 4000
+    static let chunkChars = 4000
     /// Hard ceiling on map calls for one meeting, so a pathologically long
     /// recording can't spin up an unbounded number of model calls. Chunk size
     /// grows past `chunkChars` before this ceiling is hit, so coverage is never
@@ -274,7 +274,7 @@ actor MeetingSummarizer {
     /// far denser than normal prose, overflowing even well under `chunkChars`.
     /// If that happens, shrink and retry rather than discard the whole map
     /// phase's work — this can't loop forever since `notes` strictly shrinks.
-    private func reduceWithFallback(_ notes: String) async -> String? {
+    func reduceWithFallback(_ notes: String) async -> String? {
         do {
             return try await rawRespond(
                 instructions: Self.reduceInstructions,
@@ -289,7 +289,7 @@ actor MeetingSummarizer {
     }
 
     /// Chunk `text` and map each piece to terse facts, joined back together.
-    private func mapAll(_ text: String) async -> String {
+    func mapAll(_ text: String) async -> String {
         let chunks = Self.chunk(text, maxChars: Self.chunkChars, maxChunks: Self.maxChunks)
         var notes: [String] = []
         for (index, excerpt) in chunks.enumerated() {
@@ -302,7 +302,7 @@ actor MeetingSummarizer {
     /// the model's context window — the per-chunk budget above is sized for
     /// the worst language observed, not a guarantee — splits it in half and
     /// maps each half, halving again if needed, instead of losing the excerpt.
-    private func mapExcerpt(_ excerpt: String) async -> String {
+    func mapExcerpt(_ excerpt: String) async -> String {
         do {
             let text = try await rawRespond(instructions: Self.mapInstructions,
                                              prompt: "Excerpt:\n\n\(excerpt)\n\nList the facts.")

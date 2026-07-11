@@ -11,51 +11,84 @@ final class MeetingSubtopicTests: XCTestCase {
     // MARK: parse
 
     func testParseHighConfidenceTopic() {
-        let (topic, high) = Engine.parse("TOPIC|Budget planning\nCONFIDENCE|HIGH")
+        let (topic, _, high) = Engine.parse("TOPIC|Budget planning\nCONFIDENCE|HIGH")
         XCTAssertEqual(topic, "Budget planning")
         XCTAssertTrue(high)
     }
 
     func testParseNoneIsNilTopic() {
-        let (topic, high) = Engine.parse("TOPIC|NONE\nCONFIDENCE|LOW")
+        let (topic, _, high) = Engine.parse("TOPIC|NONE\nCONFIDENCE|LOW")
         XCTAssertNil(topic)
         XCTAssertFalse(high)
     }
 
     func testParseToleratesNoiseQuotesAndSpacing() {
-        let (topic, high) = Engine.parse("here you go:\nTOPIC| \"Q3 roadmap\" \nCONFIDENCE|  high \ntrailing junk")
+        let (topic, _, high) = Engine.parse("here you go:\nTOPIC| \"Q3 roadmap\" \nCONFIDENCE|  high \ntrailing junk")
         XCTAssertEqual(topic, "Q3 roadmap")
         XCTAssertTrue(high)
     }
 
     func testParseRejectsRunawayTopic() {
-        let (topic, _) = Engine.parse(
+        let (topic, _, _) = Engine.parse(
             "TOPIC|this is a far too long topic that clearly exceeds the word and character bounds\nCONFIDENCE|HIGH")
         XCTAssertNil(topic, "a sentence-length topic is treated as no usable topic")
     }
 
+    // MARK: parse — GLOSS (B3)
+
+    func testParseGlossPresentAndUsed() {
+        let (topic, gloss, high) = Engine.parse(
+            "TOPIC|Budget planning\nGLOSS|Discussing the Q3 budget rollover and hiring freeze\nCONFIDENCE|HIGH")
+        XCTAssertEqual(topic, "Budget planning")
+        XCTAssertEqual(gloss, "Discussing the Q3 budget rollover and hiring freeze")
+        XCTAssertTrue(high)
+    }
+
+    func testParseMissingGlossLineIsNil() {
+        // Older TOPIC+CONFIDENCE-only responses (and this phase's other tests) must
+        // keep parsing cleanly with no GLOSS line at all.
+        let (topic, gloss, high) = Engine.parse("TOPIC|Budget planning\nCONFIDENCE|HIGH")
+        XCTAssertEqual(topic, "Budget planning")
+        XCTAssertNil(gloss, "no GLOSS line at all parses as nil, not an error")
+        XCTAssertTrue(high)
+    }
+
+    func testParseEmptyGlossIsNil() {
+        let (_, gloss, _) = Engine.parse("TOPIC|Budget planning\nGLOSS|\nCONFIDENCE|HIGH")
+        XCTAssertNil(gloss, "an empty GLOSS value is nil")
+    }
+
+    func testParseRejectsRunawayGloss() {
+        let (topic, gloss, _) = Engine.parse(
+            "TOPIC|Budget planning\n" +
+            "GLOSS|This sentence just keeps going on and on with far more than fourteen words describing the topic in absurd detail\n" +
+            "CONFIDENCE|HIGH")
+        XCTAssertEqual(topic, "Budget planning", "the topic is unaffected by a runaway gloss")
+        XCTAssertNil(gloss, "an overflowing gloss is treated as no usable gloss")
+    }
+
     // MARK: step — confidence + hysteresis
 
-    func testNewTopicNeedsTwoConsecutiveHighsToShow() {
+    func testFirstTopicAcceptedImmediately() {
+        // Eager first accept: nothing is shown yet, so a single confident hit
+        // fills the empty pill right away — no hysteresis wait for the FIRST label.
         var g = Gate()
         g = Engine.step(g, topic: "Budget", high: true)
-        XCTAssertNil(g.accepted, "one high alone never shows")
-        g = Engine.step(g, topic: "Budget", high: true)
-        XCTAssertEqual(g.accepted, "Budget", "two consecutive highs accept it")
+        XCTAssertEqual(g.accepted, "Budget", "one high accepts immediately when nothing is shown yet")
     }
 
     func testLowConfidenceNeverChangesShownTopic() {
         var g = Gate()
-        g = Engine.step(g, topic: "Budget", high: true)
-        g = Engine.step(g, topic: "Budget", high: true)   // accepted: Budget
+        g = Engine.step(g, topic: "Budget", high: true)   // eager accept: Budget shown after one hit
+        g = Engine.step(g, topic: "Budget", high: true)   // repeat of the shown topic: harmless no-op
         g = Engine.step(g, topic: "Hiring", high: false)  // a miss
         XCTAssertEqual(g.accepted, "Budget", "low confidence holds the current topic")
     }
 
     func testSwitchingTopicsRequiresSustainedHighs() {
         var g = Gate()
-        g = Engine.step(g, topic: "Budget", high: true)
-        g = Engine.step(g, topic: "Budget", high: true)   // Budget shown
+        g = Engine.step(g, topic: "Budget", high: true)   // eager accept: Budget shown after one hit
+        g = Engine.step(g, topic: "Budget", high: true)   // repeat of the shown topic: harmless no-op
         g = Engine.step(g, topic: "Hiring", high: true)
         XCTAssertEqual(g.accepted, "Budget", "a single high for a new topic doesn't switch")
         g = Engine.step(g, topic: "Hiring", high: true)
@@ -63,11 +96,16 @@ final class MeetingSubtopicTests: XCTestCase {
     }
 
     func testFlipFloppingTopicsNeverSwitch() {
+        // Anchor the anti-flicker guarantee on the REPLACEMENT path: once a topic is
+        // already shown (here via eager first accept), alternating candidates must
+        // never reach the 2-streak needed to replace it.
         var g = Gate()
+        g = Engine.step(g, topic: "Kickoff", high: true)
+        XCTAssertEqual(g.accepted, "Kickoff", "eager first accept shows Kickoff after one hit")
         g = Engine.step(g, topic: "A", high: true)
         g = Engine.step(g, topic: "B", high: true)
         g = Engine.step(g, topic: "A", high: true)
-        XCTAssertNil(g.accepted, "alternating candidates never reach a 2-streak")
+        XCTAssertEqual(g.accepted, "Kickoff", "alternating replacement candidates never reach a 2-streak")
     }
 
     func testNoneNeverAccepted() {
@@ -79,8 +117,8 @@ final class MeetingSubtopicTests: XCTestCase {
 
     func testCaseInsensitiveTopicDoesNotReshow() {
         var g = Gate()
-        g = Engine.step(g, topic: "Budget", high: true)
-        g = Engine.step(g, topic: "Budget", high: true)   // accepted: Budget
+        g = Engine.step(g, topic: "Budget", high: true)   // eager accept: Budget shown after one hit
+        g = Engine.step(g, topic: "Budget", high: true)   // repeat of the shown topic: harmless no-op
         let before = g
         g = Engine.step(g, topic: "budget", high: true)   // same topic, different case
         XCTAssertEqual(g.accepted, "Budget")
@@ -106,7 +144,8 @@ final class MeetingSubtopicTests: XCTestCase {
     /// candidate or a miss — and carry the accepted title. This is the load-bearing
     /// half of the ordering guarantee: an accept that happens during recording is
     /// appended to the collector the instant it's accepted, so a later stop-time
-    /// snapshot sees it.
+    /// snapshot sees it. Covers both tiers: the eager first accept (one hit, nothing
+    /// shown yet) and a damped replacement (two hits, something already shown).
     @MainActor
     func testAcceptHookFiresOncePerAcceptWithTitle() async {
         let model = MeetingSubtopicModel()
@@ -115,19 +154,29 @@ final class MeetingSubtopicTests: XCTestCase {
             collector.record(topic)
         }
 
-        // One high alone: candidate only, no accept, no chapter.
-        await engine.evaluateForTesting("TOPIC|Budget\nCONFIDENCE|HIGH")
-        XCTAssertTrue(collector.chapters.isEmpty, "a single high is a candidate, not an accept")
-
-        // Second consecutive high: accept → exactly one chapter.
+        // Eager first accept: nothing is shown yet, so ONE high fires the hook
+        // immediately — the pill shouldn't sit empty waiting for a second hit.
         collector.clock = 30
         await engine.evaluateForTesting("TOPIC|Budget\nCONFIDENCE|HIGH")
-        XCTAssertEqual(collector.chapters.map(\.title), ["Budget"], "two highs accept once")
+        XCTAssertEqual(collector.chapters.map(\.title), ["Budget"], "the first confident hit accepts immediately")
         XCTAssertEqual(collector.chapters.first?.start, 30, "stamped with the accept-time clock")
 
         // A miss (low confidence) must not fire the hook again.
         await engine.evaluateForTesting("TOPIC|Hiring\nCONFIDENCE|LOW")
         XCTAssertEqual(collector.chapters.count, 1, "a low-confidence miss records nothing")
+
+        // Replacing the already-accepted topic is damped: one high alone for a new
+        // topic is a candidate only, no accept, no chapter.
+        await engine.evaluateForTesting("TOPIC|Hiring\nCONFIDENCE|HIGH")
+        XCTAssertEqual(collector.chapters.count, 1, "a single high for a replacement is a candidate, not an accept")
+
+        // Second consecutive high for the same replacement candidate: accept →
+        // exactly one NEW chapter (the hook fires once per transition, not once
+        // per qualifying hit).
+        collector.clock = 90
+        await engine.evaluateForTesting("TOPIC|Hiring\nCONFIDENCE|HIGH")
+        XCTAssertEqual(collector.chapters.map(\.title), ["Budget", "Hiring"], "sustained replacement accepts once")
+        XCTAssertEqual(collector.chapters.last?.start, 90, "stamped with the accept-time clock")
     }
 
     /// Two sustained topic shifts → two chapters, in order, with non-decreasing
@@ -143,16 +192,82 @@ final class MeetingSubtopicTests: XCTestCase {
         }
 
         collector.clock = 5
-        await engine.evaluateForTesting("TOPIC|Intro\nCONFIDENCE|HIGH")
-        await engine.evaluateForTesting("TOPIC|Intro\nCONFIDENCE|HIGH")   // accept Intro @5
+        await engine.evaluateForTesting("TOPIC|Intro\nCONFIDENCE|HIGH")   // eager accept Intro @5, first hit
+        await engine.evaluateForTesting("TOPIC|Intro\nCONFIDENCE|HIGH")   // repeat: harmless no-op
         collector.clock = 452
         await engine.evaluateForTesting("TOPIC|Budget review\nCONFIDENCE|HIGH")
-        await engine.evaluateForTesting("TOPIC|Budget review\nCONFIDENCE|HIGH") // accept @452
+        await engine.evaluateForTesting("TOPIC|Budget review\nCONFIDENCE|HIGH") // replacement needs 2 hits: accept @452
 
         XCTAssertEqual(collector.chapters.map(\.title), ["Intro", "Budget review"])
         XCTAssertEqual(collector.chapters.map(\.start), [5, 452])
         XCTAssertTrue(collector.chapters.map(\.start) == collector.chapters.map(\.start).sorted(),
                       "accept times are non-decreasing")
+    }
+
+    // MARK: - B3: gloss display wiring
+
+    /// The gloss is set alongside `current` on the SAME accept transition, and is used
+    /// verbatim for display when the model supplies one.
+    @MainActor
+    func testGlossPresentAndUsedOnAccept() async {
+        let model = MeetingSubtopicModel()
+        let engine = Engine(summarizer: NoopSummarizer(), model: model)
+
+        await engine.evaluateForTesting(
+            "TOPIC|Budget\nGLOSS|Discussing the Q3 budget rollover and hiring freeze\nCONFIDENCE|HIGH")
+
+        XCTAssertEqual(model.current, "Budget", "gating/chapter phrase unaffected")
+        XCTAssertEqual(model.currentGloss, "Discussing the Q3 budget rollover and hiring freeze",
+                       "the display gloss is published on the same accept")
+    }
+
+    /// A missing GLOSS line must not leave the pill without a display string — it
+    /// falls back to the short phrase itself.
+    @MainActor
+    func testGlossMissingFallsBackToPhrase() async {
+        let model = MeetingSubtopicModel()
+        let engine = Engine(summarizer: NoopSummarizer(), model: model)
+
+        await engine.evaluateForTesting("TOPIC|Budget\nCONFIDENCE|HIGH")
+
+        XCTAssertEqual(model.current, "Budget")
+        XCTAssertEqual(model.currentGloss, "Budget", "no GLOSS line → falls back to the topic phrase")
+    }
+
+    /// A runaway GLOSS line is dropped by `cleanGloss`, so it must fall back to the
+    /// phrase exactly like a missing one — never a garbled/overflowing label on the pill.
+    @MainActor
+    func testGlossOverflowFallsBackToPhrase() async {
+        let model = MeetingSubtopicModel()
+        let engine = Engine(summarizer: NoopSummarizer(), model: model)
+
+        await engine.evaluateForTesting(
+            "TOPIC|Budget\n" +
+            "GLOSS|This sentence just keeps going on and on with far more than fourteen words describing the topic in absurd detail\n" +
+            "CONFIDENCE|HIGH")
+
+        XCTAssertEqual(model.current, "Budget")
+        XCTAssertEqual(model.currentGloss, "Budget", "an overflowing gloss falls back to the topic phrase")
+    }
+
+    /// Chapter titles must stay exactly the short phrase regardless of what the gloss
+    /// says — the whole point of keeping gating/chapters keyed on TOPIC while GLOSS is
+    /// purely additive for display.
+    @MainActor
+    func testChapterTitleUnaffectedByGlossContent() async {
+        let model = MeetingSubtopicModel()
+        let collector = ChapterCollector()
+        let engine = Engine(summarizer: NoopSummarizer(), model: model) { [collector] topic in
+            collector.record(topic)
+        }
+
+        collector.clock = 10
+        await engine.evaluateForTesting(
+            "TOPIC|Budget review\nGLOSS|A sprawling sentence about Q3 spend, headcount, and the hiring freeze debate\nCONFIDENCE|HIGH")
+
+        XCTAssertEqual(collector.chapters.map(\.title), ["Budget review"],
+                       "the chapter title is the short phrase, never the gloss sentence")
+        XCTAssertEqual(model.currentGloss, "A sprawling sentence about Q3 spend, headcount, and the hiring freeze debate")
     }
 
     /// The ordering trap, modeled directly: the collector is filled *during*
@@ -207,7 +322,8 @@ final class MeetingSubtopicTests: XCTestCase {
         maybeShowPill()
 
         // Feed transcript unconditionally (the corrected `onLiveSegment` has no pill
-        // guard) and drive two consecutive highs to force an accept.
+        // guard). The first hit eagerly accepts (nothing shown yet); the repeat is a
+        // harmless no-op.
         collector.clock = 40
         await engine.evaluateForTesting("TOPIC|Roadmap\nCONFIDENCE|HIGH")
         await engine.evaluateForTesting("TOPIC|Roadmap\nCONFIDENCE|HIGH")

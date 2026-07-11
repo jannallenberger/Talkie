@@ -345,6 +345,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inbox.start()
         dictionaryInbox = inbox
 
+        // One-time heal (WP4): the corrector self-poisoning bundle's anti-poison
+        // gates (trusted-fold, confirm-signal, harvest filter) stop the store from
+        // getting poisoned going forward, but an existing install may already carry
+        // auto-learned ordinary-word terms from before those gates existed (a
+        // learned poll→pull rule, a bogus "communicates" confirm, harvested "Italy"
+        // from a recognizer error, …). Sweep them once, guarded by a UserDefaults
+        // flag so this never re-runs and never touches anything curated or
+        // confirmed repeatedly (see `sanitizeOrdinaryWords`).
+        Task { @MainActor in
+            // A persisted one-shot UserDefaults key: deliberately carries the frozen
+            // "Talkie" prefix like the other persisted flags (cf. the frozen
+            // "TalkieUpdaterConsent" precedent in the brand-literal allowlist) and
+            // must stay byte-stable forever, so it can never route through
+            // Brand.displayName. One constant so the brand-literal guard counts
+            // exactly one unavoidable occurrence.
+            let sanitizedFlagKey = "TalkieNicheSanitizedV1"
+            guard !UserDefaults.standard.bool(forKey: sanitizedFlagKey) else { return }
+            let protected = Set(dictionary.vocabulary.map { $0.lowercased() }
+                + dictionary.replacements.filter { !$0.isWeighted }.map { $0.to.lowercased() })
+            nicheVocab.sanitizeOrdinaryWords(isOrdinary: DictionaryStore.isOrdinaryPhraseOrWord, protected: protected)
+            UserDefaults.standard.set(true, forKey: sanitizedFlagKey)
+        }
+
         permissions.refresh()
         observeSettings()
 
@@ -881,10 +904,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // is COMPUTED — H1's toggle sweep wrongly conflated the two and re-gated
         // computation here, silently starving chapters for pill-hidden users. The
         // engine no-ops when its on-device model is unavailable, so this is cheap.
-        meetingRecorder.onLiveSegment = { [weak self] _, text in
+        meetingRecorder.onLiveSegment = { [weak self] speaker, text in
             Task { @MainActor in
                 guard let self else { return }
                 await self.subtopicEngine.ingest(text)
+
+                // B2: the OTHER person's questions get an instant, deterministic
+                // flash on the pill — no model call, no hysteresis wait, unlike
+                // `current` above. Only `.them` counts (the interview win is
+                // surfacing what THEY asked); `.me` stays out so the user's own
+                // dictated questions don't fight for the same slot.
+                guard speaker == .them, Interrogative.isQuestion(text) else { return }
+                self.subtopicModel.liveQuestion = text
+                let mirror = self.subtopicModel
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(7))
+                    // Only clear if this is still OUR question — a newer one that
+                    // arrived while we slept must not be wiped out by a stale timer.
+                    if mirror.liveQuestion == text { mirror.liveQuestion = nil }
+                }
             }
         }
 
@@ -1479,9 +1517,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var nicheTerms = dictionary.vocabulary
         // The user's EXPLICIT canonical terms — every vocabulary entry PLUS each
         // replacement rule's target — are high-intent, so they earn the corrector's
-        // looser phonetic gate (see NicheCorrector): they added these deliberately, so a
-        // close-but-not-tight recognizer miss ("church" ← "Chirp") should still snap to
-        // them. We also fold the replacement targets into the correction target list so a
+        // looser phonetic gate (see NicheCorrector): a close-but-not-tight recognizer
+        // miss on genuine jargon still snaps to them. When the recognized word is
+        // itself an ordinary EN/DE word (e.g. "church"), the gate tightens further —
+        // `bestMatch`'s `ordinaryWords` clamp only rescues an IDENTICAL-skeleton match
+        // even for a trusted target, so "Chirp" no longer snaps a plain "church" back;
+        // an explicit hard replacement rule remains the escape hatch for that case. We
+        // also fold the replacement targets into the correction target list so a
         // rule's canonical spelling gets phonetically rescued even when it isn't also a
         // standalone vocabulary entry.
         var trustedCores = Set(dictionary.vocabulary.map { NicheCorrector.core($0) })
@@ -1489,6 +1531,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let to = r.to.trimmingCharacters(in: .whitespaces)
             let toCore = NicheCorrector.core(to)
             guard toCore.count >= 4 else { continue }
+            // An AUTO-learned rule toward an ordinary word (weighted:true) must never make
+            // that word a trusted corrector target — that is exactly what let a learned
+            // poll→pull rule rewrite the real word "pill" to "pull". Explicit rules the
+            // user typed by hand (weighted:false) are honored even for ordinary words,
+            // because that is real intent.
+            if r.isWeighted && DictionaryStore.isOrdinaryDictionaryWord(to) { continue }
             trustedCores.insert(toCore)
             if !nicheTerms.contains(where: { $0.caseInsensitiveCompare(to) == .orderedSame }) {
                 nicheTerms.append(to)
@@ -1541,6 +1589,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let spokenLanguages = settings.spokenLanguages
         let vibeOn = settings.vibeCoding
         let vibeSnapshot = currentVibeSnapshot
+        // Vibe-sourced corrector terms (below) are repo/Obsidian identifiers — real
+        // jargon on a coding/terminal surface, but noise anywhere else (a chat
+        // dictation got "sense" rewritten to "sensor" purely because a repo
+        // identifier happened to be in the vibe snapshot). Gate the append to the
+        // surfaces where those identifiers are actually relevant; the AB-probe /
+        // `SpokenFileMatcher.format` path below stays on `vibeOn` alone — that's a
+        // different mechanism (formatting a spoken file reference), not corrector-
+        // term injection.
+        let vibeSurface = AppDelegate.vibeSurfaceEnabled(vibeOn: vibeOn, category: resolved.category)
         // A11: identifiers of the file you're looking at, mined off-main since begin.
         // Snapshotted here on the main actor (a plain `[String]`, Sendable) so it can
         // ride into the processing Task. Empty when the mine didn't resolve/finish.
@@ -1553,7 +1610,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // rescue window, so it can only rescue a close-sounding miss, never rewrite clean
         // prose (proven by the A11 false-positive corpus gate). Provenance order
         // end-to-end: dictionary > graduated niche > active-file > repo.
-        if vibeOn {
+        if vibeSurface {
             var seen = Set(nicheTerms.map { $0.lowercased() })
             for term in activeFileTerms where nicheTerms.count < 300 {
                 if seen.insert(term.lowercased()).inserted { nicheTerms.append(term) }
@@ -1568,7 +1625,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // corrector cap so one repo's docs can't crowd out the terms you've actually
         // confirmed. Each repo term already cleared the false-boost guard + 4-letter
         // floor when the snapshot was built.
-        if vibeOn {
+        if vibeSurface {
             var seen = Set(nicheTerms.map { $0.lowercased() })
             for term in vibeSnapshot.correctorTerms where nicheTerms.count < 300 {
                 if seen.insert(term.lowercased()).inserted { nicheTerms.append(term) }
@@ -1744,7 +1801,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                               crossSurfaceEnabled: self.settings.crossSurfaceCommandsEnabled) == nil,
                    case .inserted = TextInjector.insert(interim, mode: mode) {
                     optimistic = (interim.count, interim)
-                    self.hud.showInserting(replacedWords: [], privateSession: neverStore)
+                    // Interim optimistic pill: NO auto-dismiss — its dismissal is
+                    // owned by the final showInserting call after the cleanup pass,
+                    // which replaces it in place. Auto-dismissing here would blink
+                    // the pill out mid-cleanup and pop it back in at stop.
+                    self.hud.showInserting(changedWords: [], privateSession: neverStore,
+                                           autoDismisses: false)
                 }
             }
 
@@ -1802,14 +1864,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Recognizer-agnostic and deterministic; runs before the dictionary's exact
             // find-and-replace so those literal spellings still win on top.
             var nicheFixes: [String] = []
+            // The full from→to pairs behind `nicheFixes` — carried to the `.inserting`
+            // pill so a niche-origin fix can show what it changed FROM and, unlike a
+            // dictionary or bias-origin fix, be rejected in one tap (WP6).
+            var nicheFixPairs: [NicheFix] = []
             // The canonical spellings the corrector swapped IN this session. Threaded
             // into the learn-from-edits watcher below so that if the user then corrects
             // one of them away, we record a rejection against the niche term — the
             // corrector fixed the wrong thing, and that term should demote.
             var nicheFixTargets: [String] = []
             if !nicheTerms.isEmpty {
-                let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms, trusted: trustedCores)
+                // Defense-in-depth (belt-and-suspenders alongside the trusted-fold gate
+                // above): every ≥4-letter word the recognizer actually produced that is
+                // itself an ordinary EN/DE word — checked here on the MainActor so the
+                // corrector itself stays pure/Sendable and never touches the spellchecker.
+                // Passed in so an auto-graduated (untrusted) term can never rewrite a real
+                // word the user said, even if it somehow slipped into `nicheTerms` some
+                // other way than the trusted-fold path. Dedup the candidate tokens BEFORE
+                // spellchecking — a repeated word (common on a longer dictation)
+                // otherwise pays its 1-2 XPC `NSSpellChecker` calls once per occurrence
+                // instead of once total, and this runs on the MainActor at stop-time.
+                var candidateTokens = Set<String>()
+                for token in cleaned.split(whereSeparator: { !$0.isLetter }) {
+                    let word = String(token).lowercased()
+                    guard word.count >= 4 else { continue }
+                    candidateTokens.insert(word)
+                }
+                let ordinaryWords = Set(candidateTokens.filter(DictionaryStore.isOrdinaryDictionaryWord))
+                let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms, trusted: trustedCores,
+                                                       ordinaryWords: ordinaryWords)
                 cleaned = corrected.text
+                nicheFixPairs = corrected.fixes
                 nicheFixes = corrected.fixes.map(\.to)
                 nicheFixTargets = nicheFixes
             }
@@ -2175,17 +2260,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // and the fix would go unreported. Recover those by comparing the raw
             // transcript with what we actually inserted, and count them as
             // dictionary fixes too so the tally and the HUD agree.
-            var replacedWords = processed.replacedWords
             let biasApplied = TextProcessor.biasAppliedTargets(
                 rules: replacements, raw: finalRaw, output: finalText
             )
-            for word in biasApplied where !replacedWords.contains(word) {
-                replacedWords.append(word)
-            }
-            // Niche corrections are dictionary fixes too — surface them in the HUD.
-            for word in nicheFixes where !replacedWords.contains(word) {
-                replacedWords.append(word)
-            }
+            // Niche corrections are dictionary fixes too — surface them in the HUD,
+            // carrying from→to (and rejectability) for niche-origin fixes; dictionary
+            // and bias-origin words stay single "to" chips exactly as before (WP6 —
+            // full from→to for those would need `ProcessedText` to carry pairs, out of
+            // scope). `ChangedWord.union` owns the union order and the existing
+            // dedup-by-surface-form semantics, unchanged.
+            let changedWords = ChangedWord.union(
+                dictionaryReplaced: processed.replacedWords,
+                biasApplied: biasApplied,
+                nicheFixes: nicheFixPairs
+            )
+            let replacedWords = changedWords.map(\.to)
 
             // Log it (copyable in the History tab) + lifetime stats + fix tally,
             // even if insertion fell back to the clipboard. Share ONE id with the
@@ -2291,8 +2380,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // session, per the store's contract). These start as tracked candidates
                 // and only graduate into the corrector after enough repetition; nothing
                 // here injects on a single sighting. Shares the dictation id so provenance
-                // ("why is this term here?") points back to the exact entry.
-                let harvested = PhraseMiner.mine(from: [finalText])
+                // ("why is this term here?") points back to the exact entry. Ordinary
+                // words/phrases are dropped before ingest — the FINAL (already-cleaned)
+                // text can itself contain a recognizer error ("it also" for "Italy"), and
+                // an ordinary candidate is never rare jargon; it only got mined because of
+                // that error, so ingesting it would let the harvester poison the corrector
+                // with the very mistake it's supposed to catch.
+                let harvested = PhraseMiner.mine(from: [finalText]).filter { cand in
+                    !DictionaryStore.isOrdinaryPhraseOrWord(cand)
+                }
                 if !harvested.isEmpty {
                     self.nicheVocab.ingest(
                         harvested,
@@ -2372,8 +2468,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // `.inserted`, and its text is genuinely on screen, so it qualifies too.
                 self.lastInsertedDictationID = neverStore ? nil : dictationID
                 Feedback.done()
-                self.hud.showInserting(replacedWords: replacedWords, privateSession: neverStore)
-                self.hud.hide(after: replacedWords.isEmpty ? 0.4 : 1.4)
+                // A Private app (I1) learns nothing — `recordRejection` demotes a term
+                // in the shared vocabulary store, so a niche fix from a Private
+                // session must never be tappable, even though the correction itself
+                // (like any dictionary/bias fix) still displays exactly as it always
+                // has. Force every chip non-rejectable here rather than touching
+                // `ChangedWord.union`'s own (privacy-agnostic) semantics.
+                let visibleChangedWords = neverStore
+                    ? changedWords.map { ChangedWord(from: $0.from, to: $0.to, rejectable: false) }
+                    : changedWords
+                self.hud.showInserting(
+                    changedWords: visibleChangedWords, privateSession: neverStore,
+                    onRejectFix: HUDController.rejectFixHandler(nicheVocab: self.nicheVocab) { [weak self] in
+                        self?.hud.showReverted()
+                    }
+                )
                 // K3 — if this dictation broke a personal record, show ONE quiet
                 // "personal best" chip, queued behind the insertion pill so it never
                 // delays or replaces the copy/paste path (records ping only on
@@ -2576,11 +2685,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard self.dictionary.addLearnedReplacement(from: from, to: to) else { return false }
         // Confirm signal: the user explicitly typed `to` over Talkie's output — the
         // strongest evidence this spelling is real jargon. Graduates the niche term.
-        self.nicheVocab.recordUserConfirmed(
-            to,
-            provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
-                                   dateUnix: Date().timeIntervalSince1970, snippet: snippet)
-        )
+        // Skipped when `to` is an ordinary dictionary word — a single stray edit
+        // landing on an everyday word (e.g. a bogus "communicate"→"communicates")
+        // must never make the corrector treat it as jargon; the dictionary rule
+        // itself is still added above regardless.
+        if !DictionaryStore.isOrdinaryDictionaryWord(to) {
+            self.nicheVocab.recordUserConfirmed(
+                to,
+                provenance: Provenance(source: .dictation, sourceID: dictationID.uuidString,
+                                       dateUnix: Date().timeIntervalSince1970, snippet: snippet)
+            )
+        }
         let message = AppDelegate.learnedPingMessage(
             parrotName: self.settings.parrotName, to: to, source: source
         )
@@ -2595,6 +2710,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.hud.showReverted()
         }
         return true
+    }
+
+    /// WP4 — the vibe-coding corrector-term surface gate. Repo/Obsidian identifiers
+    /// (active-file terms + the vibe snapshot's mined jargon) are genuine jargon on a
+    /// coding/terminal surface, but noise anywhere else: feeding them into a chat
+    /// dictation caused a real "sense" → "sensor" self-inflicted correction purely
+    /// because a repo identifier happened to be sitting in the vibe snapshot. Pure so
+    /// the category gate is unit-testable without spinning up a live dictation
+    /// session; `endDictation` calls this for both vibe-sourced corrector-term
+    /// appends (active-file terms and the vibe snapshot's `correctorTerms`).
+    static func vibeSurfaceEnabled(vibeOn: Bool, category: AppCategory) -> Bool {
+        vibeOn && (category == .coding || category == .terminal)
     }
 
     /// K6 — build the learned-ping copy, name-aware. Pure and side-effect-free so
@@ -2921,13 +3048,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // The user explicitly typed `fixed` over what Talkie heard — the strongest
-        // evidence it's real jargon. Graduate the niche term (live post-A1).
-        self.nicheVocab.recordUserConfirmed(
-            fixed,
-            provenance: Provenance(source: .dictation, sourceID: nil,
-                                   dateUnix: Date().timeIntervalSince1970,
-                                   snippet: nil)
-        )
+        // evidence it's real jargon. Graduate the niche term (live post-A1). Skipped
+        // for an ordinary dictionary word — see `applyLearnedCorrection`'s matching
+        // guard for why (the dictionary rule itself is still added above).
+        if !DictionaryStore.isOrdinaryDictionaryWord(fixed) {
+            self.nicheVocab.recordUserConfirmed(
+                fixed,
+                provenance: Provenance(source: .dictation, sourceID: nil,
+                                       dateUnix: Date().timeIntervalSince1970,
+                                       snippet: nil)
+            )
+        }
         // Ping with an Undo that reverses both the rule and the niche signal —
         // same undo contract as the edit-watcher's learned ping.
         self.birdBuddy.perform(.gulp)
@@ -3072,8 +3203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch TextInjector.insert(text, mode: mode) {
         case .inserted:
             Feedback.done()
-            hud.showInserting(replacedWords: [])
-            hud.hide(after: 0.4)
+            hud.showInserting(changedWords: [])
         case .leftOnClipboard(let reason):
             Feedback.notPasted()
             hud.showCopyPrompt(text: text, message: reason, shortcut: pasteLastShortcutDisplay)

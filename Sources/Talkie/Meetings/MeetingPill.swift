@@ -66,17 +66,47 @@ private struct MeetingPillView: View {
                         .foregroundStyle(.white.opacity(0.6))
                         .monospacedDigit()
                 }
-                // The subtopic only appears once the engine is confident — the pill
-                // stays neutral (status + timer) until then, and never shows a guess.
-                if let topic = subtopic.current {
+                // A live far-end QUESTION takes priority — it's the instant,
+                // deterministic signal (no model, no hysteresis) and the highest-value
+                // moment on the pill (the interview win). It's ephemeral (auto-clears
+                // a few seconds after AppDelegate sets it), so once it lapses we fall
+                // back to the topic line exactly as before. The subtopic itself only
+                // ever appears once the engine is confident — the pill stays neutral
+                // (status + timer) until then, and never shows a guess.
+                if let question = subtopic.liveQuestion {
                     HStack(spacing: 5) {
-                        Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                        Image(systemName: "questionmark.circle.fill")
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(Theme.coral.opacity(0.9))
-                        Text(topic)
+                            .foregroundStyle(Theme.featherGold.opacity(0.9))
+                        Text(question)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.white.opacity(0.82))
                             .lineLimit(1)
+                    }
+                    .transition(.blurReplace)
+                } else if let topic = subtopic.current {
+                    // Prefer the sentence gloss for display (falls back to the short
+                    // phrase for the brief moment right after accept, before
+                    // `currentGloss` lands, and for any edge case where it's nil) —
+                    // gating/chapters still key off `subtopic.current` alone, untouched.
+                    HStack(alignment: .top, spacing: 5) {
+                        Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Theme.coral.opacity(0.9))
+                            .padding(.top, 1.5)
+                        Text(subtopic.currentGloss ?? topic)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .lineLimit(2)
+                            // Cap the width so a full sentence actually WRAPS to two
+                            // lines instead of the capsule just ballooning wider — the
+                            // outer `.fixedSize()` below hugs the tree's ideal size,
+                            // and without this cap "ideal" would mean "as wide as
+                            // needed to fit on one line" (no wrap, capsule overflows
+                            // the 540pt panel). Bounding width here is what makes the
+                            // capsule grow VERTICALLY instead of horizontally.
+                            .frame(maxWidth: 460, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .transition(.blurReplace)
                 }
@@ -93,8 +123,13 @@ private struct MeetingPillView: View {
                 )
         )
         .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
+        // Hug ideal size in both dimensions (unchanged from before): width still hugs
+        // tightly for the short neutral/topic-phrase case, and height now correctly
+        // reflects up to 2 wrapped lines thanks to the width cap above.
         .fixedSize()
         .animation(.spring(response: 0.3, dampingFraction: 0.72), value: subtopic.current)
+        .animation(.spring(response: 0.3, dampingFraction: 0.72), value: subtopic.currentGloss)
+        .animation(.spring(response: 0.3, dampingFraction: 0.72), value: subtopic.liveQuestion)
         .animation(.easeInOut(duration: 0.25), value: recorder.capturingFarEnd)
     }
 }
