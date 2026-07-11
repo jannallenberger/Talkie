@@ -253,6 +253,10 @@
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "ワンクリックでコネクタをインストール";
 "Install…" = "インストール…";
+"Reinstall…" = "再インストール…";
+"Update…" = "アップデート…";
+"Connector is up to date (v%@)" = "コネクタは最新です (v%@)";
+"Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "コネクタが古くなっています (v%@ → v%@)。再インストールして最新のツールを入手してください";
 "Claude Code & other MCP clients" = "Claude Code とその他の MCP クライアント";
 "Add this to your .mcp.json, or run the command" = ".mcp.json に追加するか、コマンドを実行してください";
 "Copy config" = "設定をコピー";

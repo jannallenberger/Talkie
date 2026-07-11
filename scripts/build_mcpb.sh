@@ -11,6 +11,13 @@ OUT="$ROOT/connector/Talkie.mcpb"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
+# Fail fast before packaging: a .mcpb built from a drifted manifest would ship a lie
+# (wrong tool list or a version that won't trigger a Desktop upgrade). The gate is
+# pure text, no build, so it's cheap to run here as insurance for local builds that
+# skip CI.
+echo "› Checking MCP drift…"
+"$ROOT/scripts/check-mcp-drift.sh"
+
 echo "› Building talkie-mcp (release)…"
 swift build -c release --product talkie-mcp --package-path "$ROOT"
 BIN="$ROOT/.build/release/talkie-mcp"
