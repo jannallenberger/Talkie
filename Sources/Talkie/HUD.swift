@@ -1,6 +1,42 @@
 import AppKit
 import SwiftUI
 
+/// One "what Talkie changed" chip on the `.inserting` pill (WP6). `to` is always the
+/// surface that actually got inserted. `from` is the original recognizer output —
+/// only known (and only shown) for a niche-corrector fix, since a dictionary
+/// replacement or a bias-applied target would need `ProcessedText` to carry pairs to
+/// know what it replaced (out of scope; those stay single "to" chips, exactly as
+/// before). `rejectable` is true only for a niche-origin fix: tapping it calls
+/// `nicheVocab.recordRejection(to)`, the signal that demotes a poisoned term so it
+/// stops re-firing — a dictionary/bias chip has no equivalent "undo this rule" tap.
+struct ChangedWord: Equatable, Sendable {
+    var from: String?
+    var to: String
+    var rejectable: Bool
+
+    /// Builds the ordered `.inserting` chip list from the three sources
+    /// `AppDelegate.endDictation` already unions today: dictionary replacements,
+    /// bias-applied targets, then niche-corrector fixes. Preserves that exact order
+    /// and the existing dedup-by-surface-form semantics (a later source loses to an
+    /// earlier one that already named the same `to` word) — only the niche source
+    /// now carries `from` and comes back `rejectable`.
+    static func union(dictionaryReplaced: [String], biasApplied: [String],
+                      nicheFixes: [NicheFix]) -> [ChangedWord] {
+        var out: [ChangedWord] = []
+        var seen = Set<String>()
+        for word in dictionaryReplaced where seen.insert(word).inserted {
+            out.append(ChangedWord(from: nil, to: word, rejectable: false))
+        }
+        for word in biasApplied where seen.insert(word).inserted {
+            out.append(ChangedWord(from: nil, to: word, rejectable: false))
+        }
+        for fix in nicheFixes where seen.insert(fix.to).inserted {
+            out.append(ChangedWord(from: fix.from, to: fix.to, rejectable: true))
+        }
+        return out
+    }
+}
+
 /// Visual state of the dictation HUD. These phases are the *contract* between the
 /// dictation pipeline (AppDelegate) and the pill: each one maps to a real stage
 /// of capture so the pill always reflects what's actually happening.
@@ -26,10 +62,10 @@ enum HUDPhase: Equatable {
     case listening
     case transcribing
     case processing
-    // Replaced words to show as chips (empty if none), plus whether this was a
+    // Words Talkie changed, shown as chips (empty if none), plus whether this was a
     // "Private app" session (I1) — when true the pill shows an eye.slash glyph, a
     // wordless trust moment confirming Talkie kept no history and learned nothing.
-    case inserting([String], privateSession: Bool)
+    case inserting([ChangedWord], privateSession: Bool)
     case copyPrompt(String)
     case copied
     // The proposed replacement text, awaiting confirm; `replacing` is non-nil
@@ -116,6 +152,9 @@ final class HUDModel: ObservableObject {
     var onCommandUndo: () -> Void = {}
     /// Invoked when the user taps "Undo" on a learned-correction ping.
     var onLearnedUndo: () -> Void = {}
+    /// Invoked with the tapped chip when the user rejects a rejectable `.inserting`
+    /// chip (a niche-origin fix) — the hub wires this to `recordRejection` (WP6).
+    var onRejectFix: (ChangedWord) -> Void = { _ in }
     /// Invoked when the user taps "Index" on the Vibe Coding offer (A9).
     var onVibeAccept: () -> Void = {}
     /// Invoked when the user taps "Not now" on the Vibe Coding offer (A9).
@@ -445,9 +484,38 @@ final class HUDController {
     /// `privateSession` (I1) is true when the app dictated into was marked "Private":
     /// the pill then shows an eye.slash glyph next to "Inserted" as a wordless
     /// confirmation that Talkie kept no history and learned nothing from it.
-    func showInserting(replacedWords: [String] = [], privateSession: Bool = false) {
+    /// `onRejectFix` fires when the user taps a rejectable (niche-origin) chip; the
+    /// hub wires it to `nicheVocab.recordRejection` + a brief confirmation (WP6).
+    /// When `autoDismisses` (the default) it owns its own dismiss —
+    /// `changedWords.isEmpty ? 0.4 : 1.4`s, matching the timing every caller already
+    /// used — routed through the same hover-pausable clock every other interactive
+    /// pill uses (`autoDismiss`) whenever a chip is actually rejectable, so reaching
+    /// across for Reject can never lose the race against the timeout; a
+    /// non-interactive insert (the overwhelming common case) keeps the plain
+    /// fixed-delay dismiss, unchanged. Pass `autoDismisses: false` when a LATER
+    /// `showInserting` call owns the dismissal (the optimistic-interim pill) — the
+    /// pill then persists until that call replaces it, exactly as it did before this
+    /// method owned any timing.
+    func showInserting(changedWords: [ChangedWord] = [], privateSession: Bool = false,
+                       autoDismisses: Bool = true,
+                       onRejectFix: @escaping (ChangedWord) -> Void = { _ in }) {
         cancelHide()
-        model.phase = .inserting(replacedWords, privateSession: privateSession)
+        model.onRejectFix = { [weak self] change in
+            self?.panel?.ignoresMouseEvents = true
+            onRejectFix(change)
+        }
+        let hasRejectable = changedWords.contains { $0.rejectable }
+        if hasRejectable {
+            panel?.ignoresMouseEvents = false   // let the user tap Reject
+        }
+        model.phase = .inserting(changedWords, privateSession: privateSession)
+        guard autoDismisses else { return }
+        let dismissDelay: TimeInterval = changedWords.isEmpty ? 0.4 : 1.4
+        if hasRejectable {
+            autoDismiss(after: dismissDelay, drivesRing: false)
+        } else {
+            hide(after: dismissDelay)
+        }
     }
 
     /// A paste couldn't land — show a tappable alert; tapping copies the text to
@@ -937,6 +1005,20 @@ final class HUDController {
         panel?.orderOut(nil)
         hideTask = nil
     }
+
+    /// Builds the reject-tap handler for a rejectable `.inserting` chip (WP6): demotes
+    /// the niche term via `nicheVocab.recordRejection(change.to)` — the signal that
+    /// actually stops a poisoned term from re-firing, provably (see WP4) — then runs
+    /// `confirm` (the hub wires this to `showReverted()`, mirroring every other
+    /// Undo/reject flow's brief acknowledgment). A free-standing factory rather than
+    /// inline AppDelegate glue, so the wiring itself is testable without an AppKit panel.
+    static func rejectFixHandler(nicheVocab: NicheVocabStore,
+                                 confirm: @escaping () -> Void) -> (ChangedWord) -> Void {
+        { change in
+            nicheVocab.recordRejection(change.to)
+            confirm()
+        }
+    }
 }
 
 /// The A12 correction popover body: a compact card with a prefilled text field and
@@ -1064,6 +1146,20 @@ private struct HUDView: View {
     private func chipFill(_ opacity: Double) -> Color {
         if model.reduceTransparency { return .white.opacity(0.22) }
         return .white.opacity(model.highContrast ? min(opacity + 0.06, 1) : opacity)
+    }
+
+    /// The `.inserting` pill's spoken confirmation: names the corrected words (their
+    /// `to` surface — the same string shown on a non-rejectable chip) so a VoiceOver
+    /// user hears what Talkie fixed, not just "inserted". For a Private app, say so —
+    /// the eye.slash glyph is silent to VoiceOver, so the trust moment is spoken here.
+    private func insertedAccessibilityLabel(_ changedWords: [ChangedWord], privateSession: Bool) -> String {
+        let base = changedWords.isEmpty
+            ? "Inserted your dictation.".loc
+            : String(format: "Inserted your dictation. Corrected: %@".loc,
+                     changedWords.prefix(3).map(\.to).joined(separator: ", "))
+        return privateSession
+            ? base + " " + "Private app — kept no history, learned nothing.".loc
+            : base
     }
 
     /// C1 (redesigned) — the live tail as a WRAPPING block below the waveform. A fixed
@@ -1303,62 +1399,120 @@ private struct HUDView: View {
             .transition(.blurReplace)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Polishing your dictation.".loc)
-        case .inserting(let words, let privateSession):
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Theme.positive)
-                Text("Inserted")
-                    .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
-                    .foregroundStyle(ink(0.8))
-                // Private-app trust moment (I1): an eye.slash confirms, wordlessly,
-                // that Talkie inserted the text but kept no history and learned
-                // nothing from it. Folded into the group's accessibility label below.
-                if privateSession {
-                    Image(systemName: "eye.slash")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(ink(0.6))
-                        .accessibilityHidden(true)
-                }
-                if !words.isEmpty {
+        case .inserting(let changedWords, let privateSession):
+            // A rejectable chip (a niche-origin fix — never present for a Private
+            // session, see the `.rejectable` gate at the `showInserting` call site)
+            // is a REAL control, so that layout exposes chips as individually
+            // navigable VoiceOver elements instead of flattening everything into one
+            // announcement; the non-rejectable (overwhelming common) case renders and
+            // reads exactly as it always has.
+            let hasRejectable = changedWords.contains { $0.rejectable }
+            if hasRejectable {
+                HStack(spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.positive)
+                        Text("Inserted")
+                            .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                            .foregroundStyle(ink(0.8))
+                        if privateSession {
+                            Image(systemName: "eye.slash")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(ink(0.6))
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(insertedAccessibilityLabel(changedWords, privateSession: privateSession))
                     Text("·")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(ink(0.22))
-                    ForEach(Array(words.prefix(3).enumerated()), id: \.offset) { _, word in
-                        Text(word)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(ink(0.72))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(chipFill(0.13)))
+                        .accessibilityHidden(true)
+                    ForEach(Array(changedWords.prefix(3).enumerated()), id: \.offset) { _, word in
+                        if word.rejectable {
+                            // Niche-origin fix: show what it changed FROM, and let it
+                            // be rejected in one tap — the signal that demotes a
+                            // poisoned term (`nicheVocab.recordRejection`) so it stops
+                            // re-firing (see WP4).
+                            CommandChip(title: "\(word.from ?? word.to) → \(word.to)",
+                                        prominent: false,
+                                        fill: chipFill(0.13), ink: ink(0.72),
+                                        hint: "Rejects this correction so it stops being made.".loc,
+                                        identifier: "talkie.pill.rejectFix") { model.onRejectFix(word) }
+                        } else {
+                            Text(word.to)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(ink(0.72))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(chipFill(0.13)))
+                        }
                     }
-                    if words.count > 3 {
-                        Text("+\(words.count - 3)")
+                    if changedWords.count > 3 {
+                        Text("+\(changedWords.count - 3)")
                             .font(.system(size: 11))
                             .foregroundStyle(ink(0.4))
+                            .accessibilityHidden(true)
                     }
                 }
+                // The pill shows "Inserted" here, but the pipeline can still be busy
+                // behind the scenes for up to ~1s (self-heal verify + live-learning
+                // watch, see `AppDelegate.endDictation`'s follow-up Task) — so a press
+                // that lands during that window and gets rejected still needs a
+                // visible acknowledgment. See `nudgeBusy()`.
+                .modifier(BusyShake(trigger: model.busyNudge))
+                .transition(.blurReplace)
+                .accessibilityElement(children: .contain)
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.positive)
+                    Text("Inserted")
+                        .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
+                        .foregroundStyle(ink(0.8))
+                    // Private-app trust moment (I1): an eye.slash confirms, wordlessly,
+                    // that Talkie inserted the text but kept no history and learned
+                    // nothing from it. Folded into the group's accessibility label below.
+                    if privateSession {
+                        Image(systemName: "eye.slash")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(ink(0.6))
+                            .accessibilityHidden(true)
+                    }
+                    if !changedWords.isEmpty {
+                        Text("·")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(ink(0.22))
+                        ForEach(Array(changedWords.prefix(3).enumerated()), id: \.offset) { _, word in
+                            Text(word.to)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(ink(0.72))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(chipFill(0.13)))
+                        }
+                        if changedWords.count > 3 {
+                            Text("+\(changedWords.count - 3)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(ink(0.4))
+                        }
+                    }
+                }
+                // The pill shows "Inserted" here, but the pipeline can still be busy
+                // behind the scenes for up to ~1s (self-heal verify + live-learning
+                // watch, see `AppDelegate.endDictation`'s follow-up Task) — so a press
+                // that lands during that window and gets rejected still needs a
+                // visible acknowledgment. See `nudgeBusy()`.
+                .modifier(BusyShake(trigger: model.busyNudge))
+                .transition(.blurReplace)
+                // Read as one confirmation; name the corrected words so a VoiceOver user
+                // hears what Talkie fixed, not just "inserted". For a Private app, say so —
+                // the eye.slash is silent to VoiceOver, so the trust moment is spoken here.
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(insertedAccessibilityLabel(changedWords, privateSession: privateSession))
             }
-            // The pill shows "Inserted" here, but the pipeline can still be busy
-            // behind the scenes for up to ~1s (self-heal verify + live-learning
-            // watch, see `AppDelegate.endDictation`'s follow-up Task) — so a press
-            // that lands during that window and gets rejected still needs a
-            // visible acknowledgment. See `nudgeBusy()`.
-            .modifier(BusyShake(trigger: model.busyNudge))
-            .transition(.blurReplace)
-            // Read as one confirmation; name the corrected words so a VoiceOver user
-            // hears what Talkie fixed, not just "inserted". For a Private app, say so —
-            // the eye.slash is silent to VoiceOver, so the trust moment is spoken here.
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel({
-                let base = words.isEmpty
-                    ? "Inserted your dictation.".loc
-                    : String(format: "Inserted your dictation. Corrected: %@".loc,
-                             words.prefix(3).joined(separator: ", "))
-                return privateSession
-                    ? base + " " + "Private app — kept no history, learned nothing.".loc
-                    : base
-            }())
         case .copyPrompt(let message):
             // Expands downward into a second line when the re-paste shortcut is on,
             // spelling out how to use it rather than relying on a bare keycap.
@@ -1445,10 +1599,12 @@ private struct HUDView: View {
                         )
                     CommandChip(title: "Insert", prominent: true,
                                 fill: chipFill(0.18), ink: ink(0.72),
-                                hint: "Applies the suggested text.".loc) { model.onCommandConfirm() }
+                                hint: "Applies the suggested text.".loc,
+                                identifier: "talkie.pill.cmdInsert") { model.onCommandConfirm() }
                     CommandChip(title: "Undo", prominent: false,
                                 fill: chipFill(0.13), ink: ink(0.72),
-                                hint: "Dismisses the suggestion and keeps your text.".loc) { model.onCommandUndo() }
+                                hint: "Dismisses the suggestion and keeps your text.".loc,
+                                identifier: "talkie.pill.cmdUndo") { model.onCommandUndo() }
                 }
             }
             .transition(.blurReplace)
@@ -1573,7 +1729,8 @@ private struct HUDView: View {
                     .frame(maxWidth: 260, alignment: .leading)
                 CommandChip(title: "Fix", prominent: true,
                             fill: chipFill(0.18), ink: ink(0.72),
-                            hint: "Opens a small box to correct the spelling for next time.".loc) {
+                            hint: "Opens a small box to correct the spelling for next time.".loc,
+                            identifier: "talkie.pill.reviewFix") {
                     model.onReviewFix(primary)
                 }
             }
@@ -1599,7 +1756,8 @@ private struct HUDView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 CommandChip(title: "Enable", prominent: true,
                             fill: chipFill(0.18), ink: ink(0.72),
-                            hint: "Starts Talkie automatically at login so your hotkey is always ready.".loc) {
+                            hint: "Starts Talkie automatically at login so your hotkey is always ready.".loc,
+                            identifier: "talkie.pill.launchEnable") {
                     model.onLaunchOfferEnable()
                 }
             }

@@ -1517,9 +1517,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var nicheTerms = dictionary.vocabulary
         // The user's EXPLICIT canonical terms — every vocabulary entry PLUS each
         // replacement rule's target — are high-intent, so they earn the corrector's
-        // looser phonetic gate (see NicheCorrector): they added these deliberately, so a
-        // close-but-not-tight recognizer miss ("church" ← "Chirp") should still snap to
-        // them. We also fold the replacement targets into the correction target list so a
+        // looser phonetic gate (see NicheCorrector): a close-but-not-tight recognizer
+        // miss on genuine jargon still snaps to them. When the recognized word is
+        // itself an ordinary EN/DE word (e.g. "church"), the gate tightens further —
+        // `bestMatch`'s `ordinaryWords` clamp only rescues an IDENTICAL-skeleton match
+        // even for a trusted target, so "Chirp" no longer snaps a plain "church" back;
+        // an explicit hard replacement rule remains the escape hatch for that case. We
+        // also fold the replacement targets into the correction target list so a
         // rule's canonical spelling gets phonetically rescued even when it isn't also a
         // standalone vocabulary entry.
         var trustedCores = Set(dictionary.vocabulary.map { NicheCorrector.core($0) })
@@ -1797,7 +1801,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                               crossSurfaceEnabled: self.settings.crossSurfaceCommandsEnabled) == nil,
                    case .inserted = TextInjector.insert(interim, mode: mode) {
                     optimistic = (interim.count, interim)
-                    self.hud.showInserting(replacedWords: [], privateSession: neverStore)
+                    // Interim optimistic pill: NO auto-dismiss — its dismissal is
+                    // owned by the final showInserting call after the cleanup pass,
+                    // which replaces it in place. Auto-dismissing here would blink
+                    // the pill out mid-cleanup and pop it back in at stop.
+                    self.hud.showInserting(changedWords: [], privateSession: neverStore,
+                                           autoDismisses: false)
                 }
             }
 
@@ -1855,6 +1864,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Recognizer-agnostic and deterministic; runs before the dictionary's exact
             // find-and-replace so those literal spellings still win on top.
             var nicheFixes: [String] = []
+            // The full from→to pairs behind `nicheFixes` — carried to the `.inserting`
+            // pill so a niche-origin fix can show what it changed FROM and, unlike a
+            // dictionary or bias-origin fix, be rejected in one tap (WP6).
+            var nicheFixPairs: [NicheFix] = []
             // The canonical spellings the corrector swapped IN this session. Threaded
             // into the learn-from-edits watcher below so that if the user then corrects
             // one of them away, we record a rejection against the niche term — the
@@ -1867,16 +1880,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // corrector itself stays pure/Sendable and never touches the spellchecker.
                 // Passed in so an auto-graduated (untrusted) term can never rewrite a real
                 // word the user said, even if it somehow slipped into `nicheTerms` some
-                // other way than the trusted-fold path.
-                var ordinaryWords = Set<String>()
+                // other way than the trusted-fold path. Dedup the candidate tokens BEFORE
+                // spellchecking — a repeated word (common on a longer dictation)
+                // otherwise pays its 1-2 XPC `NSSpellChecker` calls once per occurrence
+                // instead of once total, and this runs on the MainActor at stop-time.
+                var candidateTokens = Set<String>()
                 for token in cleaned.split(whereSeparator: { !$0.isLetter }) {
                     let word = String(token).lowercased()
                     guard word.count >= 4 else { continue }
-                    if DictionaryStore.isOrdinaryDictionaryWord(word) { ordinaryWords.insert(word) }
+                    candidateTokens.insert(word)
                 }
+                let ordinaryWords = Set(candidateTokens.filter(DictionaryStore.isOrdinaryDictionaryWord))
                 let corrected = NicheCorrector.correct(cleaned, terms: nicheTerms, trusted: trustedCores,
                                                        ordinaryWords: ordinaryWords)
                 cleaned = corrected.text
+                nicheFixPairs = corrected.fixes
                 nicheFixes = corrected.fixes.map(\.to)
                 nicheFixTargets = nicheFixes
             }
@@ -2242,17 +2260,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // and the fix would go unreported. Recover those by comparing the raw
             // transcript with what we actually inserted, and count them as
             // dictionary fixes too so the tally and the HUD agree.
-            var replacedWords = processed.replacedWords
             let biasApplied = TextProcessor.biasAppliedTargets(
                 rules: replacements, raw: finalRaw, output: finalText
             )
-            for word in biasApplied where !replacedWords.contains(word) {
-                replacedWords.append(word)
-            }
-            // Niche corrections are dictionary fixes too — surface them in the HUD.
-            for word in nicheFixes where !replacedWords.contains(word) {
-                replacedWords.append(word)
-            }
+            // Niche corrections are dictionary fixes too — surface them in the HUD,
+            // carrying from→to (and rejectability) for niche-origin fixes; dictionary
+            // and bias-origin words stay single "to" chips exactly as before (WP6 —
+            // full from→to for those would need `ProcessedText` to carry pairs, out of
+            // scope). `ChangedWord.union` owns the union order and the existing
+            // dedup-by-surface-form semantics, unchanged.
+            let changedWords = ChangedWord.union(
+                dictionaryReplaced: processed.replacedWords,
+                biasApplied: biasApplied,
+                nicheFixes: nicheFixPairs
+            )
+            let replacedWords = changedWords.map(\.to)
 
             // Log it (copyable in the History tab) + lifetime stats + fix tally,
             // even if insertion fell back to the clipboard. Share ONE id with the
@@ -2446,8 +2468,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // `.inserted`, and its text is genuinely on screen, so it qualifies too.
                 self.lastInsertedDictationID = neverStore ? nil : dictationID
                 Feedback.done()
-                self.hud.showInserting(replacedWords: replacedWords, privateSession: neverStore)
-                self.hud.hide(after: replacedWords.isEmpty ? 0.4 : 1.4)
+                // A Private app (I1) learns nothing — `recordRejection` demotes a term
+                // in the shared vocabulary store, so a niche fix from a Private
+                // session must never be tappable, even though the correction itself
+                // (like any dictionary/bias fix) still displays exactly as it always
+                // has. Force every chip non-rejectable here rather than touching
+                // `ChangedWord.union`'s own (privacy-agnostic) semantics.
+                let visibleChangedWords = neverStore
+                    ? changedWords.map { ChangedWord(from: $0.from, to: $0.to, rejectable: false) }
+                    : changedWords
+                self.hud.showInserting(
+                    changedWords: visibleChangedWords, privateSession: neverStore,
+                    onRejectFix: HUDController.rejectFixHandler(nicheVocab: self.nicheVocab) { [weak self] in
+                        self?.hud.showReverted()
+                    }
+                )
                 // K3 — if this dictation broke a personal record, show ONE quiet
                 // "personal best" chip, queued behind the insertion pill so it never
                 // delays or replaces the copy/paste path (records ping only on
@@ -3168,8 +3203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch TextInjector.insert(text, mode: mode) {
         case .inserted:
             Feedback.done()
-            hud.showInserting(replacedWords: [])
-            hud.hide(after: 0.4)
+            hud.showInserting(changedWords: [])
         case .leftOnClipboard(let reason):
             Feedback.notPasted()
             hud.showCopyPrompt(text: text, message: reason, shortcut: pasteLastShortcutDisplay)
