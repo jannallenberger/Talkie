@@ -291,6 +291,10 @@
 "Forever" = "Forever";
 "You're keeping 1 dictation right now." = "You're keeping 1 dictation right now.";
 "You're keeping %d dictations right now." = "You're keeping %d dictations right now.";
+"It takes up %@ on this Mac." = "It takes up %@ on this Mac.";
+"Maximum dictations" = "Maximum dictations";
+"Only the most recent are kept; older ones drop off past this count." = "Only the most recent are kept; older ones drop off past this count.";
+"No limit" = "No limit";
 "Choose audio or video files — or a folder of them — to transcribe into meetings." = "Choose audio or video files — or a folder of them — to transcribe into meetings.";
 
 /* D5 — batch folder transcription queue */
@@ -653,6 +657,11 @@
 "Let Claude read your meetings and context, on-device." = "Let Claude read your meetings and context, on-device.";
 "The permissions Talkie needs and proof nothing leaves." = "The permissions Talkie needs and proof nothing leaves.";
 "Tools that ship only in development builds." = "Tools that ship only in development builds.";
+/* Settings index rows — consolidated icon-row index (7 rows + Developer) */
+"Notes & behavior" = "Notes & behavior";
+"How Talkie polishes text, learns your words, and per-app styles." = "How Talkie polishes text, learns your words, and per-app styles.";
+"Privacy & history" = "Privacy & history";
+"Permissions, proof nothing leaves, and your history." = "Permissions, proof nothing leaves, and your history.";
 "The full language picker will live here." = "The full language picker will live here.";
 "Meeting recording and transcription settings will live here." = "Meeting recording and transcription settings will live here.";
 "The on-device, zero-network proof will live here." = "The on-device, zero-network proof will live here.";

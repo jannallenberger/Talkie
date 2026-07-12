@@ -32,17 +32,40 @@ struct PrivacySection: View {
         )
     }
 
+    /// Bridges the scalar `historyMaxCount` setting to the typed picker.
+    private var maxCount: Binding<HistoryMaxCount> {
+        Binding(
+            get: { HistoryMaxCount.from(count: settings.historyMaxCount) },
+            set: { settings.historyMaxCount = $0.rawValue }
+        )
+    }
+
+    /// Compact on-disk-size formatter for the history footprint. `.file` count
+    /// style with KB→GB units so a small `history.json` reads "312 KB", not the
+    /// "0 MB" that `ProcessFootprint.formatBytes` (MB/GB only) would round it to.
+    private static let sizeFormatter: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        f.allowedUnits = [.useKB, .useMB, .useGB]
+        return f
+    }()
+
     /// The "Your history" card footer: the live retained-dictation count plus the
-    /// always-true cap. Uses `%d`-format `.loc` strings (the codebase's plural
-    /// idiom — no `.stringsdict`), with a singular form for exactly one entry so
-    /// it never reads "1 dictations".
+    /// disk space it currently occupies. Uses `%d`/`%@`-format `.loc` strings (the
+    /// codebase's plural idiom — no `.stringsdict`), with a singular form for exactly
+    /// one entry so it never reads "1 dictations". The size is read from
+    /// `history.onDiskByteCount` (a file stat, not a re-encode), so it costs nothing
+    /// to recompute on each render. The old "capped at 2,000" sentence is gone: the
+    /// cap is now a visible, user-set control (the "Maximum dictations" row) rather
+    /// than a fixed fact to disclose.
     private var historyFooter: String {
         let count = history.entries.count
-        let cap = "History is capped at the 2,000 most recent dictations regardless of age.".loc
+        let size = Self.sizeFormatter.string(fromByteCount: Int64(history.onDiskByteCount))
         let kept = count == 1
             ? "You're keeping 1 dictation right now.".loc
             : String(format: "You're keeping %d dictations right now.".loc, count)
-        return kept + " " + cap
+        let disk = String(format: "It takes up %@ on this Mac.".loc, size)
+        return kept + " " + disk
     }
 
     var body: some View {
@@ -194,6 +217,16 @@ struct PrivacySection: View {
                 ) {
                     Picker("", selection: retention) {
                         ForEach(HistoryRetention.allCases) { Text($0.displayName).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
+                }
+                SettingsDivider()
+                SettingsRow(
+                    title: "Maximum dictations".loc,
+                    subtitle: "Only the most recent are kept; older ones drop off past this count.".loc
+                ) {
+                    Picker("", selection: maxCount) {
+                        ForEach(HistoryMaxCount.allCases) { Text($0.displayName).tag($0) }
                     }
                     .labelsHidden().fixedSize()
                 }

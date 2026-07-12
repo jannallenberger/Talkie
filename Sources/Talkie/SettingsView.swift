@@ -54,19 +54,36 @@ enum SettingsTab: Hashable, CaseIterable {
     }
 }
 
-/// A push-navigation route *inside* the Settings tab (L6a). The Settings root is
-/// a flat index of grouped cards (HYBRID IA); only these three genuinely deep
-/// areas push to a child screen rather than crowding the root. The cases are the
-/// scaffold — L6b (`allLanguages`), L6c (`meetings`), and L6d (`verifyClaims`)
-/// fill in the real destinations; until then they resolve to a placeholder so the
-/// route is navigable and the build stays green.
+/// A push-navigation route *inside* the Settings tab. The Settings root is now a
+/// tidy INDEX of icon rows (down from one long flat scroll); every row pushes a
+/// focused subpage via one of these routes. The first block are the index-row
+/// destinations; the trailing block are the nested / deep-link targets reached
+/// from *within* a subpage (the flag grid inside Languages, the Meetings deep
+/// link from the Meetings tab, and the Verify-our-claims proof off Privacy).
 enum SettingsPage: Hashable {
-    /// L6b — the full "All languages" picker (root shows only a selected strip).
+    // ── Index-row destinations ───────────────────────────────────────────
+    /// Dictation — your dictation key, how text lands, and the mic.
+    case dictation
+    /// Cleanup & style — polishing, learning, and per-app styles.
+    case cleanupStyle
+    /// Languages — which languages you speak (pushes `.allLanguages` for the grid).
+    case languages
+    /// Notes & behavior — where notes/transcripts go, plus app behavior.
+    case notesBehavior
+    /// Claude — the on-device MCP connector.
+    case claude
+    /// Privacy & history — permissions, zero-network proof, and history.
+    case privacy
+    /// Developer — dev-only tools (shown only when `showDeveloperSection`).
+    case developer
+
+    // ── Nested / deep-link destinations ──────────────────────────────────
+    /// The full "All languages" picker (the Languages subpage shows a strip).
     case allLanguages
-    /// L6c — the Meetings settings subpage (also the deep-link target for the
-    /// Meetings tab, via `SettingsRouter.pendingPage`).
+    /// The Meetings settings subpage. Also the deep-link target for the
+    /// Meetings tab, via `SettingsRouter.pendingPage`, and the Meetings index row.
     case meetings
-    /// L6d — the "Verify our claims" zero-network proof surface.
+    /// The "Verify our claims" zero-network proof surface (off Privacy & history).
     case verifyClaims
 }
 
@@ -254,17 +271,10 @@ struct MainView: View {
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .background(Theme.canvas)
-                        // Native macOS 26 window toolbar (Liquid Glass, like Finder):
-                        // shows where you are; content scrolls under it with the system
-                        // scroll-edge gradient. NSHostingController (above) is what lets
-                        // SwiftUI `.toolbar` bridge to a real window toolbar here.
-                        .toolbar {
-                            ToolbarItem(placement: .principal) {
-                                Text(router.selectedTab.title.loc)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(Theme.ink)
-                            }
-                        }
+                        // No principal toolbar item: the floating Liquid-Glass title
+                        // "pill" it produced was removed app-wide (each page already
+                        // carries its own in-content header), so nothing bridges to the
+                        // window toolbar here anymore.
                 }
                 .transition(.opacity)
             } else {
@@ -401,91 +411,60 @@ private struct SettingsHome: View {
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    // The page title lives in the native window toolbar now (Finder-style),
-                    // so no in-content header here — the first section leads.
+                VStack(alignment: .leading, spacing: 12) {
+                    // The Settings root is a tidy INDEX of icon rows (down from one
+                    // long flat scroll). Each row pushes a focused subpage via a
+                    // `SettingsPage` route, resolved by the `.navigationDestination`
+                    // below. The page title lives in the native window toolbar now
+                    // (Finder-style), so no in-content header — the index leads.
                     //
-                    // H1: the dedicated Profile section is gone — your name is edited inline
-                    // on the Dashboard header now (click "Welcome back, …"). One fewer group.
-                    //
-                    // ── 1. Dictation ─────────────────────────────────────────────
-                    section("Dictation",
-                            subtitle: "Your dictation key, how text lands, and the mic.") {
-                        ActivationSettings(settings: settings)
-                        MicrophoneSettings(settings: settings)
-                    }
-                    // ── 2. Cleanup & intelligence ────────────────────────────────
-                    // Smart cleanup sits beside the Context-awareness + Learning
-                    // toggles as one story (L6e). The old Memory count card was
-                    // retired — the sidebar Memory tab is the surface for those
-                    // counts — so `ContextSettings` no longer needs the context
-                    // graph or the router.
-                    section("Cleanup & intelligence",
-                            subtitle: "How Talkie polishes text and learns your words.") {
-                        CleanupSettings(settings: settings)
-                        ContextSettings(settings: settings)
-                    }
-                    // ── 3. Languages ─────────────────────────────────────────────
-                    // L6b: the root shows a compact horizontal strip of the languages
-                    // you speak (+ a couple of suggestions), ending in an "All
-                    // languages ›" tile that pushes the full flag grid
-                    // (`SettingsPage.allLanguages`, resolved in the NavigationStack
-                    // below by `AllLanguagesPage`). Both surfaces write the same
-                    // `spokenLanguages` via `toggleSpokenLanguage`.
-                    section("Languages",
-                            subtitle: "Which languages you speak; Talkie auto-detects.") {
-                        LanguageSettings(settings: settings)
-                    }
-                    // ── 4. Apps ──────────────────────────────────────────────────
-                    section("Apps",
-                            subtitle: "Per-app cleanup styles for the apps you customize.") {
-                        AppProfilesSettings(profiles: profiles, settings: settings)
-                    }
-                    // ── 5. Meetings ──────────────────────────────────────────────
-                    // L6c: one compact row that pushes `SettingsPage.meetings` — the
-                    // single subpage that now owns every meeting setting (auto-detect,
-                    // live pill, meeting apps, calendar context, destination reference).
-                    // It's also the deep-link target for the Meetings tab via `pendingPage`.
-                    section("Meetings",
-                            subtitle: "Recording, transcription, and calendar context.") {
-                        MeetingsSettingsLinkRow()
-                    }
-                    // ── 6. Notes & export ────────────────────────────────────────
-                    // Dictation notes route through the same `ExportPreferences` as
-                    // meeting notes, so "Notes & export" is the honest label. The
-                    // general app-behavior toggles (sounds, login, floating bird) ride
-                    // along here rather than spawning a ninth group.
-                    section("Notes & export",
-                            subtitle: "Where notes and transcripts go, plus app behavior.") {
-                        ExportDestinationsSettings()
-                        BehaviorSettings(settings: settings)
-                    }
-                    // ── 7. Claude ────────────────────────────────────────────────
-                    // The public "Connect to Claude" card lives at the root (H1 hoisted it
-                    // out of the Developer section, which is now hidden in normal builds).
-                    // It ships with every install and is 100% on-device, so it belongs in
-                    // front of every user, not behind a dev flag.
-                    section("Claude",
-                            subtitle: "Let Claude read your meetings and context, on-device.") {
-                        MCPConnectorCard()
-                    }
-                    // ── 8. Privacy & permissions ─────────────────────────────────
-                    // L6d collapses the proofs behind a "Verify our claims" push
-                    // (`SettingsPage.verifyClaims`), keeping the permission levers inline.
-                    section("Privacy & permissions",
-                            subtitle: "The permissions Talkie needs and proof nothing leaves.") {
-                        // ⇥ L6d slot: "Verify our claims" row → NavigationLink(value: SettingsPage.verifyClaims).
-                        PrivacyAndPermissionsSettings(settings: settings, permissions: permissions,
-                                                      history: history, onRetryHotKey: onRetryHotKey)
-                    }
-                    // H1: the Developer section is hidden in a normal public build. It
-                    // reappears in Debug builds, when `TalkieDevMode` is set in defaults, or
-                    // in `TALKIE_DEV_TOOLS` dev-channel builds (see `showDeveloperSection`).
+                    // 1. Dictation — activation key, insertion, and the mic.
+                    SettingsIndexRow(icon: "IconWaveform", fallback: "waveform",
+                                     title: "Dictation",
+                                     subtitle: "Your dictation key, how text lands, and the mic.",
+                                     page: .dictation)
+                    // 2. Cleanup & style — polishing, learning, and per-app styles
+                    //    (the old "Apps" group folded in here).
+                    SettingsIndexRow(icon: "IconType", fallback: "wand.and.stars",
+                                     title: "Cleanup & style",
+                                     subtitle: "How Talkie polishes text, learns your words, and per-app styles.",
+                                     page: .cleanupStyle)
+                    // 3. Languages — the spoken-language strip; the full flag grid
+                    //    pushes `.allLanguages` from inside `LanguageSettings`.
+                    SettingsIndexRow(icon: "IconGlobe", fallback: "globe",
+                                     title: "Languages",
+                                     subtitle: "Which languages you speak; Talkie auto-detects.",
+                                     page: .languages)
+                    // 4. Meetings — pushes the existing `.meetings` subpage, which
+                    //    owns every meeting setting and is the Meetings-tab deep link.
+                    SettingsIndexRow(icon: "IconPeople", fallback: "person.2.fill",
+                                     title: "Meetings",
+                                     subtitle: "Recording, transcription, and calendar context.",
+                                     page: .meetings)
+                    // 5. Notes & behavior — export destinations plus the general
+                    //    app-behavior toggles (sounds, login, floating bird).
+                    SettingsIndexRow(icon: "IconFolder", fallback: "folder.fill",
+                                     title: "Notes & behavior",
+                                     subtitle: "Where notes and transcripts go, plus app behavior.",
+                                     page: .notesBehavior)
+                    // 6. Claude — the on-device MCP connector, in front of every user.
+                    SettingsIndexRow(icon: "IconSpark", fallback: "sparkles",
+                                     title: "Claude",
+                                     subtitle: "Let Claude read your meetings and context, on-device.",
+                                     page: .claude)
+                    // 7. Privacy & history — permissions, the zero-network proof
+                    //    (Verify our claims), and the history retention/storage card.
+                    SettingsIndexRow(icon: "IconShield", fallback: "lock.shield.fill",
+                                     title: "Privacy & history",
+                                     subtitle: "Permissions, proof nothing leaves, and your history.",
+                                     page: .privacy)
+                    // 8. Developer — hidden in a normal public build; reappears in
+                    //    Debug, `TalkieDevMode`, or `TALKIE_DEV_TOOLS` (see below).
                     if showDeveloperSection {
-                        section("Developer",
-                                subtitle: "Tools that ship only in development builds.") {
-                            DeveloperSettings(settings: settings)
-                        }
+                        SettingsIndexRow(icon: "IconWrench", fallback: "hammer.fill",
+                                         title: "Developer",
+                                         subtitle: "Tools that ship only in development builds.",
+                                         page: .developer)
                     }
                 }
                 .padding(28)
@@ -496,24 +475,73 @@ private struct SettingsHome: View {
             // `.scrollTopBlur()` overlay (which read as a flat grey band).
             .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Theme.canvas)
-            // HYBRID push destinations (L6a scaffold). Each case resolves to a
-            // placeholder subpage for now; L6b/L6c/L6d swap in the real panes. The
-            // routes are navigable today so the scaffold is verifiable.
+            // Push destinations for the Settings index. Each index row resolves to
+            // a focused `SubPage` of the relevant leaf card-stacks (the leaves are
+            // card VStacks, so `SubPage` supplies the one ScrollView — no nesting).
+            // The trailing three cases are the nested / deep-link targets reached
+            // from within a subpage.
             .navigationDestination(for: SettingsPage.self) { page in
                 switch page {
+                // ── Index-row subpages ───────────────────────────────────────
+                case .dictation:
+                    SubPage(title: "Dictation",
+                            subtitle: "Your dictation key, how text lands, and the mic.") {
+                        ActivationSettings(settings: settings)
+                        MicrophoneSettings(settings: settings)
+                    }
+                case .cleanupStyle:
+                    // "Apps" folded in here: smart cleanup + context/learning +
+                    // the per-app style rules, as one "how Talkie writes" story.
+                    SubPage(title: "Cleanup & style",
+                            subtitle: "How Talkie polishes text, learns your words, and per-app styles.") {
+                        CleanupSettings(settings: settings)
+                        ContextSettings(settings: settings)
+                        AppProfilesSettings(profiles: profiles, settings: settings)
+                    }
+                case .languages:
+                    SubPage(title: "Languages",
+                            subtitle: "Which languages you speak; Talkie auto-detects.") {
+                        LanguageSettings(settings: settings)
+                    }
+                case .notesBehavior:
+                    SubPage(title: "Notes & behavior",
+                            subtitle: "Where notes and transcripts go, plus app behavior.") {
+                        ExportDestinationsSettings()
+                        BehaviorSettings(settings: settings)
+                    }
+                case .claude:
+                    SubPage(title: "Claude",
+                            subtitle: "Let Claude read your meetings and context, on-device.") {
+                        MCPConnectorCard()
+                    }
+                case .privacy:
+                    // Already includes the "Your history" retention + count-cap +
+                    // storage card and the Verify-our-claims push.
+                    SubPage(title: "Privacy & history",
+                            subtitle: "Permissions, proof nothing leaves, and your history.") {
+                        PrivacyAndPermissionsSettings(settings: settings, permissions: permissions,
+                                                      history: history, onRetryHotKey: onRetryHotKey)
+                    }
+                case .developer:
+                    SubPage(title: "Developer",
+                            subtitle: "Tools that ship only in development builds.") {
+                        DeveloperSettings(settings: settings)
+                    }
+
+                // ── Nested / deep-link subpages ──────────────────────────────
                 case .allLanguages:
-                    // L6b — the full flag-grid picker (the root shows only the
-                    // compact selected strip). Same toggle semantics as the strip.
+                    // The full flag-grid picker (Languages shows only the compact
+                    // selected strip). Same toggle semantics as the strip.
                     AllLanguagesPage(settings: settings)
                 case .meetings:
-                    // L6c — the one Meetings settings subpage: auto-detect, the live
-                    // pill, the meeting-apps allowlist + muted lists, calendar context,
-                    // and an honest destination reference that links to Notes & export.
+                    // The one Meetings settings subpage (wraps itself in `SubPage`):
+                    // auto-detect, the live pill, the meeting-apps allowlist + muted
+                    // lists, calendar context, and an honest destination reference.
                     MeetingsSettings(settings: settings, router: router)
                 case .verifyClaims:
-                    // L6d — the full zero-network proof detail: the three
-                    // verify-yourself commands, the live entitlement list, and the
-                    // data-locations bullets, relocated off the root intact.
+                    // The full zero-network proof detail: the three verify-yourself
+                    // commands, the live entitlement list, and the data-locations
+                    // bullets — reached from inside Privacy & history.
                     VerifyClaimsSubpage()
                 }
             }
@@ -535,20 +563,6 @@ private struct SettingsHome: View {
         router.pendingPage = nil
     }
 
-    /// A settings group: a `SettingsSectionHeader` (sentence case, `Theme.ink`,
-    /// a rung larger than the card `Eyebrow`) over a one-line plain-language
-    /// subtitle, then the group's cards. The header is deliberately NOT an
-    /// `Eyebrow`: card headers keep `Eyebrow`, so a group title and a card title
-    /// no longer render pixel-identical (the L6a typography fix).
-    @ViewBuilder
-    private func section<Content: View>(_ title: String, subtitle: String,
-                                        @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsSectionHeader(title: title, subtitle: subtitle)
-            content()
-        }
-    }
-
     /// Whether the Developer section is shown (H1). It's hidden in a plain public
     /// Release build and reappears in three cases:
     ///   • `Dev.isEnabled` — a Debug build, or `TalkieDevMode` set in defaults
@@ -565,6 +579,55 @@ private struct SettingsHome: View {
         #else
         return Dev.isEnabled
         #endif
+    }
+}
+
+/// One row in the tidy Settings index: a brand `ClayIcon`, a title + one-line
+/// subtitle, and a trailing chevron on the shared brand surface. A real
+/// `NavigationLink(value:)` because the index lives inside the Settings
+/// `NavigationStack`, so tapping pushes the given `SettingsPage` subpage. Models
+/// `MeetingsSettingsLinkRow` (which it generalizes) but takes a `ClayIcon` on the
+/// left; the icon falls back to its SF Symbol when the brand asset is missing, so
+/// any icon name is safe. Titles/subtitles auto-localize via `LocalizedStringKey`.
+private struct SettingsIndexRow: View {
+    /// Brand asset name (Resources/Brand/<icon>.png).
+    let icon: String
+    /// SF Symbol drawn when the brand asset is missing.
+    let fallback: String
+    let title: String
+    let subtitle: String
+    let page: SettingsPage
+    @State private var hovering = false
+
+    var body: some View {
+        NavigationLink(value: page) {
+            HStack(spacing: 12) {
+                ClayIcon(name: icon, size: 22, fallback: fallback)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(LocalizedStringKey(title))
+                        .font(.talkieHeading(14, weight: .medium))
+                        .foregroundStyle(Theme.ink)
+                    Text(LocalizedStringKey(subtitle))
+                        .font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 12)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .frame(maxWidth: .infinity)
+            .talkieSurface()
+            .scaleEffect(hovering ? 1.005 : 1)
+            .animation(.easeOut(duration: 0.12), value: hovering)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }
 
