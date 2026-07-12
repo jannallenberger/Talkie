@@ -46,7 +46,7 @@ enum SemanticSelfTest {
                            sourceRank: 2),
             SemanticRecord(line: "dictation [bbbbbbbb] 2026-07-01 10:00: remember to buy oat milk and coffee",
                            text: "remember to buy oat milk and coffee", sourceRank: 1),
-            SemanticRecord(line: "entity (project) Coralate", text: "Coralate", sourceRank: 3),
+            SemanticRecord(line: "entity (project) GitHub", text: "GitHub", sourceRank: 3),
         ]
         let index = SemanticIndex(records: records)
 

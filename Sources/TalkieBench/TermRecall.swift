@@ -4,7 +4,7 @@
 //
 // Corpus WER answers "how wrong is the transcript overall?" It does NOT answer
 // the question the niche-vocabulary work actually cares about: "of the specific
-// terms I care about (claude.md, Higgsfield, SwiftPM, Coralate…), how many did
+// terms I care about (claude.md, Higgsfield, SwiftPM, GitHub…), how many did
 // the recognizer spell right?" A transcript can post a great WER while quietly
 // mangling every proper noun, because the jargon is a tiny fraction of the words.
 //

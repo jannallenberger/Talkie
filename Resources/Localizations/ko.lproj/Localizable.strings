@@ -52,7 +52,7 @@
 "Quit & Reopen" = "종료 후 다시 열기";
 "Re-check" = "다시 확인";
 "Record a meeting" = "회의 녹음";
-"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point Claude at." = "회의를 녹음하세요. Talkie가 기기에서 전사하고 요약하며, Claude에 전달할 수 있는 메모로 저장합니다.";
+"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at." = "회의를 녹음하세요. Talkie가 기기에서 전사하고 요약하며, AI 에이전트에 전달할 수 있는 메모로 저장합니다.";
 "Regenerate" = "다시 생성";
 "Remove this folder" = "이 폴더 제거";
 "Replay" = "다시 보기";
@@ -61,7 +61,7 @@
 "Reveal in Finder" = "Finder에서 보기";
 "Reveal note in Finder" = "Finder에서 메모 보기";
 "Reverted" = "되돌림";
-"Rewrite what was heard into what you meant — e.g. “correlate” → “Coralate”." = "들린 내용을 의도한 대로 다시 씁니다 — 예: “correlate” → “Coralate”.";
+"Rewrite what was heard into what you meant — e.g. “get hub” → “GitHub”." = "들린 내용을 의도한 대로 다시 씁니다 — 예: “get hub” → “GitHub”.";
 "Rules for this app only" = "이 앱에만 적용되는 규칙";
 "Save" = "저장";
 "Saved to ~/Talkie Meetings/ as markdown" = "~/Talkie Meetings/에 마크다운으로 저장됨";
@@ -99,7 +99,7 @@
 "Everything you've dictated in the last 7 days." = "지난 7일 동안 받아쓴 모든 내용입니다.";
 "Tune how Talkie listens, cleans up, and behaves." = "Talkie가 듣고, 정리하고, 동작하는 방식을 조정합니다.";
 "Names, brands, and jargon Talkie should spell correctly." = "Talkie가 정확히 표기해야 할 이름, 브랜드, 전문 용어입니다.";
-"Say a filename, get the real file — “exercise library dot t-s-x” becomes ExerciseLibrary.tsx." = "파일 이름을 말하면 실제 파일이 됩니다 — “exercise library dot t-s-x”가 ExerciseLibrary.tsx가 됩니다.";
+"Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx." = "파일 이름을 말하면 실제 파일이 됩니다 — “user profile dot t-s-x”가 UserProfile.tsx가 됩니다.";
 "Find anything you've said — on-device." = "말한 내용을 모두 찾아보세요 — 기기에서 직접.";
 "Profile" = "프로필";
 "Activation & insertion" = "활성화 및 삽입";
@@ -241,15 +241,15 @@
 "%@ dictionary" = "%@ 사전";
 
 "Added “%@” — from your Claude Code prompt" = "“%@” 추가됨 — Claude Code 프롬프트에서";
-"Claude added “%@” to dictionary" = "Claude가 사전에 “%@”을(를) 추가함";
-"Claude added “%@” → “%@” to dictionary" = "Claude가 사전에 “%@” → “%@”을(를) 추가함";
-"Claude removed “%@” → “%@” from dictionary" = "Claude가 사전에서 “%@” → “%@”을(를) 제거함";
-"Claude changed “%@” → “%@” to “%@”" = "Claude가 “%@” → “%@”을(를) “%@”(으)로 변경함";
-"Claude removed “%@” from dictionary" = "Claude가 사전에서 “%@”을(를) 제거함";
+"Your AI agent added “%@” to dictionary" = "AI 에이전트가 사전에 “%@”을(를) 추가함";
+"Your AI agent added “%@” → “%@” to dictionary" = "AI 에이전트가 사전에 “%@” → “%@”을(를) 추가함";
+"Your AI agent removed “%@” → “%@” from dictionary" = "AI 에이전트가 사전에서 “%@” → “%@”을(를) 제거함";
+"Your AI agent changed “%@” → “%@” to “%@”" = "AI 에이전트가 “%@” → “%@”을(를) “%@”(으)로 변경함";
+"Your AI agent removed “%@” from dictionary" = "AI 에이전트가 사전에서 “%@”을(를) 제거함";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Claude Code 프롬프트에서 교정을 배울까요? 로컬 파일이며, Mac에서 아무것도 전송되지 않습니다.";
-/* G1 — Connect to Claude connector card */
-"Connect to Claude" = "Claude에 연결";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie에는 작은 로컬 서버가 포함되어 있어 Claude가 회의, 브리핑, 약속, 컨텍스트를 읽을 수 있습니다. 읽기 전용이며 기기 내에서 처리되고, 어떤 것도 Mac을 떠나지 않습니다. 앱에 기본 포함: 별도 다운로드나 빌드가 필요 없습니다.";
+/* G1 — Connect your AI agent connector card */
+"Connect your AI agent" = "AI 에이전트에 연결";
+"Talkie ships a tiny local server so your AI agent can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie에는 작은 로컬 서버가 포함되어 있어 AI 에이전트가 회의, 브리핑, 약속, 컨텍스트를 읽을 수 있습니다. 읽기 전용이며 기기 내에서 처리되고, 어떤 것도 Mac을 떠나지 않습니다. 앱에 기본 포함: 별도 다운로드나 빌드가 필요 없습니다.";
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "클릭 한 번으로 커넥터 설치";
 "Install…" = "설치…";
@@ -257,15 +257,15 @@
 "Update…" = "업데이트…";
 "Connector is up to date (v%@)" = "커넥터가 최신 버전입니다 (v%@)";
 "Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "커넥터가 오래되었습니다 (v%@ → v%@) — 다시 설치하여 최신 도구를 받으세요";
-"Claude Code & other MCP clients" = "Claude Code 및 기타 MCP 클라이언트";
+"Codex, Claude Code & other MCP clients" = "Codex, Claude Code 및 기타 MCP 클라이언트";
 "Add this to your .mcp.json, or run the command" = ".mcp.json에 추가하거나 명령을 실행하세요";
 "Copy config" = "구성 복사";
 "Or from the terminal" = "또는 터미널에서";
 "Copy command" = "명령 복사";
-"Or let Claude set it up" = "또는 Claude가 직접 설정하게 하기";
-"Paste this into Claude and it connects the server itself" = "이것을 Claude에 붙여넣으면 서버를 직접 연결합니다";
+"Or let your AI agent set it up" = "또는 AI 에이전트가 직접 설정하게 하기";
+"Paste this into your AI agent and it connects the server itself" = "이것을 AI 에이전트에 붙여넣으면 서버를 직접 연결합니다";
 "Copy setup prompt" = "설정 프롬프트 복사";
-"What Claude can read" = "Claude가 읽을 수 있는 항목";
+"What your AI agent can read" = "AI 에이전트가 읽을 수 있는 항목";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "커넥터 바이너리가 아직 없습니다. 빌드된 Talkie.app(./scripts/run.sh)에서 이 앱을 실행하면 함께 포함됩니다. 추가 단계는 없습니다.";
 "Opened in Claude Desktop" = "Claude Desktop에서 열림";
 "Revealed in Finder — drag it into Claude Desktop" = "Finder에 표시됨 — Claude Desktop으로 끌어다 놓으세요";
@@ -338,6 +338,9 @@
 "Hold %@ to talk · tap twice to lock" = "%@ 를 누른 채 말하기 · 두 번 눌러 고정";
 "Hold to talk · tap twice to lock" = "누른 채 말하기 · 두 번 눌러 고정";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "키를 누른 채 말한 다음 놓으면 삽입됩니다. 두 번 누르면 핸즈프리로 고정되어 아무것도 누르지 않아도 녹음이 계속되며, 한 번 누르면 멈추고 삽입합니다.";
+/* Track 4 — hold-to-latch replaces the old double-tap gesture */
+"Hold to talk · keep holding to lock" = "누른 채 말하기 · 계속 누르고 있으면 고정";
+"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "키를 누른 채 말한 다음 놓으면 삽입됩니다. 계속 누르고 있으면 핸즈프리로 고정되어 아무것도 누르지 않아도 녹음이 계속되며, 한 번 누르면 멈추고 삽입합니다.";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "측면 버튼은 사용 중인 앱에서 원래 기능을 그대로 수행합니다. Talkie는 이를 듣기만 하며, 버튼이 실제 버튼으로 macOS에 전달되어야 합니다(일부 마우스는 자체 소프트웨어에서 버튼을 재지정합니다).";
 "Hold, speak, release — or tap twice to go hands-free" = "누르고, 말하고, 놓기 — 또는 두 번 눌러 핸즈프리로";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "키를 누른 채 쓰고 싶은 내용을 말하고 놓으면 — Talkie가 입력 중인 곳에 텍스트를 넣어 줍니다. 급하신가요? 키를 두 번 눌러 녹음을 핸즈프리로 고정하고, 한 번 눌러 멈추세요.";
@@ -635,7 +638,7 @@
 "Cleanup & intelligence" = "정리 및 인텔리전스";
 "Apps" = "앱";
 "Notes & export" = "노트 및 내보내기";
-"Claude" = "Claude";
+"AI agent" = "AI 에이전트";
 "Privacy & permissions" = "개인정보 보호 및 권한";
 "All languages" = "모든 언어";
 "Verify our claims" = "우리의 약속 확인";
@@ -645,7 +648,7 @@
 "Per-app cleanup styles for the apps you customize." = "사용자화한 앱별 정리 스타일.";
 "Recording, transcription, and calendar context." = "녹음, 전사, 캘린더 컨텍스트.";
 "Where notes and transcripts go, plus app behavior." = "노트와 전사본의 저장 위치 및 앱 동작.";
-"Let Claude read your meetings and context, on-device." = "Claude가 회의와 컨텍스트를 읽도록 허용합니다(기기 내에서).";
+"Let your AI agent read your meetings and context, on-device." = "AI 에이전트가 회의와 컨텍스트를 읽도록 허용합니다(기기 내에서).";
 "The permissions Talkie needs and proof nothing leaves." = "Talkie에 필요한 권한과 아무것도 전송되지 않는다는 증거.";
 "Tools that ship only in development builds." = "개발 빌드에만 포함되는 도구.";
 "The full language picker will live here." = "전체 언어 선택기가 여기에 표시됩니다.";
@@ -661,7 +664,7 @@
 "Choose photo…" = "사진 선택…";
 "Remove photo" = "사진 제거";
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
-"What Claude can do" = "Claude가 할 수 있는 일";
+"What your AI agent can do" = "AI 에이전트가 할 수 있는 일";
 "asks first" = "먼저 확인";
 
 /* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
@@ -672,11 +675,11 @@
 "Learn from my edits" = "내 편집에서 학습";
 "Auto-improve the dictionary." = "사전을 자동으로 개선합니다.";
 "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "받아쓰기 직후 단어를 고치면 Talkie가 그 수정을 기억합니다. 자동으로 추가된 규칙은 사전 탭에 표시됩니다 — 원치 않는 것은 삭제하세요.";
-/* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
+/* L16 — "Install my jargon" copy-prompt for your AI agent (Dictionary export area) */
 "Install my jargon" = "내 전문 용어 설치";
 "Copy prompt" = "프롬프트 복사";
-"Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Claude가 Talkie에 당신의 전문 용어를 가르치게 하세요. 이 프롬프트를 Claude에 붙여넣으면(Talkie 커네터 활성화 상태) 당신이 실제로 어떻게 대화하는지—이름, 제품, 용어—를 읽고 Talkie가 잘못 들을 만한 것들을 제안합니다. 모든 제안은 Talkie에서 원탭 확인(실행 취소 가능)을 기다립니다. Claude는 절대 당신의 사전을 스스로 변경하지 않습니다.";
-"Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Talkie 커네터가 필요합니다 — ‘일반 ▸ Claude에 연결’에서 설정하세요.";
+"Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Your AI agent never changes your dictionary on its own." = "AI 에이전트가 Talkie에 당신의 전문 용어를 가르치게 하세요. 이 프롬프트를 AI 에이전트에 붙여넣으면(Talkie 커네터 활성화 상태) 당신이 실제로 어떻게 대화하는지—이름, 제품, 용어—를 읽고 Talkie가 잘못 들을 만한 것들을 제안합니다. 모든 제안은 Talkie에서 원탭 확인(실행 취소 가능)을 기다립니다. AI 에이전트는 절대 당신의 사전을 스스로 변경하지 않습니다.";
+"Needs the Talkie connector — set it up under Settings ▸ AI agent." = "Talkie 커네터가 필요합니다 — ‘설정 ▸ AI 에이전트’에서 설정하세요.";
 
 /* L6b — Languages: selected strip + All-languages subpage */
 "Pick every language you speak; Talkie auto-detects which." = "사용하는 모든 언어를 선택하세요. Talkie가 어떤 언어인지 자동으로 감지합니다.";
@@ -777,7 +780,7 @@
 "%@ is listening." = "%@가 듣고 있습니다.";
 "%@ dictation indicator. Hold your dictation key and speak." = "%@ 받아쓰기 표시기. 받아쓰기 키를 누른 채 말하세요.";
 "%@ — Nothing leaves this Mac." = "%@ — 이 Mac에서 아무것도 나가지 않습니다.";
-"%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@는 작은 로컬 서버를 제공하여 Claude가 회의, 브리핑, 약속, 컨텍스트, 통계, 사전, 메모를 읽을 수 있습니다 — 모두 기기에서 처리되며 Mac 밖으로 나가지 않습니다. Claude는 사전을 관리할 수도 있습니다 — 항목과 규칙 추가·변경·제거 — 하지만 모든 변경은 실행 취소가 가능한 원탭 확인을 기다립니다. 앱에 포함: 별도 다운로드나 빌드가 필요 없습니다.";
+"%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@는 작은 로컬 서버를 제공하여 AI 에이전트가 회의, 브리핑, 약속, 컨텍스트, 통계, 사전, 메모를 읽을 수 있습니다 — 모두 기기에서 처리되며 Mac 밖으로 나가지 않습니다. AI 에이전트는 사전을 관리할 수도 있습니다 — 항목과 규칙 추가·변경·제거 — 하지만 모든 변경은 실행 취소가 가능한 원탭 확인을 기다립니다. 앱에 포함: 별도 다운로드나 빌드가 필요 없습니다.";
 "Detect meetings & offer to record" = "회의를 감지하고 녹음 제안";
 "When a call app starts using your mic, Talkie offers to record. It never records on its own." = "통화 앱이 마이크를 사용하기 시작하면 Talkie가 녹음을 제안합니다. 스스로 녹음하지 않습니다.";
 "Show the meeting pill" = "회의 표시기 보기";

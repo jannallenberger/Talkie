@@ -52,7 +52,7 @@
 "Quit & Reopen" = "Quit & Reopen";
 "Re-check" = "Re-check";
 "Record a meeting" = "Record a meeting";
-"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point Claude at." = "Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point Claude at.";
+"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at." = "Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at.";
 "Regenerate" = "Regenerate";
 "Remove this folder" = "Remove this folder";
 "Replay" = "Replay";
@@ -61,7 +61,7 @@
 "Reveal in Finder" = "Reveal in Finder";
 "Reveal note in Finder" = "Reveal note in Finder";
 "Reverted" = "Reverted";
-"Rewrite what was heard into what you meant — e.g. “correlate” → “Coralate”." = "Rewrite what was heard into what you meant — e.g. “correlate” → “Coralate”.";
+"Rewrite what was heard into what you meant — e.g. “get hub” → “GitHub”." = "Rewrite what was heard into what you meant — e.g. “get hub” → “GitHub”.";
 "Rules for this app only" = "Rules for this app only";
 "Save" = "Save";
 "Saved to ~/Talkie Meetings/ as markdown" = "Saved to ~/Talkie Meetings/ as markdown";
@@ -99,7 +99,7 @@
 "Everything you've dictated in the last 7 days." = "Everything you've dictated in the last 7 days.";
 "Tune how Talkie listens, cleans up, and behaves." = "Tune how Talkie listens, cleans up, and behaves.";
 "Names, brands, and jargon Talkie should spell correctly." = "Names, brands, and jargon Talkie should spell correctly.";
-"Say a filename, get the real file — “exercise library dot t-s-x” becomes ExerciseLibrary.tsx." = "Say a filename, get the real file — “exercise library dot t-s-x” becomes ExerciseLibrary.tsx.";
+"Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx." = "Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx.";
 "Find anything you've said — on-device." = "Find anything you've said — on-device.";
 "Profile" = "Profile";
 "Activation & insertion" = "Activation & insertion";
@@ -241,15 +241,15 @@
 "%@ dictionary" = "%@ dictionary";
 
 "Added “%@” — from your Claude Code prompt" = "Added “%@” — from your Claude Code prompt";
-"Claude added “%@” to dictionary" = "Claude added “%@” to dictionary";
-"Claude added “%@” → “%@” to dictionary" = "Claude added “%@” → “%@” to dictionary";
-"Claude removed “%@” → “%@” from dictionary" = "Claude removed “%@” → “%@” from dictionary";
-"Claude changed “%@” → “%@” to “%@”" = "Claude changed “%@” → “%@” to “%@”";
-"Claude removed “%@” from dictionary" = "Claude removed “%@” from dictionary";
+"Your AI agent added “%@” to dictionary" = "Your AI agent added “%@” to dictionary";
+"Your AI agent added “%@” → “%@” to dictionary" = "Your AI agent added “%@” → “%@” to dictionary";
+"Your AI agent removed “%@” → “%@” from dictionary" = "Your AI agent removed “%@” → “%@” from dictionary";
+"Your AI agent changed “%@” → “%@” to “%@”" = "Your AI agent changed “%@” → “%@” to “%@”";
+"Your AI agent removed “%@” from dictionary" = "Your AI agent removed “%@” from dictionary";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac.";
-/* G1 — Connect to Claude connector card */
-"Connect to Claude" = "Connect to Claude";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build.";
+/* G1 — Connect your AI agent connector card */
+"Connect your AI agent" = "Connect your AI agent";
+"Talkie ships a tiny local server so your AI agent can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie ships a tiny local server so your AI agent can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build.";
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "Install the connector with one click";
 "Install…" = "Install…";
@@ -257,15 +257,15 @@
 "Update…" = "Update…";
 "Connector is up to date (v%@)" = "Connector is up to date (v%@)";
 "Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools";
-"Claude Code & other MCP clients" = "Claude Code & other MCP clients";
+"Codex, Claude Code & other MCP clients" = "Codex, Claude Code & other MCP clients";
 "Add this to your .mcp.json, or run the command" = "Add this to your .mcp.json, or run the command";
 "Copy config" = "Copy config";
 "Or from the terminal" = "Or from the terminal";
 "Copy command" = "Copy command";
-"Or let Claude set it up" = "Or let Claude set it up";
-"Paste this into Claude and it connects the server itself" = "Paste this into Claude and it connects the server itself";
+"Or let your AI agent set it up" = "Or let your AI agent set it up";
+"Paste this into your AI agent and it connects the server itself" = "Paste this into your AI agent and it connects the server itself";
 "Copy setup prompt" = "Copy setup prompt";
-"What Claude can read" = "What Claude can read";
+"What your AI agent can read" = "What your AI agent can read";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step.";
 "Opened in Claude Desktop" = "Opened in Claude Desktop";
 "Revealed in Finder — drag it into Claude Desktop" = "Revealed in Finder — drag it into Claude Desktop";
@@ -291,6 +291,10 @@
 "Forever" = "Forever";
 "You're keeping 1 dictation right now." = "You're keeping 1 dictation right now.";
 "You're keeping %d dictations right now." = "You're keeping %d dictations right now.";
+"It takes up %@ on this Mac." = "It takes up %@ on this Mac.";
+"Maximum dictations" = "Maximum dictations";
+"Only the most recent are kept; older ones drop off past this count." = "Only the most recent are kept; older ones drop off past this count.";
+"No limit" = "No limit";
 "Choose audio or video files — or a folder of them — to transcribe into meetings." = "Choose audio or video files — or a folder of them — to transcribe into meetings.";
 
 /* D5 — batch folder transcription queue */
@@ -338,6 +342,9 @@
 "Hold %@ to talk · tap twice to lock" = "Hold %@ to talk · tap twice to lock";
 "Hold to talk · tap twice to lock" = "Hold to talk · tap twice to lock";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.";
+/* Track 4 — hold-to-latch replaces the old double-tap gesture */
+"Hold to talk · keep holding to lock" = "Hold to talk · keep holding to lock";
+"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software).";
 "Hold, speak, release — or tap twice to go hands-free" = "Hold, speak, release — or tap twice to go hands-free";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop.";
@@ -637,7 +644,7 @@
 "Cleanup & intelligence" = "Cleanup & intelligence";
 "Apps" = "Apps";
 "Notes & export" = "Notes & export";
-"Claude" = "Claude";
+"AI agent" = "AI agent";
 "Privacy & permissions" = "Privacy & permissions";
 "All languages" = "All languages";
 "Verify our claims" = "Verify our claims";
@@ -647,9 +654,14 @@
 "Per-app cleanup styles for the apps you customize." = "Per-app cleanup styles for the apps you customize.";
 "Recording, transcription, and calendar context." = "Recording, transcription, and calendar context.";
 "Where notes and transcripts go, plus app behavior." = "Where notes and transcripts go, plus app behavior.";
-"Let Claude read your meetings and context, on-device." = "Let Claude read your meetings and context, on-device.";
+"Let your AI agent read your meetings and context, on-device." = "Let your AI agent read your meetings and context, on-device.";
 "The permissions Talkie needs and proof nothing leaves." = "The permissions Talkie needs and proof nothing leaves.";
 "Tools that ship only in development builds." = "Tools that ship only in development builds.";
+/* Settings index rows — consolidated icon-row index (7 rows + Developer) */
+"Notes & behavior" = "Notes & behavior";
+"How Talkie polishes text, learns your words, and per-app styles." = "How Talkie polishes text, learns your words, and per-app styles.";
+"Privacy & history" = "Privacy & history";
+"Permissions, proof nothing leaves, and your history." = "Permissions, proof nothing leaves, and your history.";
 "The full language picker will live here." = "The full language picker will live here.";
 "Meeting recording and transcription settings will live here." = "Meeting recording and transcription settings will live here.";
 "The on-device, zero-network proof will live here." = "The on-device, zero-network proof will live here.";
@@ -663,7 +675,7 @@
 "Choose photo…" = "Choose photo…";
 "Remove photo" = "Remove photo";
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
-"What Claude can do" = "What Claude can do";
+"What your AI agent can do" = "What your AI agent can do";
 "asks first" = "asks first";
 
 /* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
@@ -674,11 +686,11 @@
 "Learn from my edits" = "Learn from my edits";
 "Auto-improve the dictionary." = "Auto-improve the dictionary.";
 "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want.";
-/* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
+/* L16 — "Install my jargon" copy-prompt for your AI agent (Dictionary export area) */
 "Install my jargon" = "Install my jargon";
 "Copy prompt" = "Copy prompt";
-"Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own.";
-"Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Needs the Talkie connector — set it up under General ▸ Connect to Claude.";
+"Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Your AI agent never changes your dictionary on its own." = "Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Your AI agent never changes your dictionary on its own.";
+"Needs the Talkie connector — set it up under Settings ▸ AI agent." = "Needs the Talkie connector — set it up under Settings ▸ AI agent.";
 
 /* L6b — Languages: selected strip + All-languages subpage */
 "Pick every language you speak; Talkie auto-detects which." = "Pick every language you speak; Talkie auto-detects which.";
@@ -779,7 +791,7 @@
 "%@ is listening." = "%@ is listening.";
 "%@ dictation indicator. Hold your dictation key and speak." = "%@ dictation indicator. Hold your dictation key and speak.";
 "%@ — Nothing leaves this Mac." = "%@ — Nothing leaves this Mac.";
-"%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.";
+"%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.";
 "Detect meetings & offer to record" = "Detect meetings & offer to record";
 "When a call app starts using your mic, Talkie offers to record. It never records on its own." = "When a call app starts using your mic, Talkie offers to record. It never records on its own.";
 "Show the meeting pill" = "Show the meeting pill";

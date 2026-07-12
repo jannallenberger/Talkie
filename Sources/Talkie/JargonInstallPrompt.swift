@@ -53,7 +53,7 @@ enum JargonInstallPrompt {
            - If it is a name, product, acronym, or coinage Talkie should learn to spell, \
         call `add_vocabulary_term` with the correct spelling.
            - If you know the specific WRONG thing recognition tends to produce for it \
-        (for example it hears "correlate" when I mean "Coralate", or "higgs field" when \
+        (for example it hears "get hub" when I mean "GitHub", or "higgs field" when \
         I mean "Higgsfield"), call `add_replacement` with `from` = the misheard form and \
         `to` = the correct spelling.
 
@@ -90,7 +90,7 @@ struct InstallMyJargonCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Eyebrow(text: "Install my jargon")
-            Text("Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own.".loc)
+            Text("Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Your AI agent never changes your dictionary on its own.".loc)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
             HStack {
@@ -105,7 +105,7 @@ struct InstallMyJargonCard: View {
                 .tint(Theme.coral)
                 Spacer()
             }
-            Text("Needs the Talkie connector — set it up under General ▸ Connect to Claude.".loc)
+            Text("Needs the Talkie connector — set it up under Settings ▸ AI agent.".loc)
                 .font(.talkieHeading(11.5, weight: .regular))
                 .foregroundStyle(Theme.inkTertiary)
         }

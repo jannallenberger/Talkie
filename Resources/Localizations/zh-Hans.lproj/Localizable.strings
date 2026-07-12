@@ -52,7 +52,7 @@
 "Quit & Reopen" = "退出并重新打开";
 "Re-check" = "重新检查";
 "Record a meeting" = "录制会议";
-"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point Claude at." = "录制会议；Talkie 在本地转录并总结，并保存一份可供 Claude 参考的笔记。";
+"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at." = "录制会议；Talkie 在本地转录并总结，并保存一份可供 AI 智能体参考的笔记。";
 "Regenerate" = "重新生成";
 "Remove this folder" = "移除此文件夹";
 "Replay" = "重新播放";
@@ -61,7 +61,7 @@
 "Reveal in Finder" = "在访达中显示";
 "Reveal note in Finder" = "在访达中显示笔记";
 "Reverted" = "已还原";
-"Rewrite what was heard into what you meant — e.g. “correlate” → “Coralate”." = "将听到的内容改写为你想表达的意思——例如“correlate” → “Coralate”。";
+"Rewrite what was heard into what you meant — e.g. “get hub” → “GitHub”." = "将听到的内容改写为你想表达的意思——例如“get hub” → “GitHub”。";
 "Rules for this app only" = "仅适用于此应用的规则";
 "Save" = "存储";
 "Saved to ~/Talkie Meetings/ as markdown" = "已以 markdown 格式存储到 ~/Talkie Meetings/";
@@ -99,7 +99,7 @@
 "Everything you've dictated in the last 7 days." = "你过去 7 天口述的全部内容。";
 "Tune how Talkie listens, cleans up, and behaves." = "调整 Talkie 的听写、清理和行为方式。";
 "Names, brands, and jargon Talkie should spell correctly." = "Talkie 应正确拼写的名称、品牌和术语。";
-"Say a filename, get the real file — “exercise library dot t-s-x” becomes ExerciseLibrary.tsx." = "说出文件名，得到真实文件——“exercise library dot t-s-x”会变成 ExerciseLibrary.tsx。";
+"Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx." = "说出文件名，得到真实文件——“user profile dot t-s-x”会变成 UserProfile.tsx。";
 "Find anything you've said — on-device." = "查找你说过的任何内容——在设备本地。";
 "Profile" = "个人资料";
 "Activation & insertion" = "激活与插入";
@@ -241,15 +241,15 @@
 "%@ dictionary" = "%@ 词典";
 
 "Added “%@” — from your Claude Code prompt" = "已添加“%@”——来自你的 Claude Code 提示词";
-"Claude added “%@” to dictionary" = "Claude 将“%@”添加到词典";
-"Claude added “%@” → “%@” to dictionary" = "Claude 将“%@”→“%@”添加到词典";
-"Claude removed “%@” → “%@” from dictionary" = "Claude 从词典中移除了“%@”→“%@”";
-"Claude changed “%@” → “%@” to “%@”" = "Claude 将“%@”→“%@”改为“%@”";
-"Claude removed “%@” from dictionary" = "Claude 从词典中移除了“%@”";
+"Your AI agent added “%@” to dictionary" = "AI 智能体将“%@”添加到词典";
+"Your AI agent added “%@” → “%@” to dictionary" = "AI 智能体将“%@”→“%@”添加到词典";
+"Your AI agent removed “%@” → “%@” from dictionary" = "AI 智能体从词典中移除了“%@”→“%@”";
+"Your AI agent changed “%@” → “%@” to “%@”" = "AI 智能体将“%@”→“%@”改为“%@”";
+"Your AI agent removed “%@” from dictionary" = "AI 智能体从词典中移除了“%@”";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "从你的 Claude Code 提示词中学习纠正？它们是本地文件，不会离开你的 Mac。";
-/* G1 — Connect to Claude connector card */
-"Connect to Claude" = "连接到 Claude";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie 附带一个小型本地服务器，让 Claude 可以读取你的会议、简报、承诺和上下文——只读、在设备上运行，任何内容都不会离开你的 Mac。已随应用一起提供：无需单独下载或构建。";
+/* G1 — Connect your AI agent connector card */
+"Connect your AI agent" = "连接到 AI 智能体";
+"Talkie ships a tiny local server so your AI agent can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie 附带一个小型本地服务器，让 AI 智能体可以读取你的会议、简报、承诺和上下文——只读、在设备上运行，任何内容都不会离开你的 Mac。已随应用一起提供：无需单独下载或构建。";
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "一键安装连接器";
 "Install…" = "安装…";
@@ -257,15 +257,15 @@
 "Update…" = "更新…";
 "Connector is up to date (v%@)" = "连接器已是最新 (v%@)";
 "Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "你的连接器已过时 (v%@ → v%@)——重新安装以获取最新工具";
-"Claude Code & other MCP clients" = "Claude Code 及其他 MCP 客户端";
+"Codex, Claude Code & other MCP clients" = "Codex, Claude Code 及其他 MCP 客户端";
 "Add this to your .mcp.json, or run the command" = "将其添加到你的 .mcp.json，或运行该命令";
 "Copy config" = "复制配置";
 "Or from the terminal" = "或在终端中";
 "Copy command" = "复制命令";
-"Or let Claude set it up" = "或让 Claude 自行设置";
-"Paste this into Claude and it connects the server itself" = "将此粘贴到 Claude，它会自行连接服务器";
+"Or let your AI agent set it up" = "或让 AI 智能体自行设置";
+"Paste this into your AI agent and it connects the server itself" = "将此粘贴到 AI 智能体，它会自行连接服务器";
 "Copy setup prompt" = "复制设置提示词";
-"What Claude can read" = "Claude 可以读取的内容";
+"What your AI agent can read" = "AI 智能体可以读取的内容";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "连接器二进制文件尚不存在。请从已构建的 Talkie.app（./scripts/run.sh）运行本应用，它便会随附其中——无需额外步骤。";
 "Opened in Claude Desktop" = "已在 Claude Desktop 中打开";
 "Revealed in Finder — drag it into Claude Desktop" = "已在访达中显示——将其拖入 Claude Desktop";
@@ -338,6 +338,9 @@
 "Hold %@ to talk · tap twice to lock" = "按住 %@ 说话 · 点按两次锁定";
 "Hold to talk · tap twice to lock" = "按住说话 · 点按两次锁定";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "按住按键说话，松开即可插入。点按两次可免手锁定——无需按住任何键即可持续录音；再点按一次即可停止并插入。";
+/* Track 4 — hold-to-latch replaces the old double-tap gesture */
+"Hold to talk · keep holding to lock" = "按住说话 · 持续按住以锁定";
+"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "按住按键说话，松开即可插入。持续按住可免手锁定——无需按住任何键即可持续录音；再点按一次即可停止并插入。";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "侧键在你正在使用的应用中仍执行其原本的功能——Talkie 只是监听它，并且该按键必须作为真实按键传达给 macOS（部分鼠标会在其自有软件中重新映射该按键）。";
 "Hold, speak, release — or tap twice to go hands-free" = "按住、说话、松开 — 或点按两次进入免手模式";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "按住按键，说出你想写的内容，然后松开——Talkie 会把文字放到你正在输入的地方。赶时间？点按按键两次即可免手锁定录音，再点按一次即可停止。";
@@ -635,7 +638,7 @@
 "Cleanup & intelligence" = "整理与智能";
 "Apps" = "应用";
 "Notes & export" = "笔记与导出";
-"Claude" = "Claude";
+"AI agent" = "AI 智能体";
 "Privacy & permissions" = "隐私与权限";
 "All languages" = "所有语言";
 "Verify our claims" = "验证我们的承诺";
@@ -645,7 +648,7 @@
 "Per-app cleanup styles for the apps you customize." = "为你自定义的应用设置的按应用整理风格。";
 "Recording, transcription, and calendar context." = "录音、转写和日历上下文。";
 "Where notes and transcripts go, plus app behavior." = "笔记和转写内容的去向，以及应用行为。";
-"Let Claude read your meetings and context, on-device." = "让 Claude 读取你的会议和上下文（在设备上）。";
+"Let your AI agent read your meetings and context, on-device." = "让 AI 智能体读取你的会议和上下文（在设备上）。";
 "The permissions Talkie needs and proof nothing leaves." = "Talkie 所需的权限以及不外传的证明。";
 "Tools that ship only in development builds." = "仅包含在开发版本中的工具。";
 "The full language picker will live here." = "完整的语言选择器将显示在这里。";
@@ -661,7 +664,7 @@
 "Choose photo…" = "选择照片…";
 "Remove photo" = "移除照片";
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
-"What Claude can do" = "Claude 可以做什么";
+"What your AI agent can do" = "AI 智能体可以做什么";
 "asks first" = "会先询问";
 
 /* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
@@ -672,11 +675,11 @@
 "Learn from my edits" = "从我的修改中学习";
 "Auto-improve the dictionary." = "自动改进词典。";
 "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "在听写后立即更正某个词时，Talkie 会记住该更正。自动添加的规则会在词典标签中标注——删除任何你不想要的。";
-/* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
+/* L16 — "Install my jargon" copy-prompt for your AI agent (Dictionary export area) */
 "Install my jargon" = "安装我的行话";
 "Copy prompt" = "复制提示词";
-"Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "让 Claude 教 Talkie 认识你的行话。将此提示词粘贴到 Claude（并启用 Talkie 连接器），它会读取你实际上怎样与它交谈—你的名称、产品和术语—并建议出 Talkie 可能听错的词。每个建议都会等待你在 Talkie 中一键确认（可撤销）。Claude 绝不会自行更改你的词典。";
-"Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "需要 Talkie 连接器 — 请在“通用 ▸ 连接到 Claude”中设置。";
+"Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Your AI agent never changes your dictionary on its own." = "让 AI 智能体教 Talkie 认识你的行话。将此提示词粘贴到 AI 智能体（并启用 Talkie 连接器），它会读取你实际上怎样与它交谈—你的名称、产品和术语—并建议出 Talkie 可能听错的词。每个建议都会等待你在 Talkie 中一键确认（可撤销）。AI 智能体绝不会自行更改你的词典。";
+"Needs the Talkie connector — set it up under Settings ▸ AI agent." = "需要 Talkie 连接器 — 请在“设置 ▸ AI 智能体”中设置。";
 
 /* L6b — Languages: selected strip + All-languages subpage */
 "Pick every language you speak; Talkie auto-detects which." = "选择你会说的每一种语言，Talkie 会自动检测是哪一种。";
@@ -777,7 +780,7 @@
 "%@ is listening." = "%@ 正在聆听。";
 "%@ dictation indicator. Hold your dictation key and speak." = "%@ 口述指示器。按住口述键并说话。";
 "%@ — Nothing leaves this Mac." = "%@ — 没有任何内容离开这台 Mac。";
-"%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ 附带一个小型本地服务器，让 Claude 可以读取你的会议、简报、承诺、上下文、统计、词典和笔记——全部在设备上处理，不会离开你的 Mac。Claude 还可以管理你的词典——添加、更改或删除条目和规则——但每项更改都会等待你一键确认（可撤销）后才生效。随应用打包：无需单独下载或构建。";
+"%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ 附带一个小型本地服务器，让 AI 智能体可以读取你的会议、简报、承诺、上下文、统计、词典和笔记——全部在设备上处理，不会离开你的 Mac。AI 智能体还可以管理你的词典——添加、更改或删除条目和规则——但每项更改都会等待你一键确认（可撤销）后才生效。随应用打包：无需单独下载或构建。";
 "Detect meetings & offer to record" = "检测会议并提议录制";
 "When a call app starts using your mic, Talkie offers to record. It never records on its own." = "当通话应用开始使用你的麦克风时，Talkie 会提议录制。它绝不会自行录制。";
 "Show the meeting pill" = "显示会议指示条";

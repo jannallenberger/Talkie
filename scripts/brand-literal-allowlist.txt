@@ -41,7 +41,10 @@
 1 Sources/Talkie/LaunchAtLogin.swift
 3 Sources/Talkie/Meetings/FileImport.swift
 9 Sources/Talkie/MeetingsView.swift
-3 Sources/Talkie/Memory/MemoryView.swift
+# dash-integrate: pre-existing drift found while reconciling the dashboard-polish
+# merge — actual count here was already 2, not 3, before either side touched this
+# file. Lowered to the real floor per the checker (--print).
+2 Sources/Talkie/Memory/MemoryView.swift
 1 Sources/Talkie/Niche/BiasABTestView.swift
 7 Sources/Talkie/OnboardingView.swift
 10 Sources/Talkie/Privacy/DoctorReport.swift
@@ -60,6 +63,21 @@
 # a user-visible .loc string that follows the AppUpdateSection's existing
 # literal+.loc convention (the section already carries the footer/toggle "Talkie"
 # strings the same way; routing brandName through it would break the .loc key).
+#
+# dash-integrate: -1 burn-down. The dashboard-polish branch (342b670) dropped the
+# "Tune how Talkie listens, cleans up, and behaves." PageHeader subtitle — the page
+# title now lives in the native window toolbar instead — but never lowered this
+# ledger entry. WP2's "This build" branch@sha row (merged in) adds no new brand
+# literal (it interpolates updater.currentBranch/currentSHA, not a string literal),
+# so the net is 40 → 39. Reconciled here to match check-brand-literals.sh --print.
+#
+# dash-integrate: +1 for the Settings-index refactor. The flat scroll became a tidy
+# index of icon rows, each pushing a focused SubPage; the row and its SubPage share
+# the same subtitle, so a "Talkie"-bearing subtitle ("How Talkie polishes text,
+# learns your words, and per-app styles.") now appears in two spots instead of one.
+# These are LocalizedStringKey source strings that double as their own .strings
+# keys, so routing through Brand.displayName would break the .loc lookup — the same
+# unavoidable case as the other subtitle literals already counted in this file.
 40 Sources/Talkie/SettingsView.swift
 3 Sources/Talkie/SystemAudioCapture.swift
 2 Sources/Talkie/TalkiePack.swift

@@ -16,7 +16,7 @@ import Speech
 @MainActor
 struct BiasABTestView: View {
     @State private var localeID = "en-US"
-    @State private var words = "Kubernetes\nidempotent\nCoralate"
+    @State private var words = "Kubernetes\nidempotent\nGitHub"
     @State private var phase: Phase = .idle
     @State private var rawText = ""
     @State private var correctedText = ""

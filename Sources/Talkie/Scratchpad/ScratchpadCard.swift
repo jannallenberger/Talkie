@@ -48,7 +48,7 @@ struct ScratchpadCard: View {
                 .focused($focusedID, equals: nil)
             }
         }
-        .talkieCard(fill: true)
+        .talkieCard()
     }
 
     /// Commit an edited row's text back to the store (re-parsing prefixes). An empty

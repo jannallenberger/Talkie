@@ -52,7 +52,7 @@
 "Quit & Reopen" = "Stop & heropen";
 "Re-check" = "Controleer opnieuw";
 "Record a meeting" = "Neem een vergadering op";
-"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point Claude at." = "Neem een vergadering op; Talkie transcribeert en vat deze samen op het apparaat en bewaart een notitie die u aan Claude kunt voorleggen.";
+"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at." = "Neem een vergadering op; Talkie transcribeert en vat deze samen op het apparaat en bewaart een notitie die u aan uw AI-agent kunt voorleggen.";
 "Regenerate" = "Genereer opnieuw";
 "Remove this folder" = "Verwijder deze map";
 "Replay" = "Speel opnieuw af";
@@ -61,7 +61,7 @@
 "Reveal in Finder" = "Toon in Finder";
 "Reveal note in Finder" = "Toon notitie in Finder";
 "Reverted" = "Teruggedraaid";
-"Rewrite what was heard into what you meant — e.g. “correlate” → “Coralate”." = "Herschrijf wat gehoord is naar wat u bedoelde — bijv. “correlate” → “Coralate”.";
+"Rewrite what was heard into what you meant — e.g. “get hub” → “GitHub”." = "Herschrijf wat gehoord is naar wat u bedoelde — bijv. “get hub” → “GitHub”.";
 "Rules for this app only" = "Regels alleen voor deze app";
 "Save" = "Bewaar";
 "Saved to ~/Talkie Meetings/ as markdown" = "Bewaard in ~/Talkie Meetings/ als markdown";
@@ -99,7 +99,7 @@
 "Everything you've dictated in the last 7 days." = "Alles wat u de afgelopen 7 dagen hebt gedicteerd.";
 "Tune how Talkie listens, cleans up, and behaves." = "Stel in hoe Talkie luistert, opschoont en zich gedraagt.";
 "Names, brands, and jargon Talkie should spell correctly." = "Namen, merken en jargon die Talkie correct moet spellen.";
-"Say a filename, get the real file — “exercise library dot t-s-x” becomes ExerciseLibrary.tsx." = "Zeg een bestandsnaam, krijg het echte bestand — “exercise library punt t-s-x” wordt ExerciseLibrary.tsx.";
+"Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx." = "Zeg een bestandsnaam, krijg het echte bestand — “user profile punt t-s-x” wordt UserProfile.tsx.";
 "Find anything you've said — on-device." = "Vind alles wat u hebt gezegd — op het apparaat.";
 "Profile" = "Profiel";
 "Activation & insertion" = "Activering & invoegen";
@@ -241,15 +241,15 @@
 "%@ dictionary" = "%@-woordenboek";
 
 "Added “%@” — from your Claude Code prompt" = "“%@” toegevoegd — uit je Claude Code-prompt";
-"Claude added “%@” to dictionary" = "Claude voegde “%@” toe aan het woordenboek";
-"Claude added “%@” → “%@” to dictionary" = "Claude voegde “%@” → “%@” toe aan het woordenboek";
-"Claude removed “%@” → “%@” from dictionary" = "Claude verwijderde “%@” → “%@” uit het woordenboek";
-"Claude changed “%@” → “%@” to “%@”" = "Claude wijzigde “%@” → “%@” in “%@”";
-"Claude removed “%@” from dictionary" = "Claude verwijderde “%@” uit het woordenboek";
+"Your AI agent added “%@” to dictionary" = "Je AI-agent voegde “%@” toe aan het woordenboek";
+"Your AI agent added “%@” → “%@” to dictionary" = "Je AI-agent voegde “%@” → “%@” toe aan het woordenboek";
+"Your AI agent removed “%@” → “%@” from dictionary" = "Je AI-agent verwijderde “%@” → “%@” uit het woordenboek";
+"Your AI agent changed “%@” → “%@” to “%@”" = "Je AI-agent wijzigde “%@” → “%@” in “%@”";
+"Your AI agent removed “%@” from dictionary" = "Je AI-agent verwijderde “%@” uit het woordenboek";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Correcties leren uit je Claude Code-prompts? Het zijn lokale bestanden; er verlaat niets je Mac.";
-/* G1 — Connect to Claude connector card */
-"Connect to Claude" = "Verbinden met Claude";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie bevat een kleine lokale server zodat Claude je vergaderingen, briefing, toezeggingen en context kan lezen — alleen-lezen, op het apparaat, er verlaat niets je Mac. Meegeleverd met de app: geen aparte download of build.";
+/* G1 — Connect your AI agent connector card */
+"Connect your AI agent" = "Verbinden met je AI-agent";
+"Talkie ships a tiny local server so your AI agent can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie bevat een kleine lokale server zodat je AI-agent je vergaderingen, briefing, toezeggingen en context kan lezen — alleen-lezen, op het apparaat, er verlaat niets je Mac. Meegeleverd met de app: geen aparte download of build.";
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "Installeer de connector met één klik";
 "Install…" = "Installeren…";
@@ -257,15 +257,15 @@
 "Update…" = "Bijwerken…";
 "Connector is up to date (v%@)" = "De connector is up-to-date (v%@)";
 "Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "Je connector is verouderd (v%@ → v%@) — installeer opnieuw om de nieuwste tools te krijgen";
-"Claude Code & other MCP clients" = "Claude Code en andere MCP-clients";
+"Codex, Claude Code & other MCP clients" = "Codex, Claude Code en andere MCP-clients";
 "Add this to your .mcp.json, or run the command" = "Voeg dit toe aan je .mcp.json, of voer de opdracht uit";
 "Copy config" = "Configuratie kopiëren";
 "Or from the terminal" = "Of vanuit de terminal";
 "Copy command" = "Opdracht kopiëren";
-"Or let Claude set it up" = "Of laat Claude het instellen";
-"Paste this into Claude and it connects the server itself" = "Plak dit in Claude en het verbindt de server zelf";
+"Or let your AI agent set it up" = "Of laat je AI-agent het instellen";
+"Paste this into your AI agent and it connects the server itself" = "Plak dit in je AI-agent en het verbindt de server zelf";
 "Copy setup prompt" = "Installatieprompt kopiëren";
-"What Claude can read" = "Wat Claude kan lezen";
+"What your AI agent can read" = "Wat je AI-agent kan lezen";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "De connector-binary is er nog niet. Start deze app vanuit een gebouwde Talkie.app (./scripts/run.sh) en hij wordt meegeleverd — zonder extra stap.";
 "Opened in Claude Desktop" = "Geopend in Claude Desktop";
 "Revealed in Finder — drag it into Claude Desktop" = "Weergegeven in Finder — sleep het naar Claude Desktop";
@@ -338,6 +338,9 @@
 "Hold %@ to talk · tap twice to lock" = "Houd %@ ingedrukt om te praten · tik tweemaal om te vergrendelen";
 "Hold to talk · tap twice to lock" = "Houd ingedrukt om te praten · tik tweemaal om te vergrendelen";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Houd de toets ingedrukt en spreek, laat dan los om in te voegen. Tik er tweemaal op om handsfree te vergrendelen — de opname loopt door zonder iets ingedrukt te houden; tik één keer om te stoppen en in te voegen.";
+/* Track 4 — hold-to-latch replaces the old double-tap gesture */
+"Hold to talk · keep holding to lock" = "Houd ingedrukt om te praten · blijf ingedrukt houden om te vergrendelen";
+"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Houd de toets ingedrukt en spreek, laat dan los om in te voegen. Blijf ingedrukt houden om handsfree te vergrendelen — de opname loopt door zonder iets ingedrukt te houden; tik één keer om te stoppen en in te voegen.";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "De zijknop blijft zijn normale functie vervullen in de app die je gebruikt — Talkie luistert er alleen naar, en de knop moet macOS als een echte knop bereiken (sommige muizen wijzen hem in hun eigen software opnieuw toe).";
 "Hold, speak, release — or tap twice to go hands-free" = "Ingedrukt houden, praten, loslaten — of tik tweemaal voor handsfree";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Houd je toets ingedrukt, zeg wat je wilt schrijven en laat los — Talkie plaatst de tekst waar je aan het typen bent. Haast? Tik tweemaal op de toets om de opname handsfree te vergrendelen en één keer om te stoppen.";
@@ -635,7 +638,7 @@
 "Cleanup & intelligence" = "Opschonen en intelligentie";
 "Apps" = "Apps";
 "Notes & export" = "Notities en export";
-"Claude" = "Claude";
+"AI agent" = "AI-agent";
 "Privacy & permissions" = "Privacy en machtigingen";
 "All languages" = "Alle talen";
 "Verify our claims" = "Onze beloften verifiëren";
@@ -645,7 +648,7 @@
 "Per-app cleanup styles for the apps you customize." = "Opschoonstijlen per app voor de apps die je aanpast.";
 "Recording, transcription, and calendar context." = "Opname, transcriptie en agendacontext.";
 "Where notes and transcripts go, plus app behavior." = "Waar notities en transcripties heen gaan, plus appgedrag.";
-"Let Claude read your meetings and context, on-device." = "Laat Claude je vergaderingen en context lezen, lokaal.";
+"Let your AI agent read your meetings and context, on-device." = "Laat je AI-agent je vergaderingen en context lezen, lokaal.";
 "The permissions Talkie needs and proof nothing leaves." = "De machtigingen die Talkie nodig heeft en het bewijs dat niets weggaat.";
 "Tools that ship only in development builds." = "Hulpmiddelen die alleen in ontwikkelbuilds zitten.";
 "The full language picker will live here." = "De volledige taalkiezer komt hier.";
@@ -661,7 +664,7 @@
 "Choose photo…" = "Foto kiezen…";
 "Remove photo" = "Foto verwijderen";
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
-"What Claude can do" = "Wat Claude kan doen";
+"What your AI agent can do" = "Wat je AI-agent kan doen";
 "asks first" = "vraagt eerst";
 
 /* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
@@ -672,11 +675,11 @@
 "Learn from my edits" = "Leren van mijn correcties";
 "Auto-improve the dictionary." = "Verbetert het woordenboek automatisch.";
 "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "Als je een woord meteen na het dicteren corrigeert, onthoudt Talkie de correctie. Automatisch toegevoegde regels zijn gemarkeerd op het tabblad Woordenboek — verwijder wat je niet wilt.";
-/* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
+/* L16 — "Install my jargon" copy-prompt for your AI agent (Dictionary export area) */
 "Install my jargon" = "Mijn jargon installeren";
 "Copy prompt" = "Prompt kopiëren";
-"Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Laat Claude Talkie je jargon leren. Plak deze prompt in Claude (met de Talkie-connector aan) en het leest hoe je echt tegen het praat — je namen, producten en termen — en stelt de termen voor die Talkie verkeerd zou verstaan. Elke suggestie wacht op je bevestiging met één tik in Talkie, met Ongedaan maken. Claude wijzigt je woordenboek nooit uit zichzelf.";
-"Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Vereist de Talkie-connector — stel die in onder Algemeen ▸ Verbinden met Claude.";
+"Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Your AI agent never changes your dictionary on its own." = "Laat je AI-agent Talkie je jargon leren. Plak deze prompt in je AI-agent (met de Talkie-connector aan) en het leest hoe je echt tegen het praat — je namen, producten en termen — en stelt de termen voor die Talkie verkeerd zou verstaan. Elke suggestie wacht op je bevestiging met één tik in Talkie, met Ongedaan maken. Je AI-agent wijzigt je woordenboek nooit uit zichzelf.";
+"Needs the Talkie connector — set it up under Settings ▸ AI agent." = "Vereist de Talkie-connector — stel die in onder Instellingen ▸ AI-agent.";
 
 /* L6b — Languages: selected strip + All-languages subpage */
 "Pick every language you speak; Talkie auto-detects which." = "Kies elke taal die je spreekt; Talkie detecteert automatisch welke.";
@@ -777,7 +780,7 @@
 "%@ is listening." = "%@ luistert.";
 "%@ dictation indicator. Hold your dictation key and speak." = "%@-dicteerindicator. Houd je dicteertoets ingedrukt en spreek.";
 "%@ — Nothing leaves this Mac." = "%@ — Niets verlaat deze Mac.";
-"%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ levert een kleine lokale server zodat Claude je vergaderingen, briefing, toezeggingen, context, statistieken, je woordenboek en notities kan lezen — op het apparaat, er verlaat niets je Mac. Claude kan je woordenboek ook beheren — vermeldingen en regels toevoegen, wijzigen of verwijderen — maar elke wijziging wacht op je bevestiging met één tik en een Ongedaan maken. Meegeleverd met de app: geen aparte download of build.";
+"%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ levert een kleine lokale server zodat je AI-agent je vergaderingen, briefing, toezeggingen, context, statistieken, je woordenboek en notities kan lezen — op het apparaat, er verlaat niets je Mac. Je AI-agent kan je woordenboek ook beheren — vermeldingen en regels toevoegen, wijzigen of verwijderen — maar elke wijziging wacht op je bevestiging met één tik en een Ongedaan maken. Meegeleverd met de app: geen aparte download of build.";
 "Detect meetings & offer to record" = "Vergaderingen detecteren & opname aanbieden";
 "When a call app starts using your mic, Talkie offers to record. It never records on its own." = "Wanneer een bel-app je microfoon gebruikt, biedt Talkie aan op te nemen. Het neemt nooit uit zichzelf op.";
 "Show the meeting pill" = "Toon de vergaderpil";

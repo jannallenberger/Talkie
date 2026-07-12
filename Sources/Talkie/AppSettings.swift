@@ -123,6 +123,40 @@ enum HistoryRetention: Int, CaseIterable, Identifiable {
     }
 }
 
+/// The fixed set of choices the "Maximum dictations" picker offers. The stored
+/// value is a plain count (`AppSettings.historyMaxCount`); `0` = "no limit".
+/// Paired with `HistoryRetention` (time): whichever bound is stricter wins, so a
+/// user who wants *everything* picks Forever retention AND No limit here.
+enum HistoryMaxCount: Int, CaseIterable, Identifiable {
+    case c500 = 500
+    case c1000 = 1000
+    case c2000 = 2000
+    case c5000 = 5000
+    case c10000 = 10000
+    case unlimited = 0
+
+    var id: Int { rawValue }
+
+    /// Map any stored count onto a defined option so the picker always has a valid
+    /// selection even if a future build wrote a number not in this set (falls back
+    /// to the 2000 default).
+    static func from(count: Int) -> HistoryMaxCount {
+        HistoryMaxCount(rawValue: count) ?? .c2000
+    }
+
+    /// Grouped per the user's locale ("10,000" / "10.000"); "No limit" for `0`.
+    var displayName: String {
+        guard self != .unlimited else { return "No limit".loc }
+        return HistoryMaxCount.formatter.string(from: rawValue as NSNumber) ?? "\(rawValue)"
+    }
+
+    private static let formatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        return f
+    }()
+}
+
 /// A language Talkie can transcribe / auto-detect. `id` is a locale identifier.
 struct TalkieLanguage: Identifiable, Hashable {
     let id: String
@@ -267,6 +301,12 @@ final class AppSettings: ObservableObject {
     /// it re-prunes live. See `HistoryRetention` for the offered choices.
     @Published var historyRetentionDays: Int {
         didSet { defaults.set(historyRetentionDays, forKey: Keys.historyRetentionDays) }
+    }
+    /// Hard cap on retained dictations regardless of age (`0` = no limit).
+    /// `AppDelegate` mirrors changes into `HistoryStore` so lowering it re-trims
+    /// live. See `HistoryMaxCount` for the offered choices.
+    @Published var historyMaxCount: Int {
+        didSet { defaults.set(historyMaxCount, forKey: Keys.historyMaxCount) }
     }
     /// One-time consent for learning corrections from your Claude Code prompts (the
     /// AX-blind coding/terminal surface). Tri-state on purpose — `"unset"` until the
@@ -457,6 +497,7 @@ final class AppSettings: ObservableObject {
             Keys.localeIdentifier: canonicalLocaleID(Locale.current.identifier),
             Keys.learnFromEdits: true,
             Keys.historyRetentionDays: 7,
+            Keys.historyMaxCount: 2000,
             Keys.claudeTranscriptLearning: "unset",
             // H1 resolved the optimisticInsertion contradiction: registered default is
             // now `false`, matching the doc comment and the "Experimental — may misfire"
@@ -518,6 +559,7 @@ final class AppSettings: ObservableObject {
         AppSettings.migrateLevelToStyleIfNeeded(d)
         learnFromEdits = d.bool(forKey: Keys.learnFromEdits)
         historyRetentionDays = d.integer(forKey: Keys.historyRetentionDays)
+        historyMaxCount = d.integer(forKey: Keys.historyMaxCount)
         claudeTranscriptLearning = d.string(forKey: Keys.claudeTranscriptLearning) ?? "unset"
         optimisticInsertion = d.bool(forKey: Keys.optimisticInsertion)
         crossSurfaceCommandsEnabled = d.bool(forKey: Keys.crossSurfaceCommandsEnabled)
@@ -677,6 +719,7 @@ final class AppSettings: ObservableObject {
         static let cleanupFillers = "cleanupFillers"
         static let learnFromEdits = "learnFromEdits"
         static let historyRetentionDays = "historyRetentionDays"
+        static let historyMaxCount = "historyMaxCount"
         static let claudeTranscriptLearning = "claudeTranscriptLearning"
         static let optimisticInsertion = "optimisticInsertion"
         static let crossSurfaceCommandsEnabled = "crossSurfaceCommandsEnabled"

@@ -208,9 +208,9 @@ enum CompetitorParsers {
     ///
     /// ```json
     /// {
-    ///   "vocabulary": ["Coralate", "Talkie"],
+    ///   "vocabulary": ["GitHub", "Talkie"],
     ///   "replacements": [
-    ///     { "original": "correlate", "replacement": "Coralate" }
+    ///     { "original": "get hub", "replacement": "GitHub" }
     ///   ]
     /// }
     /// ```
@@ -242,7 +242,7 @@ enum CompetitorParsers {
     /// ```json
     /// {
     ///   "dictionary": [
-    ///     { "word": "Coralate" },
+    ///     { "word": "GitHub" },
     ///     { "word": "kubectl", "pronunciation": "cube control" }
     ///   ]
     /// }

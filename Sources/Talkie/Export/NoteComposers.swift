@@ -158,8 +158,8 @@ enum NoteComposers {
     /// The display names of graph entities that are actually mentioned in `text`,
     /// most-recently-seen first (the snapshot's order), de-duplicated. An entity
     /// matches if its display name OR any alias appears in `text` as a
-    /// case-insensitive, word-boundary-aware substring — so "Coralate" in the body
-    /// lights up the `Coralate` node but "corralated" (no boundary) does not, and a
+    /// case-insensitive, word-boundary-aware substring — so "GitHub" in the body
+    /// lights up the `GitHub` node but "corralated" (no boundary) does not, and a
     /// two-letter alias can't spuriously match inside a longer word.
     ///
     /// Commitments are skipped: they are action-item phrases, not named nodes you'd

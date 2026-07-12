@@ -838,7 +838,7 @@ enum SpokenFileMatcher {
     ///   3. `RepoTermMiner.isPhoneticallyCommon` — rejects a term whose *phonetic
     ///      skeleton* is within edit-distance-1 of a common English word's, so a mined
     ///      term can't rewrite ordinary prose in the corrector ("mining"↔"morning",
-    ///      "Talkie"↔"talked", "Coralate"↔"correlate"). This third gate is what makes
+    ///      "Talkie"↔"talked", "GitHub"↔"get hub"). This third gate is what makes
     ///      the false-positive-corpus re-run pass with real repo terms loaded.
     /// Deduped case-insensitively, capped so one project's docs can't flood the
     /// corrector's global budget.

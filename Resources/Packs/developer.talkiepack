@@ -197,9 +197,9 @@
     "Jupyter",
     "NumPy",
     "Matplotlib",
-    "Coralate",
+    "PyTorch",
     "Higgsfield",
-    "CLAUDE.md",
+    "AGENTS.md",
     "protobuf",
     "Parquet"
   ]

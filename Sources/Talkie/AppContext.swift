@@ -210,7 +210,7 @@ enum PhraseMiner {
         if hasInternalCapital { return true }
         // snake_case identifier.
         if token.contains("_") && token.contains(where: \.isLetter) { return true }
-        // A capitalized proper-noun word (Coralate) that isn't a common stopword.
+        // A capitalized proper-noun word (GitHub) that isn't a common stopword.
         if let first = token.first, first.isUppercase,
            token.dropFirst().allSatisfy({ $0.isLowercase }),
            token.count >= 4, !stopwords.contains(token.lowercased()) {

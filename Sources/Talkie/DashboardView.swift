@@ -112,8 +112,6 @@ struct DashboardView: View {
                             .accessibilityElement(children: .combine)
                         RecordsCard(stats: stats, activity: activity).frame(maxHeight: .infinity, alignment: .top)
                             .accessibilityElement(children: .combine)
-                        TaughtWordsCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
-                            .accessibilityElement(children: .combine)
                     }
 
                     LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
@@ -129,6 +127,7 @@ struct DashboardView: View {
             }
             .background(LiveBackground(mood: .ambient))
             .scrollContentBackground(.hidden)
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .navigationDestination(for: MilestoneRoute.self) { route in
                 switch route {
                 case .plumage:
@@ -577,22 +576,22 @@ private struct MilestoneCelebrationBanner: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "sparkles")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Theme.featherGold)
+                .foregroundStyle(.white)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(String(format: "You crossed %@ words".loc, threshold.formatted()))
                     .font(.talkieHeading(15, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+                    .foregroundStyle(.white)
                 if !equivalence.isEmpty {
                     Text(equivalence)
                         .font(.talkieHeading(12, weight: .regular))
-                        .foregroundStyle(Theme.inkSecondary)
+                        .foregroundStyle(.white.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 NavigationLink(value: MilestoneRoute.plumage) {
                     Text("See your milestones".loc)
                         .font(.talkieHeading(12, weight: .semibold))
-                        .foregroundStyle(Theme.featherCoral)
+                        .foregroundStyle(.white)
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 1)
@@ -603,17 +602,21 @@ private struct MilestoneCelebrationBanner: View {
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.inkTertiary)
+                    .foregroundStyle(.white.opacity(0.85))
             }
             .buttonStyle(.plain)
             .help("Dismiss")
             .accessibilityLabel("Dismiss")
         }
-        .talkieCard()
-        .overlay(
+        .padding(Theme.Space.card)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .strokeBorder(Theme.featherGold.opacity(0.4), lineWidth: 1)
+                .fill(LinearGradient(gradient: Theme.emberRamp, startPoint: .leading, endPoint: .trailing))
         )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
         .opacity(appeared || reduceMotion ? 1 : 0)
         .onAppear {
             guard !reduceMotion else { return }
@@ -691,7 +694,8 @@ private struct ComparisonLine: View {
 }
 
 /// A top-half speedometer arc, sized to its frame (no fixed geometry → can't
-/// overflow the card). Track in the sunken tone, value swept deep-red → gold.
+/// overflow the card). Track in the sunken tone, value swept along the shared
+/// ember ramp (gold → coral), matching the words-per-day bars.
 private struct Gauge: View {
     let fraction: Double
     private let lineWidth: CGFloat = 15
@@ -707,7 +711,7 @@ private struct Gauge: View {
                 arc(center: center, radius: r, to: max(0.001, fraction))
                     .stroke(
                         AngularGradient(
-                            gradient: Gradient(colors: [Theme.heat(4), Theme.featherCoral, Theme.featherGold]),
+                            gradient: Theme.emberRamp,
                             center: .center,
                             startAngle: .degrees(180), endAngle: .degrees(360)
                         ),
@@ -796,7 +800,7 @@ private struct WordsPerDayCard: View {
                         .fill(day.words == 0
                               ? AnyShapeStyle(Theme.surfaceSunken)
                               : AnyShapeStyle(LinearGradient(
-                                    colors: [Theme.featherGold, Theme.featherCoral],
+                                    gradient: Theme.emberRamp,
                                     startPoint: .top, endPoint: .bottom)))
                         .frame(width: barW,
                                height: barHeight(frac: frac, full: geo.size.height, empty: day.words == 0))
@@ -938,49 +942,6 @@ private struct RecordsCard: View {
     }
 }
 
-// MARK: - Words you taught me card
-
-/// K5 — the jargon terms Talkie has learned to get right for you, most-rescued
-/// first. Terms are user content, so they render verbatim (never localized) and
-/// are only ever read from the on-device `stats.json` tally.
-private struct TaughtWordsCard: View {
-    @ObservedObject var stats: StatsStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Eyebrow(text: "Words you taught me")
-
-            let top = stats.topTaughtWords(limit: 5)
-            if top.isEmpty {
-                Text("The terms you teach it to spell right show up here.")
-                    .font(.talkieHeading(13, weight: .regular))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                ForEach(top, id: \.term) { entry in
-                    HStack(spacing: 8) {
-                        Image(systemName: "character.book.closed")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.inkTertiary)
-                            .frame(width: 16)
-                        Text(verbatim: entry.term)
-                            .font(.talkieHeading(13, weight: .regular))
-                            .foregroundStyle(Theme.inkSecondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 4)
-                        Text(verbatim: "\(entry.count)×")
-                            .font(.talkieHeading(13, weight: .semibold))
-                            .foregroundStyle(Theme.ink)
-                            .monospacedDigit()
-                    }
-                }
-            }
-        }
-        .talkieCard(fill: true)
-    }
-}
-
 private struct MiniStat: View {
     let icon: String
     let label: String
@@ -1026,8 +987,8 @@ private struct UsageCard: View {
                           text: "Dictate into your apps and they'll show up here.")
             } else {
                 VStack(spacing: 11) {
-                    ForEach(Array(slices.enumerated()), id: \.element.id) { idx, slice in
-                        UsageRow(slice: slice, color: Theme.categorical[idx % Theme.categorical.count])
+                    ForEach(slices, id: \.id) { slice in
+                        UsageRow(slice: slice)
                     }
                 }
             }
@@ -1038,7 +999,6 @@ private struct UsageCard: View {
 
 private struct UsageRow: View {
     let slice: UsageSlice
-    let color: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -1053,7 +1013,7 @@ private struct UsageRow: View {
                     } else {
                         Image(systemName: slice.category.symbol)
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(color)
+                            .foregroundStyle(Theme.inkTertiary)
                     }
                 }
                 .frame(width: 16, height: 16)
@@ -1070,7 +1030,8 @@ private struct UsageRow: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.surfaceSunken)
-                    Capsule().fill(color)
+                    Capsule()
+                        .fill(LinearGradient(gradient: Theme.emberRamp, startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(6, geo.size.width * slice.fraction))
                 }
             }
@@ -1107,7 +1068,7 @@ private struct StreakCard: View {
                 Text("Less").font(.system(size: 10)).foregroundStyle(Theme.inkTertiary)
                 ForEach(0..<5) { lvl in
                     RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                        .fill(Theme.heat(lvl))
+                        .fill(Theme.emberHeat(lvl))
                         .frame(width: 11, height: 11)
                 }
                 Text("More").font(.system(size: 10)).foregroundStyle(Theme.inkTertiary)
@@ -1159,7 +1120,7 @@ private struct Heatmap: View {
                         VStack(spacing: gap) {
                             ForEach(week) { cellData in
                                 RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                                    .fill(cellData.isFuture ? Color.clear : Theme.heat(cellData.level))
+                                    .fill(cellData.isFuture ? Color.clear : Theme.emberHeat(cellData.level))
                                     .frame(width: cell, height: cell)
                                     .help(cellData.date != nil && cellData.words > 0
                                           ? "\(cellData.words) words" : "")

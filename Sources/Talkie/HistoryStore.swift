@@ -56,9 +56,10 @@ actor HistoryFileWriter {
     }
 }
 
-/// Persisted log of recent dictations. Newest first, auto-pruned to the user's
-/// chosen retention window (`historyRetentionDays`, default 7 days; "forever"
-/// keeps everything). A separate hard `cap` bounds the file regardless of age.
+/// Persisted log of recent dictations. Newest first, pruned by two independent,
+/// user-configurable limits (the stricter always wins): a retention *window*
+/// (`historyRetentionDays`, default 7 days; "forever" keeps everything) and a
+/// *count* cap (`historyMaxCount`, default 2000; "no limit" keeps everything).
 @MainActor
 final class HistoryStore: ObservableObject {
     @Published private(set) var entries: [DictationEntry] = []
@@ -74,7 +75,10 @@ final class HistoryStore: ObservableObject {
     /// fixed 7 days regardless of retention, so the dashboard's "Last 7 days"
     /// stat stays correct even when the user keeps history for 30/90 days.
     private let dashboardWindow: TimeInterval = 7 * 24 * 60 * 60 // 7 days
-    private let cap = 2000
+    /// Hard cap on retained entries regardless of age. Driven by
+    /// `AppSettings.historyMaxCount`; `0` = no limit. A `var` (not `let`) because
+    /// the user can change it live via `updateMaxCount(_:)`, which re-trims at once.
+    private var maxCount: Int
 
     /// Off-main JSON encode + atomic write. Callers are unchanged: `save()` still
     /// looks synchronous to them, but it only schedules — the cost moves here.
@@ -98,11 +102,13 @@ final class HistoryStore: ObservableObject {
     /// neither read the developer's real `history.json` (non-deterministic) nor let
     /// the debounced `save()` clobber it. Mirrors `HistoryFileWriter(fileURL:)`.
     init(retentionDays: Int = HistoryStore.storedRetentionDays(),
+         maxCount: Int = HistoryStore.storedMaxCount(),
          directory: URL? = nil) {
         let url = (directory ?? AppPaths.supportDirectory()).appendingPathComponent("history.json")
         fileURL = url
         writer = HistoryFileWriter(fileURL: url)
         retentionSeconds = HistoryStore.seconds(forRetentionDays: retentionDays)
+        self.maxCount = maxCount
         load()
     }
 
@@ -118,6 +124,13 @@ final class HistoryStore: ObservableObject {
         days <= 0 ? .infinity : TimeInterval(days) * 24 * 60 * 60
     }
 
+    /// The persisted count cap, read straight from the same `UserDefaults` key
+    /// `AppSettings` registers (default 2000). `0` means "no limit". Mirrors
+    /// `storedRetentionDays()` and shares its init-ordering guarantee.
+    static func storedMaxCount() -> Int {
+        UserDefaults.standard.integer(forKey: "historyMaxCount")
+    }
+
     /// Apply a new retention window (in days; `0` = forever) and re-prune + save
     /// immediately, so shrinking retention takes effect without a relaunch. Wired
     /// from `AppSettings.$historyRetentionDays` at the composition root.
@@ -125,6 +138,23 @@ final class HistoryStore: ObservableObject {
         retentionSeconds = HistoryStore.seconds(forRetentionDays: days)
         prune()
         save()
+    }
+
+    /// Apply a new count cap (`0` = no limit) and re-trim + save immediately, so
+    /// lowering the cap takes effect without a relaunch. Wired from
+    /// `AppSettings.$historyMaxCount` at the composition root.
+    func updateMaxCount(_ count: Int) {
+        maxCount = count
+        applyCap()
+        save()
+    }
+
+    /// Drop the oldest entries beyond `maxCount`. No-op when `maxCount <= 0`
+    /// ("no limit") or already within the cap. Entries are newest-first, so the
+    /// tail is the oldest — exactly what falls off.
+    private func applyCap() {
+        guard maxCount > 0, entries.count > maxCount else { return }
+        entries.removeLast(entries.count - maxCount)
     }
 
     /// `id` defaults to a fresh UUID (existing call sites are unaffected) but can be
@@ -158,7 +188,7 @@ final class HistoryStore: ObservableObject {
         )
         entries.insert(entry, at: 0)
         prune()
-        if entries.count > cap { entries.removeLast(entries.count - cap) }
+        applyCap()
         save()
         return entry
     }
@@ -216,6 +246,18 @@ final class HistoryStore: ObservableObject {
         return entries.reduce(0) { $0 + ($1.timestampUnix >= cutoff ? $1.wordCount : 0) }
     }
 
+    /// On-disk size of `history.json` in bytes, read via a cheap file stat — NOT a
+    /// re-encode of `entries`. Encoding the whole log (hundreds of long dictations)
+    /// on a SwiftUI body pass is wasteful and can stutter the UI, so the settings
+    /// "how much space" readout reflects the last debounced write instead. That means
+    /// it can trail the in-memory count by a fraction of a second (a fresh dictation
+    /// shows before the file grows); acceptable for an at-a-glance footprint. `0`
+    /// before the first save, or if the file was shredded by `clearAll`.
+    var onDiskByteCount: Int {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        return (attrs?[.size] as? Int) ?? 0
+    }
+
     /// Drop anything older than the retention window. With forever-retention
     /// (`retentionSeconds == .infinity`) the cutoff is `-.infinity`, so nothing
     /// is ever pruned.
@@ -228,7 +270,8 @@ final class HistoryStore: ObservableObject {
         guard let decoded = StoreLoad.loadJSONWithQuarantine([DictationEntry].self, from: fileURL) else { return }
         entries = decoded
         prune()
-        save() // persist the pruned set so the file doesn't grow unbounded
+        applyCap()
+        save() // persist the pruned+capped set so the file doesn't grow unbounded
     }
 
     /// Schedule a coalesced, off-main persist. Synchronous to callers — it only

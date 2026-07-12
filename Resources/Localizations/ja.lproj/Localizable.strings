@@ -52,7 +52,7 @@
 "Quit & Reopen" = "終了して再起動";
 "Re-check" = "再確認";
 "Record a meeting" = "会議を録音";
-"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point Claude at." = "会議を録音すると、Talkieがオンデバイスで文字起こしと要約を行い、Claudeに渡せるノートを保存します。";
+"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at." = "会議を録音すると、Talkieがオンデバイスで文字起こしと要約を行い、AIエージェントに渡せるノートを保存します。";
 "Regenerate" = "再生成";
 "Remove this folder" = "このフォルダを削除";
 "Replay" = "再生";
@@ -61,7 +61,7 @@
 "Reveal in Finder" = "Finderに表示";
 "Reveal note in Finder" = "ノートをFinderに表示";
 "Reverted" = "元に戻しました";
-"Rewrite what was heard into what you meant — e.g. “correlate” → “Coralate”." = "聞き取られた内容を意図した内容に書き換えます — 例：“correlate” → “Coralate”。";
+"Rewrite what was heard into what you meant — e.g. “get hub” → “GitHub”." = "聞き取られた内容を意図した内容に書き換えます — 例：“get hub” → “GitHub”。";
 "Rules for this app only" = "このアプリのみのルール";
 "Save" = "保存";
 "Saved to ~/Talkie Meetings/ as markdown" = "~/Talkie Meetings/ にMarkdownとして保存しました";
@@ -99,7 +99,7 @@
 "Everything you've dictated in the last 7 days." = "過去7日間に音声入力したすべての内容。";
 "Tune how Talkie listens, cleans up, and behaves." = "Talkieの聞き取り、整形、動作を調整します。";
 "Names, brands, and jargon Talkie should spell correctly." = "Talkieが正しく表記すべき名前・ブランド・専門用語。";
-"Say a filename, get the real file — “exercise library dot t-s-x” becomes ExerciseLibrary.tsx." = "ファイル名を話すと実際のファイルに — 「exercise library dot t-s-x」が ExerciseLibrary.tsx になります。";
+"Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx." = "ファイル名を話すと実際のファイルに — 「user profile dot t-s-x」が UserProfile.tsx になります。";
 "Find anything you've said — on-device." = "話した内容を何でも検索 — デバイス上で。";
 "Profile" = "プロフィール";
 "Activation & insertion" = "起動と挿入";
@@ -241,15 +241,15 @@
 "%@ dictionary" = "%@ の辞書";
 
 "Added “%@” — from your Claude Code prompt" = "「%@」を追加しました——Claude Code のプロンプトから";
-"Claude added “%@” to dictionary" = "Claude が「%@」を辞書に追加しました";
-"Claude added “%@” → “%@” to dictionary" = "Claude が「%@」→「%@」を辞書に追加しました";
-"Claude removed “%@” → “%@” from dictionary" = "Claude が「%@」→「%@」を辞書から削除しました";
-"Claude changed “%@” → “%@” to “%@”" = "Claude が「%@」→「%@」を「%@」に変更しました";
-"Claude removed “%@” from dictionary" = "Claude が「%@」を辞書から削除しました";
+"Your AI agent added “%@” to dictionary" = "AIエージェントが「%@」を辞書に追加しました";
+"Your AI agent added “%@” → “%@” to dictionary" = "AIエージェントが「%@」→「%@」を辞書に追加しました";
+"Your AI agent removed “%@” → “%@” from dictionary" = "AIエージェントが「%@」→「%@」を辞書から削除しました";
+"Your AI agent changed “%@” → “%@” to “%@”" = "AIエージェントが「%@」→「%@」を「%@」に変更しました";
+"Your AI agent removed “%@” from dictionary" = "AIエージェントが「%@」を辞書から削除しました";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "Claude Code のプロンプトから修正を学習しますか？ローカルファイルです。Mac から何も送信されません。";
-/* G1 — Connect to Claude connector card */
-"Connect to Claude" = "Claude に接続";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie には小さなローカルサーバーが付属しており、Claude があなたのミーティング、ブリーフ、コミットメント、コンテキストを読み取れます。読み取り専用・オンデバイスで、Mac から何も送信されません。アプリに同梱：別途のダウンロードやビルドは不要です。";
+/* G1 — Connect your AI agent connector card */
+"Connect your AI agent" = "AIエージェントに接続";
+"Talkie ships a tiny local server so your AI agent can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie には小さなローカルサーバーが付属しており、AIエージェントがあなたのミーティング、ブリーフ、コミットメント、コンテキストを読み取れます。読み取り専用・オンデバイスで、Mac から何も送信されません。アプリに同梱：別途のダウンロードやビルドは不要です。";
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "ワンクリックでコネクタをインストール";
 "Install…" = "インストール…";
@@ -257,15 +257,15 @@
 "Update…" = "アップデート…";
 "Connector is up to date (v%@)" = "コネクタは最新です (v%@)";
 "Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "コネクタが古くなっています (v%@ → v%@)。再インストールして最新のツールを入手してください";
-"Claude Code & other MCP clients" = "Claude Code とその他の MCP クライアント";
+"Codex, Claude Code & other MCP clients" = "Codex, Claude Code とその他の MCP クライアント";
 "Add this to your .mcp.json, or run the command" = ".mcp.json に追加するか、コマンドを実行してください";
 "Copy config" = "設定をコピー";
 "Or from the terminal" = "またはターミナルから";
 "Copy command" = "コマンドをコピー";
-"Or let Claude set it up" = "または Claude に設定させる";
-"Paste this into Claude and it connects the server itself" = "これを Claude に貼り付けると、サーバーを自分で接続します";
+"Or let your AI agent set it up" = "または AIエージェントに設定させる";
+"Paste this into your AI agent and it connects the server itself" = "これを AIエージェントに貼り付けると、サーバーを自分で接続します";
 "Copy setup prompt" = "セットアップ用プロンプトをコピー";
-"What Claude can read" = "Claude が読み取れる内容";
+"What your AI agent can read" = "AIエージェントが読み取れる内容";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "コネクタのバイナリがまだありません。ビルド済みの Talkie.app（./scripts/run.sh）からこのアプリを起動すると同梱されます。追加の手順は不要です。";
 "Opened in Claude Desktop" = "Claude Desktop で開きました";
 "Revealed in Finder — drag it into Claude Desktop" = "Finder で表示しました。Claude Desktop にドラッグしてください";
@@ -338,6 +338,9 @@
 "Hold %@ to talk · tap twice to lock" = "%@ を押し続けて話す・2回タップで固定";
 "Hold to talk · tap twice to lock" = "押し続けて話す・2回タップで固定";
 "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "キーを押しながら話し、離すと挿入されます。2回タップするとハンズフリーで固定され、何も押さなくても録音が続きます。もう一度タップすると停止して挿入します。";
+/* Track 4 — hold-to-latch replaces the old double-tap gesture */
+"Hold to talk · keep holding to lock" = "押し続けて話す・そのまま押し続けて固定";
+"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "キーを押しながら話し、離すと挿入されます。そのまま押し続けるとハンズフリーで固定され、何も押さなくても録音が続きます。もう一度タップすると停止して挿入します。";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "サイドボタンは使用中のアプリで通常どおり機能します。Talkie はそれを聞き取るだけで、ボタンは実際のボタンとして macOS に届く必要があります（一部のマウスは独自のソフトウェアでボタンを再割り当てします）。";
 "Hold, speak, release — or tap twice to go hands-free" = "押して、話して、離す — または2回タップでハンズフリー";
 "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "キーを押しながら書きたいことを話し、離すだけ — Talkie が入力中の場所にテキストを挿入します。急いでいるときは、キーを2回タップして録音をハンズフリーで固定し、1回タップで停止します。";
@@ -635,7 +638,7 @@
 "Cleanup & intelligence" = "整形とインテリジェンス";
 "Apps" = "アプリ";
 "Notes & export" = "メモとエクスポート";
-"Claude" = "Claude";
+"AI agent" = "AIエージェント";
 "Privacy & permissions" = "プライバシーと権限";
 "All languages" = "すべての言語";
 "Verify our claims" = "私たちの約束を検証";
@@ -645,7 +648,7 @@
 "Per-app cleanup styles for the apps you customize." = "カスタマイズしたアプリごとの整形スタイル。";
 "Recording, transcription, and calendar context." = "録音、文字起こし、カレンダーのコンテキスト。";
 "Where notes and transcripts go, plus app behavior." = "メモや文字起こしの保存先と、アプリの動作。";
-"Let Claude read your meetings and context, on-device." = "Claudeに会議とコンテキストを読み取らせます（デバイス上で）。";
+"Let your AI agent read your meetings and context, on-device." = "AIエージェントに会議とコンテキストを読み取らせます（デバイス上で）。";
 "The permissions Talkie needs and proof nothing leaves." = "Talkieに必要な権限と、何も送信されない証拠。";
 "Tools that ship only in development builds." = "開発ビルドにのみ含まれるツール。";
 "The full language picker will live here." = "すべての言語の選択画面がここに表示されます。";
@@ -661,7 +664,7 @@
 "Choose photo…" = "写真を選択…";
 "Remove photo" = "写真を削除";
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
-"What Claude can do" = "Claude ができること";
+"What your AI agent can do" = "AIエージェントができること";
 "asks first" = "確認します";
 
 /* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
@@ -672,11 +675,11 @@
 "Learn from my edits" = "自分の修正から学習する";
 "Auto-improve the dictionary." = "辞書を自動的に改善します。";
 "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "口述の直後に単語を修正すると、Talkie はその修正を覚えます。自動追加されたルールは辞書タブに印が付きます — 不要なものは削除してください。";
-/* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
+/* L16 — "Install my jargon" copy-prompt for your AI agent (Dictionary export area) */
 "Install my jargon" = "こだわりの用語を登録";
 "Copy prompt" = "プロンプトをコピー";
-"Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Claude にあなたの用語を Talkie へ教えてもらいましょう。このプロンプトを Claude に貼り付けると（Talkie コネクターを有効に）、あなたが実際どう話しかけているか—名前、製品、用語—を読み取り、Talkie が聞き違えそうなものを提案します。どの提案も Talkie 上でのワンタップ確認（取り消し可）を待ちます。Claude が勝手に辞書を変更することはありません。";
-"Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Talkie コネクターが必要です — 「一般 ▸ Claude に接続」で設定してください。";
+"Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Your AI agent never changes your dictionary on its own." = "AIエージェントにあなたの用語を Talkie へ教えてもらいましょう。このプロンプトを AIエージェントに貼り付けると（Talkie コネクターを有効に）、あなたが実際どう話しかけているか—名前、製品、用語—を読み取り、Talkie が聞き違えそうなものを提案します。どの提案も Talkie 上でのワンタップ確認（取り消し可）を待ちます。AIエージェントが勝手に辞書を変更することはありません。";
+"Needs the Talkie connector — set it up under Settings ▸ AI agent." = "Talkie コネクターが必要です — 「設定 ▸ AIエージェント」で設定してください。";
 
 /* L6b — Languages: selected strip + All-languages subpage */
 "Pick every language you speak; Talkie auto-detects which." = "話すすべての言語を選んでください。Talkie がどれかを自動で判別します。";
@@ -777,7 +780,7 @@
 "%@ is listening." = "%@ が聞き取っています。";
 "%@ dictation indicator. Hold your dictation key and speak." = "%@ の口述インジケーター。口述キーを押しながら話してください。";
 "%@ — Nothing leaves this Mac." = "%@ — この Mac から何も出ていきません。";
-"%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ は小さなローカルサーバーを備え、Claude があなたのミーティング、ブリーフ、コミットメント、コンテキスト、統計、辞書、メモを読み取れます — すべてデバイス上で処理され、Mac から何も送信されません。Claude は辞書の管理もできます — 項目やルールの追加・変更・削除 — ただしどの変更もワンタップの確認（取り消し可能）を待ってから反映されます。アプリに同梱: 別途のダウンロードやビルドは不要です。";
+"%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ は小さなローカルサーバーを備え、AIエージェントがあなたのミーティング、ブリーフ、コミットメント、コンテキスト、統計、辞書、メモを読み取れます — すべてデバイス上で処理され、Mac から何も送信されません。AIエージェントは辞書の管理もできます — 項目やルールの追加・変更・削除 — ただしどの変更もワンタップの確認（取り消し可能）を待ってから反映されます。アプリに同梱: 別途のダウンロードやビルドは不要です。";
 "Detect meetings & offer to record" = "ミーティングを検出して録音を提案";
 "When a call app starts using your mic, Talkie offers to record. It never records on its own." = "通話アプリがマイクを使い始めると、Talkie が録音を提案します。自動で録音することはありません。";
 "Show the meeting pill" = "ミーティングピルを表示";

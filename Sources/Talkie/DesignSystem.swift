@@ -72,6 +72,9 @@ enum Theme {
     /// Clearer alias for the macaw red.
     static var featherRed: Color { featherCoral }
 
+    /// The single shared warm gold→red data-viz ramp (gauges, progress fills).
+    static var emberRamp: Gradient { Gradient(colors: [featherGold, featherCoral]) }
+
     /// Ordered categorical ramp for charts (app-usage bars, etc).
     static let categorical: [Color] = [featherCoral, featherGold, featherBlue, featherGreen, featherPlum]
 
@@ -86,6 +89,16 @@ enum Theme {
         case 3:  return dyn(light: 0xC84E46, dark: 0xC84138)
         default: return dyn(light: 0xC0271C, dark: 0xF0473B)
         }
+    }
+
+    /// The streak heatmap ramp, tied to `emberRamp` so the grid reads as the same
+    /// warm family as the gauge and words-per-day chart. Level 0 is the empty cell;
+    /// 1…4 interpolate featherGold → featherCoral by intensity. The heatmap cells
+    /// AND the "Less … More" legend must both use this so they never drift apart.
+    static func emberHeat(_ level: Int) -> Color {
+        let l = max(0, min(4, level))
+        return l == 0 ? surfaceSunken
+                      : featherGold.mix(with: featherCoral, by: Double(l - 1) / 3.0)
     }
 
     // MARK: Semantic

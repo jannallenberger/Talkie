@@ -137,7 +137,7 @@ final class LearningEngine {
 
 /// Pure word-level diff that extracts a single conservative correction the user
 /// made to text Talkie inserted. Handles a one-word respelling
-/// ("correlate"→"Coralate") AND a contiguous merge/split ("Higgs field"→
+/// ("get hub"→"GitHub") AND a contiguous merge/split ("Higgs field"→
 /// "Higgsfield", "kubernetes"→"k8s" is rejected as implausible). Fully testable;
 /// knows nothing about Accessibility.
 enum CorrectionExtractor {

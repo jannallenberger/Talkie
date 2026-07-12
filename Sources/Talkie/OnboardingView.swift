@@ -162,7 +162,6 @@ struct OnboardingView: View {
             .frame(minHeight: 64, maxHeight: 96)
             .padding(12)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Your dictated words")
             .accessibilityValue(tryItText.isEmpty ? "Empty" : tryItText)
@@ -291,7 +290,6 @@ struct OnboardingView: View {
             .frame(minHeight: 52, maxHeight: 84)
             .padding(11)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Your dictated words, offline")
             .accessibilityValue(privacyTryText.isEmpty ? "Empty" : privacyTryText)
@@ -498,7 +496,6 @@ struct OnboardingView: View {
                 .lineLimit(2...4)
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
                 .accessibilityLabel("Try dictation here")
                 .accessibilityHint("Hold your dictation key and speak; the words appear in this field.")
 
@@ -593,7 +590,6 @@ private struct PrivacyChip: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(Capsule().fill(Theme.surface.opacity(0.6)))
-        .overlay(Capsule().strokeBorder(Theme.hairline))
     }
 }
 
@@ -615,7 +611,6 @@ private struct Keycap: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.surfaceSunken))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.hairline))
     }
 }
 
@@ -699,7 +694,6 @@ private struct OnboardPermissionRow: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(why) \(granted ? "Granted." : "Not granted.")")
     }

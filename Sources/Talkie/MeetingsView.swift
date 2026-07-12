@@ -61,7 +61,7 @@ struct MeetingsView: View {
                     Text("Meetings")
                         .font(.talkieDisplay(26))
                         .foregroundStyle(Theme.ink)
-                    Text("Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point Claude at.")
+                    Text("Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at.")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.inkSecondary)
                 }
