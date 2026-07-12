@@ -197,7 +197,7 @@
     "Jupyter",
     "NumPy",
     "Matplotlib",
-    "PyTorch",
+    "Keras",
     "Higgsfield",
     "AGENTS.md",
     "protobuf",

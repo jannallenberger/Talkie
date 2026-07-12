@@ -281,11 +281,16 @@ actor CleanupEngine {
             let prompt = "\(promptLead)\n\n\(openMarker)\n\(trimmed)\n\(closeMarker)"
             let response = try await session.respond(to: prompt, options: options)
             // Strip the fence markers back out in case the model echoed them.
-            var cleaned = sanitize(response.content)
-            cleaned = cleaned
-                .replacingOccurrences(of: openMarker, with: "")
-                .replacingOccurrences(of: closeMarker, with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Strip the fence back out. The model doesn't only echo the exact two
+            // markers we sent — it sometimes emits an INVENTED variant that reuses
+            // this call's nonce under a different label (observed in the wild:
+            // "<<<REWRITTEN DICTATION {nonce}>>>" prepended to its own output).
+            // Stripping only the exact open/close strings leaked those variants
+            // straight into the pasted text. The nonce is a per-call random 64-bit
+            // value dictated audio can't produce, so ANY "<<<…{nonce}…>>>" token is
+            // unambiguously a fence artifact — remove every marker carrying it,
+            // whatever label the model wrapped around it.
+            let cleaned = Self.stripFenceMarkers(from: sanitize(response.content), nonce: nonce)
             // Guard chain (order is load-bearing — do not reorder): empty check →
             // isRefusal → input↔output translation guard → pinned-language guard →
             // looksLikeAnswer (its own Q-shape check runs before its internal
@@ -369,6 +374,28 @@ actor CleanupEngine {
     /// strength), so a random 64-bit value in hex is plenty.
     private static func fenceNonce() -> String {
         String(UInt64.random(in: .min ... .max), radix: 16)
+    }
+
+    /// Strip every dictation-fence marker carrying this call's `nonce` — the two we
+    /// sent (`<<<DICTATION nonce>>>` / `<<<END DICTATION nonce>>>`) AND any variant
+    /// the model invents around the same nonce. The on-device model sometimes
+    /// prefixes its rewrite with a self-labeled header that mirrors our fence but
+    /// changes the words (seen in the wild: `<<<REWRITTEN DICTATION nonce>>>`); an
+    /// exact-string strip of only the markers we sent leaks those into the pasted
+    /// text. Because the nonce is a per-call random 64-bit value that dictated audio
+    /// can't produce, any `<<<…nonce…>>>` token is unambiguously a fence artifact, so
+    /// matching on the nonce can never remove real dictation. The nonce is
+    /// regex-escaped and matched case-insensitively (the model may echo the hex in a
+    /// different case); if the pattern somehow fails to compile, falls back to a
+    /// plain trim so behavior degrades to the old (narrower) strip rather than crash.
+    static func stripFenceMarkers(from text: String, nonce: String) -> String {
+        let pattern = "<<<[^>]*" + NSRegularExpression.escapedPattern(for: nonce) + "[^>]*>>>"
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        let stripped = re.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
+        return stripped.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Heuristic: did the model ANSWER the dictation instead of REWRITING it?
