@@ -110,6 +110,41 @@ enum TalkieEngineError: LocalizedError {
     }
 }
 
+/// Run `operation`, returning `true` if it finished within `seconds`, or `false`
+/// on timeout — in which case `onTimeout` runs FIRST, then the function returns.
+///
+/// The subtlety this encodes: `withTaskGroup` is *structured*, so it awaits every
+/// child before returning. That means a plain "return when the timer wins" does NOT
+/// escape a non-cooperative hang — the group would still block on the stuck
+/// `operation` child forever. So on timeout we run `onTimeout`, whose job is to
+/// UNBLOCK the operation (e.g. hard-cancel the underlying `SpeechAnalyzer`, which
+/// makes its finalize await return/throw). Once `operation` unblocks, the group can
+/// complete and this returns `false`. `onTimeout` must actually break the hang;
+/// `Task.cancel` alone won't, because Apple's finalize ignores cooperative
+/// cancellation. Bounds `SpeechAnalyzer`'s finalize (see `finishSessionDetailed`).
+/// Unit-tested in isolation.
+func withAsyncTimeout(
+    seconds: Double,
+    operation: @escaping @Sendable () async -> Void,
+    onTimeout: @escaping @Sendable () async -> Void
+) async -> Bool {
+    await withTaskGroup(of: Bool.self) { group in
+        group.addTask { await operation(); return true }
+        group.addTask {
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            return false
+        }
+        let finishedInTime = (await group.next()) ?? false
+        if !finishedInTime {
+            // Timer won. Break the hang so the still-pending `operation` child can
+            // finish — otherwise the implicit await on group exit blocks forever.
+            await onTimeout()
+        }
+        group.cancelAll()
+        return finishedInTime
+    }
+}
+
 /// Wraps Apple's macOS 26 `SpeechAnalyzer` + `SpeechTranscriber` for live,
 /// on-device, low-latency dictation. One instance is reused across sessions;
 /// the heavy model load happens once and lingers for the process lifetime.
@@ -597,18 +632,31 @@ actor TranscriptionEngine {
         inputContinuation?.finish()
         inputContinuation = nil
 
-        if let analyzer {
-            do {
-                try await analyzer.finalizeAndFinishThroughEndOfInput()
-            } catch {
-                // If finalize fails the results stream may never terminate;
-                // cancel the reader so the await below can't hang forever.
-                resultsTask?.cancel()
-            }
+        // Bound the finalize + results-drain. Apple's `SpeechAnalyzer` intermittently
+        // fails to terminate its `results` async sequence on a DEGENERATE capture — the
+        // key tapped and released with essentially no speech/audio — so BOTH awaits in
+        // `finalizeAndDrainInput` (`finalizeAndFinishThroughEndOfInput`, then
+        // `resultsTask.value`) can block forever. The existing `catch` only handles a
+        // finalize that THROWS; a silent non-termination slips past it. That await is
+        // reached from the dictation processing Task, whose `defer` releases
+        // `isProcessing` and whose tail advances the HUD off `.processing` — so a hang
+        // here is exactly the "stuck in Polishing…" wedge (and it blocks the next
+        // dictation, since `isProcessing` never clears). Prior fixes bounded ADJACENT
+        // races (the setup-abort `guard sessionLive`, the `isProcessing` latch,
+        // generation-guarded cancels) but never this await itself — which is why the
+        // hang survived. On timeout we hard-cancel the analyzer and reader, then fall
+        // through and return whatever accumulated (empty on the degenerate case), so the
+        // caller reaches its empty-transcript path and cleanly resolves the pill.
+        let finishedInTime = await withAsyncTimeout(
+            seconds: 4,
+            operation: { [weak self] in await self?.finalizeAndDrainInput() },
+            // On timeout, hard-abort the analyzer + reader. This is what actually
+            // unblocks the stuck finalize inside `operation` so the bound can return.
+            onTimeout: { [weak self] in await self?.forceCancelAnalyzer() }
+        )
+        if !finishedInTime {
+            talkieDebugLog("TranscriptionEngine: finalize/drain exceeded 4s — force-cancelled the analyzer (degenerate/no-audio capture)")
         }
-
-        // Let the results loop drain any remaining finalized text.
-        await resultsTask?.value
         resultsTask = nil
 
         // If finalization left a volatile tail (the finalize-throws path), route
@@ -656,6 +704,33 @@ actor TranscriptionEngine {
         analyzer = nil
         transcriber = nil
         return (result.trimmingCharacters(in: .whitespacesAndNewlines), segments, timedSegments, wordConfidences)
+    }
+
+    /// Finalize the analyzer and drain the results reader — the two awaits that can
+    /// block indefinitely on a degenerate capture (see the timeout in
+    /// `finishSessionDetailed`). Split out so it can be raced against a deadline.
+    private func finalizeAndDrainInput() async {
+        if let analyzer {
+            do {
+                try await analyzer.finalizeAndFinishThroughEndOfInput()
+            } catch {
+                // Finalize threw → the results stream may never terminate; cancel the
+                // reader before draining it so the drain below can't hang.
+                resultsTask?.cancel()
+            }
+        }
+        // Let the results loop drain any remaining finalized text.
+        await resultsTask?.value
+    }
+
+    /// Hard-abort the current analyzer and results reader — the `onTimeout` hook for
+    /// `finishSessionDetailed`'s bounded finalize. `cancelAndFinishNow()` forces
+    /// Apple's finalize to return/throw (cooperative `Task.cancel` doesn't), and
+    /// cancelling the reader ends any never-terminating `results` stream, so the
+    /// stuck `finalizeAndDrainInput` unblocks and the timeout can return.
+    private func forceCancelAnalyzer() async {
+        if let analyzer { await analyzer.cancelAndFinishNow() }
+        resultsTask?.cancel()
     }
 
     /// Hard-cancel without producing a transcript (e.g. user aborted).
