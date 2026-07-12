@@ -127,7 +127,7 @@ actor GraphLLMExtractor {
     /// Tidy a parsed surface form: trim, strip wrapping quotes/markdown bullets, and
     /// drop any "field=value" tail the model may append to a commitment line. For
     /// non-commitment kinds we also strip a trailing description after a secondary
-    /// pipe or " - " so "Coralate - the PM tool" stores just "Coralate".
+    /// pipe or " - " so "GitHub - the PM tool" stores just "GitHub".
     private static func cleanSurface(_ value: String, kind: EntityKind) -> String {
         var s = value.trimmingCharacters(in: .whitespaces)
 

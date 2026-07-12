@@ -13,7 +13,7 @@ import Foundation
 /// support Logseq, a daily-note vault, callout-wrapped notes, etc.
 ///
 /// Wikilinks light up `note.links` (the entity display names the context graph
-/// extracted, feature 05) as `[[Sarah Chen]]` / `[[Coralate]]` so a flat transcript
+/// extracted, feature 05) as `[[Sarah Chen]]` / `[[GitHub]]` so a flat transcript
 /// becomes a navigable knowledge node — gracefully empty until the graph exists.
 struct ObsidianVaultDestination: NoteDestination {
     let id = "obsidian"

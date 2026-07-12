@@ -11,7 +11,7 @@ struct VibeCodingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader(title: "Vibe Coding",
-                           subtitle: "Say a filename, get the real file — “exercise library dot t-s-x” becomes ExerciseLibrary.tsx.")
+                           subtitle: "Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx.")
 
                 // Enable toggle.
                 VStack(alignment: .leading, spacing: 8) {
@@ -84,7 +84,7 @@ struct VibeCodingView: View {
                 // How it sounds.
                 VStack(alignment: .leading, spacing: 10) {
                     Eyebrow(text: "How it sounds")
-                    ExampleRow(spoken: "“exercise library dot tsx”", result: "ExerciseLibrary.tsx")
+                    ExampleRow(spoken: "“user profile dot tsx”", result: "UserProfile.tsx")
                     ExampleRow(spoken: "“use auth hook dot ts”", result: "useAuthHook.ts")
                     ExampleRow(spoken: "“app delegate dot swift”", result: "AppDelegate.swift")
                 }

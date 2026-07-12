@@ -4,9 +4,9 @@ import AppKit
 /// A spoken→written substitution. Applied to the final transcript.
 struct Replacement: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
-    /// What the recognizer tends to produce (e.g. "correlate", "api").
+    /// What the recognizer tends to produce (e.g. "get hub", "api").
     var from: String
-    /// What it should become (e.g. "Coralate", "API").
+    /// What it should become (e.g. "GitHub", "API").
     var to: String
     var caseSensitive: Bool = false
     /// Only replace when `from` stands as a whole word.
@@ -21,7 +21,7 @@ struct Replacement: Codable, Identifiable, Hashable {
     /// `from` this session (see `TextProcessor.apply`); when it was confident,
     /// `from` stands. Optional for back-compat: absent/false is a hard always-
     /// replace rule — the right behavior for learned jargon (`to` NOT a dictionary
-    /// word, e.g. "Coralate"), which must snap every time.
+    /// word, e.g. "GitHub"), which must snap every time.
     var weighted: Bool?
 
     var isLearned: Bool { learned ?? false }
@@ -172,7 +172,7 @@ final class DictionaryStore: ObservableObject {
         // "there"), a hard always-replace rule is illogical: it would rewrite every
         // future genuine `from`. Store it CONFIDENCE-GATED instead — it fires only
         // when the recognizer was unsure it heard `from` (see `TextProcessor.apply`).
-        // A target that is NOT a dictionary word — learned jargon like "Coralate" or
+        // A target that is NOT a dictionary word — learned jargon like "GitHub" or
         // "claude.md" — stays a hard rule so it keeps snapping every time.
         let weighted = Self.isOrdinaryDictionaryWord(t)
         replacements.append(Replacement(from: f, to: t, caseSensitive: false, wholeWord: true,

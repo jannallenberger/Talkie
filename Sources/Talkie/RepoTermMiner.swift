@@ -36,7 +36,7 @@ enum RepoTermMiner {
     ///      look like prose (a hyphenated slug, a lowercase filename).
     ///   2. **Identifier-shaped tokens** in the running text — CamelCase (`ProjectIndexStore`),
     ///      snake_case (`context_graph`), or filename-ish (`AppDelegate.swift`).
-    ///   3. **Capitalized proper nouns** (`Kubernetes`, `Coralate`) that aren't common
+    ///   3. **Capitalized proper nouns** (`Kubernetes`, `GitHub`) that aren't common
     ///      sentence-starters.
     static func mineMarkdown(_ contents: String, maxBytes: Int = 64_000) -> [String] {
         let text = boundedPrefix(contents, maxBytes: maxBytes)
@@ -363,7 +363,7 @@ enum RepoTermMiner {
 
     /// The "worth biasing toward" shape, close to `PhraseMiner.isInteresting`:
     /// filename-ish, CamelCase / internal-capital, or snake_case. A bare Capitalized
-    /// proper noun (Kubernetes, Coralate) is admitted ONLY when `allowProperNoun` is
+    /// proper noun (Kubernetes, GitHub) is admitted ONLY when `allowProperNoun` is
     /// true — i.e. from a backtick code span (author intent), never from running prose,
     /// because prose is full of Capitalized sentence-starters ("Runtime", "Design",
     /// "Prefer") that are the dominant false-positive source on real docs.
@@ -392,7 +392,7 @@ enum RepoTermMiner {
         if token.dropFirst().contains(where: { $0.isUppercase }) { return true }
         // snake_case identifier.
         if token.contains("_") && token.contains(where: \.isLetter) { return true }
-        // A Capitalized proper-noun word (Coralate, Kubernetes) — spans only.
+        // A Capitalized proper-noun word (GitHub, Kubernetes) — spans only.
         if allowProperNoun, let first = token.first, first.isUppercase,
            token.dropFirst().allSatisfy({ $0.isLowercase || $0.isNumber }),
            token.count >= 4, !stopwords.contains(token.lowercased()) {
@@ -436,7 +436,7 @@ enum RepoTermMiner {
     /// auto-mined jargon — i.e. its phonetic skeleton is within edit-distance-1 of a
     /// common word's skeleton. This is what stops a repo-mined term from rewriting
     /// clean prose in the corrector: `mining`↔`morning`, `Talkie`↔`talked`,
-    /// `Coralate`↔`correlate` all collide here and are dropped, while the terms that
+    /// `GitHub`↔`get hub` all collide here and are dropped, while the terms that
     /// actually matter (`CLAUDE.md`, `talkie-bench`, `Kubernetes`, `ContextGraph`,
     /// `NicheCorrector`) sit nowhere near a common word and pass.
     ///

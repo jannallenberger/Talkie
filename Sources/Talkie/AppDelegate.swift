@@ -1871,7 +1871,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Post-hoc niche correction (the lever that replaced the no-op
             // `contextualStrings` biasing): proofread the cleaned transcript and swap
             // close-sounding misrecognitions of the user's saved vocabulary back to the
-            // canonical spelling ("Higgs field" → "Higgsfield", "correlate" → "Coralate").
+            // canonical spelling ("Higgs field" → "Higgsfield", "get hub" → "GitHub").
             // Recognizer-agnostic and deterministic; runs before the dictionary's exact
             // find-and-replace so those literal spellings still win on top.
             var nicheFixes: [String] = []
@@ -2266,7 +2266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             // Which replacements to surface (HUD pings + fix tally). The recognizer
             // is biased toward replacement *targets*, so a respelling like
-            // "correlate"→"coralate" often arrives already corrected in the raw
+            // "get hub"→"GitHub" often arrives already corrected in the raw
             // transcript — the literal find-and-replace then has nothing to match
             // and the fix would go unreported. Recover those by comparing the raw
             // transcript with what we actually inserted, and count them as

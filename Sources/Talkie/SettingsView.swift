@@ -447,10 +447,10 @@ private struct SettingsHome: View {
                                      title: "Notes & behavior",
                                      subtitle: "Where notes and transcripts go, plus app behavior.",
                                      page: .notesBehavior)
-                    // 6. Claude — the on-device MCP connector, in front of every user.
+                    // 6. AI agent — the on-device MCP connector, in front of every user.
                     SettingsIndexRow(icon: "IconSpark", fallback: "sparkles",
-                                     title: "Claude",
-                                     subtitle: "Let Claude read your meetings and context, on-device.",
+                                     title: "AI agent",
+                                     subtitle: "Let your AI agent read your meetings and context, on-device.",
                                      page: .claude)
                     // 7. Privacy & history — permissions, the zero-network proof
                     //    (Verify our claims), and the history retention/storage card.
@@ -510,8 +510,8 @@ private struct SettingsHome: View {
                         BehaviorSettings(settings: settings)
                     }
                 case .claude:
-                    SubPage(title: "Claude",
-                            subtitle: "Let Claude read your meetings and context, on-device.") {
+                    SubPage(title: "AI agent",
+                            subtitle: "Let your AI agent read your meetings and context, on-device.") {
                         MCPConnectorCard()
                     }
                 case .privacy:
@@ -716,7 +716,7 @@ private struct DeveloperSettings: View {
             // jargon-corpus WER benchmark, so this is for measurement only.
             SettingsCard(
                 header: "LLM jargon repair (experimental)",
-                footer: "Runs an extra on-device model pass to fix badly-mangled jargon the phonetic corrector can't catch (e.g. \"cloud MD\" → \"Claude.md\"). It can only insert your known terms — never rewrite anything else. Off by default; unproven, for measurement."
+                footer: "Runs an extra on-device model pass to fix badly-mangled jargon the phonetic corrector can't catch (e.g. \"post gres\" → \"PostgreSQL\"). It can only insert your known terms — never rewrite anything else. Off by default; unproven, for measurement."
             ) {
                 SettingsToggleRow(
                     title: "Repair mangled jargon with the on-device LLM",
@@ -908,8 +908,8 @@ private struct MCPConnectorCard: View {
 
     var body: some View {
         SettingsCard(
-            header: "Connect to Claude",
-            footer: String(format: "%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc, Brand.mcpDisplayName)
+            header: "Connect your AI agent",
+            footer: String(format: "%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc, Brand.mcpDisplayName)
         ) {
             if let path {
                 // (a) Claude Desktop — one double-click via the bundled .mcpb. The
@@ -926,9 +926,9 @@ private struct MCPConnectorCard: View {
                 }
                 SettingsDivider()
 
-                // (b) Claude Code / other MCP clients — copyable config + CLI one-liner.
+                // (b) Codex / Claude Code / other MCP clients — copyable config + CLI one-liner.
                 SettingsRow(
-                    title: "Claude Code & other MCP clients".loc,
+                    title: "Codex, Claude Code & other MCP clients".loc,
                     subtitle: "Add this to your .mcp.json, or run the command".loc
                 ) {
                     Button {
@@ -952,12 +952,12 @@ private struct MCPConnectorCard: View {
                     .buttonStyle(.bordered)
                     .tint(Theme.coral)
                 }
-                // (c) Let Claude wire itself up: a paste-into-Claude prompt that has it
+                // (c) Let the agent wire itself up: a paste-in prompt that has it
                 // run the add command, learn the tools, and honestly frame the writes
                 // (queued, confirmed in Talkie with an Undo) — then verify with `search`.
                 SettingsRow(
-                    title: "Or let Claude set it up".loc,
-                    subtitle: "Paste this into Claude and it connects the server itself".loc
+                    title: "Or let your AI agent set it up".loc,
+                    subtitle: "Paste this into your AI agent and it connects the server itself".loc
                 ) {
                     Button {
                         copyToPasteboard(MCPSetupPrompt.setupPrompt(binaryPath: path))
@@ -975,7 +975,7 @@ private struct MCPConnectorCard: View {
                 // teach-back writes are tinted with an "asks first" suffix so the
                 // disclosure is honest (reads auto-run, writes wait for a tap).
                 VStack(alignment: .leading, spacing: 8) {
-                    Eyebrow(text: "What Claude can do")
+                    Eyebrow(text: "What your AI agent can do")
                     FlowLayout(spacing: 6) {
                         ForEach(toolChips) { chip in
                             HStack(spacing: 4) {
@@ -1933,7 +1933,7 @@ private struct DictionarySettings: View {
                         }
                         .buttonStyle(.bordered)
                     }
-                    Text("Rewrite what was heard into what you meant — e.g. “correlate” → “Coralate”.")
+                    Text("Rewrite what was heard into what you meant — e.g. “get hub” → “GitHub”.")
                         .font(.talkieHeading(13, weight: .regular))
                         .foregroundStyle(Theme.inkSecondary)
 

@@ -77,12 +77,12 @@ enum SelfTest {
 
         // 10. Single-token recall: term said 3× across two clips, caught 2×.
         let tr1 = TermRecall.score(
-            terms: ["Coralate"],
+            terms: ["GitHub"],
             pairs: [
-                TermRecallPair(reference: "we shipped Coralate and Coralate again",
-                               hypothesis: "we shipped Coralate and correlate again"),   // 1 of 2 caught
-                TermRecallPair(reference: "Coralate is the product",
-                               hypothesis: "Coralate is the product"),                    // 1 of 1 caught
+                TermRecallPair(reference: "we shipped GitHub and GitHub again",
+                               hypothesis: "we shipped GitHub and get hub again"),   // 1 of 2 caught
+                TermRecallPair(reference: "GitHub is the product",
+                               hypothesis: "GitHub is the product"),                    // 1 of 1 caught
             ])
         check("single-term recall = 2/3",
               tr1.rows[0].referenceOccurrences == 3 && tr1.rows[0].hypothesisHits == 2

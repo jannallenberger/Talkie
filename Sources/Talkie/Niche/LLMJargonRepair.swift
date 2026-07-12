@@ -229,7 +229,7 @@ struct LLMJargonRepair: Sendable {
 
         Rules:
         - Change a run of words ONLY when it clearly sounds like one of the KNOWN TERMS \
-        (e.g. "cloud MD" → "Claude.md", "Higgs field" → "Higgsfield").
+        (e.g. "post gres" → "PostgreSQL", "Higgs field" → "Higgsfield").
         - Never introduce a term that is not in the list. Never add, remove, reorder, \
         translate, rephrase, summarize, or re-punctuate anything else.
         - Preserve every other word, and all identifiers, file paths, code, numbers, \

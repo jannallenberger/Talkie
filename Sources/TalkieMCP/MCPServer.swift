@@ -172,24 +172,24 @@ struct MCPServer {
             // L10 read tools. Read-only and annotation-free (auto-approvable like the
             // other reads); each degrades to a friendly line when its store file is
             // absent/empty. Descriptions stay one sentence — every tool is loaded into
-            // every Claude session's context.
+            // every agent session's context.
             spec("get_stats", "The user's lifetime \(BrandMirror.displayName) dictation stats — words, dictations, speaking time, average/best WPM, fixes \(BrandMirror.displayName) made, and current/longest daily streak — on-device (totals survive the 7-day history prune).", [:]),
             spec("get_dictionary", "List the user's \(BrandMirror.displayName) dictionary — vocabulary terms and spoken→written replacement rules (learned rules tagged) — on-device; call this BEFORE add_vocabulary_term or add_replacement so you don't suggest something they already have.", [:]),
             spec("list_dictations", "List the user's recent dictations newest-first (timestamp, app, opening text) from the retained history window — a recent window, not an archive: Talkie prunes history per the user's retention setting (default 7 days).",
                  ["limit": numProp("Max dictations to return (default 20)."),
                   "app": strProp("Filter to dictations whose app name contains this substring."),
                   "since": strProp("Only dictations on/after this calendar day (yyyy-MM-dd).")]),
-            spec("read_scratchpad", "Read the user's Talkie scratchpad — their quick notes and checkbox tasks (done-state shown) — on-device and read-only (Claude reads the scratchpad but never writes it).", [:]),
+            spec("read_scratchpad", "Read the user's Talkie scratchpad — their quick notes and checkbox tasks (done-state shown) — on-device and read-only (the agent reads the scratchpad but never writes it).", [:]),
             // The two teach-back tools (A5). MUTATING, but the mutation is a QUEUED
             // suggestion, never a direct dictionary write: each call drops one atomic
             // file into the inbox, and the app applies it only after showing an
             // Undo pill. Annotated `readOnlyHint: false` so an MCP host gates them
             // rather than auto-approving like the reads above.
             spec("add_vocabulary_term", "Suggest a niche/jargon term (a name, product, or acronym) for the user's Talkie dictionary, so their speech recognition spells it right. QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it. Call this when the user corrects a mis-transcribed term in their prompt (e.g. they wrote \"Higgsfield\" where recognition would mishear it).",
-                 ["term": strProp("The exact spelling to add (e.g. \"Higgsfield\", \"claude.md\", \"Coralate\")."),
+                 ["term": strProp("The exact spelling to add (e.g. \"Higgsfield\", \"tsconfig.json\", \"GitHub\")."),
                   "note": strProp("Optional: why you're suggesting it (kept for the user's provenance).")],
                  required: ["term"], mutating: true),
-            spec("add_replacement", "Suggest a spoken→written replacement rule for the user's Talkie dictionary — when recognition reliably hears one thing (\"correlate\", \"higgs field\") but the user means another (\"Coralate\", \"Higgsfield\"). QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it.",
+            spec("add_replacement", "Suggest a spoken→written replacement rule for the user's Talkie dictionary — when recognition reliably hears one thing (\"get hub\", \"higgs field\") but the user means another (\"GitHub\", \"Higgsfield\"). QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it.",
                  ["from": strProp("What recognition tends to produce (the misheard form)."),
                   "to": strProp("What it should become (the canonical spelling)."),
                   "note": strProp("Optional: why you're suggesting it (kept for the user's provenance).")],

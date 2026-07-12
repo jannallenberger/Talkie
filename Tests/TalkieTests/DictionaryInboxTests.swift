@@ -114,8 +114,8 @@ final class DictionaryInboxTests: XCTestCase {
         XCTAssertEqual(spy.shown.count, 1, "exactly one Undo pill was surfaced")
         XCTAssertTrue(spy.shown.first!.message.contains("Higgsfield"),
                       "the pill names the term Claude added")
-        XCTAssertTrue(spy.shown.first!.message.contains("Claude"),
-                      "the pill attributes the add to Claude (never silent)")
+        XCTAssertTrue(spy.shown.first!.message.contains("AI agent"),
+                      "the pill attributes the add to the AI agent (never silent)")
         // The consumed file is deleted.
         XCTAssertTrue(inboxFiles().isEmpty, "the applied suggestion file is removed")
     }
@@ -220,8 +220,8 @@ final class DictionaryInboxTests: XCTestCase {
         XCTAssertEqual(applied, 1, "the removal applied and showed a pill")
         XCTAssertNil(dictionary.replacements.first { $0.to == "Higgsfield" },
                      "the rule is gone")
-        XCTAssertTrue(spy.shown.first!.message.contains("Claude"),
-                      "the pill attributes the change to Claude (never silent)")
+        XCTAssertTrue(spy.shown.first!.message.contains("AI agent"),
+                      "the pill attributes the change to the AI agent (never silent)")
         XCTAssertTrue(spy.shown.first!.message.contains("Higgsfield"))
     }
 
@@ -268,7 +268,7 @@ final class DictionaryInboxTests: XCTestCase {
         XCTAssertNil(dictionary.replacements.first { $0.to == "Higgsfield" })
         XCTAssertNotNil(dictionary.replacements.first { $0.from.lowercased() == "higgs field" && $0.to == "HiggsField" },
                         "the rule now targets the new spelling")
-        XCTAssertTrue(spy.shown.first!.message.contains("Claude"))
+        XCTAssertTrue(spy.shown.first!.message.contains("AI agent"))
     }
 
     func testUndoUpdateReplacementRestoresPreviousTarget() {
@@ -308,7 +308,7 @@ final class DictionaryInboxTests: XCTestCase {
         XCTAssertEqual(applied, 1)
         XCTAssertFalse(dictionary.vocabulary.contains("Higgsfield"))
         XCTAssertTrue(dictionary.vocabulary.contains("Coralate"), "only the named term is removed")
-        XCTAssertTrue(spy.shown.first!.message.contains("Claude"))
+        XCTAssertTrue(spy.shown.first!.message.contains("AI agent"))
     }
 
     func testRemoveVocabularyMatchesCaseInsensitivelyAndRestoresUserCasing() {

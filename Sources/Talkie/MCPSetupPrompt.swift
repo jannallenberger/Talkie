@@ -90,7 +90,7 @@ enum MCPSetupPrompt {
         Undo — it does NOT take effect until I do, so just call it and tell me what you \
         queued.
         - add_vocabulary_term — teach a name/product/acronym its spelling
-        - add_replacement — map a misheard form to what I meant (correlate → Coralate)
+        - add_replacement — map a misheard form to what I meant (get hub → GitHub)
         - remove_replacement / update_replacement — remove or retarget a rule
         - remove_vocabulary_term — remove a term
 

@@ -51,7 +51,7 @@ final class StatsStore: ObservableObject {
     @Published private(set) var longestDictationDurationSec = 0.0
 
     // Fixes Talkie has made for you (drives the "Fixes by Talkie" card).
-    /// Replacement / vocabulary substitutions applied (e.g. "correlate" → "Coralate").
+    /// Replacement / vocabulary substitutions applied (e.g. "get hub" → "GitHub").
     @Published private(set) var dictionaryFixes = 0
     /// Filler words stripped ("um", "uh", …).
     @Published private(set) var fillersRemoved = 0

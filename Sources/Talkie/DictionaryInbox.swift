@@ -278,7 +278,7 @@ final class DictionaryInbox {
         dictionary.addVocabularyTerm(term)
         dictionary.save()   // inbox writes aren't driven by the Dictionary view's onChange, so persist here
         recordIngest(term)
-        presentPill(String(format: "Claude added “%@” to dictionary".loc, term)) { [weak self] in
+        presentPill(String(format: "Your AI agent added “%@” to dictionary".loc, term)) { [weak self] in
             guard let self else { return }
             self.dictionary.removeVocabularyTerm(term)
             self.dictionary.save()
@@ -300,7 +300,7 @@ final class DictionaryInbox {
         }
         // Record the CANONICAL spelling as a passive occurrence (see `recordIngest`).
         recordIngest(to)
-        presentPill(String(format: "Claude added “%@” → “%@” to dictionary".loc, from, to)) { [weak self] in
+        presentPill(String(format: "Your AI agent added “%@” → “%@” to dictionary".loc, from, to)) { [weak self] in
             guard let self else { return }
             self.dictionary.removeLearnedReplacement(from: from, to: to)
             self.nicheVocab.recordRejection(to)
@@ -325,7 +325,7 @@ final class DictionaryInbox {
             talkieDebugLog("DictionaryInbox: remove replacement \"\(from)\"→\"\(to)\" — no such rule, no-op")
             return .consumedNoPill
         }
-        presentPill(String(format: "Claude removed “%@” → “%@” from dictionary".loc, removed.from, removed.to)) { [weak self] in
+        presentPill(String(format: "Your AI agent removed “%@” → “%@” from dictionary".loc, removed.from, removed.to)) { [weak self] in
             guard let self else { return }
             self.dictionary.restoreReplacement(removed)
             self.presentReverted()
@@ -343,7 +343,7 @@ final class DictionaryInbox {
             talkieDebugLog("DictionaryInbox: update replacement \"\(from)\"→\"\(to)\" to \"\(newTo)\" — no such rule or no change, no-op")
             return .consumedNoPill
         }
-        presentPill(String(format: "Claude changed “%@” → “%@” to “%@”".loc, prior.from, prior.to, newTo)) { [weak self] in
+        presentPill(String(format: "Your AI agent changed “%@” → “%@” to “%@”".loc, prior.from, prior.to, newTo)) { [weak self] in
             guard let self else { return }
             self.dictionary.restoreReplacement(prior)
             self.presentReverted()
@@ -362,7 +362,7 @@ final class DictionaryInbox {
         }
         dictionary.removeVocabularyTerm(stored)
         dictionary.save()
-        presentPill(String(format: "Claude removed “%@” from dictionary".loc, stored)) { [weak self] in
+        presentPill(String(format: "Your AI agent removed “%@” from dictionary".loc, stored)) { [weak self] in
             guard let self else { return }
             self.dictionary.restoreVocabularyTerm(stored)
             self.presentReverted()
@@ -387,7 +387,7 @@ final class DictionaryInbox {
             talkieDebugLog("DictionaryInbox: retitle meeting \"\(id)\" → \"\(title)\" — no match or no change, no-op")
             return .consumedNoPill
         }
-        presentPill(String(format: "Claude retitled a meeting to “%@”".loc, title)) { [weak self] in
+        presentPill(String(format: "Your AI agent retitled a meeting to “%@”".loc, title)) { [weak self] in
             guard let self, let store = self.meetingStore else { return }
             store.restoreTitle(id: result.id, to: result.oldTitle)
             self.presentReverted()
@@ -420,7 +420,7 @@ final class DictionaryInbox {
             [term],
             provenance: Provenance(source: .dictionary, sourceID: nil,
                                    dateUnix: Date().timeIntervalSince1970,
-                                   snippet: "suggested by Claude"))
+                                   snippet: "suggested by your AI agent"))
     }
 
     // MARK: Pill sequencing + housekeeping

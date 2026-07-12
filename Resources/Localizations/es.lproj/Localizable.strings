@@ -52,7 +52,7 @@
 "Quit & Reopen" = "Salir y reabrir";
 "Re-check" = "Volver a comprobar";
 "Record a meeting" = "Grabar una reunión";
-"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point Claude at." = "Graba una reunión; Talkie la transcribe y resume en el dispositivo, y guarda una nota que puedes pasarle a Claude.";
+"Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at." = "Graba una reunión; Talkie la transcribe y resume en el dispositivo, y guarda una nota que puedes pasarle a tu agente de IA.";
 "Regenerate" = "Regenerar";
 "Remove this folder" = "Eliminar esta carpeta";
 "Replay" = "Repetir";
@@ -61,7 +61,7 @@
 "Reveal in Finder" = "Mostrar en el Finder";
 "Reveal note in Finder" = "Mostrar nota en el Finder";
 "Reverted" = "Revertido";
-"Rewrite what was heard into what you meant — e.g. “correlate” → “Coralate”." = "Reescribe lo que se oyó como lo que querías decir — p. ej. “correlate” → “Coralate”.";
+"Rewrite what was heard into what you meant — e.g. “get hub” → “GitHub”." = "Reescribe lo que se oyó como lo que querías decir — p. ej. “get hub” → “GitHub”.";
 "Rules for this app only" = "Reglas solo para esta app";
 "Save" = "Guardar";
 "Saved to ~/Talkie Meetings/ as markdown" = "Guardado en ~/Talkie Meetings/ como markdown";
@@ -99,7 +99,7 @@
 "Everything you've dictated in the last 7 days." = "Todo lo que has dictado en los últimos 7 días.";
 "Tune how Talkie listens, cleans up, and behaves." = "Ajusta cómo escucha, depura y se comporta Talkie.";
 "Names, brands, and jargon Talkie should spell correctly." = "Nombres, marcas y jerga que Talkie debe escribir bien.";
-"Say a filename, get the real file — “exercise library dot t-s-x” becomes ExerciseLibrary.tsx." = "Di un nombre de archivo y obtén el archivo real: “exercise library punto t-s-x” se convierte en ExerciseLibrary.tsx.";
+"Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx." = "Di un nombre de archivo y obtén el archivo real: “user profile punto t-s-x” se convierte en UserProfile.tsx.";
 "Find anything you've said — on-device." = "Encuentra todo lo que has dicho, en el dispositivo.";
 "Profile" = "Perfil";
 "Activation & insertion" = "Activación e inserción";
@@ -241,15 +241,15 @@
 "%@ dictionary" = "Diccionario de %@";
 
 "Added “%@” — from your Claude Code prompt" = "Añadido “%@”: de tu prompt de Claude Code";
-"Claude added “%@” to dictionary" = "Claude añadió “%@” al diccionario";
-"Claude added “%@” → “%@” to dictionary" = "Claude añadió “%@” → “%@” al diccionario";
-"Claude removed “%@” → “%@” from dictionary" = "Claude eliminó “%@” → “%@” del diccionario";
-"Claude changed “%@” → “%@” to “%@”" = "Claude cambió “%@” → “%@” a “%@”";
-"Claude removed “%@” from dictionary" = "Claude eliminó “%@” del diccionario";
+"Your AI agent added “%@” to dictionary" = "Tu agente de IA añadió “%@” al diccionario";
+"Your AI agent added “%@” → “%@” to dictionary" = "Tu agente de IA añadió “%@” → “%@” al diccionario";
+"Your AI agent removed “%@” → “%@” from dictionary" = "Tu agente de IA eliminó “%@” → “%@” del diccionario";
+"Your AI agent changed “%@” → “%@” to “%@”" = "Tu agente de IA cambió “%@” → “%@” a “%@”";
+"Your AI agent removed “%@” from dictionary" = "Tu agente de IA eliminó “%@” del diccionario";
 "Learn corrections from your Claude Code prompts? They’re local files; nothing leaves your Mac." = "¿Aprender correcciones de tus prompts de Claude Code? Son archivos locales; nada sale de tu Mac.";
-/* G1 — Connect to Claude connector card */
-"Connect to Claude" = "Conectar con Claude";
-"Talkie ships a tiny local server so Claude can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie incluye un pequeño servidor local para que Claude pueda leer tus reuniones, tu resumen, tus compromisos y tu contexto: solo lectura, en el dispositivo, nada sale de tu Mac. Viene con la app: sin descarga ni compilación aparte.";
+/* G1 — Connect your AI agent connector card */
+"Connect your AI agent" = "Conectar con tu agente de IA";
+"Talkie ships a tiny local server so your AI agent can read your meetings, brief, commitments, and context — read-only, on-device, nothing leaves your Mac. Bundled with the app: no separate download or build." = "Talkie incluye un pequeño servidor local para que tu agente de IA pueda leer tus reuniones, tu resumen, tus compromisos y tu contexto: solo lectura, en el dispositivo, nada sale de tu Mac. Viene con la app: sin descarga ni compilación aparte.";
 "Claude Desktop" = "Claude Desktop";
 "Install the connector with one click" = "Instala el conector con un clic";
 "Install…" = "Instalar…";
@@ -257,15 +257,15 @@
 "Update…" = "Actualizar…";
 "Connector is up to date (v%@)" = "El conector está actualizado (v%@)";
 "Your connector is out of date (v%@ → v%@) — reinstall to get the newest tools" = "Tu conector está desactualizado (v%@ → v%@): reinstálalo para obtener las herramientas más nuevas";
-"Claude Code & other MCP clients" = "Claude Code y otros clientes MCP";
+"Codex, Claude Code & other MCP clients" = "Codex, Claude Code y otros clientes MCP";
 "Add this to your .mcp.json, or run the command" = "Añádelo a tu .mcp.json o ejecuta el comando";
 "Copy config" = "Copiar configuración";
 "Or from the terminal" = "O desde la terminal";
 "Copy command" = "Copiar comando";
-"Or let Claude set it up" = "O deja que Claude lo configure";
-"Paste this into Claude and it connects the server itself" = "Pega esto en Claude y conectará el servidor por sí mismo";
+"Or let your AI agent set it up" = "O deja que tu agente de IA lo configure";
+"Paste this into your AI agent and it connects the server itself" = "Pega esto en tu agente de IA y conectará el servidor por sí mismo";
 "Copy setup prompt" = "Copiar indicación de configuración";
-"What Claude can read" = "Lo que Claude puede leer";
+"What your AI agent can read" = "Lo que tu agente de IA puede leer";
 "The connector binary isn't here yet. Run this app from a built Talkie.app (./scripts/run.sh) and it ships bundled — no extra step." = "El binario del conector aún no está aquí. Ejecuta esta app desde una Talkie.app compilada (./scripts/run.sh) y vendrá incluido, sin pasos adicionales.";
 "Opened in Claude Desktop" = "Abierto en Claude Desktop";
 "Revealed in Finder — drag it into Claude Desktop" = "Mostrado en el Finder: arrástralo a Claude Desktop";
@@ -638,7 +638,7 @@
 "Cleanup & intelligence" = "Limpieza e inteligencia";
 "Apps" = "Aplicaciones";
 "Notes & export" = "Notas y exportación";
-"Claude" = "Claude";
+"AI agent" = "agente de IA";
 "Privacy & permissions" = "Privacidad y permisos";
 "All languages" = "Todos los idiomas";
 "Verify our claims" = "Verificar nuestras promesas";
@@ -648,7 +648,7 @@
 "Per-app cleanup styles for the apps you customize." = "Estilos de limpieza por aplicación para las que personalizas.";
 "Recording, transcription, and calendar context." = "Grabación, transcripción y contexto del calendario.";
 "Where notes and transcripts go, plus app behavior." = "A dónde van las notas y transcripciones, y el comportamiento de la app.";
-"Let Claude read your meetings and context, on-device." = "Deja que Claude lea tus reuniones y contexto, en el dispositivo.";
+"Let your AI agent read your meetings and context, on-device." = "Deja que tu agente de IA lea tus reuniones y contexto, en el dispositivo.";
 "The permissions Talkie needs and proof nothing leaves." = "Los permisos que Talkie necesita y la prueba de que nada sale.";
 "Tools that ship only in development builds." = "Herramientas incluidas solo en las versiones de desarrollo.";
 "The full language picker will live here." = "El selector de idiomas completo aparecerá aquí.";
@@ -664,7 +664,7 @@
 "Choose photo…" = "Elegir foto…";
 "Remove photo" = "Quitar foto";
 /* L10 — MCP read-surface expansion: chip strip + honest write disclosure */
-"What Claude can do" = "Lo que Claude puede hacer";
+"What your AI agent can do" = "Lo que tu agente de IA puede hacer";
 "asks first" = "pregunta antes";
 
 /* L6e — Cleanup & intelligence: relocated Context-awareness + Learning cards */
@@ -675,11 +675,11 @@
 "Learn from my edits" = "Aprender de mis correcciones";
 "Auto-improve the dictionary." = "Mejora el diccionario automáticamente.";
 "When you fix a word right after dictating, Talkie remembers the correction. Auto-added rules are tagged in the Dictionary tab — prune any you don't want." = "Cuando corriges una palabra justo después de dictar, Talkie recuerda la corrección. Las reglas añadidas automáticamente se marcan en la pestaña Diccionario — elimina las que no quieras.";
-/* L16 — "Install my jargon" copy-prompt for Claude (Dictionary export area) */
+/* L16 — "Install my jargon" copy-prompt for your AI agent (Dictionary export area) */
 "Install my jargon" = "Instalar mi jerga";
 "Copy prompt" = "Copiar prompt";
-"Let Claude teach Talkie your jargon. Paste this prompt into Claude (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Claude never changes your dictionary on its own." = "Deja que Claude enseñe tu jerga a Talkie. Pega este prompt en Claude (con el conector de Talkie activado) y leerá cómo hablas realmente con él — tus nombres, productos y términos — y sugerirá los que Talkie oiría mal. Cada sugerencia espera tu confirmación con un toque en Talkie, con opción de deshacer. Claude nunca cambia tu diccionario por su cuenta.";
-"Needs the Talkie connector — set it up under General ▸ Connect to Claude." = "Requiere el conector de Talkie: configúralo en General ▸ Conectar con Claude.";
+"Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Your AI agent never changes your dictionary on its own." = "Deja que tu agente de IA enseñe tu jerga a Talkie. Pega este prompt en tu agente de IA (con el conector de Talkie activado) y leerá cómo hablas realmente con él — tus nombres, productos y términos — y sugerirá los que Talkie oiría mal. Cada sugerencia espera tu confirmación con un toque en Talkie, con opción de deshacer. Tu agente de IA nunca cambia tu diccionario por su cuenta.";
+"Needs the Talkie connector — set it up under Settings ▸ AI agent." = "Requiere el conector de Talkie: configúralo en Ajustes ▸ Agente de IA.";
 
 /* L6b — Languages: selected strip + All-languages subpage */
 "Pick every language you speak; Talkie auto-detects which." = "Elige cada idioma que hablas; Talkie detecta cuál automáticamente.";
@@ -780,7 +780,7 @@
 "%@ is listening." = "%@ está escuchando.";
 "%@ dictation indicator. Hold your dictation key and speak." = "Indicador de dictado de %@. Mantén pulsada tu tecla de dictado y habla.";
 "%@ — Nothing leaves this Mac." = "%@ — Nada sale de este Mac.";
-"%@ ships a tiny local server so Claude can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Claude can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ incluye un pequeño servidor local para que Claude pueda leer tus reuniones, tu resumen, compromisos, contexto, estadísticas, tu diccionario y notas: en el dispositivo, nada sale de tu Mac. Claude también puede gestionar tu diccionario: añadir, cambiar o eliminar términos y reglas, pero cada cambio espera tu confirmación con un toque y opción de deshacer. Incluido con la app: sin descarga ni compilación aparte.";
+"%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build." = "%@ incluye un pequeño servidor local para que tu agente de IA pueda leer tus reuniones, tu resumen, compromisos, contexto, estadísticas, tu diccionario y notas: en el dispositivo, nada sale de tu Mac. Tu agente de IA también puede gestionar tu diccionario: añadir, cambiar o eliminar términos y reglas, pero cada cambio espera tu confirmación con un toque y opción de deshacer. Incluido con la app: sin descarga ni compilación aparte.";
 "Detect meetings & offer to record" = "Detectar reuniones y ofrecer grabar";
 "When a call app starts using your mic, Talkie offers to record. It never records on its own." = "Cuando una app de llamadas usa tu micrófono, Talkie ofrece grabar. Nunca graba por su cuenta.";
 "Show the meeting pill" = "Mostrar la píldora de reunión";
