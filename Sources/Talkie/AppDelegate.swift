@@ -278,6 +278,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the window re-prunes live (no relaunch). The store already read the persisted
     /// value at init, so this only handles later changes.
     private var retentionObservation: AnyCancellable?
+    /// Mirrors the user's history count-cap choice into `HistoryStore` so lowering
+    /// it re-trims live (no relaunch). The store already read the persisted value
+    /// at init, so this only handles later changes.
+    private var maxCountObservation: AnyCancellable?
 
     // MARK: App lifecycle
 
@@ -460,6 +464,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         retentionObservation = settings.$historyRetentionDays
             .dropFirst()
             .sink { [weak self] days in self?.history.updateRetention(days: days) }
+
+        // Same pattern for the count cap: mirror later changes so lowering the
+        // "Maximum dictations" setting trims immediately. `.dropFirst()` skips the
+        // replay — the store applied the persisted cap at init.
+        maxCountObservation = settings.$historyMaxCount
+            .dropFirst()
+            .sink { [weak self] count in self?.history.updateMaxCount(count) }
 
         // H1: only auto-open the window on a genuine first run — a user who hasn't
         // finished onboarding needs the welcome flow (it lives inside the window).
