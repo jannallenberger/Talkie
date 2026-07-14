@@ -108,7 +108,7 @@ private struct ScratchpadRow: View {
                 .buttonStyle(.plain)
                 .help(line.done ? "Mark as not done" : "Mark as done")
             } else if line.addedByAI {
-                // L2-b: a line Chirp suggested from your dictation — a subtle coral
+                // L2-b: a line Talkie suggested from your dictation — a subtle coral
                 // sparkle marks it as auto-added, not typed by you. It's a visible,
                 // editable, deletable suggestion (and purges with its dictation), never
                 // a silent commitment.
@@ -116,8 +116,8 @@ private struct ScratchpadRow: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Theme.coral.opacity(0.85))
                     .frame(width: 14)
-                    .help("Suggested by Chirp from your dictation — edit or delete it freely.")
-                    .accessibilityLabel("Suggested by Chirp")
+                    .help("Suggested by Talkie from your dictation — edit or delete it freely.")
+                    .accessibilityLabel("Suggested by Talkie")
             } else {
                 // A dim dot keeps notes aligned with tasks without a checkbox.
                 Circle()

@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Photo-only and opt-in — no default avatar. Shown in-app on the dashboard header
     /// and meeting rows; never written into exports.
     let profileImage = ProfileImageStore()
-    /// L2-b (LOG-ONLY / PREVIEW): a calibration log of what the "added by Chirp"
+    /// L2-b (LOG-ONLY / PREVIEW): a calibration log of what the "added by Talkie"
     /// auto-add gate WOULD do for each extracted commitment. It writes ONLY to its own
     /// `scratchpad_ai_preview.json` — never to the Scratchpad, never to the UI — so
     /// Jann can tune the gate threshold from real logs before the live auto-add lane
@@ -2360,7 +2360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 // L2-b (LIVE). For each commitment this dictation surfaced, the pure
                 // AutoAddGate decides whether it's worth suggesting; when it says so, the
-                // line is added to the Scratchpad marked `addedByAI` — visibly "by Chirp",
+                // line is added to the Scratchpad marked `addedByAI` — visibly "by Talkie",
                 // user-deletable, and purged with its dictation via `sourceDictationID`,
                 // so it's a suggestion you can see and remove, never a silent write. Every
                 // attempt is still recorded in the calibration log so the false-negative

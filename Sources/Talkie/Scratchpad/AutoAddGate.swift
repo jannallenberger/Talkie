@@ -1,6 +1,6 @@
 import Foundation
 
-/// **L2-b — the "added by Chirp" auto-add gate, decision half.**
+/// **L2-b — the "added by Talkie" auto-add gate, decision half.**
 ///
 /// A pure, side-effect-free predicate that decides whether an extracted commitment
 /// is worth *suggesting* as a Scratchpad line. It writes nothing and touches no

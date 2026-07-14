@@ -2258,6 +2258,16 @@ private final class PassthroughHostingView<Content: View>: NSHostingView<Content
         guard rect.insetBy(dx: -4, dy: -4).contains(probe) else { return nil }
         return super.hitTest(point)
     }
+
+    /// Deliver a click to the pill's chips even though the HUD lives in a
+    /// `.nonactivatingPanel` that is never the key window. Without this, AppKit
+    /// treats every click on a non-key window as a "first mouse" that only tries to
+    /// activate it — and a non-activating panel refuses to activate — so the mouseDown
+    /// is swallowed and the SwiftUI Button (Insert / Undo / Fix / Keep …) never fires.
+    /// Hover events don't go through first-mouse, which is why hovering always worked
+    /// while every tap died. `hitTest` above already scopes us to the pill rect, so
+    /// returning true here can't hijack clicks meant for the app underneath.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 /// Maps a point already converted into this view's local space into the top-left
