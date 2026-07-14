@@ -192,13 +192,16 @@ enum NicheCorrector {
                 return nil
             }
             let skelDist = NichePhonetics.editDistance(skel, t.skeleton)
-            // A user-added dictionary term is high-intent, so it earns a looser gate — a
-            // skeleton within 2 (vs 1) and a larger raw-edit cap — so a close-but-not-
-            // tight recognizer miss still snaps to it. Auto-graduated niche terms keep
-            // the tight gate so silent learning can never introduce a false fix.
-            if skelDist > (t.trusted ? 2 : 1) { continue }
+            // The phonetic-skeleton gate is ALWAYS tight (≤1). A skeleton distance of 2
+            // means two consonant-sounds differ — loose enough that ordinary word-pairs
+            // snap onto a jargon term (German "Vor allem"→"Coralate", "gut auf"→"GitHub":
+            // skeletons vrlm/krlt and gtf/gthb both differ by exactly 2). A user-added
+            // ("trusted") term is still high-intent, so it earns a modestly larger
+            // RAW-edit cap (0.4 vs 0.34) to catch a close miss — but never a looser
+            // skeleton, which is what produced the false jargon injections.
+            if skelDist > 1 { continue }
             let rawDist = NichePhonetics.editDistance(core, t.core)
-            let cap = max(1, Int((t.trusted ? 0.5 : 0.34) * Double(max(core.count, t.core.count))))
+            let cap = max(1, Int((t.trusted ? 0.4 : 0.34) * Double(max(core.count, t.core.count))))
             if rawDist > cap { continue }
             // A single real word the user actually said might be what they meant —
             // an ordinary word (per the caller's spellchecker-backed set) is only
