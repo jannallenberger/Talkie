@@ -1,6 +1,6 @@
 import Foundation
 
-/// **L2-b — the "added by Chirp" auto-add lane, in LOG-ONLY / PREVIEW mode.**
+/// **L2-b — the "added by Talkie" auto-add lane, in LOG-ONLY / PREVIEW mode.**
 ///
 /// This is a *calibration artifact*, NOT the live feature. It records, for every
 /// extracted commitment, what `AutoAddGate` WOULD decide — the verdict plus the
@@ -8,7 +8,7 @@ import Foundation
 /// against real dictations before a single line is ever auto-added. It deliberately
 /// does **not**:
 ///   • call `ScratchpadStore.addLine` / `suggest` (it writes to its OWN file only),
-///   • surface anything in the UI (no card, no "added by Chirp" chip, no badge),
+///   • surface anything in the UI (no card, no "added by Talkie" chip, no badge),
 ///   • change any user-visible behavior.
 /// The live auto-add lane is a separate follow-up that ships only after Jann approves
 /// the threshold these logs inform.
