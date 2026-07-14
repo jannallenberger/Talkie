@@ -1238,15 +1238,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                    windowTitle: captured.windowTitle)
             : nil
 
-        // Bias the recognizer with the union of: custom vocabulary (narrowed by
-        // this app's vocabulary filter, if any), on-screen names from the target
-        // app, and (in vibe mode) your project's filenames.
-        var bias = profiles.biasVocabulary(for: captured.target, dictionary: dictionary)
-        bias.append(contentsOf: captured.phrases)
-        if settings.vibeCoding { bias.append(contentsOf: currentVibeSnapshot.biasPhrases) }
-        // Context graph: bias toward the people/projects/terms you actually use.
-        bias.append(contentsOf: contextGraph.snapshot().biasPhrases())
-        let phrases = Array(Set(bias)).prefix(180).map { $0 }
+        // Recognizer contextual biasing is DISABLED for dictation — we feed the
+        // recognizer NO `contextualStrings`.
+        //
+        // On the macOS 26 SpeechAnalyzer, contextual biasing aggressively pulls
+        // recognition onto phonetically-near biased terms, corrupting clean speech in
+        // BOTH languages. Every mis-inserted word in the field reports was a member of
+        // the bias set:
+        //   German : "nochmal"→"Nomad", "ist es"→"Istio", "weil wir"→"Firebase"
+        //   English: "swipe"→"Svelte", "does not"→"Deno", "the element"→"telemetry",
+        //            "as a tap"→"FastAPI", "must tap"→"mutex", "make"→"Nomad"
+        // The gate-zero A/B test had already found biasing to be a no-op for accuracy,
+        // so disabling it costs nothing and stops the corruption. Real niche terms are
+        // restored AFTER transcription by the deterministic, language-safe pipeline in
+        // endDictation (NicheCorrector proofread + dictionary replacements + vibe
+        // filename matcher) — none of which can invent a word the speaker didn't say.
+        //
+        // `biasVocabulary` / `biasPhrases` are retained (Settings A/B probe, future
+        // per-language confidence-ranked biasing) but intentionally not wired here.
+        let phrases: [String] = []
         let multiLang = settings.spokenLanguages.count > 1
 
         // Capture the cleanup style at the start so a mid-session settings change
