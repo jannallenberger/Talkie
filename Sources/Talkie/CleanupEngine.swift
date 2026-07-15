@@ -416,7 +416,8 @@ actor CleanupEngine {
     /// transcript (what they actually said), which is always acceptable; a false
     /// accept pastes a hallucination.
     static func looksLikeAnswer(input: String, output: String) -> Bool {
-        let inputContent = Set(contentWords(input))
+        let inputWords = contentWords(input)
+        let inputContent = Set(inputWords)
         let outContent = contentWords(output)
         guard !outContent.isEmpty else { return false }
         let novel = outContent.filter { !inputContent.contains($0) }
@@ -446,6 +447,29 @@ actor CleanupEngine {
         // (A) Mostly-invented output — the "wildly hallucinated answer" case. A
         // rewrite that preserves the speaker's subject matter stays well under this.
         if novelRatio >= 0.6 { return true }
+
+        // (C) The output GREW substantially — the model appended its OWN material (an
+        // answer, invented section headers, a summary) on top of an otherwise faithful
+        // rewrite. (Q) and (B) both miss this because they only fire on a literal
+        // QUESTION, and a dictated *imperative* request ("Please investigate why X,
+        // then rewrite it so I can paste it") is not one. (A) misses it because the
+        // genuine rewrite sitting in front of the invented answer dilutes `novelRatio`
+        // far below 0.6 — and the fabricated reply reuses the speaker's own vocabulary,
+        // diluting it further. Cleanup strips fillers and fixes grammar; it never
+        // legitimately needs ~40% MORE substantive words than the speaker said, so a
+        // jump that large means content was invented. The absolute +5 floor keeps a
+        // short dictation from tripping on a couple of words.
+        //
+        // Observed in the wild: a dictated request came back as the rewrite PLUS a
+        // fabricated "<<<Investigation of the Issue>>> I will now investigate why this
+        // is happening…" reply, which the user then pasted. Rejecting here also kills
+        // the invented nonce-free fence headers that rode along with it — they only
+        // ever reached the paste because this guard waved the whole output through.
+        if inputWords.count >= 4, !novel.isEmpty,
+           outContent.count >= inputWords.count + 5,
+           Double(outContent.count) >= Double(inputWords.count) * 1.4 {
+            return true
+        }
 
         // (B) A longer dictated question turned into a content-adding statement, even
         // when the reply echoes the question's own words (so ratio (A) alone misses
