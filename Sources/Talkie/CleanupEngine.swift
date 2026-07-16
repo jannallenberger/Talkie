@@ -388,14 +388,37 @@ actor CleanupEngine {
     /// regex-escaped and matched case-insensitively (the model may echo the hex in a
     /// different case); if the pattern somehow fails to compile, falls back to a
     /// plain trim so behavior degrades to the old (narrower) strip rather than crash.
+    /// Second pass (added after a nonce-FREE header leaked into real dictation): the
+    /// model doesn't only wrap our nonce — it also invents self-labeled headers that
+    /// carry no nonce at all. Seen in the wild: `<<<Rewritten Dictation>>>`,
+    /// `<<<Investigation of the Issue>>>`, `<<<Conclusion>>>`. The nonce-keyed strip
+    /// above walks straight past those, so they reached the user's paste verbatim.
+    ///
+    /// Anchoring to a LINE START is what keeps removing them safe, and is why this
+    /// isn't just a greedy `<<<…>>>` strip: a header the model prefixes to its output
+    /// always opens a line, whereas a `<<<…>>>` token the speaker genuinely dictated
+    /// sits mid-sentence ("the config uses <<<PLACEHOLDER>>> as a token"). So this can
+    /// never eat real speech — the deliberate boundary in
+    /// `testLeavesNonNonceAngleBracketTextUntouched` stays intact.
     static func stripFenceMarkers(from text: String, nonce: String) -> String {
-        let pattern = "<<<[^>]*" + NSRegularExpression.escapedPattern(for: nonce) + "[^>]*>>>"
-        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var out = text
+        // 1) Any marker carrying THIS call's nonce, anywhere — unambiguously a fence
+        //    artifact, including variants invented around it.
+        let noncePattern = "<<<[^>]*" + NSRegularExpression.escapedPattern(for: nonce) + "[^>]*>>>"
+        if let re = try? NSRegularExpression(pattern: noncePattern, options: [.caseInsensitive]) {
+            out = re.stringByReplacingMatches(in: out, options: [],
+                                              range: NSRange(out.startIndex..., in: out),
+                                              withTemplate: "")
         }
-        let range = NSRange(text.startIndex..., in: text)
-        let stripped = re.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
-        return stripped.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 2) A nonce-free marker that OPENS a line — the model's self-labeled header.
+        let headerPattern = "^[ \\t]*<<<[^>]*>>>[ \\t]*"
+        if let re = try? NSRegularExpression(pattern: headerPattern,
+                                             options: [.caseInsensitive, .anchorsMatchLines]) {
+            out = re.stringByReplacingMatches(in: out, options: [],
+                                              range: NSRange(out.startIndex..., in: out),
+                                              withTemplate: "")
+        }
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Heuristic: did the model ANSWER the dictation instead of REWRITING it?
