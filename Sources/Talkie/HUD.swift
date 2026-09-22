@@ -1162,8 +1162,7 @@ private struct HUDView: View {
             : base
     }
 
-    /// Width of the live-tail block — and of the capture row above it when live text
-    /// is on, so the waveform can centre over the text.
+    /// The widest the live tail gets before it wraps (then the pill grows downward).
     private static let liveTailWidth: CGFloat = 260
 
     /// Hands-free lock: a small lock glyph so it's obvious you can release the key and
@@ -1181,10 +1180,10 @@ private struct HUDView: View {
         }
     }
 
-    /// C1 (redesigned) — the live tail as a WRAPPING block below the waveform. A fixed
-    /// width forces it to wrap (so the pill grows downward, not sideways); a line cap
-    /// stops it past a few lines; head-truncation keeps the newest words visible once
-    /// it's full. Empty text renders nothing.
+    /// C1 — the live tail as a WRAPPING block below the waveform. `PillColumnLayout`
+    /// offers it at most `liveTailWidth`, and it takes only the width its words need
+    /// (so a few words keep the pill compact); a line cap stops it past a few lines;
+    /// head-truncation keeps the newest words visible once it's full.
     @ViewBuilder
     private var liveTailBlock: some View {
         Text(liveTailString)
@@ -1192,8 +1191,6 @@ private struct HUDView: View {
             .multilineTextAlignment(.leading)
             .lineLimit(5)
             .truncationMode(.head)
-            .frame(width: Self.liveTailWidth, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
             .accessibilityHidden(true)
     }
 
@@ -1296,17 +1293,16 @@ private struct HUDView: View {
                 // Publish the pill's frame (SwiftUI top-left coords) so the panel's
                 // hosting view only claims clicks here — the transparent headroom
                 // keeps passing through to the app underneath.
+                // Keyed on the frame ITSELF, not on the phase/text that change it: a
+                // phase/text `onChange` fires before the new layout and re-read the OLD
+                // frame, so as the pill grew sideways with the live words the chips at
+                // its right edge slid out of the stale clickable rect and clicks fell
+                // through to the app underneath.
                 GeometryReader { geo in
                     Color.clear
-                        .onAppear { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
-                        .onChange(of: model.phase) { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
-                        // C1: the live tail widens the capture pill as you speak, so
-                        // republish the clickable rect on each text change too — the
-                        // click pass-through region must track the wider pill or the
-                        // CleanupSwitcher (and the transparent headroom's fall-through)
-                        // would go stale. Cheap: it just re-reads the frame.
-                        .onChange(of: model.text) { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
-                        .onChange(of: model.volatileText) { pillFrame.rect = geo.frame(in: .named(Self.hudSpace)) }
+                        .onChange(of: geo.frame(in: .named(Self.hudSpace)), initial: true) { _, frame in
+                            pillFrame.rect = frame
+                        }
                 }
             )
             .onTapGesture {
@@ -1337,25 +1333,9 @@ private struct HUDView: View {
             // "not yet recording" ring stays legible; the live red is already a
             // saturated feather color, left as-is.
             let tint = recording ? Theme.featherRed : ink(model.highContrast ? 0.9 : 0.55)
-            VStack(alignment: .leading, spacing: 5) {
-                if showLivePillText, !model.silenceCountingDown {
-                    // With live text on (the default), the row spans the live-tail width
-                    // from the first frame: the waveform sits dead centre (a ZStack, so
-                    // the dot and the chips can't pull it off-centre) and the pill doesn't
-                    // jump sideways when the first words arrive below it.
-                    ZStack {
-                        Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
-                            .accessibilityHidden(true)
-                        HStack(spacing: 8) {
-                            StatusDot(color: tint, filled: recording)
-                                .animation(.easeInOut(duration: 0.25), value: recording)
-                            Spacer(minLength: 0)
-                            lockGlyph
-                            CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
-                        }
-                    }
-                    .frame(width: Self.liveTailWidth)
-                } else {
+            Group {
+                if model.silenceCountingDown {
+                    // B5: the auto-stop countdown owns the row (and hides the live tail).
                     HStack(spacing: 8) {
                         StatusDot(color: tint, filled: recording)
                             .animation(.easeInOut(duration: 0.25), value: recording)
@@ -1369,28 +1349,45 @@ private struct HUDView: View {
                         // change how the dictation is polished without leaving the record.
                         // Hidden entirely when no switcher is wired (today's pill).
                         CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
-                        if model.silenceCountingDown {
-                            // B5: while the hands-free auto-stop countdown runs, the row says
-                            // so in plain words — a gentle nudge that one word (or reaching the
-                            // key) keeps it going. It takes the tail slot so the pill doesn't
-                            // also carry the transcript during the wrap-up moment.
-                            Text("still listening — say something or it'll wrap up")
-                                .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
-                                .foregroundStyle(ink(0.72))
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .transition(.blurReplace)
+                        // The row says so in plain words — a gentle nudge that one word (or
+                        // reaching the key) keeps it going. It takes the tail slot so the
+                        // pill doesn't also carry the transcript during the wrap-up moment.
+                        Text("still listening — say something or it'll wrap up")
+                            .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
+                            .foregroundStyle(ink(0.72))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .transition(.blurReplace)
+                    }
+                } else {
+                    // The pill hugs its content: as wide as the status row needs, growing
+                    // sideways only as far as the live words below need (they wrap at
+                    // `liveTailWidth`, then the pill grows downward). The waveform sits dead
+                    // centre whenever there's room for it.
+                    PillColumnLayout(spacing: 5, maxTailWidth: Self.liveTailWidth) {
+                        CenteredRowLayout(gap: 8) {
+                            StatusDot(color: tint, filled: recording)
+                                .animation(.easeInOut(duration: 0.25), value: recording)
+                            // A red waveform: equal-width bars whose heights move with your
+                            // voice. A one-shot wave of opacity sweeps across it the instant
+                            // recording starts, then it settles to steady red.
+                            Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
+                                .accessibilityHidden(true)
+                            HStack(spacing: 8) {
+                                lockGlyph
+                                // Feature 14: the active cleanup style/level, tappable to cycle —
+                                // change how the dictation is polished without leaving the record.
+                                // Hidden entirely when no switcher is wired (today's pill).
+                                CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
+                            }
+                        }
+                        // C1: the live tail of what's being heard flows BELOW the waveform
+                        // as wrapping text. Gated by the Settings toggle; absent until there
+                        // are words — so the bare pill is just the compact status row.
+                        if showLivePillText, !model.text.isEmpty || !model.volatileText.isEmpty {
+                            liveTailBlock
                         }
                     }
-                }
-                // C1 (redesigned): the live tail of what's being heard flows BELOW the
-                // waveform as wrapping text, so the pill grows DOWNWARD (to a capped
-                // height) as you speak rather than stretching sideways. Gated by the
-                // Settings toggle; hidden during the silence countdown (which owns the row
-                // above) and when there's nothing yet — so the bare pill is exactly today's.
-                if showLivePillText, !model.silenceCountingDown,
-                   !model.text.isEmpty || !model.volatileText.isEmpty {
-                    liveTailBlock
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.handsFreeLocked)
@@ -2234,6 +2231,91 @@ private struct Waveform: View {
                 opacities[i] = 1
             }
         }
+    }
+}
+
+// MARK: - Capture pill layout
+
+/// The capture pill's column: the status row on top, the live tail below. The pill
+/// is exactly as wide as the wider of the two — the row's natural width, or the tail's
+/// words (wrapping at `maxTailWidth`) — so it starts compact and grows sideways only
+/// as far as the text needs, then downward. The row is laid out at that full width so
+/// `CenteredRowLayout` can centre the waveform over the text.
+struct PillColumnLayout: Layout {
+    var spacing: CGFloat
+    var maxTailWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = columnWidth(subviews)
+        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+        return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(max(0, heights.count - 1)))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let width = columnWidth(subviews)
+        var y = bounds.minY
+        for subview in subviews {
+            let height = subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+            subview.place(at: CGPoint(x: bounds.minX, y: y), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: width, height: height))
+            y += height + spacing
+        }
+    }
+
+    private func columnWidth(_ subviews: Subviews) -> CGFloat {
+        guard let row = subviews.first else { return 0 }
+        var width = row.sizeThatFits(.unspecified).width
+        for below in subviews.dropFirst() {
+            width = max(width, below.sizeThatFits(ProposedViewSize(width: maxTailWidth, height: nil)).width)
+        }
+        return ceil(width)
+    }
+}
+
+/// A three-part row — leading, centre, trailing — that puts the centre view dead
+/// centre when there's room and otherwise packs it between its neighbours, `gap`
+/// apart. Natural width is the packed width, so a bare pill stays compact.
+struct CenteredRowLayout: Layout {
+    var gap: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let packed = sizes.map(\.width).reduce(0, +) + gap * CGFloat(max(0, sizes.count - 1))
+        let height = sizes.map(\.height).max() ?? 0
+        return CGSize(width: max(packed, proposal.width ?? packed), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 3 else {
+            var x = bounds.minX
+            for subview in subviews {
+                let size = subview.sizeThatFits(.unspecified)
+                subview.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(size))
+                x += size.width + gap
+            }
+            return
+        }
+        let leading = subviews[0].sizeThatFits(.unspecified)
+        let centre = subviews[1].sizeThatFits(.unspecified)
+        let trailing = subviews[2].sizeThatFits(.unspecified)
+        subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
+                          proposal: ProposedViewSize(leading))
+        subviews[2].place(at: CGPoint(x: bounds.maxX, y: bounds.midY), anchor: .trailing,
+                          proposal: ProposedViewSize(trailing))
+        let x = Self.centreX(in: bounds.minX...bounds.maxX, leading: leading.width,
+                             centre: centre.width, trailing: trailing.width, gap: gap)
+        subviews[1].place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading,
+                          proposal: ProposedViewSize(centre))
+    }
+
+    /// The centre view's left edge: dead centre in `span`, clamped so it stays `gap`
+    /// clear of the leading view and of the trailing view (when it has any width).
+    static func centreX(in span: ClosedRange<CGFloat>, leading: CGFloat, centre: CGFloat,
+                        trailing: CGFloat, gap: CGFloat) -> CGFloat {
+        let minX = span.lowerBound + leading + gap
+        let maxX = span.upperBound - trailing - (trailing > 0 ? gap : 0) - centre
+        let mid = (span.lowerBound + span.upperBound) / 2 - centre / 2
+        return min(max(mid, minX), max(minX, maxX))
     }
 }
 
