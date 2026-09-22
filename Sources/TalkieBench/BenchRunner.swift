@@ -47,7 +47,8 @@ enum BenchRunner {
         localeIdentifier: String,
         warmupCount: Int,
         quiet: Bool,
-        leadTrimMs: Int = 0
+        leadTrimMs: Int = 0,
+        useDictationModel: Bool = false
     ) async -> BenchOutcome {
         let startedAt = Date()
 
@@ -56,7 +57,8 @@ enum BenchRunner {
             return BenchOutcome(measured: [], warmupCount: 0, skippedDecode: 0, startedAt: startedAt, leadTrimMs: leadTrimMs)
         }
 
-        let engine = FileTranscriber(localeIdentifier: localeIdentifier)
+        let engine = FileTranscriber(localeIdentifier: localeIdentifier,
+                                     useDictationModel: useDictationModel)
 
         // Warm-up: resolve locale + install/reserve the model + cache the format.
         // This is the one-time first-load cost, kept OUT of the measured timings.

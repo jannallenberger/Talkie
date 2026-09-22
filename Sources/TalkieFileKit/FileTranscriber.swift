@@ -81,9 +81,14 @@ public actor FileTranscriber {
     private let requestedLocale: Locale
     private var resolvedLocale: Locale?
     private var analyzerFormat: AVAudioFormat?
+    /// Decode with `DictationTranscriber` (the system-Dictation model, grammar
+    /// punctuation) instead of the long-form `SpeechTranscriber` — mirrors the
+    /// app's "Dictation model" setting so the bench can compare the two.
+    private let useDictationModel: Bool
 
-    public init(localeIdentifier: String) {
+    public init(localeIdentifier: String, useDictationModel: Bool = false) {
         self.requestedLocale = Locale(identifier: localeIdentifier)
+        self.useDictationModel = useDictationModel
     }
 
     public static var isAvailable: Bool { SpeechTranscriber.isAvailable }
@@ -143,7 +148,7 @@ public actor FileTranscriber {
         let reader = Task { () -> String in
             var collected = ""
             do {
-                for try await result in transcriber.results where result.isFinal {
+                for try await result in Self.results(of: transcriber) where result.isFinal {
                     collected = Self.append(collected, String(result.text.characters))
                 }
             } catch {
@@ -196,13 +201,12 @@ public actor FileTranscriber {
         let reader = Task { () -> [TimedSegment] in
             var segments: [TimedSegment] = []
             do {
-                for try await result in transcriber.results where result.isFinal {
+                for try await result in Self.results(of: transcriber) where result.isFinal {
                     let piece = String(result.text.characters)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !piece.isEmpty else { continue }
-                    let range = result.range
-                    let start = range.start.seconds
-                    let duration = range.duration.seconds
+                    let start = result.startSeconds
+                    let duration = result.durationSeconds
                     // Guard against non-numeric CMTime (e.g. .invalid) so a bad
                     // range can never produce NaN cue times downstream.
                     let safeStart = start.isFinite ? max(0, start) : 0
@@ -277,7 +281,7 @@ public actor FileTranscriber {
         let reader = Task { () -> String in
             var committed = ""
             do {
-                for try await result in transcriber.results {
+                for try await result in Self.results(of: transcriber) {
                     let piece = String(result.text.characters)
                     if result.isFinal {
                         committed = Self.append(committed, piece)
@@ -315,11 +319,16 @@ public actor FileTranscriber {
 
     private func locale() async throws -> Locale {
         if let resolvedLocale { return resolvedLocale }
-        if let match = await SpeechTranscriber.supportedLocale(equivalentTo: requestedLocale) {
+        let supported: (Locale) async -> Locale? = { [useDictationModel] loc in
+            useDictationModel
+                ? await DictationTranscriber.supportedLocale(equivalentTo: loc)
+                : await SpeechTranscriber.supportedLocale(equivalentTo: loc)
+        }
+        if let match = await supported(requestedLocale) {
             resolvedLocale = match
             return match
         }
-        if let enUS = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: "en-US")) {
+        if let enUS = await supported(Locale(identifier: "en-US")) {
             resolvedLocale = enUS
             return enUS
         }
@@ -327,16 +336,94 @@ public actor FileTranscriber {
     }
 
     /// Same configuration as live dictation: volatile results on, no attributes.
-    private func makeTranscriber(locale loc: Locale) -> SpeechTranscriber {
-        SpeechTranscriber(
+    private func makeTranscriber(locale loc: Locale, confidence: Bool = false) -> any SpeechModule {
+        if useDictationModel {
+            return DictationTranscriber(
+                locale: loc,
+                contentHints: [],
+                transcriptionOptions: [.punctuation],
+                reportingOptions: [.volatileResults],
+                attributeOptions: confidence ? [.transcriptionConfidence] : []
+            )
+        }
+        return SpeechTranscriber(
             locale: loc,
             transcriptionOptions: [],
             reportingOptions: [.volatileResults],
-            attributeOptions: []
+            attributeOptions: confidence ? [.transcriptionConfidence] : []
         )
     }
 
-    private func ensureModelInstalled(for transcriber: SpeechTranscriber) async throws {
+    /// Like `transcribe`, but returns every finalized token with the recognizer's
+    /// confidence — the input to `ConfidenceRepair`. Additive: the standard bench
+    /// path never requests the attribute, so its WER/timing stay comparable.
+    public func transcribeWords(buffers: [AVAudioPCMBuffer]) async throws -> [RecognizedWord] {
+        guard SpeechTranscriber.isAvailable else { throw FileTranscriberError.unavailable }
+        guard !buffers.isEmpty else { return [] }
+
+        let loc = try await locale()
+        let transcriber = makeTranscriber(locale: loc, confidence: true)
+        try await ensureModelInstalled(for: transcriber)
+
+        let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        let reader = Task { () -> [RecognizedWord] in
+            var words: [RecognizedWord] = []
+            do {
+                for try await result in Self.results(of: transcriber) where result.isFinal {
+                    for run in result.text.runs {
+                        let token = String(result.text[run.range].characters)
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !token.isEmpty else { continue }
+                        words.append(RecognizedWord(text: token, confidence: run.transcriptionConfidence ?? 1))
+                    }
+                }
+            } catch {}
+            return words
+        }
+        try await analyzer.start(inputSequence: stream)
+        for buffer in buffers { continuation.yield(AnalyzerInput(buffer: buffer)) }
+        continuation.finish()
+        try await analyzer.finalizeAndFinishThroughEndOfInput()
+        return await reader.value
+    }
+
+    /// One result from either module, flattened so the loops above stay
+    /// model-agnostic.
+    struct Recognized: Sendable {
+        let text: AttributedString
+        let isFinal: Bool
+        let startSeconds: Double
+        let durationSeconds: Double
+    }
+
+    private static func results(of module: any SpeechModule) -> AsyncThrowingStream<Recognized, Error> {
+        AsyncThrowingStream { continuation in
+            let pump = Task {
+                do {
+                    if let dictation = module as? DictationTranscriber {
+                        for try await r in dictation.results {
+                            continuation.yield(Recognized(text: r.text, isFinal: r.isFinal,
+                                                          startSeconds: r.range.start.seconds,
+                                                          durationSeconds: r.range.duration.seconds))
+                        }
+                    } else if let speech = module as? SpeechTranscriber {
+                        for try await r in speech.results {
+                            continuation.yield(Recognized(text: r.text, isFinal: r.isFinal,
+                                                          startSeconds: r.range.start.seconds,
+                                                          durationSeconds: r.range.duration.seconds))
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in pump.cancel() }
+        }
+    }
+
+    private func ensureModelInstalled(for transcriber: any SpeechModule) async throws {
         let status = await AssetInventory.status(forModules: [transcriber])
         guard status != .installed else { return }
         do {

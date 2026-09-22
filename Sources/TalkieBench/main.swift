@@ -180,6 +180,20 @@ guard !items.isEmpty else {
     exit(1)
 }
 
+// Confidence-gated repair experiment: report raw vs repaired per clip, then exit.
+if args.repair {
+    let vocabulary = args.vocabFile.map(BiasComparison.loadPhrases) ?? []
+    if !args.quiet {
+        print(Banner.header(corpus: corpus, locale: args.locale, items: items.count, warmup: 0))
+        print("Repair mode: threshold \(args.repairThreshold), \(vocabulary.count) vocabulary terms.\n")
+    }
+    let rows = await RepairComparison.run(items: items, localeIdentifier: args.locale,
+                                          threshold: args.repairThreshold, vocabulary: vocabulary,
+                                          quiet: args.quiet)
+    print(RepairComparison.render(rows, threshold: args.repairThreshold))
+    exit(rows.isEmpty ? 1 : 0)
+}
+
 // Gate-zero bias comparison: transcribe each clip twice (bias off vs on) and
 // report the WER delta, then exit. Settles whether on-device contextualStrings
 // biasing actually works before any of the niche-vocabulary feature is wired in.
@@ -239,6 +253,7 @@ if let hypDir = args.hypothesesDir {
 if !args.quiet {
     print(Banner.header(corpus: corpus, locale: args.locale, items: items.count,
                         warmup: args.warmup))
+    print("Recognizer model: \(args.model)\n")
 }
 
 // Run the benchmark. This is the only async hop — everything else is sync.
@@ -252,7 +267,8 @@ let outcome = await BenchRunner.run(items: items,
                                     localeIdentifier: args.locale,
                                     warmupCount: args.warmup,
                                     quiet: args.quiet,
-                                    leadTrimMs: args.leadTrimMs)
+                                    leadTrimMs: args.leadTrimMs,
+                                    useDictationModel: args.model == "dictation")
 
 // Print the results table + the honesty footer.
 print(ResultsTable.render(outcome, corpus: corpus, locale: args.locale))

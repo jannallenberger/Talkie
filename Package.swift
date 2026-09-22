@@ -44,7 +44,7 @@ let talkieSwiftSettings: [SwiftSetting] =
         + (connected ? [.define("TALKIE_CONNECTED")] : [])
 
 let talkieDependencies: [Target.Dependency] =
-    (devTools ? ["TalkieUpdater"] : []) + (connected ? ["TalkieBridge"] : [])
+    ["TalkieFileKit"] + (devTools ? ["TalkieUpdater"] : []) + (connected ? ["TalkieBridge"] : [])
 
 var targets: [Target] = [
     .executableTarget(
@@ -103,6 +103,14 @@ var targets: [Target] = [
     // Pure-logic unit tests (no Core Audio, no model): the meeting-detection
     // state machine and the live-subtopic confidence gating. Bootstraps the
     // repo's first test target.
+    .testTarget(
+        name: "TalkieFileKitTests",
+        dependencies: ["TalkieFileKit"],
+        path: "Tests/TalkieFileKitTests",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+        ]
+    ),
     .testTarget(
         name: "TalkieTests",
         dependencies: ["Talkie"],
