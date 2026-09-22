@@ -145,6 +145,42 @@ func withAsyncTimeout(
     }
 }
 
+/// Which Apple on-device speech model a session decodes with.
+///
+/// - `speech`: `SpeechTranscriber` — Apple's long-form model (Notes, Voice Memos).
+///   Built for meetings and far-field audio; it commits a segment ending in "." at
+///   every pause, which is what `SentenceFlow` exists to undo.
+/// - `dictation`: `DictationTranscriber` — the model behind the system Dictation
+///   key, with grammar-driven `.punctuation`. Dictation-only: meetings and file
+///   imports always use `speech`.
+///
+/// A dictation session falls back to `speech` for a locale the dictation model
+/// doesn't support (or can't install), so choosing it never breaks dictation.
+enum RecognizerModel: String, CaseIterable, Codable, Identifiable, Sendable {
+    case speech
+    case dictation
+
+    var id: String { rawValue }
+}
+
+/// One recognizer result, flattened out of whichever module produced it so the
+/// session/re-transcription loops stay model-agnostic. `start`/`end` are the
+/// audio-clock span in seconds, unguarded (callers sanitize non-finite values).
+struct RecognizedChunk: Sendable {
+    var text: AttributedString
+    var isFinal: Bool
+    var start: Double
+    var end: Double
+}
+
+/// The two Speech result types share `range`/`isFinal` via `SpeechModuleResult`
+/// but each declares its own `text`; this lets one generic bridge read both.
+protocol TextBearingSpeechResult: SpeechModuleResult {
+    var text: AttributedString { get }
+}
+extension SpeechTranscriber.Result: TextBearingSpeechResult {}
+extension DictationTranscriber.Result: TextBearingSpeechResult {}
+
 /// Wraps Apple's macOS 26 `SpeechAnalyzer` + `SpeechTranscriber` for live,
 /// on-device, low-latency dictation. One instance is reused across sessions;
 /// the heavy model load happens once and lingers for the process lifetime.
@@ -152,7 +188,7 @@ actor TranscriptionEngine {
     private var locale: Locale
     private var contextualStrings: [String] = []
 
-    private var transcriber: SpeechTranscriber?
+    private var transcriber: (any SpeechModule)?
     private var analyzer: SpeechAnalyzer?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var resultsTask: Task<Void, Never>?
@@ -164,6 +200,10 @@ actor TranscriptionEngine {
     /// `beginSessionTracked`, so nothing can interleave between "state installed"
     /// and "token bumped": actor reentrancy only happens at suspension points.
     private var sessionGeneration: Int = 0
+    /// The model the most recent session actually decoded with (after any
+    /// dictation→speech fallback). The stop-time language re-transcription scores
+    /// with this same model so its confidences compare like-for-like.
+    private var sessionModel: RecognizerModel = .speech
 
     private var finalizedText: String = ""
     /// Each finalized segment, in spoken order. A new segment is committed every
@@ -198,6 +238,9 @@ actor TranscriptionEngine {
         self.locale = Locale(identifier: localeIdentifier)
     }
 
+    /// See `sessionModel`.
+    func lastSessionModel() -> RecognizerModel { sessionModel }
+
     /// Switch the language used for subsequent live sessions (language auto-detect).
     func setLocaleIdentifier(_ id: String) {
         locale = Locale(identifier: id)
@@ -218,6 +261,20 @@ actor TranscriptionEngine {
         SpeechTranscriber.isAvailable
     }
 
+    /// Resolve the model + locale a session will actually decode with. `.dictation`
+    /// is honored only when the dictation model supports the current locale;
+    /// otherwise it degrades to `.speech` so dictation keeps working.
+    private func resolvedModelAndLocale(preferring model: RecognizerModel) async throws -> (RecognizerModel, Locale) {
+        if model == .dictation,
+           let match = await DictationTranscriber.supportedLocale(equivalentTo: locale) {
+            return (.dictation, match)
+        }
+        if model == .dictation {
+            talkieDebugLog("TranscriptionEngine: dictation model unsupported for \(locale.identifier) — using speech model")
+        }
+        return (.speech, try await resolvedLocale())
+    }
+
     /// Resolve the best locale we can actually transcribe in.
     private func resolvedLocale() async throws -> Locale {
         if let match = await SpeechTranscriber.supportedLocale(equivalentTo: locale) {
@@ -231,7 +288,7 @@ actor TranscriptionEngine {
 
     /// Ensure the on-device model for `transcriber` is downloaded & installed.
     /// First run on a given locale triggers a one-time download.
-    private func ensureModelInstalled(for transcriber: SpeechTranscriber) async throws {
+    private func ensureModelInstalled(for transcriber: any SpeechModule) async throws {
         let status = await AssetInventory.status(forModules: [transcriber])
         guard status != .installed else { return }
         do {
@@ -260,9 +317,59 @@ actor TranscriptionEngine {
         )
     }
 
+    /// Build the module for `model`. The dictation module mirrors Apple's
+    /// `progressiveLongDictation` preset (grammar punctuation + volatile partials,
+    /// no short-form hint since dictations here run to paragraphs) plus the same
+    /// confidence/timing attributes the speech module requests.
+    private func makeModule(_ model: RecognizerModel, locale loc: Locale) -> any SpeechModule {
+        switch model {
+        case .speech:
+            return makeTranscriber(locale: loc)
+        case .dictation:
+            return DictationTranscriber(
+                locale: loc,
+                contentHints: [],
+                transcriptionOptions: [.punctuation],
+                reportingOptions: [.volatileResults],
+                attributeOptions: [.transcriptionConfidence, .audioTimeRange]
+            )
+        }
+    }
+
+    /// Model-agnostic view of a module's result stream. Cancelling the consumer
+    /// terminates the stream, which cancels the pump — same teardown semantics as
+    /// iterating `transcriber.results` directly.
+    nonisolated static func recognizedResults(of module: any SpeechModule) -> AsyncThrowingStream<RecognizedChunk, Error> {
+        if let dictation = module as? DictationTranscriber { return bridge(dictation) }
+        if let speech = module as? SpeechTranscriber { return bridge(speech) }
+        return AsyncThrowingStream { $0.finish() }
+    }
+
+    private nonisolated static func bridge<M: SpeechModule>(_ module: M) -> AsyncThrowingStream<RecognizedChunk, Error>
+    where M.Result: TextBearingSpeechResult {
+        AsyncThrowingStream { continuation in
+            let pump = Task {
+                do {
+                    for try await result in module.results {
+                        continuation.yield(RecognizedChunk(
+                            text: result.text,
+                            isFinal: result.isFinal,
+                            start: result.range.start.seconds,
+                            end: (result.range.start + result.range.duration).seconds
+                        ))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in pump.cancel() }
+        }
+    }
+
     /// One-time warm-up so the first real dictation (or language switch) isn't
     /// gated on a model download. Pass a locale id to pre-warm a specific language.
-    func warmUp(localeIdentifier id: String? = nil) async throws {
+    func warmUp(localeIdentifier id: String? = nil, model: RecognizerModel = .speech) async throws {
         guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
         let loc: Locale
         if let id {
@@ -271,14 +378,19 @@ actor TranscriptionEngine {
             // primary, which would silently warm the wrong model and leave the
             // requested language uninstalled (guaranteeing a later re-transcribe
             // bail).
-            guard let resolved = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) else {
-                return
-            }
+            let requested = Locale(identifier: id)
+            let supported = model == .dictation
+                ? await DictationTranscriber.supportedLocale(equivalentTo: requested)
+                : await SpeechTranscriber.supportedLocale(equivalentTo: requested)
+            guard let resolved = supported else { return }
+            loc = resolved
+        } else if model == .dictation {
+            guard let resolved = await DictationTranscriber.supportedLocale(equivalentTo: locale) else { return }
             loc = resolved
         } else {
             loc = try await resolvedLocale()
         }
-        let t = makeTranscriber(locale: loc)
+        let t = makeModule(model, locale: loc)
         try await ensureModelInstalled(for: t)
         // Best-effort: keep the locale asset reserved so it isn't reclaimed.
         _ = try? await AssetInventory.reserve(locale: loc)
@@ -294,11 +406,26 @@ actor TranscriptionEngine {
     func transcribeCandidates(
         _ buffers: [AVAudioPCMBuffer],
         localeIdentifiers ids: [String],
-        installIfNeeded: Bool = false
+        installIfNeeded: Bool = false,
+        model: RecognizerModel = .speech,
+        probeSeconds: Double? = nil
     ) async -> [(localeID: String, text: String, confidence: Double)] {
+        // Optionally score only the head of the audio (see `head(of:seconds:)`).
+        let buffers = probeSeconds.map { Self.head(of: buffers, seconds: $0) } ?? buffers
+        // Every candidate must be scored by the SAME model — confidences from two
+        // different models aren't comparable. If the dictation model can't cover
+        // every candidate language, score them all with the speech model.
+        var effective = model
+        if model == .dictation {
+            for id in ids where await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) == nil {
+                effective = .speech
+                break
+            }
+        }
         var out: [(localeID: String, text: String, confidence: Double)] = []
         for id in ids {
-            if let scored = await transcribeScored(buffers, localeIdentifier: id, installIfNeeded: installIfNeeded) {
+            if let scored = await transcribeScored(buffers, localeIdentifier: id,
+                                                   installIfNeeded: installIfNeeded, model: effective) {
                 out.append((localeID: id, text: scored.text, confidence: scored.confidence))
             }
         }
@@ -311,9 +438,28 @@ actor TranscriptionEngine {
     func transcribeBuffered(
         _ buffers: [AVAudioPCMBuffer],
         localeIdentifier id: String,
-        installIfNeeded: Bool = false
+        installIfNeeded: Bool = false,
+        model: RecognizerModel = .speech
     ) async -> String? {
-        await transcribeScored(buffers, localeIdentifier: id, installIfNeeded: installIfNeeded)?.text
+        await transcribeScored(buffers, localeIdentifier: id, installIfNeeded: installIfNeeded, model: model)?.text
+    }
+
+    /// The leading `seconds` of `buffers` (whole buffers, so it may run slightly
+    /// over). Language ID needs only a few seconds of speech, so the stop-time
+    /// language check scores this head instead of re-decoding the whole
+    /// utterance once per spoken language — which on a long dictation cost
+    /// seconds of "Polishing…". Returns `buffers` unchanged when already short.
+    nonisolated static func head(of buffers: [AVAudioPCMBuffer], seconds: Double) -> [AVAudioPCMBuffer] {
+        guard let sampleRate = buffers.first?.format.sampleRate else { return buffers }
+        let limit = sampleRate * seconds
+        var out: [AVAudioPCMBuffer] = []
+        var frames: Double = 0
+        for buffer in buffers {
+            guard frames < limit else { break }
+            out.append(buffer)
+            frames += Double(buffer.frameLength)
+        }
+        return out
     }
 
     /// Core re-transcription: replays the buffered audio through a fresh
@@ -324,18 +470,23 @@ actor TranscriptionEngine {
     func transcribeScored(
         _ buffers: [AVAudioPCMBuffer],
         localeIdentifier id: String,
-        installIfNeeded: Bool = false
+        installIfNeeded: Bool = false,
+        model: RecognizerModel = .speech
     ) async -> (text: String, confidence: Double)? {
         guard SpeechTranscriber.isAvailable, !buffers.isEmpty else {
             talkieDebugLog("reTx[\(id)]: bail — unavailable or no buffers (\(buffers.count))")
             return nil
         }
-        guard let loc = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) else {
+        let requested = Locale(identifier: id)
+        let supported = model == .dictation
+            ? await DictationTranscriber.supportedLocale(equivalentTo: requested)
+            : await SpeechTranscriber.supportedLocale(equivalentTo: requested)
+        guard let loc = supported else {
             talkieDebugLog("reTx[\(id)]: bail — locale not supported on this device")
             return nil
         }
 
-        let transcriber = makeTranscriber(locale: loc)
+        let transcriber = makeModule(model, locale: loc)
         // The model must be present. By default we never download inline (it would
         // freeze the insert for seconds) and trust warmUp() to have installed it.
         // On the user-waiting stop path the caller passes installIfNeeded:true, so
@@ -386,7 +537,7 @@ actor TranscriptionEngine {
             var confCount = 0
             var words: [(String, Double)] = []
             do {
-                for try await result in transcriber.results where result.isFinal {
+                for try await result in Self.recognizedResults(of: transcriber) where result.isFinal {
                     text = appendCommitted(text, String(result.text.characters))
                     for run in result.text.runs {
                         if let c = run.transcriptionConfidence {
@@ -443,10 +594,11 @@ actor TranscriptionEngine {
     /// before another begins.
     func beginSession(
         segmentHandler: (@Sendable (String) -> Void)? = nil,
-        timedSegmentHandler: (@Sendable (TimedSegment) -> Void)? = nil
+        timedSegmentHandler: (@Sendable (TimedSegment) -> Void)? = nil,
+        model: RecognizerModel = .speech
     ) async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation) {
         let (format, continuation, _) = try await beginSessionTracked(
-            segmentHandler: segmentHandler, timedSegmentHandler: timedSegmentHandler)
+            segmentHandler: segmentHandler, timedSegmentHandler: timedSegmentHandler, model: model)
         return (format, continuation)
     }
 
@@ -458,7 +610,8 @@ actor TranscriptionEngine {
     /// signature (and every one of its other callers) for everyone.
     func beginSessionTracked(
         segmentHandler: (@Sendable (String) -> Void)? = nil,
-        timedSegmentHandler: (@Sendable (TimedSegment) -> Void)? = nil
+        timedSegmentHandler: (@Sendable (TimedSegment) -> Void)? = nil,
+        model: RecognizerModel = .speech
     ) async throws -> (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation, generation: Int) {
         guard SpeechTranscriber.isAvailable else { throw TalkieEngineError.transcriberUnavailable }
 
@@ -490,10 +643,21 @@ actor TranscriptionEngine {
         sessionGeneration += 1
         let generation = sessionGeneration
 
-        let loc = try await resolvedLocale()
-        let transcriber = makeTranscriber(locale: loc)
-        try await ensureModelInstalled(for: transcriber)
+        var (effectiveModel, loc) = try await resolvedModelAndLocale(preferring: model)
+        var transcriber = makeModule(effectiveModel, locale: loc)
+        do {
+            try await ensureModelInstalled(for: transcriber)
+        } catch where effectiveModel == .dictation {
+            // The dictation asset couldn't be installed (offline first run, disk):
+            // keep dictating on the speech model rather than failing the session.
+            talkieDebugLog("TranscriptionEngine: dictation model install failed — using speech model")
+            effectiveModel = .speech
+            loc = try await resolvedLocale()
+            transcriber = makeModule(.speech, locale: loc)
+            try await ensureModelInstalled(for: transcriber)
+        }
         self.transcriber = transcriber
+        self.sessionModel = effectiveModel
 
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
             throw TalkieEngineError.noCompatibleAudioFormat
@@ -517,13 +681,13 @@ actor TranscriptionEngine {
         self.resultsTask = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await result in transcriber.results {
+                for try await result in Self.recognizedResults(of: transcriber) {
                     let text = String(result.text.characters)
                     // Capture the finalized segment's audio-clock span (seconds).
                     // Guard non-finite like the multilingual lanes do — a bad range
                     // must degrade to a zero-length span at a sane time, never a NaN.
-                    var start = result.range.start.seconds
-                    var end = (result.range.start + result.range.duration).seconds
+                    var start = result.start
+                    var end = result.end
                     if !start.isFinite { start = 0 }
                     if !end.isFinite { end = start }
                     // A12: harvest per-word confidence from the SAME finalized result

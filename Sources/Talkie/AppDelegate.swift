@@ -98,6 +98,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Pauses now-playing media for the duration of a dictation and resumes it after.
     private let musicController = MusicController()
     private let cleanup = CleanupEngine()
+    /// Dictation pipeline trace: the text after each stage, so a mangled word can
+    /// be pinned to the stage that mangled it. Writes ONLY to the opt-in local
+    /// debug log (`TALKIE_DEBUG_LOG=1`, 0600 file) and contains dictated text, so
+    /// it is never on in a normal run.
+    static func pipelineTrace(_ stage: String, _ text: String, detail: String = "") {
+        talkieDebugLog("pipeline[\(stage)]\(detail.isEmpty ? "" : " (\(detail))") \(text)")
+    }
+
+    /// Consecutive unverified pastes per app bundle id (see the self-heal block).
+    private var pasteMissStreak: [String: Int] = [:]
+    /// Misses in a row before an app is switched to letter-by-letter typing.
+    static let pasteMissesBeforeTyping = 2
+
+    /// Seconds of audio the stop-time language check scores (see the reTx block).
+    static let languageProbeSeconds: Double = 12
     private var hotKey: HotKeyMonitor?
     /// Watches the MCP inbox for dictionary suggestions a Claude session queued (via
     /// the bundled `talkie-mcp`) and applies each one *with the same HUD-Undo pill*
@@ -382,6 +397,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // dictation — and any language switch — is instant (no inline download).
         for lang in settings.spokenLanguages {
             Task { try? await engine.warmUp(localeIdentifier: lang) }
+            // The dictation model is a separate asset — warm it too when chosen.
+            if settings.dictationModel == .dictation {
+                Task { try? await engine.warmUp(localeIdentifier: lang, model: .dictation) }
+            }
         }
 
         // Warm the on-device cleanup model once at launch too (best-effort, like
@@ -860,6 +879,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Pre-warm every spoken language so a switch never downloads inline.
                 for lang in self.settings.spokenLanguages {
                     Task { try? await self.engine.warmUp(localeIdentifier: lang) }
+                    if self.settings.dictationModel == .dictation {
+                        Task { try? await self.engine.warmUp(localeIdentifier: lang, model: .dictation) }
+                    }
                 }
                 // If the primary language changed, switch the live engine to it.
                 let primary = self.settings.spokenLanguages.first ?? self.settings.localeIdentifier
@@ -1343,7 +1365,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // they must agree at the start of every session.
                 await engine.setLocaleIdentifier(self.currentLocaleID)
                 await engine.setContextualStrings(phrases)
-                let session = try await engine.beginSessionTracked(segmentHandler: segmentHandler)
+                let session = try await engine.beginSessionTracked(segmentHandler: segmentHandler,
+                                                                   model: settings.dictationModel)
                 capturedGeneration = session.generation
                 self.currentSessionGeneration = session.generation
                 // Re-check after the (async) model load / session setup.
@@ -1547,6 +1570,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // also fold the replacement targets into the correction target list so a
         // rule's canonical spelling gets phonetically rescued even when it isn't also a
         // standalone vocabulary entry.
+        // Targets for the live vocabulary snap (low-confidence words only).
+        let snapTerms = VocabularySnap.isEnabled
+            ? VocabularySnap.terms(vocabulary: dictionary.vocabulary, replacements: dictionary.replacements)
+            : []
         var trustedCores = Set(dictionary.vocabulary.map { NicheCorrector.core($0) })
         for r in dictionary.replacements {
             let to = r.to.trimmingCharacters(in: .whitespaces)
@@ -1708,6 +1735,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ignores it, so it costs the latency path nothing.
             let (raw, segments, _, wordConfidences) = await engine.finishSessionDetailed()
             trace.stage("finalize")
+            Self.pipelineTrace("raw", raw, detail: "segments=\(segments.count) locale=\(self.currentLocaleID)")
 
             var finalRaw = raw
             var languageSwitched = false
@@ -1726,8 +1754,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Re-transcribe in every spoken language (one per language code,
                 // incl. the current one so its confidence is the comparison baseline).
                 let langs = LanguageDetector.distinctByCode(spokenLanguages)
+                // Score with the model this session actually decoded with, so the
+                // candidates are comparable to what the user just saw.
+                let sessionModel = await self.engine.lastSessionModel()
+                // Score only the head of the audio: a few seconds of speech settle
+                // the language, and re-decoding a whole long dictation once per
+                // spoken language was the single biggest stop-time cost (~3 s on a
+                // one-minute paragraph). The full re-decode below runs only on an
+                // actual switch.
+                let probeIsWhole = TranscriptionEngine.head(of: buffers, seconds: Self.languageProbeSeconds).count
+                    == buffers.count
                 let scored = await self.engine.transcribeCandidates(
-                    buffers, localeIdentifiers: langs, installIfNeeded: true)
+                    buffers, localeIdentifiers: langs, installIfNeeded: true,
+                    model: sessionModel, probeSeconds: Self.languageProbeSeconds)
                 let candidates = scored.map {
                     LanguageDetector.LanguageCandidate(localeID: $0.localeID, text: $0.text, confidence: $0.confidence)
                 }
@@ -1737,8 +1776,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 talkieDebugLog("decide: current=\(self.currentLocaleID)(\(String(format: "%.2f", currentConf))) scored=[\(scored.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
                 // The switch decision — including the no-baseline absolute floor when
                 // the current locale produced no scored entry — lives in a pure helper.
-                if let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode) {
-                    finalRaw = best.text
+                if let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode),
+                   // The probe decoded only the head; fetch the whole utterance in
+                   // the winning language. If that fails, keep the original rather
+                   // than insert a truncated transcript.
+                   let switchedText = probeIsWhole
+                       ? best.text
+                       : await self.engine.transcribeBuffered(self.audio.bufferedAudio(), localeIdentifier: best.localeID,
+                                                              installIfNeeded: true, model: sessionModel) {
+                    finalRaw = switchedText
                     languageSwitched = true
                     self.currentLocaleID = best.localeID
                     await self.engine.setLocaleIdentifier(best.localeID) // stick to it next time
@@ -1746,6 +1792,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             trace.stage("reTx")
+            if languageSwitched { Self.pipelineTrace("reTx", finalRaw, detail: "switched→\(self.currentLocaleID)") }
             // Tell the cleanup model the (possibly switched) language so the
             // English-primary on-device model can't translate non-English speech.
             let cleanupLangCode = LanguageDetector.languageCode(of: self.currentLocaleID)
@@ -1839,6 +1886,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let deseamed = (!languageSwitched && segments.count > 1)
                 ? SentenceFlow.stripSeams(segments)
                 : finalRaw
+            Self.pipelineTrace("deseam", deseamed)
             var cleaned = finalRaw
             var usedStreaming = false
             if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
@@ -1875,6 +1923,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             trace.stage("cleanup")
+            Self.pipelineTrace("cleanup", cleaned,
+                               detail: "enabled=\(cleanupEnabled) style=\(style) streamed=\(usedStreaming)")
             let aiHandledFillers = cleanupEnabled && CleanupEngine.isAvailable && cleaned != finalRaw
             let aiWordsChanged = aiHandledFillers ? Self.wordEditCount(from: finalRaw, to: cleaned) : 0
 
@@ -1894,7 +1944,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // one of them away, we record a rejection against the niche term — the
             // corrector fixed the wrong thing, and that term should demote.
             var nicheFixTargets: [String] = []
-            if !nicheTerms.isEmpty {
+            if Dev.nicheCorrector, !nicheTerms.isEmpty {
                 // Defense-in-depth (belt-and-suspenders alongside the trusted-fold gate
                 // above): every ≥4-letter word the recognizer actually produced that is
                 // itself an ordinary EN/DE word — checked here on the MainActor so the
@@ -1920,6 +1970,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 nicheFixTargets = nicheFixes
             }
 
+            if !nicheFixPairs.isEmpty {
+                Self.pipelineTrace("niche", cleaned,
+                                   detail: nicheFixPairs.map { "\($0.from)→\($0.to)" }.joined(separator: ", "))
+            }
+
+            // Vocabulary snap: only words the recognizer itself was unsure about may
+            // become one of the user's terms. Skipped after a language switch — the
+            // confidences then belong to the discarded first decode.
+            if !snapTerms.isEmpty, !languageSwitched {
+                let snapped = VocabularySnap.apply(to: cleaned, confidences: wordConfidences, terms: snapTerms,
+                                                   isOrdinaryWord: DictionaryStore.isOrdinaryDictionaryWord)
+                if !snapped.fixes.isEmpty {
+                    cleaned = snapped.text
+                    nicheFixes += snapped.fixes.map(\.to)
+                    nicheFixTargets += snapped.fixes.map(\.to)
+                    Self.pipelineTrace("snap", cleaned,
+                                       detail: snapped.fixes.map { "\($0.from)→\($0.to)" }.joined(separator: ", "))
+                }
+            }
+
             // A14 (DARK — `Dev.llmJargonRepair`, default OFF): an on-device LLM repair
             // pass that catches badly-mangled novel jargon the PURELY PHONETIC
             // `NicheCorrector` above structurally cannot ("claude.md" heard as "cloud
@@ -1939,6 +2009,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // 2.0", "two point zero point one" → "2.0.1"); standalone cardinals only
             // when > 9 ("twenty four" → "24", "five" stays "five").
             cleaned = NumberNormalizer.normalize(cleaned)
+            // The recognizer sometimes leaves a space before a mark ("will ,",
+            // "aufmachen ?"); the cleanup model used to hide that. Prose only — in a
+            // terminal/editor " ." or " :" can be meaningful ("ls .").
+            if target.category != .terminal, target.category != .coding {
+                cleaned = SentenceFlow.tightenPunctuationSpacing(cleaned)
+                if !cleanupEnabled { cleaned = SentenceFlow.dropMidSentencePeriods(cleaned) }
+            }
+            Self.pipelineTrace("numbers", cleaned)
 
             // Apply the dictionary AFTER the LLM so your exact spellings always win.
             // Run the deterministic filler stripper as a SAFETY NET even when the AI
@@ -1964,6 +2042,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 wordConfidences: wordConfidences
             )
             var finalText = processed.text
+            Self.pipelineTrace("dictionary", finalText)
 
             // Structural dictation commands: a free-standing "new line"/"new
             // paragraph" (EN) or "neue Zeile"/"neuer Absatz" (DE) becomes a real
@@ -1973,6 +2052,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // and consumes the phrase, so a custom mapping still wins — that's the
             // escape hatch. Running structural ahead of the dictionary would break it.
             finalText = StructuralCommands.apply(finalText, languageCode: cleanupLangCode)
+            Self.pipelineTrace("structural", finalText)
 
             // Vibe coding: snap spoken filenames to the real files in your project
             // ("exercise library dot tsx" → "ExerciseLibrary.tsx").
@@ -1984,6 +2064,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                              preferPaths: target.category == .terminal)
                 finalText = vibed
                 fileFixes = hits
+                Self.pipelineTrace("vibe", finalText, detail: "fileFixes=\(hits)")
             }
 
             guard !finalText.isEmpty else {
@@ -2546,14 +2627,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // is a straight-line path, no loop. `.leftOnClipboard`/`.empty` never
                     // reach here. Verification runs to completion BEFORE the learn-watcher
                     // below starts, so the two never poll Accessibility concurrently.
-                    if mode == .paste, optimistic == nil, let healBundleID = target.bundleID {
+                    if mode == .paste, optimistic == nil, !self.settings.alwaysPaste,
+                       let healBundleID = target.bundleID {
                         // Privacy: the verifier reads the focused field's value via
                         // Accessibility ONLY to check whether the exact text Talkie just
                         // inserted is present. It compares against our own `insertedText` and
                         // never stores or forwards what it read.
                         let verdict = await InsertionVerifier.verify(inserted: insertedText)
+                        if verdict == .landed { self.pasteMissStreak[healBundleID] = nil }
                         if verdict == .notLanded {
-                            talkieDebugLog("heal: paste did not land in \(target.name) — retrying by typing, learning .type")
+                            // Remember `.type` only after two misses IN A ROW: one
+                            // mis-read of an Electron field (Claude, ChatGPT) used to
+                            // switch that app to letter-by-letter typing for good.
+                            let misses = (self.pasteMissStreak[healBundleID] ?? 0) + 1
+                            self.pasteMissStreak[healBundleID] = misses
+                            talkieDebugLog("heal: paste did not land in \(target.name) (miss \(misses)) — retrying by typing")
                             // Fire-and-forget type retry (its per-character loop runs off
                             // the main actor inside TextInjector); verifying the retry is
                             // out of scope — the goal is to get the text in, then remember.
@@ -2561,11 +2649,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             // Persist the learned winner: read-modify-write the app's
                             // existing sheet so unrelated overrides (cleanup, vocabulary…)
                             // are preserved; refresh the display name while we're here.
-                            var learned = self.profiles.profile(for: healBundleID)
-                                ?? AppProfile(bundleID: healBundleID, displayName: target.name)
-                            learned.displayName = target.name
-                            learned.insertionMode = .type
-                            self.profiles.upsert(learned)
+                            if misses >= Self.pasteMissesBeforeTyping {
+                                var learned = self.profiles.profile(for: healBundleID)
+                                    ?? AppProfile(bundleID: healBundleID, displayName: target.name)
+                                learned.displayName = target.name
+                                learned.insertionMode = .type
+                                self.profiles.upsert(learned)
+                                self.pasteMissStreak[healBundleID] = nil
+                                talkieDebugLog("heal: learned .type for \(target.name)")
+                            }
                         }
                     }
                     // Watch the field for the next few seconds: the instant the user

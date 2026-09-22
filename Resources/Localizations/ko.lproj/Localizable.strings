@@ -843,3 +843,14 @@
 "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "정리 기능을 사용하려면 Apple Intelligence를 켜세요 (시스템 설정 → Apple Intelligence 및 Siri).";
 "Apple Intelligence is still downloading its model — cleanup will work once it's ready." = "Apple Intelligence가 아직 모델을 다운로드하는 중입니다 — 준비되면 정리 기능을 사용할 수 있습니다.";
 "This Mac can't run on-device cleanup." = "이 Mac에서는 기기 내 정리를 실행할 수 없습니다.";
+
+/* Speech model picker */
+"Recognize dictation with" = "받아쓰기 인식 모델";
+"The dictation model is the one behind the Mac's own Dictation key — it punctuates by grammar instead of at every pause." = "받아쓰기 모델은 Mac의 받아쓰기 키에 쓰이는 모델로, 멈출 때마다가 아니라 문법에 따라 문장 부호를 넣습니다.";
+"Long-form model" = "장문 모델";
+"Dictation model" = "받아쓰기 모델";
+"Meetings and file imports always use the long-form model." = "회의와 파일 가져오기는 항상 장문 모델을 사용합니다.";
+
+/* Paste everything at once */
+"Paste everything at once" = "한 번에 모두 붙여넣기";
+"Never type your words in letter by letter, in any app." = "어떤 앱에서도 한 글자씩 입력하지 않습니다.";

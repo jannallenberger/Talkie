@@ -34,6 +34,14 @@ struct BenchArguments {
     /// cost the hotkey-down pre-roll (C3a) is meant to recover. 0 = no trim (the
     /// standard, unmodified corpus run).
     var leadTrimMs: Int = 0
+    /// `speech` (default, SpeechTranscriber) or `dictation` (DictationTranscriber,
+    /// the system-Dictation model the app offers under Settings → Speech model).
+    var model: String = "speech"
+    /// `--repair`: confidence-gated repair experiment (see RepairComparison).
+    var repair: Bool = false
+    var repairThreshold: Double = 0.75
+    /// One term per line: the speaker's vocabulary, offered to the repair model.
+    var vocabFile: URL?
 
     static let usage = """
     talkie-bench — on-device speech-recognition benchmark (Apple SpeechAnalyzer)
@@ -73,6 +81,16 @@ struct BenchArguments {
                         missing from the transcript head. Run it at 0 vs e.g. 350
                         on a leading-plosive corpus to measure the first-phoneme
                         loss the hotkey-down pre-roll is meant to recover.
+      --model <name>    Recognizer: `speech` (default, the long-form
+                        SpeechTranscriber) or `dictation` (DictationTranscriber,
+                        the system-Dictation model). Run both on one corpus to
+                        compare them.
+      --repair          Confidence-gated repair experiment: transcribe with
+                        per-word confidence, let the on-device model replace
+                        ONLY words below --threshold, report raw vs repaired
+                        WER and every individual change.
+      --threshold <x>   Confidence cutoff for --repair (default 0.75).
+      --vocab <path>    Terms (one per line) offered to the --repair model.
       --markdown        After the human table, print ONE pipe-delimited Markdown
                         row summarising the run (date, machine, macOS, locale,
                         corpus, WER, CER, RTFx, median/p90 latency) for pasting
@@ -132,6 +150,18 @@ struct BenchArguments {
                 }
             case "--lead-trim-ms":
                 if let v = nextValue(arg), let n = Int(v), n >= 0 { out.leadTrimMs = n }
+            case "--repair":
+                out.repair = true
+            case "--threshold":
+                if let v = nextValue(arg), let x = Double(v), x > 0, x <= 1 { out.repairThreshold = x }
+                else { out.showHelp = true }
+            case "--vocab":
+                if let v = nextValue(arg) { out.vocabFile = URL(fileURLWithPath: v) }
+            case "--model":
+                // An unknown model name shows usage rather than silently
+                // benchmarking the wrong recognizer.
+                if let v = nextValue(arg), v == "speech" || v == "dictation" { out.model = v }
+                else { out.showHelp = true }
             case "--markdown":
                 out.markdown = true
             case "--quiet":

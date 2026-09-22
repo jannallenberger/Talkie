@@ -674,6 +674,7 @@ private struct DeveloperSettings: View {
     // measurement prototype is toggleable here instead of via `defaults write`.
     // Lives ONLY in the (dev-gated) Developer section — it is not a user setting.
     @AppStorage(Dev.llmJargonRepairKey) private var llmJargonRepair = false
+    @AppStorage(Dev.nicheCorrectorKey) private var nicheCorrector = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -724,6 +725,16 @@ private struct DeveloperSettings: View {
                         ? "Post-hoc, after the phonetic corrector. Guarded so it can only swap in your saved terms."
                         : "Needs Apple Intelligence to be on.",
                     isOn: $llmJargonRepair
+                )
+            }
+            SettingsCard(
+                header: "Phonetic jargon corrector (experimental)",
+                footer: "Swaps words that sound like your saved terms for those terms. Off by default: on real German dictation it rewrote more correct words than it fixed. Exact dictionary rules apply either way."
+            ) {
+                SettingsToggleRow(
+                    title: "Guess jargon from similar-sounding words",
+                    subtitle: "Runs after cleanup, before your dictionary rules.",
+                    isOn: $nicheCorrector
                 )
             }
         }
@@ -1658,6 +1669,21 @@ private struct ActivationSettings: View {
                 }
             }
             SettingsCard(
+                header: "Speech model",
+                footer: "Meetings and file imports always use the long-form model.".loc
+            ) {
+                SettingsRow(
+                    title: "Recognize dictation with".loc,
+                    subtitle: "The dictation model is the one behind the Mac's own Dictation key — it punctuates by grammar instead of at every pause.".loc
+                ) {
+                    Picker("", selection: $settings.dictationModel) {
+                        Text("Long-form model".loc).tag(RecognizerModel.speech)
+                        Text("Dictation model".loc).tag(RecognizerModel.dictation)
+                    }
+                    .labelsHidden().fixedSize()
+                }
+            }
+            SettingsCard(
                 header: "Insertion",
                 // H1 removed the always-safe toggles here: the implicit-command-target
                 // fallback and the re-paste chord are now always on (both are safe by
@@ -1671,6 +1697,12 @@ private struct ActivationSettings: View {
                 // The optimistic-insertion knob, in plain words (Jann flagged the old
                 // "Insert instantly, polish in place" as opaque). The subtitle promises
                 // the behavior; the LearnMoreRow explains the swap for anyone curious.
+                SettingsToggleRow(
+                    title: "Paste everything at once".loc,
+                    subtitle: "Never type your words in letter by letter, in any app.".loc,
+                    isOn: $settings.alwaysPaste
+                )
+                SettingsDivider(leadingInset: 0)
                 SettingsToggleRow(
                     title: "Show your words the moment you stop".loc,
                     subtitle: "See your raw words right away, then Talkie quietly tidies them in place.".loc,

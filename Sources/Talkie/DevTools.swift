@@ -29,6 +29,18 @@ enum Dev {
     /// inserted text is byte-identical to a build without A14.
     static let llmJargonRepairKey = "TalkieLLMJargonRepair"
 
+    /// The phonetic `NicheCorrector` pass on dictation. OFF by default since
+    /// 2026-09-22: a stage-by-stage trace of a real German paragraph showed 6 of
+    /// its 7 "fixes" were wrong — it dropped articles ("die Wörter" → "Wörter"),
+    /// merged words ("Bild ein" → "Bilder") and bent ordinary words toward learned
+    /// terms ("Modell" → "Modelle"). Exact dictionary rules stay on. Opt back in:
+    ///     defaults write com.coralate.talkie NicheCorrectorOn -bool YES
+    static let nicheCorrectorKey = "NicheCorrectorOn"
+
+    static var nicheCorrector: Bool {
+        UserDefaults.standard.bool(forKey: nicheCorrectorKey)
+    }
+
     static var llmJargonRepair: Bool {
         isEnabled && UserDefaults.standard.bool(forKey: llmJargonRepairKey)
     }

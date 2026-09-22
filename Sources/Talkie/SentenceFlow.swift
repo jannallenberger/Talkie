@@ -34,6 +34,48 @@ enum SentenceFlow {
     /// no such standalone meaning and are safe.
     private static let danglingArticles: Set<String> = ["an", "the"]
 
+    /// Remove whitespace the recognizer left before a closing mark ("raus ." →
+    /// "raus.", "aufmachen ?" → "aufmachen?"). Only when the mark follows a letter
+    /// or digit and ends the word, so ellipses, "..", and spaced dashes are left
+    /// alone. Idempotent.
+    static func tightenPunctuationSpacing(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: #"(?<=[\p{L}\p{N}\)\]"»“”])[ \t]+([.,;:!?])(?=\s|$|["»“”)\]])"#,
+            with: "$1",
+            options: .regularExpression)
+    }
+
+    /// Drop a period the recognizer put INSIDE a segment at a thinking pause: a
+    /// word-final "." followed by a lowercase word ("auf einmal. gepastet") never
+    /// ends a real sentence in German or English prose — the next sentence would
+    /// be capitalized. Abbreviations ("z. B. das", "ca. drei", "etc. und") and
+    /// short tokens are kept. The no-cleanup path's stand-in for the model's
+    /// re-punctuation; seam periods between segments are `mergeContinuations`' job.
+    static func dropMidSentencePeriods(_ text: String) -> String {
+        // The next word must be plainly lowercase — "iPhone", "macOS", "eBay" can
+        // legitimately start a sentence, so a mid-word capital keeps the period.
+        guard let regex = try? NSRegularExpression(pattern: #"(\p{L}+)\.(?= \p{Ll}++(?!\p{Lu}))"#)
+        else { return text }
+        let ns = text as NSString
+        var out = text
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed() {
+            let word = ns.substring(with: match.range(at: 1))
+            guard word.count >= 3, !abbreviations.contains(word.lowercased()) else { continue }
+            // The dot itself sits right after the captured word.
+            let dot = NSRange(location: match.range(at: 1).upperBound, length: 1)
+            out = (out as NSString).replacingCharacters(in: dot, with: "")
+        }
+        return out
+    }
+
+    /// Abbreviations that legitimately end in "." before a lowercase word.
+    private static let abbreviations: Set<String> = [
+        "usw", "bzw", "vgl", "ggf", "evtl", "inkl", "exkl", "zzgl", "abzgl", "etc", "bspw",
+        "ca", "nr", "str", "tel", "sog", "insb", "allg", "min", "max", "std", "mio", "mrd",
+        "jan", "feb", "mär", "apr", "jun", "jul", "aug", "sep", "sept", "okt", "nov", "dez",
+        "approx", "dept", "est", "misc", "vol", "fig", "incl", "resp",
+    ]
+
     /// **AI path.** Join the segments into ONE continuous stream with the pause-seam
     /// punctuation removed and the following fragment de-capitalized, so the cleanup
     /// model re-punctuates and re-capitalizes from scratch by grammar (its

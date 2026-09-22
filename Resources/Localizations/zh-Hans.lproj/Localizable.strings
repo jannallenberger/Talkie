@@ -843,3 +843,14 @@
 "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "请开启 Apple Intelligence（系统设置 → Apple Intelligence 与 Siri）以启用整理功能。";
 "Apple Intelligence is still downloading its model — cleanup will work once it's ready." = "Apple Intelligence 仍在下载模型 — 准备就绪后即可使用整理功能。";
 "This Mac can't run on-device cleanup." = "这台 Mac 无法运行设备端整理功能。";
+
+/* Speech model picker */
+"Recognize dictation with" = "听写识别使用";
+"The dictation model is the one behind the Mac's own Dictation key — it punctuates by grammar instead of at every pause." = "听写模型就是 Mac“听写”键背后的模型——它按语法加标点，而不是每次停顿都加。";
+"Long-form model" = "长文本模型";
+"Dictation model" = "听写模型";
+"Meetings and file imports always use the long-form model." = "会议和文件导入始终使用长文本模型。";
+
+/* Paste everything at once */
+"Paste everything at once" = "一次性全部粘贴";
+"Never type your words in letter by letter, in any app." = "在任何应用中都不逐字输入。";

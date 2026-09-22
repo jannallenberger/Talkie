@@ -123,9 +123,7 @@ final class SpokenFileMatcherTests: XCTestCase {
 
     /// Text with no filename match round-trips BYTE-IDENTICALLY, whether or not
     /// `preferPaths` is set — the path feature must never perturb ordinary prose.
-    /// (Prose deliberately avoids a `word.word` interior-dot token like "3.30", which the
-    /// pre-existing tokenizer rewrites to "3 dot 30" regardless of preferPaths — a separate,
-    /// unrelated transform; the byte-identity guarantee is about genuine non-match prose.)
+    /// (Interior-dot tokens like "3.30" are covered by `testInteriorDotNonMatchRoundTrips`.)
     func testNonMatchRoundTripsByteIdenticalUnderPreferPaths() {
         let snap = ProjectIndexSnapshot(
             keyMap: ["exercise library dot tsx": "ExerciseLibrary.tsx"],
@@ -138,6 +136,41 @@ final class SpokenFileMatcherTests: XCTestCase {
         XCTAssertEqual(p, 0); XCTAssertEqual(q, 0)
         XCTAssertEqual(plain, prose, "non-match must round-trip unchanged (default): \(plain)")
         XCTAssertEqual(paths, prose, "non-match must round-trip unchanged (preferPaths): \(paths)")
+    }
+
+    /// A `word.word` token that isn't a project file must come back exactly as spoken.
+    /// The tokenizer splits it into `word · dot · word` to find filenames, and used to
+    /// glue a non-match back with the literal WORD "dot" — "iOS 26.5" was inserted as
+    /// "iOS 26 dot 5" and "CLAUDE.md"-like mishearings as "iCloud dot m".
+    func testInteriorDotNonMatchRoundTrips() {
+        let snap = ProjectIndexSnapshot(
+            keyMap: ["exercise library dot tsx": "ExerciseLibrary.tsx"],
+            maxKeyTokens: 4,
+            biasPhrases: [],
+            pathMap: [:])
+        for prose in [
+            "mit iOS 26.5 hat Apple das Modell verbessert.",
+            "Schau dir vorher noch iCloud.m an, damit du weißt.",
+            "let's meet at 3.30 and grab file.unknownext on the way.",
+            "Version (2.0.1), dann v1.2!",
+        ] {
+            let (out, n) = SpokenFileMatcher.format(prose, snapshot: snap)
+            XCTAssertEqual(n, 0)
+            XCTAssertEqual(out, prose, "non-match must round-trip unchanged")
+        }
+    }
+
+    /// A real filename still snaps when the recognizer already wrote the dot, and the
+    /// surrounding interior-dot words are left intact.
+    func testInteriorDotMatchStillSnapsBesideUntouchedDots() {
+        let snap = ProjectIndexSnapshot(
+            keyMap: ["exercise library dot tsx": "ExerciseLibrary.tsx"],
+            maxKeyTokens: 4,
+            biasPhrases: [],
+            pathMap: [:])
+        let (out, n) = SpokenFileMatcher.format("in iOS 26.5 open exercise library.tsx, then 3.30", snapshot: snap)
+        XCTAssertEqual(n, 1)
+        XCTAssertEqual(out, "in iOS 26.5 open ExerciseLibrary.tsx, then 3.30")
     }
 
     /// The core G10 invariant on the NON-match path: whatever the (pre-existing) tokenizer
@@ -185,6 +218,33 @@ final class SpokenFileMatcherTests: XCTestCase {
     }
 
     // MARK: - Store: per-root scoping + terminal path, editor basename
+
+    /// Naming a UI element ("the settings view") must not tag a file just because
+    /// one is called SettingsView — a file snaps only when its extension is spoken,
+    /// and a same-named file of another type is never picked up.
+    @MainActor
+    func testBareBaseNameNeverTagsAFile() async throws {
+        let repo = try makeTempDir("repo")
+        try touch("SettingsView.swift", in: repo)
+        try touch("user_profile.py", in: repo)
+
+        let store = ProjectIndexStore(fileURL: try indexURL())
+        store.addFolders([repo])
+        try await waitUntil { !store.isScanning && store.fileCount >= 2 }
+        let snap = try XCTUnwrap(store.snapshot(for: repo))
+
+        for prose in ["Mach die settings view etwas heller.",
+                      "Im user profile fehlt der Avatar.",
+                      "the settings view needs a darker header"] {
+            let (out, n) = SpokenFileMatcher.format(prose, snapshot: snap)
+            XCTAssertEqual(n, 0, out)
+            XCTAssertEqual(out, prose)
+        }
+        XCTAssertEqual(SpokenFileMatcher.format("open settings view dot swift", snapshot: snap).0,
+                       "open SettingsView.swift")
+        XCTAssertEqual(SpokenFileMatcher.format("check user profile dot py", snapshot: snap).0,
+                       "check user_profile.py")
+    }
 
     /// End-to-end through the store: the Talkie-shaped repo indexes, and dictating
     /// "settings view dot swift" yields the repo-relative path with `preferPaths` (a

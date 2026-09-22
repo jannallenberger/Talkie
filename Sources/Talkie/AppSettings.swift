@@ -328,6 +328,17 @@ final class AppSettings: ObservableObject {
     @Published var optimisticInsertion: Bool {
         didSet { defaults.set(optimisticInsertion, forKey: Keys.optimisticInsertion) }
     }
+    /// Which Apple speech model decodes DICTATION (meetings/imports always use the
+    /// long-form speech model). `.dictation` is the model behind the system
+    /// Dictation key — grammar punctuation instead of a period at every pause.
+    @Published var dictationModel: RecognizerModel {
+        didSet { defaults.set(dictationModel.rawValue, forKey: Keys.dictationModel); notifyChanged() }
+    }
+    /// Always insert with one paste, never letter-by-letter typing — and never learn
+    /// `.type` for an app from a paste the verifier couldn't see land.
+    @Published var alwaysPaste: Bool {
+        didSet { defaults.set(alwaysPaste, forKey: Keys.alwaysPaste) }
+    }
     /// Experimental, off by default: lets a spoken cross-surface request ("email
     /// Sarah the action items from my last meeting") run as a command instead of
     /// being dictated literally. Touches the live command-routing path on every
@@ -503,6 +514,8 @@ final class AppSettings: ObservableObject {
             // now `false`, matching the doc comment and the "Experimental — may misfire"
             // label. Anyone who had explicitly turned it on keeps their stored `true`.
             Keys.optimisticInsertion: false,
+            Keys.alwaysPaste: false,
+            Keys.dictationModel: RecognizerModel.speech.rawValue,
             Keys.crossSurfaceCommandsEnabled: false,
             Keys.meetingLanguageMode: "auto",
             Keys.autoDetectMeetings: true,
@@ -562,6 +575,8 @@ final class AppSettings: ObservableObject {
         historyMaxCount = d.integer(forKey: Keys.historyMaxCount)
         claudeTranscriptLearning = d.string(forKey: Keys.claudeTranscriptLearning) ?? "unset"
         optimisticInsertion = d.bool(forKey: Keys.optimisticInsertion)
+        alwaysPaste = d.bool(forKey: Keys.alwaysPaste)
+        dictationModel = RecognizerModel(rawValue: d.string(forKey: Keys.dictationModel) ?? "") ?? .speech
         crossSurfaceCommandsEnabled = d.bool(forKey: Keys.crossSurfaceCommandsEnabled)
         meetingLanguageMode = d.string(forKey: Keys.meetingLanguageMode) ?? "auto"
         autoDetectMeetings = d.bool(forKey: Keys.autoDetectMeetings)
@@ -722,6 +737,8 @@ final class AppSettings: ObservableObject {
         static let historyMaxCount = "historyMaxCount"
         static let claudeTranscriptLearning = "claudeTranscriptLearning"
         static let optimisticInsertion = "optimisticInsertion"
+        static let alwaysPaste = "alwaysPaste"
+        static let dictationModel = "dictationModel"
         static let crossSurfaceCommandsEnabled = "crossSurfaceCommandsEnabled"
         /// Legacy key — the "let commands target your last dictation" toggle was removed
         /// in H1 (the implicit-selection fallback is now always on, still bounded by
