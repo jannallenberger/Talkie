@@ -74,6 +74,9 @@ actor MultiLangStreamTranscriber {
     private var audioSecondsFed: Double = 0
     private var referenceSampleRate: Double = 1
     private var rotationCount = 0
+    /// Audio seconds at which the still-open window began (0 until the first
+    /// rotation). Everything before it has already been handed out by `rotate()`.
+    private(set) var openWindowStart: Double = 0
 
     static var isAvailable: Bool { SpeechTranscriber.isAvailable }
 
@@ -162,6 +165,7 @@ actor MultiLangStreamTranscriber {
         self.referenceSampleRate = max(1, reference.sampleRate)
         self.audioSecondsFed = 0
         self.rotationCount = 0
+        self.openWindowStart = 0
         talkieDebugLog("meeting-lanes started: [\(built.map(\.localeID).joined(separator: ", "))]")
 
         // Fan the caller's reference-format audio out to every lane. The closure
@@ -264,9 +268,15 @@ actor MultiLangStreamTranscriber {
     /// generation's words are then harvested, shifted into meeting time by its offset,
     /// and kept. Best-effort per lane: if a replacement fails to start, the lane is left
     /// running on its existing analyzer (a stall risk beats a dead lane).
-    func rotate() async {
-        guard !lanes.isEmpty else { return }
+    /// Returns the retired window's words from every lane, merged by the same
+    /// language vote `finish` uses — so a multi-language meeting can feed its live
+    /// summary digest every rotation instead of summarizing everything at stop.
+    @discardableResult
+    func rotate() async -> [StreamLanguageVoter.Span] {
+        guard !lanes.isEmpty else { return [] }
         rotationCount += 1
+        var windowWords: [StreamLanguageVoter.TimedWord] = []
+        var nextWindowStart = Double.infinity
         for lane in lanes {
             guard let gen = await startAnalyzer(locale: lane.locale, laneLocaleID: lane.localeID,
                                                 contextualStrings: lane.contextualStrings,
@@ -289,6 +299,7 @@ actor MultiLangStreamTranscriber {
             lane.continuation = gen.continuation
             lane.results = gen.results
             lane.offset = audioSecondsFed
+            nextWindowStart = min(nextWindowStart, lane.offset)
 
             // Retire the old generation: stop its input, finalize, drain, shift into
             // meeting time, accumulate.
@@ -300,13 +311,17 @@ actor MultiLangStreamTranscriber {
             }
             let raw = await old.results.value
             let off = old.offset
-            lane.collected.append(contentsOf: raw.map { w in
+            let shifted = raw.map { w in
                 var w = w; w.start += off; w.end += off; return w
-            })
+            }
+            lane.collected.append(contentsOf: shifted)
+            windowWords.append(contentsOf: shifted)
             // Liveness signal: a window that fed audio but harvested no words is the
             // fingerprint of a stall the rotation just cleared.
             talkieDebugLog("meeting-lane[\(lane.localeID)]: rotated (#\(rotationCount)) — window words=\(raw.count), next offset \(Int(lane.offset))s")
         }
+        if nextWindowStart.isFinite { openWindowStart = nextWindowStart }
+        return StreamLanguageVoter.mergeWords(windowWords)
     }
 
     /// Replay one input buffer into every lane, conforming to each lane's format, and

@@ -189,6 +189,13 @@ actor MeetingSummarizer {
     /// grows past `chunkChars` before this ceiling is hit, so coverage is never
     /// silently dropped for realistic meeting lengths (~3-4 hours).
     private static let maxChunks = 16
+    /// Output caps. The on-device model sometimes falls into a repetition loop and
+    /// writes until the 4096-token window overflows — measured at 35–55 s per such
+    /// call, even on a 500-char excerpt. A cap ends a runaway in seconds. A map step
+    /// only needs terse facts; the reduce step writes the note the user reads.
+    static let transformModel = SystemLanguageModel(guardrails: .permissiveContentTransformations)
+    static let mapMaxTokens = 300
+    static let reduceMaxTokens = 700
 
     private static let reduceInstructions = """
     You summarize a meeting transcript. Produce concise markdown with:
@@ -236,7 +243,8 @@ actor MeetingSummarizer {
         if trimmed.count <= Self.chunkChars,
            let direct = await respond(
                instructions: Self.reduceInstructions,
-               prompt: "Transcript:\n\n\(trimmed)\n\nWrite the summary."
+               prompt: "Transcript:\n\n\(trimmed)\n\nWrite the summary.",
+               maxTokens: Self.reduceMaxTokens
            ) {
             return (direct, trimmed)
         }
@@ -278,7 +286,8 @@ actor MeetingSummarizer {
         do {
             return try await rawRespond(
                 instructions: Self.reduceInstructions,
-                prompt: "Notes gathered from the full transcript, in chronological order:\n\n\(notes)\n\nWrite the summary."
+                prompt: "Notes gathered from the full transcript, in chronological order:\n\n\(notes)\n\nWrite the summary.",
+                maxTokens: Self.reduceMaxTokens
             )
         } catch let error as LanguageModelSession.GenerationError {
             guard case .exceededContextWindowSize = error, notes.count > 500 else { return nil }
@@ -305,7 +314,8 @@ actor MeetingSummarizer {
     func mapExcerpt(_ excerpt: String) async -> String {
         do {
             let text = try await rawRespond(instructions: Self.mapInstructions,
-                                             prompt: "Excerpt:\n\n\(excerpt)\n\nList the facts.")
+                                             prompt: "Excerpt:\n\n\(excerpt)\n\nList the facts.",
+                                             maxTokens: Self.mapMaxTokens)
             return text ?? "None"
         } catch let error as LanguageModelSession.GenerationError {
             Self.log.error("mapExcerpt: GenerationError on \(excerpt.count) chars: \(String(describing: error), privacy: .public)")
@@ -321,9 +331,9 @@ actor MeetingSummarizer {
         }
     }
 
-    private func respond(instructions: String, prompt: String) async -> String? {
+    private func respond(instructions: String, prompt: String, maxTokens: Int? = nil) async -> String? {
         do {
-            return try await rawRespond(instructions: instructions, prompt: prompt)
+            return try await rawRespond(instructions: instructions, prompt: prompt, maxTokens: maxTokens)
         } catch {
             Self.log.error("respond: threw on \(prompt.count)-char prompt: \(String(describing: error), privacy: .public)")
             return nil
@@ -337,12 +347,17 @@ actor MeetingSummarizer {
     /// that instant), not a problem with the content. Retrying after a short
     /// backoff clears these; content errors like `exceededContextWindowSize`
     /// or `guardrailViolation` are NOT retried since retrying can't fix them.
-    private func rawRespond(instructions: String, prompt: String) async throws -> String? {
+    private func rawRespond(instructions: String, prompt: String, maxTokens: Int? = nil) async throws -> String? {
         var lastTransientError: LanguageModelSession.GenerationError?
         for attempt in 0...3 {
             do {
-                let session = LanguageModelSession(instructions: instructions)
-                let options = GenerationOptions(sampling: .greedy, temperature: 0.3)
+                // Summarizing is transforming the user's own transcript, the case
+                // Apple's permissive guardrails exist for. With the default ones, half
+                // of a real meeting's excerpts came back `guardrailViolation` (casual
+                // swearing, legal talk) and silently vanished from the summary.
+                let session = LanguageModelSession(model: Self.transformModel, instructions: instructions)
+                let options = GenerationOptions(sampling: .greedy, temperature: 0.3,
+                                                maximumResponseTokens: maxTokens)
                 let response = try await session.respond(to: prompt, options: options)
                 let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
                 return text.isEmpty ? nil : text
@@ -363,9 +378,15 @@ actor MeetingSummarizer {
     /// Greedily pack lines into chunks, sized so the whole text fits in at
     /// most `maxChunks` pieces (growing past `maxChars` only if it must) — so
     /// a long meeting gets every excerpt mapped rather than losing its tail.
-    private static func chunk(_ text: String, maxChars: Int, maxChunks: Int) -> [String] {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+    static func chunk(_ text: String, maxChars: Int, maxChunks: Int) -> [String] {
         let size = max(maxChars, Int((Double(text.count) / Double(maxChunks)).rounded(.up)))
+        // A single-speaker transcript renders as ONE line of prose (no newlines), so
+        // packing by lines alone sent a 16k-char meeting as a single chunk — it
+        // overflowed the context window and every recursive halving overflowed
+        // again (~6 of 7 minutes of a 20-min meeting's summary were failed calls).
+        // Over-long lines are split at sentence ends first, then at spaces.
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .flatMap { $0.count > size ? splitLongLine(String($0), size: size) : [String($0)] }
         var chunks: [String] = []
         var current = ""
         for line in lines {
@@ -379,6 +400,36 @@ actor MeetingSummarizer {
         }
         if !current.isEmpty { chunks.append(current) }
         return chunks
+    }
+
+    /// Split one over-long line into pieces of at most `size` characters, breaking
+    /// after a sentence end (". ", "? ", "! ") where possible, else at a space, and
+    /// only mid-word for a single "word" longer than `size`.
+    static func splitLongLine(_ line: String, size: Int) -> [String] {
+        var pieces: [String] = []
+        var rest = Substring(line)
+        while rest.count > size {
+            let window = rest.prefix(size)
+            var cut: String.Index?
+            // Last sentence end in the window (keep the mark with the left piece).
+            for mark in [". ", "? ", "! "] {
+                if let r = window.range(of: mark, options: .backwards), r.lowerBound > window.startIndex,
+                   cut.map({ r.upperBound > $0 }) ?? true {
+                    cut = r.upperBound
+                }
+            }
+            // Too early a sentence break wastes the window — fall back to a space.
+            if let c = cut, window.distance(from: window.startIndex, to: c) < size / 2 { cut = nil }
+            if cut == nil, let space = window.lastIndex(of: " "), space > window.startIndex {
+                cut = window.index(after: space)
+            }
+            let end = cut ?? window.endIndex
+            pieces.append(String(rest[rest.startIndex..<end]).trimmingCharacters(in: .whitespaces))
+            rest = rest[end...]
+        }
+        let tail = rest.trimmingCharacters(in: .whitespaces)
+        if !tail.isEmpty { pieces.append(tail) }
+        return pieces
     }
 
     /// The single-pass input budget (chars), exposed so a downstream consumer
