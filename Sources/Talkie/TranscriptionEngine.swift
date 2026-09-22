@@ -302,6 +302,24 @@ actor TranscriptionEngine {
 
     /// Ensure the on-device model for `transcriber` is downloaded & installed.
     /// First run on a given locale triggers a one-time download.
+    /// Whether a module's model can run NOW without a download. In a fresh process
+    /// `AssetInventory.status` reports a model that's already on disk as merely
+    /// `.supported` until an installation request is made for it — which flips it to
+    /// `.installed` on the spot, downloading nothing (checked: de-DE and en-GB both
+    /// `.supported` → request → `.installed`, instantly). That is why the
+    /// mid-dictation probe bailed "not installed" for BOTH languages right after a
+    /// relaunch while the stop path, whose install call makes that request, decoded
+    /// them fine. So: ask for the request (never run it), then re-read the status.
+    private func modelIsReady(_ module: any SpeechModule) async -> Bool {
+        if await AssetInventory.status(forModules: [module]) == .installed { return true }
+        do {
+            guard try await AssetInventory.assetInstallationRequest(supporting: [module]) != nil else { return true }
+        } catch {
+            return false
+        }
+        return await AssetInventory.status(forModules: [module]) == .installed
+    }
+
     private func ensureModelInstalled(for transcriber: any SpeechModule) async throws {
         let status = await AssetInventory.status(forModules: [transcriber])
         guard status != .installed else { return }
@@ -557,7 +575,7 @@ actor TranscriptionEngine {
         // On the user-waiting stop path the caller passes installIfNeeded:true, so
         // the FIRST utterance in a not-yet-warmed language is still corrected
         // instead of silently kept as wrong-language gibberish.
-        if await AssetInventory.status(forModules: [transcriber]) != .installed {
+        if await !modelIsReady(transcriber) {
             guard installIfNeeded else {
                 talkieDebugLog("reTx[\(id)]: bail — model not installed (no inline install)")
                 return nil
@@ -825,7 +843,7 @@ actor TranscriptionEngine {
             return nil
         }
         let transcriber = makeModule(model, locale: loc)
-        guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
+        guard await modelIsReady(transcriber) else {
             talkieDebugLog("liveLang: \(id) model not installed — keeping the current session")
             return nil
         }
