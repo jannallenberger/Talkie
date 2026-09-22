@@ -1162,6 +1162,25 @@ private struct HUDView: View {
             : base
     }
 
+    /// Width of the live-tail block — and of the capture row above it when live text
+    /// is on, so the waveform can centre over the text.
+    private static let liveTailWidth: CGFloat = 260
+
+    /// Hands-free lock: a small lock glyph so it's obvious you can release the key and
+    /// it keeps recording until you tap to stop. Only while genuinely locked; it slides
+    /// in without disturbing the dot/waveform. Recording red, matching the dot — it is
+    /// part of the "still recording" state. Accessibility is folded into the group label.
+    @ViewBuilder
+    private var lockGlyph: some View {
+        if model.handsFreeLocked {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.featherRed)
+                .transition(.scale.combined(with: .opacity))
+                .accessibilityHidden(true)
+        }
+    }
+
     /// C1 (redesigned) — the live tail as a WRAPPING block below the waveform. A fixed
     /// width forces it to wrap (so the pill grows downward, not sideways); a line cap
     /// stops it past a few lines; head-truncation keeps the newest words visible once
@@ -1173,7 +1192,7 @@ private struct HUDView: View {
             .multilineTextAlignment(.leading)
             .lineLimit(5)
             .truncationMode(.head)
-            .frame(width: 260, alignment: .leading)
+            .frame(width: Self.liveTailWidth, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityHidden(true)
     }
@@ -1319,41 +1338,49 @@ private struct HUDView: View {
             // saturated feather color, left as-is.
             let tint = recording ? Theme.featherRed : ink(model.highContrast ? 0.9 : 0.55)
             VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    StatusDot(color: tint, filled: recording)
-                        .animation(.easeInOut(duration: 0.25), value: recording)
-                    // A red waveform: equal-width bars whose heights move with your
-                    // voice. A one-shot wave of opacity sweeps across it the instant
-                    // recording starts, then it settles to steady red.
-                    Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
-                        .accessibilityHidden(true)
-                    // Hands-free lock: a small lock glyph so it's obvious you can release
-                    // the key and it keeps recording until you tap to stop. Only while
-                    // genuinely locked; it slides in without disturbing the dot/waveform.
-                    // Coral so it reads as an active state, not an error. Accessibility is
-                    // folded into the group label below.
-                    if model.handsFreeLocked {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.coral)
-                            .transition(.scale.combined(with: .opacity))
+                if showLivePillText, !model.silenceCountingDown {
+                    // With live text on (the default), the row spans the live-tail width
+                    // from the first frame: the waveform sits dead centre (a ZStack, so
+                    // the dot and the chips can't pull it off-centre) and the pill doesn't
+                    // jump sideways when the first words arrive below it.
+                    ZStack {
+                        Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
                             .accessibilityHidden(true)
+                        HStack(spacing: 8) {
+                            StatusDot(color: tint, filled: recording)
+                                .animation(.easeInOut(duration: 0.25), value: recording)
+                            Spacer(minLength: 0)
+                            lockGlyph
+                            CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
+                        }
                     }
-                    // Feature 14: the active cleanup style/level, tappable to cycle —
-                    // change how the dictation is polished without leaving the record.
-                    // Hidden entirely when no switcher is wired (today's pill).
-                    CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
-                    if model.silenceCountingDown {
-                        // B5: while the hands-free auto-stop countdown runs, the row says
-                        // so in plain words — a gentle nudge that one word (or reaching the
-                        // key) keeps it going. It takes the tail slot so the pill doesn't
-                        // also carry the transcript during the wrap-up moment.
-                        Text("still listening — say something or it'll wrap up")
-                            .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
-                            .foregroundStyle(ink(0.72))
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .transition(.blurReplace)
+                    .frame(width: Self.liveTailWidth)
+                } else {
+                    HStack(spacing: 8) {
+                        StatusDot(color: tint, filled: recording)
+                            .animation(.easeInOut(duration: 0.25), value: recording)
+                        // A red waveform: equal-width bars whose heights move with your
+                        // voice. A one-shot wave of opacity sweeps across it the instant
+                        // recording starts, then it settles to steady red.
+                        Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
+                            .accessibilityHidden(true)
+                        lockGlyph
+                        // Feature 14: the active cleanup style/level, tappable to cycle —
+                        // change how the dictation is polished without leaving the record.
+                        // Hidden entirely when no switcher is wired (today's pill).
+                        CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
+                        if model.silenceCountingDown {
+                            // B5: while the hands-free auto-stop countdown runs, the row says
+                            // so in plain words — a gentle nudge that one word (or reaching the
+                            // key) keeps it going. It takes the tail slot so the pill doesn't
+                            // also carry the transcript during the wrap-up moment.
+                            Text("still listening — say something or it'll wrap up")
+                                .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
+                                .foregroundStyle(ink(0.72))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .transition(.blurReplace)
+                        }
                     }
                 }
                 // C1 (redesigned): the live tail of what's being heard flows BELOW the
