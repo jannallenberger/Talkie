@@ -388,14 +388,37 @@ actor CleanupEngine {
     /// regex-escaped and matched case-insensitively (the model may echo the hex in a
     /// different case); if the pattern somehow fails to compile, falls back to a
     /// plain trim so behavior degrades to the old (narrower) strip rather than crash.
+    /// Second pass (added after a nonce-FREE header leaked into real dictation): the
+    /// model doesn't only wrap our nonce — it also invents self-labeled headers that
+    /// carry no nonce at all. Seen in the wild: `<<<Rewritten Dictation>>>`,
+    /// `<<<Investigation of the Issue>>>`, `<<<Conclusion>>>`. The nonce-keyed strip
+    /// above walks straight past those, so they reached the user's paste verbatim.
+    ///
+    /// Anchoring to a LINE START is what keeps removing them safe, and is why this
+    /// isn't just a greedy `<<<…>>>` strip: a header the model prefixes to its output
+    /// always opens a line, whereas a `<<<…>>>` token the speaker genuinely dictated
+    /// sits mid-sentence ("the config uses <<<PLACEHOLDER>>> as a token"). So this can
+    /// never eat real speech — the deliberate boundary in
+    /// `testLeavesNonNonceAngleBracketTextUntouched` stays intact.
     static func stripFenceMarkers(from text: String, nonce: String) -> String {
-        let pattern = "<<<[^>]*" + NSRegularExpression.escapedPattern(for: nonce) + "[^>]*>>>"
-        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var out = text
+        // 1) Any marker carrying THIS call's nonce, anywhere — unambiguously a fence
+        //    artifact, including variants invented around it.
+        let noncePattern = "<<<[^>]*" + NSRegularExpression.escapedPattern(for: nonce) + "[^>]*>>>"
+        if let re = try? NSRegularExpression(pattern: noncePattern, options: [.caseInsensitive]) {
+            out = re.stringByReplacingMatches(in: out, options: [],
+                                              range: NSRange(out.startIndex..., in: out),
+                                              withTemplate: "")
         }
-        let range = NSRange(text.startIndex..., in: text)
-        let stripped = re.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
-        return stripped.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 2) A nonce-free marker that OPENS a line — the model's self-labeled header.
+        let headerPattern = "^[ \\t]*<<<[^>]*>>>[ \\t]*"
+        if let re = try? NSRegularExpression(pattern: headerPattern,
+                                             options: [.caseInsensitive, .anchorsMatchLines]) {
+            out = re.stringByReplacingMatches(in: out, options: [],
+                                              range: NSRange(out.startIndex..., in: out),
+                                              withTemplate: "")
+        }
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Heuristic: did the model ANSWER the dictation instead of REWRITING it?
@@ -416,7 +439,8 @@ actor CleanupEngine {
     /// transcript (what they actually said), which is always acceptable; a false
     /// accept pastes a hallucination.
     static func looksLikeAnswer(input: String, output: String) -> Bool {
-        let inputContent = Set(contentWords(input))
+        let inputWords = contentWords(input)
+        let inputContent = Set(inputWords)
         let outContent = contentWords(output)
         guard !outContent.isEmpty else { return false }
         let novel = outContent.filter { !inputContent.contains($0) }
@@ -446,6 +470,29 @@ actor CleanupEngine {
         // (A) Mostly-invented output — the "wildly hallucinated answer" case. A
         // rewrite that preserves the speaker's subject matter stays well under this.
         if novelRatio >= 0.6 { return true }
+
+        // (C) The output GREW substantially — the model appended its OWN material (an
+        // answer, invented section headers, a summary) on top of an otherwise faithful
+        // rewrite. (Q) and (B) both miss this because they only fire on a literal
+        // QUESTION, and a dictated *imperative* request ("Please investigate why X,
+        // then rewrite it so I can paste it") is not one. (A) misses it because the
+        // genuine rewrite sitting in front of the invented answer dilutes `novelRatio`
+        // far below 0.6 — and the fabricated reply reuses the speaker's own vocabulary,
+        // diluting it further. Cleanup strips fillers and fixes grammar; it never
+        // legitimately needs ~40% MORE substantive words than the speaker said, so a
+        // jump that large means content was invented. The absolute +5 floor keeps a
+        // short dictation from tripping on a couple of words.
+        //
+        // Observed in the wild: a dictated request came back as the rewrite PLUS a
+        // fabricated "<<<Investigation of the Issue>>> I will now investigate why this
+        // is happening…" reply, which the user then pasted. Rejecting here also kills
+        // the invented nonce-free fence headers that rode along with it — they only
+        // ever reached the paste because this guard waved the whole output through.
+        if inputWords.count >= 4, !novel.isEmpty,
+           outContent.count >= inputWords.count + 5,
+           Double(outContent.count) >= Double(inputWords.count) * 1.4 {
+            return true
+        }
 
         // (B) A longer dictated question turned into a content-adding statement, even
         // when the reply echoes the question's own words (so ratio (A) alone misses

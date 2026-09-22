@@ -73,4 +73,23 @@ final class CleanupFenceStripTests: XCTestCase {
             CleanupEngine.stripFenceMarkers(from: "  just some words.  ", nonce: "0011223344556677"),
             "just some words.")
     }
+
+    /// Reported in the wild: the model prefixed its rewrite with a self-labeled header
+    /// carrying NO nonce, so the nonce-keyed strip missed it and it was pasted verbatim
+    /// at the top of a real German dictation.
+    func testStripsInventedNonceFreeHeaderAtStart() {
+        let raw = "<<<Rewritten Dictation>>>Pr\u{00FC}fe die Webseite nun in allen Ansichten."
+        XCTAssertEqual(
+            CleanupEngine.stripFenceMarkers(from: raw, nonce: "0123456789abcdef"),
+            "Pr\u{00FC}fe die Webseite nun in allen Ansichten.")
+    }
+
+    /// Nonce-free headers on their own lines (the "<<<Conclusion>>>" shape) are removed
+    /// wherever they OPEN a line, leaving the speaker's text.
+    func testStripsNonceFreeHeadersOpeningLines() {
+        let raw = "<<<Rewritten Transcript>>>\nfirst part\n<<<Conclusion>>>\nsecond part"
+        XCTAssertEqual(
+            CleanupEngine.stripFenceMarkers(from: raw, nonce: "deadbeef"),
+            "first part\n\nsecond part")
+    }
 }
