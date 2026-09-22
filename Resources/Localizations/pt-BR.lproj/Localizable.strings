@@ -854,3 +854,6 @@
 /* Paste everything at once */
 "Paste everything at once" = "Colar tudo de uma vez";
 "Never type your words in letter by letter, in any app." = "Nunca digitar suas palavras letra por letra, em nenhum app.";
+
+/* Meeting summary in background */
+"Writing the summary… the transcript is already saved." = "Escrevendo o resumo… a transcrição já está salva.";

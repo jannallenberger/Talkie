@@ -865,3 +865,6 @@
 /* Paste everything at once */
 "Paste everything at once" = "Paste everything at once";
 "Never type your words in letter by letter, in any app." = "Never type your words in letter by letter, in any app.";
+
+/* Meeting summary in background */
+"Writing the summary… the transcript is already saved." = "Writing the summary… the transcript is already saved.";
