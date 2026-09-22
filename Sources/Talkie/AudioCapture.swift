@@ -16,10 +16,11 @@ private final class SingleShotInput: @unchecked Sendable {
 /// Thread-safe accumulator of converted PCM buffers, capped by total frames, so
 /// a session can be re-transcribed in a different language. Appended on the
 /// real-time tap thread, drained on the main thread.
-private final class CapturedAudio: @unchecked Sendable {
+final class CaptureWindow: @unchecked Sendable {
     private let lock = NSLock()
     private var buffers: [AVAudioPCMBuffer] = []
     private var totalFrames: AVAudioFramePosition = 0
+    private var droppedFrames: AVAudioFramePosition = 0
     private let maxFrames: AVAudioFramePosition
 
     init(maxFrames: AVAudioFramePosition) { self.maxFrames = maxFrames }
@@ -32,8 +33,29 @@ private final class CapturedAudio: @unchecked Sendable {
         // (better than freezing at cap — a long capture keeps recent speech).
         while totalFrames > maxFrames, let first = buffers.first {
             totalFrames -= AVAudioFramePosition(first.frameLength)
+            droppedFrames += AVAudioFramePosition(first.frameLength)
             buffers.removeFirst()
         }
+    }
+
+    /// Whether the window still holds the WHOLE capture (nothing rolled off the
+    /// front). Re-decoding an incomplete window would silently lose the opening.
+    var isComplete: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return droppedFrames == 0
+    }
+
+    /// Seconds of audio currently held.
+    var seconds: Double {
+        lock.lock(); defer { lock.unlock() }
+        guard let rate = buffers.first?.format.sampleRate, rate > 0 else { return 0 }
+        return Double(totalFrames) / rate
+    }
+
+    /// A non-destructive copy of the held buffers (unlike `drain`).
+    func snapshot() -> [AVAudioPCMBuffer] {
+        lock.lock(); defer { lock.unlock() }
+        return buffers
     }
 
     func drain() -> [AVAudioPCMBuffer] {
@@ -41,7 +63,42 @@ private final class CapturedAudio: @unchecked Sendable {
         let out = buffers
         buffers = []
         totalFrames = 0
+        droppedFrames = 0
         return out
+    }
+}
+
+/// Where the mic tap delivers each converted buffer: the rolling capture window
+/// and the live analyzer's input stream, behind ONE lock. That single lock is what
+/// makes a live language restart lossless — `handOff(to:)` replays the captured
+/// audio into the new analyzer and retargets the tap in one critical section, so no
+/// buffer can land in the old stream after the snapshot or jump ahead of the replay.
+final class AudioFeed: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: AsyncStream<AnalyzerInput>.Continuation
+    let captured: CaptureWindow?
+
+    init(continuation: AsyncStream<AnalyzerInput>.Continuation, captured: CaptureWindow?) {
+        self.continuation = continuation
+        self.captured = captured
+    }
+
+    /// Real-time tap thread: record + forward one buffer.
+    func push(_ buffer: AVAudioPCMBuffer) {
+        lock.lock(); defer { lock.unlock() }
+        captured?.append(buffer)
+        continuation.yield(AnalyzerInput(buffer: buffer))
+    }
+
+    /// Replay everything captured so far into `next`, then make it the live target.
+    /// Yields are non-blocking (unbounded stream), so the tap waits only for the
+    /// copy loop — a few hundred microseconds for the ~seconds of audio involved.
+    func handOff(to next: AsyncStream<AnalyzerInput>.Continuation) {
+        lock.lock(); defer { lock.unlock() }
+        for buffer in captured?.snapshot() ?? [] {
+            next.yield(AnalyzerInput(buffer: buffer))
+        }
+        continuation = next
     }
 }
 
@@ -53,13 +110,13 @@ private final class CapturedAudio: @unchecked Sendable {
 final class AudioCapture: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private var isRunning = false // touched only on the main thread (start/stop)
-    private var captured: CapturedAudio?
+    private var captured: CaptureWindow?
 
     /// Monotonic host time (`DispatchTime` uptime nanoseconds) of the most recent
     /// buffer the mic tap delivered, or 0 if none since the last `start()`. Written on
     /// the realtime tap thread, read on the main thread, so every access is guarded by
     /// `bufferClockLock` — the documented lock discipline for this `@unchecked Sendable`
-    /// (the class already relies on `CapturedAudio`'s own lock for its buffer ring; this
+    /// (the class already relies on `CaptureWindow`'s own lock for its buffer ring; this
     /// covers the one scalar the render thread and main thread both touch).
     ///
     /// This is the far-end watchdog's *mic-alive* cross-check (C6 / plan 01 §4.2a): a
@@ -82,7 +139,7 @@ final class AudioCapture: @unchecked Sendable {
     /// `handleConfigurationChange()` can reinstall the tap and restart the engine
     /// without the caller re-driving `start()`. Set in `start()`, cleared in `stop()`.
     private var targetFormat: AVAudioFormat?
-    private var continuation: AsyncStream<AnalyzerInput>.Continuation?
+    private var feed: AudioFeed?
     private var preferredDeviceUID: String?
     /// UID of the device the tap is currently bound to, so a config change can ask
     /// `AudioDevices.resolveSwap` whether the active device actually changed.
@@ -133,14 +190,14 @@ final class AudioCapture: @unchecked Sendable {
         // (dictation: ~90 s; meetings pass a larger window). Built once here and
         // *kept* across a hot device swap so the re-transcription window isn't lost.
         let capture = bufferAudio
-            ? CapturedAudio(maxFrames: AVAudioFramePosition(targetFormat.sampleRate * bufferSeconds))
+            ? CaptureWindow(maxFrames: AVAudioFramePosition(targetFormat.sampleRate * bufferSeconds))
             : nil
         self.captured = capture
 
         // Stash the session parameters so a mid-session device/config change can
         // rebuild the tap without the caller re-driving start().
         self.targetFormat = targetFormat
-        self.continuation = continuation
+        self.feed = AudioFeed(continuation: continuation, captured: capture)
         self.preferredDeviceUID = preferredDeviceUID
         self.onLevel = onLevel
         self.onBuffer = onBuffer
@@ -191,7 +248,7 @@ final class AudioCapture: @unchecked Sendable {
     /// which can be a 0-channel device (e.g. a Bluetooth speaker that's output-only)
     /// and would make the engine fail to start.
     private func installAndStart() throws {
-        guard let targetFormat, let continuation else {
+        guard let targetFormat, let feed else {
             throw TalkieEngineError.noCompatibleAudioFormat
         }
 
@@ -232,7 +289,6 @@ final class AudioCapture: @unchecked Sendable {
         }
         converter.primeMethod = .none // avoid timestamp drift on streamed buffers
 
-        let capture = self.captured
         let onLevel = self.onLevel
         let onBuffer = self.onBuffer
         // Captured by value (a reference type, safe across the RT boundary) so the
@@ -250,12 +306,11 @@ final class AudioCapture: @unchecked Sendable {
             }
             guard let converted = Self.convert(buffer: buffer, using: converter, to: targetFormat) else { return }
             if converted.frameLength > 0 {
-                capture?.append(converted)
                 // Passive keep-audio tee (D9): hand the converted buffer to the writer,
                 // which copies it and hops to its own serial queue — so this stays a
                 // non-blocking, transcription-neutral side effect.
                 onBuffer?(converted)
-                continuation.yield(AnalyzerInput(buffer: converted))
+                feed.push(converted)
             }
         }
 
@@ -266,7 +321,7 @@ final class AudioCapture: @unchecked Sendable {
     /// main thread (the observer uses `queue: .main`). Removes the now-dead tap,
     /// re-resolves the input device, rebuilds the converter against the (possibly
     /// changed) format, reinstalls the tap, and restarts the engine. The rolling
-    /// `CapturedAudio` buffer is deliberately *kept* so the re-transcription window
+    /// `CaptureWindow` buffer is deliberately *kept* so the re-transcription window
     /// survives the hot swap. On failure (e.g. the only mic vanished) it surfaces a
     /// recoverable error via `onCaptureFailed` instead of dying silently.
     func handleConfigurationChange() {
@@ -322,8 +377,39 @@ final class AudioCapture: @unchecked Sendable {
     }
 
     /// The converted audio captured during the last session (for re-transcription).
+    /// DRAINS the window — a second call returns nothing.
     func bufferedAudio() -> [AVAudioPCMBuffer] {
         captured?.drain() ?? []
+    }
+
+    /// Whether the capture window still holds the whole session (nothing rolled off
+    /// the front). Read BEFORE `bufferedAudio()`, which resets it.
+    var bufferedAudioIsComplete: Bool { captured?.isComplete ?? false }
+
+    /// Seconds of audio captured so far this session (0 when not buffering).
+    var bufferedSeconds: Double { captured?.seconds ?? 0 }
+
+    /// A non-destructive copy of the captured audio, for the mid-dictation language
+    /// probe. Leaves the window intact for the handoff and the stop-time check.
+    func bufferedAudioSnapshot() -> [AVAudioPCMBuffer] {
+        captured?.snapshot() ?? []
+    }
+
+    /// Live language restart: replay the whole captured session into `continuation`
+    /// (a freshly started analyzer's input) and retarget the tap to it, atomically.
+    /// Works after `stop()` too (the window survives until drained) — a restart
+    /// that races the key release still gets every buffer. Returns false, doing
+    /// nothing, when there's no complete window to replay (buffering off, or audio
+    /// already rolled off the front) — the new analyzer would miss the opening.
+    @discardableResult
+    func handOff(to continuation: AsyncStream<AnalyzerInput>.Continuation) -> Bool {
+        guard let captured, captured.isComplete else { return false }
+        if let feed {
+            feed.handOff(to: continuation)
+        } else {
+            for buffer in captured.snapshot() { continuation.yield(AnalyzerInput(buffer: buffer)) }
+        }
+        return true
     }
 
     /// Seconds since the mic tap last delivered a buffer, on the caller's monotonic
@@ -367,7 +453,7 @@ final class AudioCapture: @unchecked Sendable {
         isRunning = false
         // Release retained session state (the callbacks capture caller closures).
         targetFormat = nil
-        continuation = nil
+        feed = nil
         onLevel = nil
         onBuffer = nil
         onCaptureFailed = nil

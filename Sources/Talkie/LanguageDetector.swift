@@ -179,4 +179,24 @@ enum LanguageDetector {
                 && abs($0.confidence - current.confidence) < switchConfidenceMargin
         }
     }
+
+    /// Seconds of captured audio at which the mid-dictation probe checks the
+    /// language. The first check is early so the pill stops showing the wrong
+    /// model's gibberish quickly; the second runs only when the first was too
+    /// close to call (see `probeIsInconclusive`).
+    static let liveProbeCheckpoints: [Double] = [6, 12]
+
+    /// Whether the mid-dictation probe should restart the live session in another
+    /// language. Stricter than the stop-time `switchTarget`: a live restart is
+    /// visible (the preview resets and refills), so on top of beating the incumbent
+    /// by the margin, the winner must clear `switchAbsoluteFloor` on its own —
+    /// two weak scores a margin apart are noise, not a language.
+    static func liveSwitchTarget(
+        among scored: [LanguageCandidate],
+        currentCode: String?
+    ) -> LanguageCandidate? {
+        guard let best = switchTarget(among: scored, currentCode: currentCode),
+              best.confidence >= switchAbsoluteFloor else { return nil }
+        return best
+    }
 }

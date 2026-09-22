@@ -167,6 +167,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// never destroy a NEWER session that has since taken over the engine (see
     /// FIX 1 / `TranscriptionEngine.cancelSession(ifGeneration:)`).
     private var currentSessionGeneration: Int?
+    /// Mid-dictation language probe (multilingual only): checks the captured audio a
+    /// few seconds in and restarts the live session in the right language, so the
+    /// pill's preview isn't the wrong model's gibberish. The stop path awaits it
+    /// before finalizing, so a restart in flight always completes its audio handoff.
+    private var liveLanguageTask: Task<Void, Never>?
+    /// Cleared the moment the session stops — the probe then never starts a restart.
+    private var liveSwitchAllowed = false
+    /// Whether THIS dictation's live session was restarted in another language. The
+    /// streamed per-segment cleanup ran partly in the old language (and was pinned to
+    /// it), so the stop path must re-clean the whole transcript instead.
+    private var sessionLiveSwitched = false
 
     // MARK: Onboarding try-it sink (H5)
 
@@ -1381,6 +1392,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     continuation: session.continuation,
                     preferredDeviceUID: self.settings.preferredInputDeviceUID,
                     bufferAudio: multiLang,
+                    // The whole dictation must fit: a language re-decode of a window
+                    // that rolled over loses the opening (~38 MB at the 10 min cap).
+                    bufferSeconds: 600,
                     onLevel: { [weak self] level in
                         Task { @MainActor in
                             AppDelegate.sharedHUD?.updateLevel(level)
@@ -1404,6 +1418,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 self.sessionLive = true
                 self.recordingStartedAt = Date()
+                if multiLang {
+                    self.startLiveLanguageProbe(sessionID: myID, generation: session.generation)
+                }
                 // Capture is live — duck any playing music so it doesn't bleed into
                 // the mic, then flip the pill to the red "recording" state. Resumed
                 // on every teardown path in `endDictation`.
@@ -1449,6 +1466,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Start the mid-dictation language probe for this session (multilingual only).
+    /// At each `LanguageDetector.liveProbeCheckpoints` mark it scores the audio so far
+    /// in every spoken language; on a clear win for another language it restarts the
+    /// live session there. A clear stay ends the probe; a close call waits for the
+    /// next checkpoint. Models are never downloaded mid-dictation.
+    private func startLiveLanguageProbe(sessionID myID: Int, generation: Int) {
+        liveLanguageTask?.cancel()
+        liveSwitchAllowed = true
+        sessionLiveSwitched = false
+        let langs = LanguageDetector.distinctByCode(settings.spokenLanguages)
+        liveLanguageTask = Task { @MainActor [weak self] in
+            for checkpoint in LanguageDetector.liveProbeCheckpoints {
+                // Wait for enough audio (or for the session to end).
+                while true {
+                    guard let self, self.liveSwitchAllowed, self.sessionID == myID,
+                          !Task.isCancelled else { return }
+                    if self.audio.bufferedSeconds >= checkpoint { break }
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                guard let self else { return }
+                let buffers = self.audio.bufferedAudioSnapshot()
+                let currentCode = LanguageDetector.languageCode(of: self.currentLocaleID)
+                let model = await self.engine.lastSessionModel()
+                let scored = await self.engine.transcribeCandidates(
+                    buffers, localeIdentifiers: langs, installIfNeeded: false, model: model)
+                let candidates = scored.map {
+                    LanguageDetector.LanguageCandidate(localeID: $0.localeID, text: $0.text, confidence: $0.confidence)
+                }
+                talkieDebugLog("liveLang[@\(Int(checkpoint))s]: current=\(self.currentLocaleID) scored=[\(candidates.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
+                guard self.liveSwitchAllowed, self.sessionID == myID, !Task.isCancelled else { return }
+                if let best = LanguageDetector.liveSwitchTarget(among: candidates, currentCode: currentCode) {
+                    await self.performLiveLanguageSwitch(to: best.localeID, generation: generation)
+                    return
+                }
+                guard LanguageDetector.probeIsInconclusive(among: candidates, currentCode: currentCode)
+                else { return } // clearly the current language — nothing more to check
+            }
+        }
+    }
+
+    /// Restart the live session in `localeID` and hand it the audio captured so far.
+    /// Only reached while `liveSwitchAllowed` (the stop path awaits this task, so the
+    /// handoff below always lands before the session is finalized).
+    private func performLiveLanguageSwitch(to localeID: String, generation: Int) async {
+        // The replay must include the opening, or the new session would lose it.
+        guard audio.bufferedAudioIsComplete else { return }
+        guard let continuation = await engine.restartLive(localeIdentifier: localeID, ifGeneration: generation)
+        else { return }
+        guard audio.handOff(to: continuation) else {
+            // Unreachable in practice (completeness checked above, nothing drains
+            // before this task is awaited) — but never leave the analyzer hanging.
+            continuation.finish()
+            talkieDebugLog("liveLang: handoff failed after restart — transcript may be empty")
+            return
+        }
+        currentLocaleID = localeID
+        sessionLiveSwitched = true
+        talkieDebugLog("liveLang: switched live session → \(localeID)")
+    }
+
+    /// Stop the mid-dictation language probe without awaiting it (abort paths).
+    /// `restartLive` re-checks the session itself, so a straggler is harmless.
+    private func stopLiveLanguageProbe() {
+        liveSwitchAllowed = false
+        liveLanguageTask?.cancel()
+        liveLanguageTask = nil
+    }
+
     /// A live dictation's mic capture failed mid-session (the active input device
     /// changed and no usable mic remained). Tear the session down and surface the
     /// error on the same HUD path as a start-time failure. Ignored if the session
@@ -1462,6 +1547,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionLive = false
         recordingStartedAt = nil
         Feedback.stop()
+        stopLiveLanguageProbe()
         audio.stop()
         musicController.resumeAfterDictation()
         currentStreaming?.cancel()
@@ -1540,6 +1626,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wasLoneShortTap = !wasHandsFreeLocked && duration < ActivationGesture.latchThreshold
 
         Feedback.stop()
+        // No live language restart may START after this point; one already in
+        // flight is awaited below, before finalizing, so its handoff completes.
+        liveSwitchAllowed = false
+        let liveLanguageTask = self.liveLanguageTask
+        self.liveLanguageTask = nil
         audio.stop()
         // Recording's done (you've stopped talking) — bring the music back, even
         // though the transcript is still being polished/inserted below.
@@ -1733,6 +1824,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // `wordConfidences` (A12) rides back on the same finalize with no extra
             // pass — the low-confidence review chip below reads it; everything else
             // ignores it, so it costs the latency path nothing.
+            await liveLanguageTask?.value
+            let liveSwitched = self.sessionLiveSwitched
+            self.sessionLiveSwitched = false
             let (raw, segments, _, wordConfidences) = await engine.finishSessionDetailed()
             trace.stage("finalize")
             Self.pipelineTrace("raw", raw, detail: "segments=\(segments.count) locale=\(self.currentLocaleID)")
@@ -1749,6 +1843,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // wrong (current) language. Short utterances are skipped — nothing to gain.
             if spokenLanguages.count > 1, !raw.isEmpty, LanguageDetector.canScore(raw) {
                 talkieDebugLog("--- dictation: raw(\(self.currentLocaleID))='\(raw)'")
+                // Re-decoding a window that lost its opening would REPLACE the whole
+                // transcript with only its tail — keep the live text instead.
+                let audioComplete = self.audio.bufferedAudioIsComplete
                 let buffers = self.audio.bufferedAudio()
                 let currentCode = LanguageDetector.languageCode(of: self.currentLocaleID)
                 // Re-transcribe in every spoken language (one per language code,
@@ -1761,7 +1858,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // re-decode the winner in full — all inside the engine, which is the
                 // only place the (non-Sendable, drain-once) audio can be replayed.
                 // The switch rule itself lives in pure `LanguageDetector` helpers.
-                if let best = await self.engine.decideLanguage(
+                if !audioComplete {
+                    talkieDebugLog("decide: skipped — capture window rolled over, a re-decode would truncate")
+                } else if let best = await self.engine.decideLanguage(
                     buffers, localeIdentifiers: langs, currentCode: currentCode,
                     model: sessionModel, probeSeconds: Self.languageProbeSeconds) {
                     finalRaw = best.text
@@ -1877,7 +1976,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // H3: if the user cycled the style mid-dictation, the streamed buffer
                 // was cleaned with the OLD style — bypass it and re-clean with the
                 // current one, so even an uninterrupted utterance reflects the switch.
-                if let streaming, !languageSwitched, !styleWasOverridden, streaming.segmentCount <= 1 {
+                if let streaming, !languageSwitched, !liveSwitched, !styleWasOverridden, streaming.segmentCount <= 1 {
                     cleaned = await streaming.finishCleaned()
                     usedStreaming = true
                     // Never insert empty when we actually have a transcript (e.g.
