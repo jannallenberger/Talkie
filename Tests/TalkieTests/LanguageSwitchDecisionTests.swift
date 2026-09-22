@@ -98,4 +98,63 @@ final class LanguageSwitchDecisionTests: XCTestCase {
     func testEmptyScoredKeepsCurrent() {
         XCTAssertNil(LanguageDetector.switchTarget(among: [], currentCode: "en"))
     }
+
+    // MARK: - probeIsInconclusive (head probe → whole-utterance rescore)
+
+    /// The 2026-09-22 regression: a 2½-minute ENGLISH dictation in a German session
+    /// scored an exact tie on the 12 s head probe. A tie keeps the incumbent, so the
+    /// German-model gibberish was inserted. The tie must trigger a whole rescore.
+    func testExactTieOnProbeIsInconclusive() {
+        let scored = [
+            C(localeID: "de-DE", text: "Alright Bright up prompt", confidence: 0.87),
+            C(localeID: "en-GB", text: "Alright, write a prompt", confidence: 0.87),
+        ]
+        XCTAssertNil(LanguageDetector.switchTarget(among: scored, currentCode: "de"))
+        XCTAssertTrue(LanguageDetector.probeIsInconclusive(among: scored, currentCode: "de"))
+    }
+
+    /// A rival just under the incumbent (within the margin) is also a close call.
+    func testRivalJustBelowIncumbentIsInconclusive() {
+        let scored = [
+            C(localeID: "de-DE", text: "etwas", confidence: 0.87),
+            C(localeID: "en-GB", text: "something", confidence: 0.87 - LanguageDetector.switchConfidenceMargin + 0.01),
+        ]
+        XCTAssertTrue(LanguageDetector.probeIsInconclusive(among: scored, currentCode: "de"))
+    }
+
+    /// A clear switch is decided on the probe — no rescore (the 19:07 case: en 0.94
+    /// vs de 0.76 switches straight away).
+    func testClearSwitchIsConclusive() {
+        let scored = [
+            C(localeID: "de-DE", text: "Explor the Coldway", confidence: 0.76),
+            C(localeID: "en-GB", text: "Explore the Coralate", confidence: 0.94),
+        ]
+        XCTAssertEqual(LanguageDetector.switchTarget(among: scored, currentCode: "de")?.localeID, "en-GB")
+        XCTAssertFalse(LanguageDetector.probeIsInconclusive(among: scored, currentCode: "de"))
+    }
+
+    /// A clear stay (ordinary German dictation, English far behind) keeps the fast
+    /// path — the rescore must not tax every dictation.
+    func testClearStayIsConclusive() {
+        let scored = [
+            C(localeID: "de-DE", text: "Also mal ganz kurz schauen", confidence: 0.88),
+            C(localeID: "en-GB", text: "also mal gans", confidence: 0.22),
+        ]
+        XCTAssertFalse(LanguageDetector.probeIsInconclusive(among: scored, currentCode: "de"))
+    }
+
+    /// An empty-text rival can't win, so it can't make the probe inconclusive.
+    func testEmptyRivalIsConclusive() {
+        let scored = [
+            C(localeID: "de-DE", text: "etwas", confidence: 0.80),
+            C(localeID: "en-GB", text: "", confidence: 0.80),
+        ]
+        XCTAssertFalse(LanguageDetector.probeIsInconclusive(among: scored, currentCode: "de"))
+    }
+
+    /// No incumbent score: the absolute floor already governs — nothing to rescore.
+    func testNoIncumbentIsConclusive() {
+        let scored = [C(localeID: "en-GB", text: "something", confidence: 0.40)]
+        XCTAssertFalse(LanguageDetector.probeIsInconclusive(among: scored, currentCode: "de"))
+    }
 }

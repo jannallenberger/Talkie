@@ -432,6 +432,57 @@ actor TranscriptionEngine {
         return out
     }
 
+    /// The stop-time dictation language decision: which spoken language the
+    /// captured audio was ACTUALLY in, with that language's whole-utterance text —
+    /// or nil to keep the current transcript.
+    ///
+    /// Scores only the head of the audio first (a few seconds usually settle the
+    /// language, and re-decoding a long dictation once per language was the biggest
+    /// stop-time cost). When that probe is too close to call it rescores the whole
+    /// utterance rather than letting the tie default to the incumbent; when a
+    /// head-only probe picks a winner, the winner is re-decoded in full.
+    ///
+    /// Runs every pass inside the actor on purpose: the audio is non-`Sendable`, so
+    /// the caller can send it only once — and `AudioCapture.bufferedAudio()` drains,
+    /// so a caller-side second fetch comes back EMPTY (which silently discarded
+    /// every correctly detected long-dictation switch).
+    func decideLanguage(
+        _ buffers: [AVAudioPCMBuffer],
+        localeIdentifiers ids: [String],
+        currentCode: String?,
+        model: RecognizerModel,
+        probeSeconds: Double
+    ) async -> LanguageDetector.LanguageCandidate? {
+        func score(probe: Double?) async -> [LanguageDetector.LanguageCandidate] {
+            let scored = await transcribeCandidates(buffers, localeIdentifiers: ids, installIfNeeded: true,
+                                                    model: model, probeSeconds: probe)
+            let candidates = scored.map {
+                LanguageDetector.LanguageCandidate(localeID: $0.localeID, text: $0.text, confidence: $0.confidence)
+            }
+            let currentConf = candidates.first { LanguageDetector.languageCode(of: $0.localeID) == currentCode }?
+                .confidence ?? 0
+            talkieDebugLog("decide\(probe == nil ? "[whole]" : ""): current=\(currentCode ?? "?")(\(String(format: "%.2f", currentConf))) " +
+                           "scored=[\(candidates.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
+            return candidates
+        }
+
+        var scoredWhole = Self.head(of: buffers, seconds: probeSeconds).count == buffers.count
+        var candidates = await score(probe: probeSeconds)
+        if !scoredWhole, LanguageDetector.probeIsInconclusive(among: candidates, currentCode: currentCode) {
+            talkieDebugLog("decide: head probe too close to call — rescoring whole utterance")
+            candidates = await score(probe: nil)
+            scoredWhole = true
+        }
+        guard let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode) else { return nil }
+        if scoredWhole { return best }
+        // The probe decoded only the head; fetch the whole utterance in the winning
+        // language. If that fails, keep the original rather than insert a truncated
+        // transcript.
+        guard let whole = await transcribeScored(buffers, localeIdentifier: best.localeID,
+                                                 installIfNeeded: true, model: model) else { return nil }
+        return LanguageDetector.LanguageCandidate(localeID: best.localeID, text: whole.text, confidence: best.confidence)
+    }
+
     /// One-shot re-transcription of already-captured audio in a locale, returning
     /// just the text (used by the meeting language-correction shim). Returns nil
     /// when the language can't be transcribed at all.

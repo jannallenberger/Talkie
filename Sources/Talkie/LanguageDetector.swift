@@ -156,4 +156,27 @@ enum LanguageDetector {
         // letting the margin-vs-zero test wave anything through.
         return best.confidence >= switchAbsoluteFloor ? best : nil
     }
+
+    /// Whether a head-only language probe was too close to call — no switch, but a
+    /// rival language scored within `switchConfidenceMargin` of the incumbent. The
+    /// caller then rescores the WHOLE utterance before deciding, rather than letting
+    /// the tie default to the current language.
+    ///
+    /// Why: a few seconds of speech usually separate the languages, but not always.
+    /// The wrong model can fit an opening phrase as well as the right one (English
+    /// speech scored de 0.87 / en 0.87 on a 12 s probe), and a tie keeps the
+    /// incumbent — so a 2½-minute English dictation was inserted as German-model
+    /// gibberish. Clear wins either way stay on the fast path.
+    static func probeIsInconclusive(
+        among scored: [LanguageCandidate],
+        currentCode: String?
+    ) -> Bool {
+        guard switchTarget(among: scored, currentCode: currentCode) == nil,
+              let current = scored.first(where: { languageCode(of: $0.localeID) == currentCode })
+        else { return false }
+        return scored.contains {
+            languageCode(of: $0.localeID) != currentCode && !$0.text.isEmpty
+                && abs($0.confidence - current.confidence) < switchConfidenceMargin
+        }
+    }
 }
