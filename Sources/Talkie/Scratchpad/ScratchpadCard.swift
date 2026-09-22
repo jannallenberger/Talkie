@@ -116,8 +116,8 @@ private struct ScratchpadRow: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Theme.coral.opacity(0.85))
                     .frame(width: 14)
-                    .help("Suggested by Talkie from your dictation — edit or delete it freely.")
-                    .accessibilityLabel("Suggested by Talkie")
+                    .help("Suggested by \(Brand.displayName) from your dictation — edit or delete it freely.")
+                    .accessibilityLabel("Suggested by \(Brand.displayName)")
             } else {
                 // A dim dot keeps notes aligned with tasks without a checkbox.
                 Circle()
