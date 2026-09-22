@@ -854,3 +854,14 @@
 "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup.";
 "Apple Intelligence is still downloading its model — cleanup will work once it's ready." = "Apple Intelligence is still downloading its model — cleanup will work once it's ready.";
 "This Mac can't run on-device cleanup." = "This Mac can't run on-device cleanup.";
+
+/* Speech model picker */
+"Recognize dictation with" = "Recognize dictation with";
+"The dictation model is the one behind the Mac's own Dictation key — it punctuates by grammar instead of at every pause." = "The dictation model is the one behind the Mac's own Dictation key — it punctuates by grammar instead of at every pause.";
+"Long-form model" = "Long-form model";
+"Dictation model" = "Dictation model";
+"Meetings and file imports always use the long-form model." = "Meetings and file imports always use the long-form model.";
+
+/* Paste everything at once */
+"Paste everything at once" = "Paste everything at once";
+"Never type your words in letter by letter, in any app." = "Never type your words in letter by letter, in any app.";

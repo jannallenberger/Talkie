@@ -35,8 +35,10 @@ final class AppProfileStore: ObservableObject {
             // Paste is the universal default now that the global "Insert text by"
             // control is gone (B2). An app only ever resolves to `.type` when it has a
             // per-app override — set by the user, or learned automatically the first
-            // time a paste verifiably failed to land there.
-            insertionMode: p?.insertionMode ?? .paste,
+            // time a paste verifiably failed to land there. "Paste everything at once"
+            // overrides both: typing letter by letter reads as text trickling in, and
+            // a learned `.type` can come from a single mis-read of the field.
+            insertionMode: settings.alwaysPaste ? .paste : (p?.insertionMode ?? .paste),
             bundleID: app.bundleID,
             category: app.category,
             // "Private app": absent/false ⇒ normal (store + learn); only an explicit

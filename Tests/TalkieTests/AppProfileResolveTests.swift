@@ -31,6 +31,23 @@ final class AppProfileResolveTests: XCTestCase {
         XCTAssertEqual(resolved.bundleID, "com.example.app")
     }
 
+    /// "Paste everything at once" beats a per-app `.type` rule — including one the
+    /// self-heal learned from a single paste it couldn't see land.
+    func testAlwaysPasteOverridesLearnedType() {
+        let store = AppProfileStore()
+        let settings = AppSettings()
+        let saved = settings.alwaysPaste
+        defer { settings.alwaysPaste = saved }
+        store.upsert(AppProfile(bundleID: "com.anthropic.claudefordesktop", displayName: "Claude",
+                                insertionMode: .type))
+        let claude = app("com.anthropic.claudefordesktop", category: .chat)
+
+        settings.alwaysPaste = false
+        XCTAssertEqual(store.resolve(for: claude, settings: settings).insertionMode, .type)
+        settings.alwaysPaste = true
+        XCTAssertEqual(store.resolve(for: claude, settings: settings).insertionMode, .paste)
+    }
+
     func testNilBundleIDResolvesToGlobalSettings() {
         // Helper apps with no bundle id can never match a profile; they always
         // get the global defaults.

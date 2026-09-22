@@ -843,3 +843,14 @@
 "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "整形を使うには、Apple Intelligence を有効にしてください（システム設定 → Apple Intelligence & Siri）。";
 "Apple Intelligence is still downloading its model — cleanup will work once it's ready." = "Apple Intelligence がモデルをダウンロード中です — 準備が整うと整形が使えるようになります。";
 "This Mac can't run on-device cleanup." = "この Mac ではオンデバイスの整形を実行できません。";
+
+/* Speech model picker */
+"Recognize dictation with" = "音声入力の認識に使うモデル";
+"The dictation model is the one behind the Mac's own Dictation key — it punctuates by grammar instead of at every pause." = "音声入力モデルは Mac の音声入力キーと同じモデルです。間ごとではなく文法に基づいて句読点を付けます。";
+"Long-form model" = "長文モデル";
+"Dictation model" = "音声入力モデル";
+"Meetings and file imports always use the long-form model." = "会議とファイルの読み込みには常に長文モデルを使います。";
+
+/* Paste everything at once */
+"Paste everything at once" = "まとめて一度にペースト";
+"Never type your words in letter by letter, in any app." = "どのアプリでも、1文字ずつ入力しません。";

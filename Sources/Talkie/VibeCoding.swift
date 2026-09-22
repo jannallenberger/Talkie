@@ -876,8 +876,11 @@ enum SpokenFileMatcher {
 
         // Tokenize, splitting "library.tsx" → library · dot · tsx so a literal
         // period the recognizer inserted still matches a spoken "dot" key.
-        var tokens: [(original: String, norm: String)] = []
-        for raw in text.split(separator: " ", omittingEmptySubsequences: true) {
+        // `source` = index of the space-separated word a token came from, so the
+        // pieces of a split word that end up UNmatched are glued back together
+        // exactly as spoken ("26.5" stays "26.5", never "26 dot 5").
+        var tokens: [(original: String, norm: String, source: Int)] = []
+        for (source, raw) in text.split(separator: " ", omittingEmptySubsequences: true).enumerated() {
             let original = String(raw)
             let punct = CharacterSet(charactersIn: ",;:!?\"'()")
             let cleaned = original.trimmingCharacters(in: punct)
@@ -887,21 +890,27 @@ enum SpokenFileMatcher {
                 let lead = String(original.prefix(while: { ",;:!?\"'()".contains($0) }))
                 let parts = cleaned.split(separator: ".", omittingEmptySubsequences: true)
                 for (i, part) in parts.enumerated() {
-                    if i > 0 { tokens.append(("dot", "dot")) }
+                    if i > 0 { tokens.append((".", "dot", source)) }
                     let originalPart = (i == 0 ? lead : "") + String(part)
-                    tokens.append((originalPart, normalizeToken(String(part))))
+                    tokens.append((originalPart, normalizeToken(String(part)), source))
                 }
                 // Re-attach any trailing punctuation to the last sub-token.
-                if let trailing = original.last, ",;:!?\"')".contains(trailing), var last = tokens.last {
-                    last.original += String(trailing)
+                // All of it — "(2.0.1)," ends in two marks, and keeping only the last
+                // one silently dropped the ")".
+                let trailing = String(original.reversed().prefix(while: { ",;:!?\"')".contains($0) }).reversed())
+                if !trailing.isEmpty, var last = tokens.last {
+                    last.original += trailing
                     tokens[tokens.count - 1] = last
                 }
             } else {
-                tokens.append((original, normalizeToken(original)))
+                tokens.append((original, normalizeToken(original), source))
             }
         }
 
-        var out: [String] = []
+        // Emitted pieces: a matched filename, or an unmatched token with its source
+        // word. Adjacent unmatched pieces of the same source word are re-joined with
+        // no space, restoring the original word.
+        var out: [(text: String, source: Int?)] = []
         var i = 0
         var replacements = 0
         let maxN = max(1, snapshot.maxKeyTokens)
@@ -923,18 +932,24 @@ enum SpokenFileMatcher {
                 // basename; otherwise (editor, or a basename with no path) keep the basename.
                 // Trailing punctuation carries either way.
                 let emitted = preferPaths ? (snapshot.pathMap[canonical] ?? canonical) : canonical
-                out.append(emitted + trailing)
+                out.append((emitted + trailing, nil))
                 replacements += 1
                 i += n
                 matched = true
                 break
             }
             if !matched {
-                out.append(tokens[i].original)
+                out.append((tokens[i].original, tokens[i].source))
                 i += 1
             }
         }
-        return (out.joined(separator: " "), replacements)
+        var joined = ""
+        for (k, piece) in out.enumerated() {
+            let continuesWord = k > 0 && piece.source != nil && piece.source == out[k - 1].source
+            if k > 0 && !continuesWord { joined += " " }
+            joined += piece.text
+        }
+        return (joined, replacements)
     }
 
     // MARK: Spoken-key generation
@@ -966,8 +981,10 @@ enum SpokenFileMatcher {
             for e in extForms {
                 keys.insert("\(b) \(e)")
             }
-            // Also allow just the base name (no extension) for short, unique names.
-            if baseWords.count >= 2 { keys.insert(b) }
+            // No bare-base key ("settings view" alone): a two-word phrase that merely
+            // sounds like a filename is usually you naming a UI element for the
+            // agent, and tagging it — sometimes as an unrelated .py — hijacked the
+            // sentence. A file snaps only when its extension is spoken too.
         }
         return Array(keys)
     }

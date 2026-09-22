@@ -843,3 +843,14 @@
 "Turn on Apple Intelligence (System Settings → Apple Intelligence & Siri) to enable cleanup." = "Aktiviere Apple Intelligence (Systemeinstellungen → Apple Intelligence & Siri), um die Bereinigung zu aktivieren.";
 "Apple Intelligence is still downloading its model — cleanup will work once it's ready." = "Apple Intelligence lädt sein Modell noch herunter — die Bereinigung funktioniert, sobald es bereit ist.";
 "This Mac can't run on-device cleanup." = "Dieser Mac kann keine Bereinigung auf dem Gerät ausführen.";
+
+/* Speech model picker */
+"Recognize dictation with" = "Diktat erkennen mit";
+"The dictation model is the one behind the Mac's own Dictation key — it punctuates by grammar instead of at every pause." = "Das Diktiermodell steckt hinter der Diktiertaste deines Macs – es setzt Satzzeichen nach Grammatik statt bei jeder Pause.";
+"Long-form model" = "Langform-Modell";
+"Dictation model" = "Diktiermodell";
+"Meetings and file imports always use the long-form model." = "Meetings und Datei-Importe nutzen immer das Langform-Modell.";
+
+/* Paste everything at once */
+"Paste everything at once" = "Alles auf einmal einfügen";
+"Never type your words in letter by letter, in any app." = "Deine Worte nie Buchstabe für Buchstabe tippen – in keiner App.";
