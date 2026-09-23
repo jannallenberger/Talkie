@@ -125,4 +125,22 @@ final class ParrotNameTests: XCTestCase {
         let msg = AppDelegate.learnedPingMessage(parrotName: "   ", to: "term", source: .fieldEdit)
         XCTAssertEqual(msg, "Added “term” to dictionary")
     }
+
+    // MARK: - Retired brand migration
+
+    /// A parrot name left at the retired "Chirp" brand shows the current app name,
+    /// so the learned-word pill no longer says "Chirp learned …".
+    func testRetiredBrandNameMigratesToAppName() {
+        XCTAssertEqual(AppSettings.migratedParrotName("Chirp"), Brand.displayName)
+        XCTAssertEqual(AppSettings.migratedParrotName("chirp"), Brand.displayName)
+        XCTAssertFalse(AppDelegate.learnedPingMessage(parrotName: AppSettings.migratedParrotName("Chirp"),
+                                                      to: "Talkie", source: .fieldEdit).contains("Chirp"))
+    }
+
+    /// A name the user chose — or no name — is never touched.
+    func testUserNamesAreKept() {
+        XCTAssertEqual(AppSettings.migratedParrotName("Kiwi"), "Kiwi")
+        XCTAssertEqual(AppSettings.migratedParrotName("Chirpy"), "Chirpy")
+        XCTAssertEqual(AppSettings.migratedParrotName(""), "")
+    }
 }

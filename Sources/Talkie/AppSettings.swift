@@ -593,7 +593,11 @@ final class AppSettings: ObservableObject {
         userName = d.string(forKey: Keys.userName) ?? ""
         // Normalize on load too, so a value written by an older build (or edited in
         // the plist by hand) can't smuggle in whitespace or an over-long name.
-        parrotName = AppSettings.normalizedParrotName(d.string(forKey: Keys.parrotName) ?? "")
+        let storedParrotName = AppSettings.normalizedParrotName(d.string(forKey: Keys.parrotName) ?? "")
+        let migratedParrotName = AppSettings.migratedParrotName(storedParrotName)
+        parrotName = migratedParrotName
+        // `didSet` doesn't fire during init — persist a migrated name explicitly.
+        if migratedParrotName != storedParrotName { d.set(migratedParrotName, forKey: Keys.parrotName) }
         hasOnboarded = d.bool(forKey: Keys.hasOnboarded)
         playSounds = d.bool(forKey: Keys.playSounds)
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
@@ -650,6 +654,17 @@ final class AppSettings: ObservableObject {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > parrotNameMaxLength else { return trimmed }
         return String(trimmed.prefix(parrotNameMaxLength))
+    }
+
+    /// The app's brief interim name. Builds from that period seeded it as the parrot's
+    /// name, so the learned-word pill still read "Chirp learned …" long after the
+    /// rename back — the stale setting, not any code path, carried the old brand.
+    static let retiredBrandName = "Chirp"
+
+    /// A stored parrot name that is exactly the retired brand becomes the current app
+    /// name; any other name (including empty = unnamed) is the user's and is kept.
+    static func migratedParrotName(_ name: String) -> String {
+        name.caseInsensitiveCompare(retiredBrandName) == .orderedSame ? Brand.displayName : name
     }
 
     /// The cleanup style for an app category (user override, else default).
