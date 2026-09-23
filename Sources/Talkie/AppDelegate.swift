@@ -1757,34 +1757,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Score with the model this session actually decoded with, so the
                 // candidates are comparable to what the user just saw.
                 let sessionModel = await self.engine.lastSessionModel()
-                // Score only the head of the audio: a few seconds of speech settle
-                // the language, and re-decoding a whole long dictation once per
-                // spoken language was the single biggest stop-time cost (~3 s on a
-                // one-minute paragraph). The full re-decode below runs only on an
-                // actual switch.
-                let probeIsWhole = TranscriptionEngine.head(of: buffers, seconds: Self.languageProbeSeconds).count
-                    == buffers.count
-                let scored = await self.engine.transcribeCandidates(
-                    buffers, localeIdentifiers: langs, installIfNeeded: true,
-                    model: sessionModel, probeSeconds: Self.languageProbeSeconds)
-                let candidates = scored.map {
-                    LanguageDetector.LanguageCandidate(localeID: $0.localeID, text: $0.text, confidence: $0.confidence)
-                }
-                let currentConf = candidates.first {
-                    LanguageDetector.languageCode(of: $0.localeID) == currentCode
-                }?.confidence ?? 0
-                talkieDebugLog("decide: current=\(self.currentLocaleID)(\(String(format: "%.2f", currentConf))) scored=[\(scored.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
-                // The switch decision — including the no-baseline absolute floor when
-                // the current locale produced no scored entry — lives in a pure helper.
-                if let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode),
-                   // The probe decoded only the head; fetch the whole utterance in
-                   // the winning language. If that fails, keep the original rather
-                   // than insert a truncated transcript.
-                   let switchedText = probeIsWhole
-                       ? best.text
-                       : await self.engine.transcribeBuffered(self.audio.bufferedAudio(), localeIdentifier: best.localeID,
-                                                              installIfNeeded: true, model: sessionModel) {
-                    finalRaw = switchedText
+                // Probe the head, rescore the whole utterance on a close call, and
+                // re-decode the winner in full — all inside the engine, which is the
+                // only place the (non-Sendable, drain-once) audio can be replayed.
+                // The switch rule itself lives in pure `LanguageDetector` helpers.
+                if let best = await self.engine.decideLanguage(
+                    buffers, localeIdentifiers: langs, currentCode: currentCode,
+                    model: sessionModel, probeSeconds: Self.languageProbeSeconds) {
+                    finalRaw = best.text
                     languageSwitched = true
                     self.currentLocaleID = best.localeID
                     await self.engine.setLocaleIdentifier(best.localeID) // stick to it next time
