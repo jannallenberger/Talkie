@@ -276,6 +276,12 @@ actor TranscriptionEngine {
     /// See `sessionModel`.
     func lastSessionModel() -> RecognizerModel { sessionModel }
 
+    /// The live session's transcript so far (committed + still-changing tail), for
+    /// the mid-dictation text vote. Reading it costs nothing — no re-decode.
+    func liveTranscript() -> String {
+        volatileText.isEmpty ? finalizedText : finalizedText + " " + volatileText
+    }
+
     /// Switch the language used for subsequent live sessions (language auto-detect).
     func setLocaleIdentifier(_ id: String) {
         locale = Locale(identifier: id)
@@ -523,7 +529,9 @@ actor TranscriptionEngine {
         localeIdentifiers ids: [String],
         currentCode: String?,
         model: RecognizerModel,
-        probeSeconds: Double
+        probeSeconds: Double,
+        textTarget: String? = nil,
+        liveConfidence: Double? = nil
     ) async -> LanguageDetector.LanguageCandidate? {
         func score(probe: Double?) async -> [LanguageDetector.LanguageCandidate] {
             let scored = await transcribeCandidates(buffers, localeIdentifiers: ids, installIfNeeded: true,
@@ -536,6 +544,22 @@ actor TranscriptionEngine {
             talkieDebugLog("decide\(probe == nil ? "[whole]" : ""): current=\(currentCode ?? "?")(\(String(format: "%.2f", currentConf))) " +
                            "scored=[\(candidates.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
             return candidates
+        }
+
+        // The recognized words clearly belong to another spoken language: decode the
+        // whole utterance there once and take it — no probe, no margins — unless that
+        // model fits the audio worse than the live one (see `textVoteConfirmed`).
+        if let textTarget {
+            if let whole = await transcribeScored(buffers, localeIdentifier: textTarget,
+                                                  installIfNeeded: true, model: model) {
+                let confirmed = LanguageDetector.textVoteConfirmed(targetConfidence: whole.confidence,
+                                                                   liveConfidence: liveConfidence)
+                talkieDebugLog("decide[text]: words read as \(textTarget) — acoustic \(String(format: "%.2f", whole.confidence)) vs live \(liveConfidence.map { String(format: "%.2f", $0) } ?? "?") → \(confirmed ? "switch" : "rejected")")
+                if confirmed {
+                    return LanguageDetector.LanguageCandidate(localeID: textTarget, text: whole.text,
+                                                              confidence: whole.confidence)
+                }
+            }
         }
 
         var scoredWhole = Self.head(of: buffers, seconds: probeSeconds).count == buffers.count
@@ -694,7 +718,7 @@ actor TranscriptionEngine {
         try? await analyzer.finalizeAndFinishThroughEndOfInput()
         let collected = await reader.value
 
-        let text = collected.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = HesitationMarkers.strip(collected.text).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             talkieDebugLog("reTx[\(id)]: empty transcript")
             return nil
@@ -822,7 +846,9 @@ actor TranscriptionEngine {
             guard let self else { return }
             do {
                 for try await result in Self.recognizedResults(of: transcriber) {
-                    let text = String(result.text.characters)
+                    // Drop the recognizer's `#um`-style hesitation markers at the
+                    // source, so neither the pill nor the transcript ever shows them.
+                    let text = HesitationMarkers.strip(String(result.text.characters))
                     // Capture the finalized segment's audio-clock span (seconds).
                     // Guard non-finite like the multilingual lanes do — a bad range
                     // must degrade to a zero-length span at a sane time, never a NaN.
@@ -842,7 +868,9 @@ actor TranscriptionEngine {
                             guard let c = run.transcriptionConfidence else { continue }
                             let w = String(result.text[run.range].characters)
                                 .trimmingCharacters(in: .whitespaces)
-                            if !w.isEmpty { words.append(WordConfidence(word: w, confidence: c)) }
+                            if !w.isEmpty, !HesitationMarkers.isMarker(w) {
+                                words.append(WordConfidence(word: w, confidence: c))
+                            }
                         }
                     }
                     await self.ingest(epoch: epoch, text: text, isFinal: result.isFinal,
