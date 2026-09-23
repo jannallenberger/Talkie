@@ -32,6 +32,14 @@ enum LanguageDetector {
     /// (low), so a modest margin avoids flips on near-ties.
     static let switchConfidenceMargin = 0.08
 
+    /// The margin once a close head probe has been rescored over the WHOLE utterance.
+    /// Averaged over a long dictation, a small lead is real: English speech in a
+    /// German session scored de 0.84 / en 0.91 over ~400 words — a clear English win
+    /// the 0.08 short-probe margin threw away, inserting German-model gibberish. The
+    /// wrong model on foreign speech sits well below (English speech: en leads by
+    /// 0.07–0.31; German speech: en only 0.05–0.38 absolute), so 0.03 is still safe.
+    static let wholeRescoreMargin = 0.03
+
     /// Absolute acoustic-confidence floor a candidate must clear before it can win
     /// the language switch when there's *no* score for the current language to
     /// compare against (the current-locale re-transcribe came back empty, so its
@@ -142,7 +150,8 @@ enum LanguageDetector {
     ///   current language rather than flipping to noise.
     static func switchTarget(
         among scored: [LanguageCandidate],
-        currentCode: String?
+        currentCode: String?,
+        margin: Double = switchConfidenceMargin
     ) -> LanguageCandidate? {
         guard let best = scored.max(by: { $0.confidence < $1.confidence }) else { return nil }
         guard languageCode(of: best.localeID) != currentCode, !best.text.isEmpty else { return nil }
@@ -150,7 +159,7 @@ enum LanguageDetector {
         let currentEntry = scored.first { languageCode(of: $0.localeID) == currentCode }
         if let currentEntry {
             // Incumbent present: beat it by the relative margin.
-            return best.confidence >= currentEntry.confidence + switchConfidenceMargin ? best : nil
+            return best.confidence >= currentEntry.confidence + margin ? best : nil
         }
         // No incumbent to compare against — demand absolute confidence instead of
         // letting the margin-vs-zero test wave anything through.
@@ -198,5 +207,50 @@ enum LanguageDetector {
         guard let best = switchTarget(among: scored, currentCode: currentCode),
               best.confidence >= switchAbsoluteFloor else { return nil }
         return best
+    }
+
+    // MARK: - Text vote
+
+    /// Fewest words a transcript needs before its language is trusted as a vote.
+    static let textVoteMinWords = 8
+    /// How sure the language identifier must be to cast the vote.
+    static let textVoteMinProbability = 0.9
+
+    /// The spoken language the RECOGNIZED WORDS clearly belong to, when that is not
+    /// the current language — or nil. Language-ID of the live model's own output
+    /// turned out to be decisive in one direction: across every logged dictation, a
+    /// German model decoding English speech produced text that read as English from
+    /// the 4th word (en 0.95–1.00), which is exactly the case the acoustic margins
+    /// kept missing. The other direction is NOT safe — an English model decoding
+    /// German speech produced 12+ English-looking words before the whole read German
+    /// — so this only ever votes FOR a switch; "looks like the current language" is
+    /// never treated as proof, and callers fall back to the acoustic check.
+    static func textVote(_ text: String, spokenLanguages: [String], currentCode: String?) -> String? {
+        let cleaned = HesitationMarkers.strip(text)
+        let words = cleaned.split(whereSeparator: { $0.isWhitespace })
+        guard words.count >= textVoteMinWords else { return nil }
+        let candidates = distinctByCode(spokenLanguages)
+        let codes = candidates.compactMap { languageCode(of: $0) }
+        guard codes.count > 1 else { return nil }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.languageConstraints = codes.map { NLLanguage($0) }
+        recognizer.processString(cleaned)
+        guard let (top, probability) = recognizer.languageHypotheses(withMaximum: codes.count)
+            .max(by: { $0.value < $1.value }),
+              probability >= textVoteMinProbability,
+              top.rawValue != currentCode
+        else { return nil }
+        return candidates.first { languageCode(of: $0) == top.rawValue }
+    }
+
+    /// Whether the text-voted language's re-decode may replace the transcript: its
+    /// acoustic fit must not be worse than the live model's own (a small slack
+    /// absorbs noise). Guards a German dictation that quotes a long English phrase,
+    /// where the text could read English but the English model fits the German
+    /// parts badly.
+    static let textVoteAcousticSlack = 0.02
+    static func textVoteConfirmed(targetConfidence: Double, liveConfidence: Double?) -> Bool {
+        guard let liveConfidence else { return true }
+        return targetConfidence + textVoteAcousticSlack >= liveConfidence
     }
 }

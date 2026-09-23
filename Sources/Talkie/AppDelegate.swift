@@ -174,6 +174,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var liveLanguageTask: Task<Void, Never>?
     /// Cleared the moment the session stops — the probe then never starts a restart.
     private var liveSwitchAllowed = false
+    /// True from the moment a live restart begins until its audio handoff lands. Only
+    /// then must the stop path wait for the probe (finalizing first would leave the
+    /// new analyzer with no audio); a probe that is merely still scoring is abandoned,
+    /// so its model check can never delay your text.
+    private var liveRestartInFlight = false
     /// Whether THIS dictation's live session was restarted in another language. The
     /// streamed per-segment cleanup ran partly in the old language (and was pinned to
     /// it), so the stop path must re-clean the whole transcript instead.
@@ -1466,28 +1471,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Start the mid-dictation language probe for this session (multilingual only).
-    /// At each `LanguageDetector.liveProbeCheckpoints` mark it scores the audio so far
-    /// in every spoken language; on a clear win for another language it restarts the
-    /// live session there. A clear stay ends the probe; a close call waits for the
-    /// next checkpoint. Models are never downloaded mid-dictation.
+    /// Start the mid-dictation language check for this session (multilingual only).
+    /// Every second it reads the live transcript: once its words clearly belong to
+    /// another spoken language (`LanguageDetector.textVote` — free, no re-decode) the
+    /// live session restarts there. At the `liveProbeCheckpoints` marks it also runs
+    /// the acoustic probe, which catches what the words can't yet show (an English
+    /// model's German output reads English for a while). Models are never downloaded
+    /// mid-dictation; a restart the engine refuses is retried a few times.
     private func startLiveLanguageProbe(sessionID myID: Int, generation: Int) {
         liveLanguageTask?.cancel()
         liveSwitchAllowed = true
         sessionLiveSwitched = false
         let langs = LanguageDetector.distinctByCode(settings.spokenLanguages)
         liveLanguageTask = Task { @MainActor [weak self] in
-            for checkpoint in LanguageDetector.liveProbeCheckpoints {
-                // Wait for enough audio (or for the session to end).
-                while true {
-                    guard let self, self.liveSwitchAllowed, self.sessionID == myID,
-                          !Task.isCancelled else { return }
-                    if self.audio.bufferedSeconds >= checkpoint { break }
-                    try? await Task.sleep(for: .milliseconds(250))
-                }
-                guard let self else { return }
-                let buffers = self.audio.bufferedAudioSnapshot()
+            var checkpoints = LanguageDetector.liveProbeCheckpoints[...]
+            var restartAttempts = 0
+            while restartAttempts < 3 {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, self.liveSwitchAllowed, self.sessionID == myID, !Task.isCancelled else { return }
                 let currentCode = LanguageDetector.languageCode(of: self.currentLocaleID)
+
+                let live = await self.engine.liveTranscript()
+                guard self.liveSwitchAllowed, self.sessionID == myID, !Task.isCancelled else { return }
+                if let target = LanguageDetector.textVote(live, spokenLanguages: langs, currentCode: currentCode) {
+                    talkieDebugLog("liveLang[text]: words read as \(target) — restarting live session")
+                    if await self.performLiveLanguageSwitch(to: target, generation: generation) { return }
+                    restartAttempts += 1
+                    continue
+                }
+
+                guard let checkpoint = checkpoints.first, self.audio.bufferedSeconds >= checkpoint else { continue }
+                checkpoints = checkpoints.dropFirst()
+                let buffers = self.audio.bufferedAudioSnapshot()
                 let model = await self.engine.lastSessionModel()
                 let scored = await self.engine.transcribeCandidates(
                     buffers, localeIdentifiers: langs, installIfNeeded: false, model: model)
@@ -1497,11 +1512,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 talkieDebugLog("liveLang[@\(Int(checkpoint))s]: current=\(self.currentLocaleID) scored=[\(candidates.map { "\($0.localeID):\(String(format: "%.2f", $0.confidence))" }.joined(separator: ", "))]")
                 guard self.liveSwitchAllowed, self.sessionID == myID, !Task.isCancelled else { return }
                 if let best = LanguageDetector.liveSwitchTarget(among: candidates, currentCode: currentCode) {
-                    await self.performLiveLanguageSwitch(to: best.localeID, generation: generation)
-                    return
+                    if await self.performLiveLanguageSwitch(to: best.localeID, generation: generation) { return }
+                    restartAttempts += 1
+                } else if !LanguageDetector.probeIsInconclusive(among: candidates, currentCode: currentCode) {
+                    checkpoints = [] // acoustically clear — the text vote keeps watching
                 }
-                guard LanguageDetector.probeIsInconclusive(among: candidates, currentCode: currentCode)
-                else { return } // clearly the current language — nothing more to check
             }
         }
     }
@@ -1509,21 +1524,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Restart the live session in `localeID` and hand it the audio captured so far.
     /// Only reached while `liveSwitchAllowed` (the stop path awaits this task, so the
     /// handoff below always lands before the session is finalized).
-    private func performLiveLanguageSwitch(to localeID: String, generation: Int) async {
+    @discardableResult
+    private func performLiveLanguageSwitch(to localeID: String, generation: Int) async -> Bool {
         // The replay must include the opening, or the new session would lose it.
-        guard audio.bufferedAudioIsComplete else { return }
+        guard audio.bufferedAudioIsComplete else { return false }
+        liveRestartInFlight = true
+        defer { liveRestartInFlight = false }
         guard let continuation = await engine.restartLive(localeIdentifier: localeID, ifGeneration: generation)
-        else { return }
+        else { return false }
         guard audio.handOff(to: continuation) else {
             // Unreachable in practice (completeness checked above, nothing drains
             // before this task is awaited) — but never leave the analyzer hanging.
             continuation.finish()
             talkieDebugLog("liveLang: handoff failed after restart — transcript may be empty")
-            return
+            return false
         }
         currentLocaleID = localeID
         sessionLiveSwitched = true
         talkieDebugLog("liveLang: switched live session → \(localeID)")
+        return true
     }
 
     /// Stop the mid-dictation language probe without awaiting it (abort paths).
@@ -1629,7 +1648,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // No live language restart may START after this point; one already in
         // flight is awaited below, before finalizing, so its handoff completes.
         liveSwitchAllowed = false
-        let liveLanguageTask = self.liveLanguageTask
+        let liveLanguageTask = liveRestartInFlight ? self.liveLanguageTask : nil
+        if !liveRestartInFlight { self.liveLanguageTask?.cancel() }
         self.liveLanguageTask = nil
         audio.stop()
         // Recording's done (you've stopped talking) — bring the music back, even
@@ -1862,7 +1882,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     talkieDebugLog("decide: skipped — capture window rolled over, a re-decode would truncate")
                 } else if let best = await self.engine.decideLanguage(
                     buffers, localeIdentifiers: langs, currentCode: currentCode,
-                    model: sessionModel, probeSeconds: Self.languageProbeSeconds) {
+                    model: sessionModel, probeSeconds: Self.languageProbeSeconds,
+                    // The live model's own words, read as text: when they clearly belong
+                    // to another spoken language, that settles it (see `textVote`).
+                    textTarget: LanguageDetector.textVote(raw, spokenLanguages: langs, currentCode: currentCode),
+                    liveConfidence: wordConfidences.isEmpty ? nil
+                        : wordConfidences.map { Double($0.confidence) }.reduce(0, +) / Double(wordConfidences.count)) {
                     finalRaw = best.text
                     languageSwitched = true
                     self.currentLocaleID = best.localeID

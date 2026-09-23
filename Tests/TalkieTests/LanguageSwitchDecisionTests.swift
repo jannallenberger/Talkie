@@ -157,4 +157,46 @@ final class LanguageSwitchDecisionTests: XCTestCase {
         let scored = [C(localeID: "en-GB", text: "something", confidence: 0.40)]
         XCTAssertFalse(LanguageDetector.probeIsInconclusive(among: scored, currentCode: "de"))
     }
+
+    // MARK: - Whole-utterance rescore margin
+
+    /// 2026-09-23: a 2½-minute ENGLISH dictation in a German session, rescored whole
+    /// (~400 words): de 0.84 / en 0.91. The 0.08 short-probe margin kept German and
+    /// inserted gibberish; the whole-rescore margin must switch.
+    func testWholeRescoreSwitchesOnSteadyLead() {
+        let scored = [
+            C(localeID: "de-DE", text: "But please tell me exactly how bevel", confidence: 0.84),
+            C(localeID: "en-GB", text: "But please tell me exactly how Bevel", confidence: 0.91),
+        ]
+        XCTAssertNil(LanguageDetector.switchTarget(among: scored, currentCode: "de"),
+                     "the short-probe margin alone rejects this — the regression")
+        XCTAssertEqual(LanguageDetector.switchTarget(among: scored, currentCode: "de",
+                                                     margin: LanguageDetector.wholeRescoreMargin)?.localeID,
+                       "en-GB")
+    }
+
+    /// Even the whole-rescore margin never flips on a dead heat.
+    func testWholeRescoreKeepsIncumbentOnTie() {
+        let scored = [
+            C(localeID: "de-DE", text: "etwas", confidence: 0.88),
+            C(localeID: "en-GB", text: "something", confidence: 0.89),
+        ]
+        XCTAssertNil(LanguageDetector.switchTarget(among: scored, currentCode: "de",
+                                                   margin: LanguageDetector.wholeRescoreMargin))
+    }
+
+    /// German speech: the English model scores far below — never a switch.
+    func testWholeRescoreGermanSpeechStaysGerman() {
+        let scored = [
+            C(localeID: "de-DE", text: "Also mal ganz kurz schauen", confidence: 0.88),
+            C(localeID: "en-GB", text: "also mal gans", confidence: 0.38),
+        ]
+        XCTAssertNil(LanguageDetector.switchTarget(among: scored, currentCode: "de",
+                                                   margin: LanguageDetector.wholeRescoreMargin))
+    }
+
+    func testWholeRescoreMarginIsSmallerButPositive() {
+        XCTAssertGreaterThan(LanguageDetector.wholeRescoreMargin, 0)
+        XCTAssertLessThan(LanguageDetector.wholeRescoreMargin, LanguageDetector.switchConfidenceMargin)
+    }
 }

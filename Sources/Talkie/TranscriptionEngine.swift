@@ -184,6 +184,27 @@ extension DictationTranscriber.Result: TextBearingSpeechResult {}
 /// Wraps Apple's macOS 26 `SpeechAnalyzer` + `SpeechTranscriber` for live,
 /// on-device, low-latency dictation. One instance is reused across sessions;
 /// the heavy model load happens once and lingers for the process lifetime.
+/// Resolves a checked continuation with whichever outcome arrives first; later ones
+/// are ignored. Lets `modelIsReady` race an install against a deadline without a
+/// task group, which would wait for the (possibly minutes-long) download to finish.
+private final class FirstOutcome: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Bool, Never>?
+
+    func bind(_ continuation: CheckedContinuation<Bool, Never>) {
+        lock.lock(); defer { lock.unlock() }
+        self.continuation = continuation
+    }
+
+    func resolve(_ value: Bool) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(returning: value)
+    }
+}
+
 actor TranscriptionEngine {
     private var locale: Locale
     private var contextualStrings: [String] = []
@@ -255,6 +276,12 @@ actor TranscriptionEngine {
     /// See `sessionModel`.
     func lastSessionModel() -> RecognizerModel { sessionModel }
 
+    /// The live session's transcript so far (committed + still-changing tail), for
+    /// the mid-dictation text vote. Reading it costs nothing — no re-decode.
+    func liveTranscript() -> String {
+        volatileText.isEmpty ? finalizedText : finalizedText + " " + volatileText
+    }
+
     /// Switch the language used for subsequent live sessions (language auto-detect).
     func setLocaleIdentifier(_ id: String) {
         locale = Locale(identifier: id)
@@ -302,23 +329,42 @@ actor TranscriptionEngine {
 
     /// Ensure the on-device model for `transcriber` is downloaded & installed.
     /// First run on a given locale triggers a one-time download.
-    /// Whether a module's model can run NOW without a download. In a fresh process
-    /// `AssetInventory.status` reports a model that's already on disk as merely
-    /// `.supported` until an installation request is made for it — which flips it to
-    /// `.installed` on the spot, downloading nothing (checked: de-DE and en-GB both
-    /// `.supported` → request → `.installed`, instantly). That is why the
-    /// mid-dictation probe bailed "not installed" for BOTH languages right after a
-    /// relaunch while the stop path, whose install call makes that request, decoded
-    /// them fine. So: ask for the request (never run it), then re-read the status.
+    /// Whether a module's model can run now, for the paths that must never wait on a
+    /// real download (the mid-dictation probe and the live restart). Neither the
+    /// status nor an installation request is reliable inside the running app: both
+    /// kept reporting on-disk models as not installed dictation after dictation (the
+    /// probe bailed for BOTH languages every time), while the stop path's install
+    /// call — which finds the assets on disk and returns at once — decoded them fine.
+    /// So run that same install, but race it against `quickInstallSeconds`: an
+    /// on-disk model is ready in milliseconds, and a genuine download is left to
+    /// finish in the background rather than stalling the dictation.
     private func modelIsReady(_ module: any SpeechModule) async -> Bool {
-        if await AssetInventory.status(forModules: [module]) == .installed { return true }
-        do {
-            guard try await AssetInventory.assetInstallationRequest(supporting: [module]) != nil else { return true }
-        } catch {
-            return false
+        let status = await AssetInventory.status(forModules: [module])
+        if status == .installed { return true }
+        let started = Date()
+        let outcome = FirstOutcome()
+        let ready = await withCheckedContinuation { continuation in
+            outcome.bind(continuation)
+            Task {
+                do {
+                    try await self.ensureModelInstalled(for: module)
+                    outcome.resolve(true)
+                } catch {
+                    outcome.resolve(false)
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(Self.quickInstallSeconds))
+                outcome.resolve(false)
+            }
         }
-        return await AssetInventory.status(forModules: [module]) == .installed
+        talkieDebugLog("modelReady: status=\(status) → install \(ready ? "done" : "not done") in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+        return ready
     }
+
+    /// How long `modelIsReady` waits for an install before calling the model not
+    /// ready. Generous for an on-disk model, far short of any real download.
+    private static let quickInstallSeconds: Double = 2
 
     private func ensureModelInstalled(for transcriber: any SpeechModule) async throws {
         let status = await AssetInventory.status(forModules: [transcriber])
@@ -483,7 +529,9 @@ actor TranscriptionEngine {
         localeIdentifiers ids: [String],
         currentCode: String?,
         model: RecognizerModel,
-        probeSeconds: Double
+        probeSeconds: Double,
+        textTarget: String? = nil,
+        liveConfidence: Double? = nil
     ) async -> LanguageDetector.LanguageCandidate? {
         func score(probe: Double?) async -> [LanguageDetector.LanguageCandidate] {
             let scored = await transcribeCandidates(buffers, localeIdentifiers: ids, installIfNeeded: true,
@@ -498,14 +546,35 @@ actor TranscriptionEngine {
             return candidates
         }
 
+        // The recognized words clearly belong to another spoken language: decode the
+        // whole utterance there once and take it — no probe, no margins — unless that
+        // model fits the audio worse than the live one (see `textVoteConfirmed`).
+        if let textTarget {
+            if let whole = await transcribeScored(buffers, localeIdentifier: textTarget,
+                                                  installIfNeeded: true, model: model) {
+                let confirmed = LanguageDetector.textVoteConfirmed(targetConfidence: whole.confidence,
+                                                                   liveConfidence: liveConfidence)
+                talkieDebugLog("decide[text]: words read as \(textTarget) — acoustic \(String(format: "%.2f", whole.confidence)) vs live \(liveConfidence.map { String(format: "%.2f", $0) } ?? "?") → \(confirmed ? "switch" : "rejected")")
+                if confirmed {
+                    return LanguageDetector.LanguageCandidate(localeID: textTarget, text: whole.text,
+                                                              confidence: whole.confidence)
+                }
+            }
+        }
+
         var scoredWhole = Self.head(of: buffers, seconds: probeSeconds).count == buffers.count
         var candidates = await score(probe: probeSeconds)
+        var margin = LanguageDetector.switchConfidenceMargin
         if !scoredWhole, LanguageDetector.probeIsInconclusive(among: candidates, currentCode: currentCode) {
             talkieDebugLog("decide: head probe too close to call — rescoring whole utterance")
             candidates = await score(probe: nil)
             scoredWhole = true
+            // A mean over the whole (long) utterance is a far steadier signal than
+            // the head's few seconds — don't make it clear the short-probe margin.
+            margin = LanguageDetector.wholeRescoreMargin
         }
-        guard let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode) else { return nil }
+        guard let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode,
+                                                       margin: margin) else { return nil }
         if scoredWhole { return best }
         // The probe decoded only the head; fetch the whole utterance in the winning
         // language. If that fails, keep the original rather than insert a truncated
@@ -649,7 +718,7 @@ actor TranscriptionEngine {
         try? await analyzer.finalizeAndFinishThroughEndOfInput()
         let collected = await reader.value
 
-        let text = collected.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = HesitationMarkers.strip(collected.text).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             talkieDebugLog("reTx[\(id)]: empty transcript")
             return nil
@@ -777,7 +846,9 @@ actor TranscriptionEngine {
             guard let self else { return }
             do {
                 for try await result in Self.recognizedResults(of: transcriber) {
-                    let text = String(result.text.characters)
+                    // Drop the recognizer's `#um`-style hesitation markers at the
+                    // source, so neither the pill nor the transcript ever shows them.
+                    let text = HesitationMarkers.strip(String(result.text.characters))
                     // Capture the finalized segment's audio-clock span (seconds).
                     // Guard non-finite like the multilingual lanes do — a bad range
                     // must degrade to a zero-length span at a sane time, never a NaN.
@@ -797,7 +868,9 @@ actor TranscriptionEngine {
                             guard let c = run.transcriptionConfidence else { continue }
                             let w = String(result.text[run.range].characters)
                                 .trimmingCharacters(in: .whitespaces)
-                            if !w.isEmpty { words.append(WordConfidence(word: w, confidence: c)) }
+                            if !w.isEmpty, !HesitationMarkers.isMarker(w) {
+                                words.append(WordConfidence(word: w, confidence: c))
+                            }
                         }
                     }
                     await self.ingest(epoch: epoch, text: text, isFinal: result.isFinal,
