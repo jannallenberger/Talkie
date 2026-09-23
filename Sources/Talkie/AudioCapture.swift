@@ -144,6 +144,10 @@ final class AudioCapture: @unchecked Sendable {
     /// UID of the device the tap is currently bound to, so a config change can ask
     /// `AudioDevices.resolveSwap` whether the active device actually changed.
     private var currentDeviceUID: String?
+    /// The hardware input format the live tap's converter was built for, so a
+    /// configuration change that leaves device AND format untouched (the one
+    /// `setDeviceID` itself posts on the first start) needn't rebuild the tap.
+    private var tapInputFormat: AVAudioFormat?
     private var onLevel: (@Sendable (Float) -> Void)?
     /// Optional passive tap on the CONVERTED analyzer-format PCM (D9 keep-audio tee),
     /// fired for every non-empty converted buffer just like `captured?.append`. Retained
@@ -257,9 +261,12 @@ final class AudioCapture: @unchecked Sendable {
         // catch could remove it (or before this guard existed). Removing
         // unconditionally is a safe no-op when no tap exists, and guarantees we
         // never call `installTap` on a bus that already has one.
+        let started = Date()
+        func ms(_ since: Date) -> Int { Int(Date().timeIntervalSince(since) * 1000) }
         engine.inputNode.removeTap(onBus: 0)
 
         let inputNode = engine.inputNode
+        let nodeMs = ms(started)
 
         // Pin to a real input device. Must happen before `prepare()` reads the
         // device format. If the Mac has no input device at all, surface that
@@ -275,8 +282,10 @@ final class AudioCapture: @unchecked Sendable {
             talkieDebugLog("AudioCapture: setDeviceID(\(device.name)) failed: \(error)")
         }
         currentDeviceUID = device.uid
+        let deviceMs = ms(started)
 
         engine.prepare() // resolve the input device/format before we read it
+        let prepareMs = ms(started)
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
@@ -314,7 +323,26 @@ final class AudioCapture: @unchecked Sendable {
             }
         }
 
+        tapInputFormat = inputFormat
         try engine.start()
+        // Where a slow first pill spends its time (cumulative ms). A cold start after
+        // the audio hardware sat idle measured ~2.5 s once, ~0.1 s warm.
+        talkieDebugLog("mic: started in \(ms(started)) ms — node \(nodeMs), device \(deviceMs), prepare \(prepareMs), engine.start \(ms(started))")
+    }
+
+    /// Do the expensive, mic-free part of starting capture ahead of time — resolve
+    /// the input device, instantiate the input node, prepare the engine — so the
+    /// first dictation after launch doesn't pay it while the pill waits. Never
+    /// starts the engine, so the microphone stays off (no recording indicator).
+    func prewarm(preferredDeviceUID: String?) {
+        guard !isRunning else { return }
+        let started = Date()
+        let inputNode = engine.inputNode
+        if let device = AudioDevices.resolveInput(preferredUID: preferredDeviceUID) {
+            try? inputNode.auAudioUnit.setDeviceID(device.id)
+        }
+        engine.prepare()
+        talkieDebugLog("mic: prewarmed in \(Int(Date().timeIntervalSince(started) * 1000)) ms (mic stays off)")
     }
 
     /// Recover capture after a mid-session input-device/config change. Always on the
@@ -342,6 +370,15 @@ final class AudioCapture: @unchecked Sendable {
             currentUID: currentDeviceUID,
             defaultID: AudioDevices.defaultInputDeviceID()
         )
+
+        // A change that left the engine running on the same device with the same input
+        // format — e.g. the one `setDeviceID` posts right after the first start — needs
+        // no rebuild. Rebuilding anyway re-ran the whole setup on every first start.
+        if case .keep = decision, engine.isRunning,
+           let tapInputFormat, engine.inputNode.outputFormat(forBus: 0) == tapInputFormat {
+            talkieDebugLog("mic: config change, same device + format, still running — no rebuild")
+            return
+        }
 
         // The engine internally stopped on the config change; remove the stale tap
         // before reinstalling so taps can't stack.
@@ -458,6 +495,7 @@ final class AudioCapture: @unchecked Sendable {
         onBuffer = nil
         onCaptureFailed = nil
         currentDeviceUID = nil
+        tapInputFormat = nil
         // Clear the mic-alive stamp so a stopped capture never reads as "alive".
         bufferClockLock.lock()
         lastBufferHostTime = 0

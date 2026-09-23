@@ -132,4 +132,52 @@ final class LiveLanguageSwitchTests: XCTestCase {
         window.append(buffer(8_000))
         XCTAssertEqual(window.seconds, 1.5, accuracy: 0.001)
     }
+
+    // MARK: - Reusing the live verdict at stop
+
+    /// A clear stay (German speech, English far behind) is reusable.
+    func testClearStayIsAcousticStay() {
+        let scored = [
+            C(localeID: "de-DE", text: "Also mal ganz kurz schauen", confidence: 0.88),
+            C(localeID: "en-GB", text: "also mal gans", confidence: 0.22),
+        ]
+        XCTAssertTrue(LanguageDetector.acousticStay(among: scored, currentCode: "de"))
+    }
+
+    /// A close call is not a verdict — the stop path must look for itself.
+    func testCloseCallIsNotAStay() {
+        let scored = [
+            C(localeID: "de-DE", text: "etwas", confidence: 0.87),
+            C(localeID: "en-GB", text: "something", confidence: 0.87),
+        ]
+        XCTAssertFalse(LanguageDetector.acousticStay(among: scored, currentCode: "de"))
+    }
+
+    /// A switch-worthy score is not a stay — even one too weak for the stricter
+    /// LIVE restart rule, which the stop-time rule would still act on.
+    func testWeakButMarginWinnerIsNotAStay() {
+        let scored = [
+            C(localeID: "de-DE", text: "rauschen", confidence: 0.30),
+            C(localeID: "en-GB", text: "noise", confidence: 0.45),
+        ]
+        XCTAssertNil(LanguageDetector.liveSwitchTarget(among: scored, currentCode: "de"))
+        XCTAssertFalse(LanguageDetector.acousticStay(among: scored, currentCode: "de"))
+    }
+
+    /// No score for the current language: nothing to reuse.
+    func testMissingIncumbentIsNotAStay() {
+        let scored = [C(localeID: "en-GB", text: "something", confidence: 0.40)]
+        XCTAssertFalse(LanguageDetector.acousticStay(among: scored, currentCode: "de"))
+    }
+
+    /// The 12 s live probe covers any longer dictation (the stop probe's window).
+    func testTwelveSecondVerdictCoversLongDictation() {
+        XCTAssertTrue(LanguageDetector.liveVerdictCovers(verdictSeconds: 12, totalSeconds: 150, probeSeconds: 12))
+    }
+
+    /// A 6 s verdict covers a short dictation (at least half of it) but not a long one.
+    func testSixSecondVerdictCoversOnlyShortDictations() {
+        XCTAssertTrue(LanguageDetector.liveVerdictCovers(verdictSeconds: 6, totalSeconds: 10, probeSeconds: 12))
+        XCTAssertFalse(LanguageDetector.liveVerdictCovers(verdictSeconds: 6, totalSeconds: 40, probeSeconds: 12))
+    }
 }

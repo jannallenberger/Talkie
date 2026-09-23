@@ -253,4 +253,25 @@ enum LanguageDetector {
         guard let liveConfidence else { return true }
         return targetConfidence + textVoteAcousticSlack >= liveConfidence
     }
+
+    // MARK: - Reusing the live verdict at stop
+
+    /// Whether an acoustic probe says "the current language, clearly": the incumbent
+    /// was scored, nothing beats it by the switch margin, and no rival is within the
+    /// margin either. Exactly the case where the stop-time head probe would also keep
+    /// the current language without a whole-utterance rescore.
+    static func acousticStay(among scored: [LanguageCandidate], currentCode: String?) -> Bool {
+        scored.contains { languageCode(of: $0.localeID) == currentCode }
+            && switchTarget(among: scored, currentCode: currentCode) == nil
+            && !probeIsInconclusive(among: scored, currentCode: currentCode)
+    }
+
+    /// Whether a live probe that scored the first `verdictSeconds` of audio can stand in
+    /// for the stop-time head probe on a `totalSeconds` dictation: it must cover the
+    /// head probe's own window (`probeSeconds`), or — for a short dictation — at least
+    /// half of the audio. The stop-time probe re-decoded that same opening in every
+    /// language, ~0.6 s of the ~0.8 s median between key-up and paste.
+    static func liveVerdictCovers(verdictSeconds: Double, totalSeconds: Double, probeSeconds: Double) -> Bool {
+        verdictSeconds >= min(probeSeconds, totalSeconds * 0.5)
+    }
 }
