@@ -204,6 +204,20 @@ actor TranscriptionEngine {
     /// dictation→speech fallback). The stop-time language re-transcription scores
     /// with this same model so its confidences compare like-for-like.
     private var sessionModel: RecognizerModel = .speech
+    /// The audio format the live session's input stream was built for (what
+    /// `AudioCapture` converts the mic to). A live language restart only proceeds
+    /// when the new locale's analyzer takes this SAME format — the mic tap can't
+    /// change formats mid-session.
+    private var sessionFormat: AVAudioFormat?
+    /// Bumped on every live language restart. Each results reader is stamped with
+    /// the epoch it was started under, and `ingest` drops results from an older
+    /// epoch — the torn-down analyzer's reader can still have a result in flight to
+    /// this actor, and it must never leak old-language text into the new transcript.
+    private var liveEpoch: Int = 0
+    /// Set while `finishSessionDetailed` runs, so a live restart racing the stop
+    /// (it spans several suspension points) backs off instead of swapping analyzers
+    /// under the finalize.
+    private var isFinishing = false
 
     private var finalizedText: String = ""
     /// Each finalized segment, in spoken order. A new segment is committed every
@@ -288,6 +302,24 @@ actor TranscriptionEngine {
 
     /// Ensure the on-device model for `transcriber` is downloaded & installed.
     /// First run on a given locale triggers a one-time download.
+    /// Whether a module's model can run NOW without a download. In a fresh process
+    /// `AssetInventory.status` reports a model that's already on disk as merely
+    /// `.supported` until an installation request is made for it — which flips it to
+    /// `.installed` on the spot, downloading nothing (checked: de-DE and en-GB both
+    /// `.supported` → request → `.installed`, instantly). That is why the
+    /// mid-dictation probe bailed "not installed" for BOTH languages right after a
+    /// relaunch while the stop path, whose install call makes that request, decoded
+    /// them fine. So: ask for the request (never run it), then re-read the status.
+    private func modelIsReady(_ module: any SpeechModule) async -> Bool {
+        if await AssetInventory.status(forModules: [module]) == .installed { return true }
+        do {
+            guard try await AssetInventory.assetInstallationRequest(supporting: [module]) != nil else { return true }
+        } catch {
+            return false
+        }
+        return await AssetInventory.status(forModules: [module]) == .installed
+    }
+
     private func ensureModelInstalled(for transcriber: any SpeechModule) async throws {
         let status = await AssetInventory.status(forModules: [transcriber])
         guard status != .installed else { return }
@@ -543,7 +575,7 @@ actor TranscriptionEngine {
         // On the user-waiting stop path the caller passes installIfNeeded:true, so
         // the FIRST utterance in a not-yet-warmed language is still corrected
         // instead of silently kept as wrong-language gibberish.
-        if await AssetInventory.status(forModules: [transcriber]) != .installed {
+        if await !modelIsReady(transcriber) {
             guard installIfNeeded else {
                 talkieDebugLog("reTx[\(id)]: bail — model not installed (no inline install)")
                 return nil
@@ -693,6 +725,8 @@ actor TranscriptionEngine {
         onTimedSegment = timedSegmentHandler
         sessionGeneration += 1
         let generation = sessionGeneration
+        isFinishing = false
+        liveEpoch += 1
 
         var (effectiveModel, loc) = try await resolvedModelAndLocale(preferring: model)
         var transcriber = makeModule(effectiveModel, locale: loc)
@@ -729,7 +763,17 @@ actor TranscriptionEngine {
         }
 
         // Consume results as they stream in.
-        self.resultsTask = Task { [weak self] in
+        self.resultsTask = makeResultsTask(for: transcriber, epoch: liveEpoch)
+        self.sessionFormat = format
+
+        try await analyzer.start(inputSequence: stream)
+        return (format, continuation, generation)
+    }
+
+    /// The live results reader for `transcriber`, stamped with `epoch` so results
+    /// from a reader that a live language restart has since replaced are dropped.
+    private func makeResultsTask(for transcriber: any SpeechModule, epoch: Int) -> Task<Void, Never> {
+        Task { [weak self] in
             guard let self else { return }
             do {
                 for try await result in Self.recognizedResults(of: transcriber) {
@@ -756,25 +800,109 @@ actor TranscriptionEngine {
                             if !w.isEmpty { words.append(WordConfidence(word: w, confidence: c)) }
                         }
                     }
-                    await self.ingest(text: text, isFinal: result.isFinal,
+                    await self.ingest(epoch: epoch, text: text, isFinal: result.isFinal,
                                       start: start, end: end, wordConfidences: words)
                 }
             } catch is CancellationError {
                 // Expected on teardown.
             } catch {
-                await self.handleResultsError(error)
+                await self.handleResultsError(error, epoch: epoch)
             }
         }
+    }
 
-        try await analyzer.start(inputSequence: stream)
-        return (format, continuation, generation)
+    /// Restart the LIVE session in another language, mid-dictation, so the pill's
+    /// preview (and the transcript) stop being the wrong model's gibberish. Builds a
+    /// fresh analyzer for `id` with the session's model, swaps it in for the current
+    /// one, and returns its input continuation. The caller must then hand the audio
+    /// over with `AudioCapture.handOff(to:)`, which replays everything captured so
+    /// far and retargets the mic tap — atomically, so nothing is lost or reordered.
+    ///
+    /// Returns nil — leaving the current session untouched — when the session has
+    /// moved on (a newer generation, cancelled, or finishing), the locale's model
+    /// isn't installed (never downloads mid-dictation), or its analyzer wants a
+    /// different audio format than the tap is producing.
+    func restartLive(localeIdentifier id: String, ifGeneration generation: Int)
+        async -> AsyncStream<AnalyzerInput>.Continuation? {
+        guard let oldAnalyzer = analyzer, let format = sessionFormat else { return nil }
+        func stillCurrent() -> Bool {
+            generation == sessionGeneration && !isFinishing && analyzer === oldAnalyzer
+        }
+        guard stillCurrent() else { return nil }
+
+        var model = sessionModel
+        if model == .dictation,
+           await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) == nil {
+            model = .speech
+        }
+        let supported: Locale? = model == .dictation
+            ? await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: id))
+            : await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: id))
+        guard let loc = supported else {
+            talkieDebugLog("liveLang: \(id) not supported — keeping the current session")
+            return nil
+        }
+        let transcriber = makeModule(model, locale: loc)
+        guard await modelIsReady(transcriber) else {
+            talkieDebugLog("liveLang: \(id) model not installed — keeping the current session")
+            return nil
+        }
+        guard let newFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]),
+              newFormat == format else {
+            talkieDebugLog("liveLang: \(id) wants a different audio format — keeping the current session")
+            return nil
+        }
+
+        let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        let newAnalyzer = SpeechAnalyzer(modules: [transcriber])
+        if !contextualStrings.isEmpty {
+            let ctx = AnalysisContext()
+            ctx.contextualStrings = [.general: contextualStrings]
+            try? await newAnalyzer.setContext(ctx)
+        }
+        do {
+            try await newAnalyzer.start(inputSequence: stream)
+        } catch {
+            talkieDebugLog("liveLang: analyzer.start threw — keeping the current session: \(error.localizedDescription)")
+            continuation.finish()
+            return nil
+        }
+        // Last suspension point is behind us: re-check, then swap synchronously so
+        // nothing can interleave between tearing down the old analyzer's state and
+        // installing the new one.
+        guard stillCurrent() else {
+            continuation.finish()
+            await newAnalyzer.cancelAndFinishNow()
+            return nil
+        }
+        let oldContinuation = inputContinuation
+        let oldResults = resultsTask
+        liveEpoch += 1
+        finalizedText = ""
+        finalizedSegments = []
+        finalizedTimedSegments = []
+        sessionWordConfidences = []
+        volatileText = ""
+        locale = loc
+        sessionModel = model
+        self.transcriber = transcriber
+        analyzer = newAnalyzer
+        inputContinuation = continuation
+        resultsTask = makeResultsTask(for: transcriber, epoch: liveEpoch)
+        emit(isComplete: false) // clear the old-language preview right away
+
+        oldContinuation?.finish()
+        oldResults?.cancel()
+        await oldAnalyzer.cancelAndFinishNow()
+        return continuation
     }
 
     /// Fold one recognizer result into the running transcript and notify the UI.
     /// When a segment finalizes, also emit it on its own so the caller can clean
     /// each batch incrementally (instead of one huge pass at the end).
-    private func ingest(text: String, isFinal: Bool, start: Double = 0, end: Double = 0,
+    private func ingest(epoch: Int, text: String, isFinal: Bool, start: Double = 0, end: Double = 0,
                         wordConfidences: [WordConfidence] = []) {
+        guard epoch == liveEpoch else { return } // a replaced analyzer's straggler
         if isFinal {
             if !text.isEmpty {
                 finalizedText = appendCommitted(finalizedText, text)
@@ -811,7 +939,9 @@ actor TranscriptionEngine {
         onUpdate?(update)
     }
 
-    private func handleResultsError(_ error: Error) async {
+    private func handleResultsError(_ error: Error, epoch: Int) async {
+        // A replaced analyzer erroring on teardown must not kill the live session.
+        guard epoch == liveEpoch else { return }
         // Fully tear the session down so a failed results stream doesn't leak an
         // un-finalized analyzer into the next session.
         inputContinuation?.finish()
@@ -844,6 +974,7 @@ actor TranscriptionEngine {
     /// ignores them pays nothing. Concrete-only.
     func finishSessionDetailed() async
         -> (text: String, segments: [String], timedSegments: [TimedSegment], wordConfidences: [WordConfidence]) {
+        isFinishing = true
         inputContinuation?.finish()
         inputContinuation = nil
 
