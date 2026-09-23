@@ -32,6 +32,14 @@ enum LanguageDetector {
     /// (low), so a modest margin avoids flips on near-ties.
     static let switchConfidenceMargin = 0.08
 
+    /// The margin once a close head probe has been rescored over the WHOLE utterance.
+    /// Averaged over a long dictation, a small lead is real: English speech in a
+    /// German session scored de 0.84 / en 0.91 over ~400 words — a clear English win
+    /// the 0.08 short-probe margin threw away, inserting German-model gibberish. The
+    /// wrong model on foreign speech sits well below (English speech: en leads by
+    /// 0.07–0.31; German speech: en only 0.05–0.38 absolute), so 0.03 is still safe.
+    static let wholeRescoreMargin = 0.03
+
     /// Absolute acoustic-confidence floor a candidate must clear before it can win
     /// the language switch when there's *no* score for the current language to
     /// compare against (the current-locale re-transcribe came back empty, so its
@@ -142,7 +150,8 @@ enum LanguageDetector {
     ///   current language rather than flipping to noise.
     static func switchTarget(
         among scored: [LanguageCandidate],
-        currentCode: String?
+        currentCode: String?,
+        margin: Double = switchConfidenceMargin
     ) -> LanguageCandidate? {
         guard let best = scored.max(by: { $0.confidence < $1.confidence }) else { return nil }
         guard languageCode(of: best.localeID) != currentCode, !best.text.isEmpty else { return nil }
@@ -150,7 +159,7 @@ enum LanguageDetector {
         let currentEntry = scored.first { languageCode(of: $0.localeID) == currentCode }
         if let currentEntry {
             // Incumbent present: beat it by the relative margin.
-            return best.confidence >= currentEntry.confidence + switchConfidenceMargin ? best : nil
+            return best.confidence >= currentEntry.confidence + margin ? best : nil
         }
         // No incumbent to compare against — demand absolute confidence instead of
         // letting the margin-vs-zero test wave anything through.

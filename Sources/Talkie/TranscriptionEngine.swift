@@ -184,6 +184,27 @@ extension DictationTranscriber.Result: TextBearingSpeechResult {}
 /// Wraps Apple's macOS 26 `SpeechAnalyzer` + `SpeechTranscriber` for live,
 /// on-device, low-latency dictation. One instance is reused across sessions;
 /// the heavy model load happens once and lingers for the process lifetime.
+/// Resolves a checked continuation with whichever outcome arrives first; later ones
+/// are ignored. Lets `modelIsReady` race an install against a deadline without a
+/// task group, which would wait for the (possibly minutes-long) download to finish.
+private final class FirstOutcome: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Bool, Never>?
+
+    func bind(_ continuation: CheckedContinuation<Bool, Never>) {
+        lock.lock(); defer { lock.unlock() }
+        self.continuation = continuation
+    }
+
+    func resolve(_ value: Bool) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(returning: value)
+    }
+}
+
 actor TranscriptionEngine {
     private var locale: Locale
     private var contextualStrings: [String] = []
@@ -302,23 +323,42 @@ actor TranscriptionEngine {
 
     /// Ensure the on-device model for `transcriber` is downloaded & installed.
     /// First run on a given locale triggers a one-time download.
-    /// Whether a module's model can run NOW without a download. In a fresh process
-    /// `AssetInventory.status` reports a model that's already on disk as merely
-    /// `.supported` until an installation request is made for it — which flips it to
-    /// `.installed` on the spot, downloading nothing (checked: de-DE and en-GB both
-    /// `.supported` → request → `.installed`, instantly). That is why the
-    /// mid-dictation probe bailed "not installed" for BOTH languages right after a
-    /// relaunch while the stop path, whose install call makes that request, decoded
-    /// them fine. So: ask for the request (never run it), then re-read the status.
+    /// Whether a module's model can run now, for the paths that must never wait on a
+    /// real download (the mid-dictation probe and the live restart). Neither the
+    /// status nor an installation request is reliable inside the running app: both
+    /// kept reporting on-disk models as not installed dictation after dictation (the
+    /// probe bailed for BOTH languages every time), while the stop path's install
+    /// call — which finds the assets on disk and returns at once — decoded them fine.
+    /// So run that same install, but race it against `quickInstallSeconds`: an
+    /// on-disk model is ready in milliseconds, and a genuine download is left to
+    /// finish in the background rather than stalling the dictation.
     private func modelIsReady(_ module: any SpeechModule) async -> Bool {
-        if await AssetInventory.status(forModules: [module]) == .installed { return true }
-        do {
-            guard try await AssetInventory.assetInstallationRequest(supporting: [module]) != nil else { return true }
-        } catch {
-            return false
+        let status = await AssetInventory.status(forModules: [module])
+        if status == .installed { return true }
+        let started = Date()
+        let outcome = FirstOutcome()
+        let ready = await withCheckedContinuation { continuation in
+            outcome.bind(continuation)
+            Task {
+                do {
+                    try await self.ensureModelInstalled(for: module)
+                    outcome.resolve(true)
+                } catch {
+                    outcome.resolve(false)
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(Self.quickInstallSeconds))
+                outcome.resolve(false)
+            }
         }
-        return await AssetInventory.status(forModules: [module]) == .installed
+        talkieDebugLog("modelReady: status=\(status) → install \(ready ? "done" : "not done") in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+        return ready
     }
+
+    /// How long `modelIsReady` waits for an install before calling the model not
+    /// ready. Generous for an on-disk model, far short of any real download.
+    private static let quickInstallSeconds: Double = 2
 
     private func ensureModelInstalled(for transcriber: any SpeechModule) async throws {
         let status = await AssetInventory.status(forModules: [transcriber])
@@ -500,12 +540,17 @@ actor TranscriptionEngine {
 
         var scoredWhole = Self.head(of: buffers, seconds: probeSeconds).count == buffers.count
         var candidates = await score(probe: probeSeconds)
+        var margin = LanguageDetector.switchConfidenceMargin
         if !scoredWhole, LanguageDetector.probeIsInconclusive(among: candidates, currentCode: currentCode) {
             talkieDebugLog("decide: head probe too close to call — rescoring whole utterance")
             candidates = await score(probe: nil)
             scoredWhole = true
+            // A mean over the whole (long) utterance is a far steadier signal than
+            // the head's few seconds — don't make it clear the short-probe margin.
+            margin = LanguageDetector.wholeRescoreMargin
         }
-        guard let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode) else { return nil }
+        guard let best = LanguageDetector.switchTarget(among: candidates, currentCode: currentCode,
+                                                       margin: margin) else { return nil }
         if scoredWhole { return best }
         // The probe decoded only the head; fetch the whole utterance in the winning
         // language. If that fails, keep the original rather than insert a truncated

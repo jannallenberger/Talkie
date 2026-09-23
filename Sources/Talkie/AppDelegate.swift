@@ -174,6 +174,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var liveLanguageTask: Task<Void, Never>?
     /// Cleared the moment the session stops — the probe then never starts a restart.
     private var liveSwitchAllowed = false
+    /// True from the moment a live restart begins until its audio handoff lands. Only
+    /// then must the stop path wait for the probe (finalizing first would leave the
+    /// new analyzer with no audio); a probe that is merely still scoring is abandoned,
+    /// so its model check can never delay your text.
+    private var liveRestartInFlight = false
     /// Whether THIS dictation's live session was restarted in another language. The
     /// streamed per-segment cleanup ran partly in the old language (and was pinned to
     /// it), so the stop path must re-clean the whole transcript instead.
@@ -1512,6 +1517,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func performLiveLanguageSwitch(to localeID: String, generation: Int) async {
         // The replay must include the opening, or the new session would lose it.
         guard audio.bufferedAudioIsComplete else { return }
+        liveRestartInFlight = true
+        defer { liveRestartInFlight = false }
         guard let continuation = await engine.restartLive(localeIdentifier: localeID, ifGeneration: generation)
         else { return }
         guard audio.handOff(to: continuation) else {
@@ -1629,7 +1636,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // No live language restart may START after this point; one already in
         // flight is awaited below, before finalizing, so its handoff completes.
         liveSwitchAllowed = false
-        let liveLanguageTask = self.liveLanguageTask
+        let liveLanguageTask = liveRestartInFlight ? self.liveLanguageTask : nil
+        if !liveRestartInFlight { self.liveLanguageTask?.cancel() }
         self.liveLanguageTask = nil
         audio.stop()
         // Recording's done (you've stopped talking) — bring the music back, even
