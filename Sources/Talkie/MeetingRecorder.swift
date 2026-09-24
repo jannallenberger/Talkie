@@ -100,6 +100,15 @@ final class MeetingAudioFileWriter: @unchecked Sendable {
 final class MeetingRecorder: ObservableObject {
     @Published private(set) var isRecording = false
     @Published private(set) var isFinishing = false
+    /// True while `stop()` still needs the mic engine and audio capture it shares
+    /// with dictation — only on the single-locale fallback, whose finalize and
+    /// language re-check run on them. The multi-language lanes, the far end, and
+    /// the AI summary all run on their own recognizers/model.
+    @Published private(set) var isUsingSharedEngine = false
+    /// Dictation can't start while this is true. Narrower than `isFinishing`:
+    /// once stop() is done with the shared engine you can dictate while the
+    /// meeting finishes transcribing and summarizing.
+    var blocksDictation: Bool { isRecording || isStarting || isUsingSharedEngine }
     /// Meetings already saved whose AI summary is still being written in the
     /// background (see `stop()`); the list shows a progress note for them.
     @Published private(set) var summarizingMeetingIDs: Set<UUID> = []
@@ -731,7 +740,8 @@ final class MeetingRecorder: ObservableObject {
         // would permanently lock out dictation AND new meetings. Clear the flags on
         // EVERY exit path, on the same main actor as the prior manual resets (no new
         // isolation hop), so an unexpected throw/early-return can't wedge the UI.
-        defer { isFinishing = false; capturingFarEnd = false }
+        defer { isFinishing = false; isUsingSharedEngine = false; capturingFarEnd = false }
+        isUsingSharedEngine = micMulti == nil
         timer?.invalidate()
         timer = nil
 
@@ -827,6 +837,8 @@ final class MeetingRecorder: ObservableObject {
             }
         }
         farEngine = nil
+        // Past this point stop() never touches `engine` or `audio` again.
+        isUsingSharedEngine = false
 
         startedAt = nil
         turnLog = nil

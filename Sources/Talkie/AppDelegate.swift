@@ -1113,14 +1113,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // The meeting recorder shares the transcription engine — don't dictate
-        // over an active recording, nor while one is still finalizing (the
-        // finalize pass is still using the shared engine/audio), nor during its
-        // `isStarting` window (FIX 3 / concurrency-1): `start()` awaits mic
-        // permission + model load + two `beginSession`s before `isRecording`
-        // ever flips true, and a dictation press in that gap would make both
-        // sessions stomp the shared engine with no guard catching it.
-        guard meetingRecorder?.isRecording != true, meetingRecorder?.isFinishing != true,
-              meetingRecorder?.isStarting != true else {
+        // over an active recording, nor while its finalize is still using the
+        // shared engine/audio, nor during its `isStarting` window (FIX 3 /
+        // concurrency-1): `start()` awaits mic permission + model load + two
+        // `beginSession`s before `isRecording` ever flips true, and a dictation
+        // press in that gap would make both sessions stomp the shared engine with
+        // no guard catching it. The rest of finishing a meeting (multi-language
+        // lanes, far end, summary) doesn't touch them, so dictation stays open.
+        guard meetingRecorder?.blocksDictation != true else {
             // K1: localized + light voice pass; still names the exact blocker.
             hud.showError("Wrap up the meeting recording first — then I’m all ears.".loc)
             return

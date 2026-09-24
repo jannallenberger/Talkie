@@ -301,15 +301,11 @@ actor MultiLangStreamTranscriber {
             lane.offset = audioSecondsFed
             nextWindowStart = min(nextWindowStart, lane.offset)
 
-            // Retire the old generation: stop its input, finalize, drain, shift into
-            // meeting time, accumulate.
+            // Retire the old generation: stop its input, finalize (bounded), drain,
+            // shift into meeting time, accumulate.
             old.continuation.finish()
-            do {
-                try await old.analyzer.finalizeAndFinishThroughEndOfInput()
-            } catch {
-                old.results.cancel()
-            }
-            let raw = await old.results.value
+            let raw = await Self.finalizeGeneration(analyzer: old.analyzer, results: old.results,
+                                                    localeID: lane.localeID)
             let off = old.offset
             let shifted = raw.map { w in
                 var w = w; w.start += off; w.end += off; return w
@@ -351,20 +347,24 @@ actor MultiLangStreamTranscriber {
         await fanoutTask?.value
         fanoutTask = nil
 
-        var all: [StreamLanguageVoter.TimedWord] = []
-        for lane in lanes {
-            lane.continuation.finish()
-            do {
-                try await lane.analyzer.finalizeAndFinishThroughEndOfInput()
-            } catch {
-                // If finalize throws, the lane's results stream may never terminate
-                // and `await lane.results.value` below would hang stop() forever.
-                // Cancel the reader: its `for try await … catch {}` returns the words
-                // accumulated so far on cancel, so the await resolves promptly.
-                lane.results.cancel()
-                talkieDebugLog("meeting-lane[\(lane.localeID)]: finalize threw — cancelling reader")
+        // Finalize every lane at once: they're independent recognizers, so a
+        // three-language meeting waits for the slowest lane, not the sum of all.
+        let closing = lanes
+        for lane in closing { lane.continuation.finish() }
+        let jobs = closing.map { (analyzer: $0.analyzer, results: $0.results, localeID: $0.localeID) }
+        let harvested = await withTaskGroup(of: (Int, [StreamLanguageVoter.TimedWord]).self) { group in
+            for (i, job) in jobs.enumerated() {
+                group.addTask {
+                    (i, await Self.finalizeGeneration(analyzer: job.analyzer, results: job.results,
+                                                      localeID: job.localeID))
+                }
             }
-            let raw = await lane.results.value
+            var out = [[StreamLanguageVoter.TimedWord]](repeating: [], count: jobs.count)
+            for await (i, words) in group { out[i] = words }
+            return out
+        }
+        var all: [StreamLanguageVoter.TimedWord] = []
+        for (lane, raw) in zip(closing, harvested) {
             let off = lane.offset
             all.append(contentsOf: lane.collected)
             all.append(contentsOf: raw.map { w in
@@ -377,6 +377,48 @@ actor MultiLangStreamTranscriber {
         talkieDebugLog("meeting-merge[\(anchorLocale)] words=\(all.count) → \(spans.count) span(s): "
             + spans.map { "\($0.localeID):'\($0.text.prefix(24))'" }.joined(separator: " | "))
         return spans
+    }
+
+    /// Longest one analyzer generation's finalize + reader drain may take before it is
+    /// hard-cancelled. Apple's `finalizeAndFinishThroughEndOfInput` can silently never
+    /// return — the same non-termination `TranscriptionEngine.finishSessionDetailed`
+    /// bounds for dictation. Unbounded here, it parked `MeetingRecorder.stop()` forever:
+    /// the note was never saved (it came back as a "Recovered meeting" on relaunch) and
+    /// dictation stayed locked out. A healthy finalize takes well under a second.
+    static let finalizeTimeout: Double = 10
+
+    /// Finalize one analyzer generation and return its words (analyzer clock), bounded
+    /// by `finalizeTimeout`. On timeout the analyzer is hard-cancelled (cooperative
+    /// cancellation doesn't reach Apple's finalize) and the reader is cancelled, which
+    /// ends it with the words finalized so far — so a wedged lane costs its unfinalized
+    /// tail, never the meeting.
+    private static func finalizeGeneration(
+        analyzer: SpeechAnalyzer,
+        results: Task<[StreamLanguageVoter.TimedWord], Never>,
+        localeID: String
+    ) async -> [StreamLanguageVoter.TimedWord] {
+        let finishedInTime = await withAsyncTimeout(
+            seconds: finalizeTimeout,
+            operation: {
+                do {
+                    try await analyzer.finalizeAndFinishThroughEndOfInput()
+                } catch {
+                    // A throwing finalize may leave the results stream open forever;
+                    // cancel the reader so the drain below resolves.
+                    results.cancel()
+                    talkieDebugLog("meeting-lane[\(localeID)]: finalize threw — cancelling reader")
+                }
+                _ = await results.value
+            },
+            onTimeout: {
+                await analyzer.cancelAndFinishNow()
+                results.cancel()
+            }
+        )
+        if !finishedInTime {
+            talkieDebugLog("meeting-lane[\(localeID)]: finalize exceeded \(Int(finalizeTimeout))s — force-cancelled, keeping the words finalized so far")
+        }
+        return await results.value
     }
 
     /// Hard-cancel without producing a transcript.
