@@ -854,3 +854,6 @@
 /* Paste everything at once */
 "Paste everything at once" = "Alles in één keer plakken";
 "Never type your words in letter by letter, in any app." = "Je woorden nooit letter voor letter typen, in geen enkele app.";
+
+/* Meeting summary in background */
+"Writing the summary… the transcript is already saved." = "Samenvatting wordt geschreven… het transcript is al opgeslagen.";

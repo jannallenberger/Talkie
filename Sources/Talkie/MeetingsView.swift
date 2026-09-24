@@ -91,6 +91,7 @@ struct MeetingsView: View {
                         ForEach(store.meetings) { meeting in
                             MeetingRow(
                                 meeting: meeting,
+                                isSummarizing: recorder.summarizingMeetingIDs.contains(meeting.id),
                                 profileImage: profileImage,
                                 folderURL: store.folderURL,
                                 onReveal: { reveal(meeting) },
@@ -678,10 +679,12 @@ private struct MeetingRow: View, Equatable {
     // nonisolated: `View` is @MainActor, but `Equatable.==` must be nonisolated.
     // Safe here — it only reads Sendable `let`s (`Meeting`, `URL`).
     nonisolated static func == (lhs: MeetingRow, rhs: MeetingRow) -> Bool {
-        lhs.meeting == rhs.meeting && lhs.folderURL == rhs.folderURL
+        lhs.meeting == rhs.meeting && lhs.folderURL == rhs.folderURL && lhs.isSummarizing == rhs.isSummarizing
     }
 
     let meeting: Meeting
+    /// The note is saved; its AI summary is still being written in the background.
+    let isSummarizing: Bool
     /// L7: the user's profile picture, shown leading the row header ONLY when a photo
     /// is set. In-app display only — never written into the exported note.
     @ObservedObject var profileImage: ProfileImageStore
@@ -751,7 +754,7 @@ private struct MeetingRow: View, Equatable {
                 if regenerating {
                     ProgressView().controlSize(.small)
                 } else if hovering {
-                    if !meeting.transcript.isEmpty, MeetingSummarizer.isAvailable {
+                    if !meeting.transcript.isEmpty, MeetingSummarizer.isAvailable, !isSummarizing {
                         Button {
                             // Nothing to lose when the summary is already blank — skip
                             // the confirmation and regenerate straight away (the
@@ -807,6 +810,14 @@ private struct MeetingRow: View, Equatable {
                 }
             }
 
+            if isSummarizing {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Writing the summary… the transcript is already saved.".loc)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.inkSecondary)
+                }
+            }
             if !meeting.summary.isEmpty {
                 MarkdownText(markdown: meeting.summary, bulletColor: Theme.coral)
                     .font(.system(size: 13))

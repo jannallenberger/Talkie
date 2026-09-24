@@ -100,6 +100,11 @@ final class MeetingAudioFileWriter: @unchecked Sendable {
 final class MeetingRecorder: ObservableObject {
     @Published private(set) var isRecording = false
     @Published private(set) var isFinishing = false
+    /// Meetings already saved whose AI summary is still being written in the
+    /// background (see `stop()`); the list shows a progress note for them.
+    @Published private(set) var summarizingMeetingIDs: Set<UUID> = []
+    /// Chains background summaries so they run one at a time.
+    private var summaryQueue: Task<Void, Never>?
     @Published private(set) var elapsed: TimeInterval = 0
     /// True while a recording is actually capturing the far end (both sides), false
     /// when it fell back to mic-only. Drives the UI's honest status copy.
@@ -315,7 +320,13 @@ final class MeetingRecorder: ObservableObject {
         // `multiLang` is false (it requires `langs.count > 1` with `pinned == nil`,
         // exactly when `langsAtStart` carries `langs`), so only the single-locale
         // engine's live-segment handlers ever need to feed this builder.
-        let digestEligible = langsAtStart.count <= 1
+        // Single-language meetings feed the digest live, segment by segment. Multi-
+        // language meetings feed it from the language lanes' merged windows at every
+        // rotation (`tick`) — their live text comes from one lane and can be the
+        // wrong language, so it never reaches the digest.
+        let laneLangs = LanguageDetector.distinctByCode(langs)
+        let lanesPlanned = multiLang && laneLangs.count > 1 && MultiLangStreamTranscriber.isAvailable
+        let digestEligible = langsAtStart.count <= 1 || lanesPlanned
         if digestEligible, MeetingSummarizer.isAvailable {
             let graphExtractor: GraphLLMExtractor?
             if contextGraph != nil, OnDeviceLLM.isAvailable {
@@ -337,13 +348,13 @@ final class MeetingRecorder: ObservableObject {
         // buffer is exactly call order, and a straggler can no longer race `finish()`.
         // `elapsed` is the segment's audio-clock start when the caller has one (the
         // single-locale timed handlers below); the multilingual live-lane handlers only
-        // have wall-clock arrival, but those never feed a digest builder (digest is nil
-        // whenever `multiLang` is true — see `digestEligible` above), so the fallback
-        // value there is never actually consumed by `ingest`.
-        let digest = digestBuilder
+        // have wall-clock arrival, but their text never reaches the digest (`liveDigest`
+        // is nil when `multiLang` — the lanes feed it via `ingestLaneWindow` instead),
+        // so the fallback value there is never actually consumed by `ingest`.
+        let liveDigest = multiLang ? nil : digestBuilder
         let feedSegment: @Sendable (MeetingSpeaker, String, TimeInterval) -> Void = { speaker, text, elapsed in
             liveFeed?(speaker, text)
-            digest?.ingest(speaker, text, at: elapsed)
+            liveDigest?.ingest(speaker, text, at: elapsed)
         }
 
         // Keep-audio (D9): snapshot the toggle ONCE, now — mid-call flips don't count.
@@ -392,9 +403,9 @@ final class MeetingRecorder: ObservableObject {
                     localeIDs: distinctLangs, contextualStrings: eventAttendees,
                     onLiveSegment: { segment in
                         log.add(.me, segment)
-                        // Wall-clock elapsed: this lane has no audio-clock span, but a
-                        // digest builder never exists alongside multiLang anyway (see
-                        // `feedSegment`'s doc comment), so this value is never read.
+                        // Wall-clock elapsed: this lane has no audio-clock span, but its
+                        // live text never feeds the digest (`liveDigest` is nil under
+                        // multiLang — see `feedSegment`), so this value is never read.
                         feedSegment(.me, segment, Date().timeIntervalSince(start))
                     }
                 ) {
@@ -463,8 +474,8 @@ final class MeetingRecorder: ObservableObject {
                     localeIDs: distinctLangs, contextualStrings: eventAttendees,
                     onLiveSegment: { segment in
                         log.add(.them, segment)
-                        // See the mic lane above: no digest builder exists alongside
-                        // multiLang, so this wall-clock fallback is never consumed.
+                        // See the mic lane above: live lane text never feeds the digest,
+                        // so this wall-clock fallback is never consumed.
                         feedSegment(.them, segment, Date().timeIntervalSince(start))
                     }
                 ), (try? systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
@@ -662,9 +673,12 @@ final class MeetingRecorder: ObservableObject {
             let far = farMulti, mic = micMulti
             rotationTask = Task { @MainActor [weak self] in
                 guard self?.isFinishing != true else { return }
-                await far?.rotate()
+                let farSpans = await far?.rotate() ?? []
                 guard self?.isFinishing != true else { return }
-                await mic?.rotate()
+                let micSpans = await mic?.rotate() ?? []
+                // Hand the finished window to the live summary, both speakers in
+                // audio order, so it summarizes while the meeting is still running.
+                self?.ingestLaneWindow(me: micSpans, them: farSpans)
             }
         }
 
@@ -759,16 +773,22 @@ final class MeetingRecorder: ObservableObject {
         // before and gets the legacy whole-stream correction below.
         let micWasMulti = micMulti != nil
         let farWasMulti = farMulti != nil
+        var micTail: [StreamLanguageVoter.Span] = []
+        var farTail: [StreamLanguageVoter.Span] = []
         if let mic = micMulti {
+            let windowStart = await mic.openWindowStart
             let spans = await mic.finish(anchorLocale: micLocale)
             if let log { applyMergedSpans(spans, speaker: .me, log: log) }
+            micTail = spans.filter { $0.start >= windowStart }
             micMulti = nil
         } else {
             _ = await engine.finishSession()
         }
         let far = farEngine
         if let farM = farMulti {
+            let windowStart = await farM.openWindowStart
             let spans = await farM.finish(anchorLocale: farLocale)
+            if farEverActive { farTail = spans.filter { $0.start >= windowStart } }
             // Gate on `farEverActive` — whether the far stream ran at ANY point this
             // meeting — not the live `capturingFarEnd`: a mid-meeting watchdog give-up
             // already flipped that to false, and gating here on the live flag used to
@@ -778,6 +798,18 @@ final class MeetingRecorder: ObservableObject {
             farMulti = nil
         } else if let far {
             _ = await far.finishSession()
+        }
+
+        if langs.count > 1, digestBuilder != nil {
+            // The lane-fed digest is only whole if every stream ran on lanes; a
+            // stream that fell back to one recognizer never fed it, so drop it and
+            // summarize the final transcript instead.
+            if !micWasMulti || (farEverActive && !farWasMulti) {
+                digestBuilder?.cancel()
+                digestBuilder = nil
+            } else {
+                ingestLaneWindow(me: micTail, them: farTail)
+            }
         }
 
         // Legacy whole-stream language correction — ONLY for streams that used the
@@ -858,45 +890,125 @@ final class MeetingRecorder: ObservableObject {
         // consistent with `source` below and with the merge/correction gates above).
         let participants = farEverActive ? ["Me", "Them"] : ["Me"]
 
-        // Granola magic: if you jotted notes during the call, fuse them with the
-        // transcript (expanded, never invented); otherwise the plain on-device summary.
-        // If fusion is unavailable (the on-device model isn't ready / returns nil),
-        // `composeSummary` still preserves the raw notes so the user's typed work is
-        // never silently discarded.
+        // Save the note NOW — transcript, segments, audio, the user's typed notes —
+        // and write the AI summary in the background. The summary used to gate the
+        // save: after a 20-60 min meeting the user waited 6-27 minutes for the note
+        // to appear. `regenerateSummary` in MeetingsView recovers a note whose
+        // background summary never landed (app quit mid-summary).
+        let id = pendingMeetingID ?? UUID()
+        pendingMeetingID = nil
+        let audioFiles = keepAudioFiles.isEmpty ? nil : keepAudioFiles
+        let meeting = Meeting(
+            id: id,
+            title: eventTitle ?? Self.makeTitle(start: start),
+            startUnix: start.timeIntervalSince1970,
+            durationSec: duration,
+            transcript: clean,
+            summary: Self.composeSummary(userNotes: userNotes, transcriptSummary: "", fused: nil),
+            participants: participants,
+            source: farEverActive ? "talkie (mic + system audio)" : "talkie (mic-only)",
+            fileName: MeetingStore.fileName(for: start, id: id),
+            segments: segments,
+            chapters: chapters,
+            audioFiles: audioFiles
+        )
+        store.add(meeting)
+        keepAudioFiles = [:]
+        if let partialURL { try? FileManager.default.removeItem(at: partialURL) }
+        partialURL = nil
+
+        let provenance = Provenance(source: .meeting, sourceID: meeting.id.uuidString,
+                                    dateUnix: start.timeIntervalSince1970, snippet: nil)
+        if let graph = contextGraph {
+            // Deterministic candidates are instant; the model's go in with the summary.
+            var candidates = eventAttendees.map {
+                ContextGraphExtractor.Candidate(kind: .person, displayName: $0)
+            }
+            candidates += ContextGraphExtractor.candidates(from: clean)
+            graph.ingest(candidates, provenance: provenance)
+        }
+
+        let digest = digestBuilder
+        digestBuilder = nil
+        notes = ""
+        eventTitle = nil
+        eventAttendees = []
+
+        summarizingMeetingIDs.insert(id)
+        let previous = summaryQueue
+        summaryQueue = Task { @MainActor [weak self] in
+            // One summary at a time: the on-device model serializes requests anyway,
+            // and back-to-back meetings shouldn't race for it.
+            await previous?.value
+            guard let self else { return }
+            let (summary, graphCandidates) = await self.writeSummary(
+                transcript: clean, userNotes: userNotes, digest: digest)
+            // Re-read: the user may have retitled or edited the note meanwhile — or
+            // deleted it, in which case nothing (not even graph provenance) returns.
+            if var current = self.store.meetings.first(where: { $0.id == id }) {
+                current.summary = summary
+                self.store.update(current)
+                if let graph = self.contextGraph, !graphCandidates.isEmpty {
+                    graph.ingest(graphCandidates, provenance: provenance)
+                }
+            }
+            self.summarizingMeetingIDs.remove(id)
+        }
+    }
+
+    /// Feed one lane window (both speakers, merged per language) to the live digest
+    /// in audio order. No-op without a digest.
+    private func ingestLaneWindow(me: [StreamLanguageVoter.Span], them: [StreamLanguageVoter.Span]) {
+        guard let digest = digestBuilder else { return }
+        for turn in Self.laneWindowTurns(me: me, them: them) {
+            // A monolingual stretch merges into one span for the whole 10-min window
+            // (7k+ chars); fed whole it would seal an excerpt past the model's window.
+            // Split it at sentence ends so excerpts stay near `chunkChars`.
+            // Pieces share the span's start; a millisecond apart keeps them in order
+            // through the digest's sort by time (Swift's sort isn't guaranteed stable).
+            for (i, piece) in MeetingSummarizer.splitLongLine(turn.text, size: Self.digestFeedPieceChars).enumerated() {
+                digest.ingest(turn.speaker, piece, at: turn.start + Double(i) * 0.001)
+            }
+        }
+    }
+
+    /// Longest piece of lane text handed to the digest in one `ingest`.
+    nonisolated static let digestFeedPieceChars = 1000
+
+    /// Both speakers' merged spans for one window as speaker-tagged turns in audio
+    /// order (stable for equal starts: "me" before "them"). Empty spans are dropped.
+    nonisolated static func laneWindowTurns(me: [StreamLanguageVoter.Span], them: [StreamLanguageVoter.Span])
+        -> [(speaker: MeetingSpeaker, text: String, start: Double)] {
+        let tagged = me.map { (speaker: MeetingSpeaker.me, text: $0.text, start: $0.start) }
+            + them.map { (speaker: MeetingSpeaker.them, text: $0.text, start: $0.start) }
+        return tagged.enumerated()
+            .filter { !$0.element.text.trimmingCharacters(in: .whitespaces).isEmpty }
+            .sorted { $0.element.start != $1.element.start ? $0.element.start < $1.element.start : $0.offset < $1.offset }
+            .map(\.element)
+    }
+
+    /// The model-backed part of finishing a meeting: fuse the user's notes, summarize
+    /// (from the live digest when one ran, else map-reduce over the transcript), and
+    /// extract graph candidates. Returns the final summary markdown (always keeping
+    /// the user's notes) plus the model's graph candidates.
+    private func writeSummary(transcript clean: String, userNotes: String,
+                              digest: MeetingDigestBuilder?) async
+        -> (summary: String, graphCandidates: [ContextGraphExtractor.Candidate]) {
         let fused: String?
         if !userNotes.isEmpty {
             fused = await MeetingNotesFusion().fuse(notes: userNotes, transcript: clean, using: PrivacyWall.assertLocal(OnDeviceLLM()))?.bodyMarkdown
         } else {
             fused = nil
         }
-        // Summarize AND get back a condensed view (transcript when short, else the
-        // map partials) sized for the Stage-2 extractor's 4000-char cap, plus the
-        // graph candidates — either already gathered incrementally during the
-        // recording (plan 22 Part A) or, for a multilingual meeting / unavailable
-        // model, computed the same way stop() always has.
         let transcriptSummary: String
-        let condensed: String
         var graphCandidates: [ContextGraphExtractor.Candidate] = []
-        if let digestBuilder {
-            let result = await digestBuilder.finish()
+        if let digest {
+            let result = await digest.finish()
             transcriptSummary = result.summary ?? ""
-            condensed = result.condensed
             graphCandidates = result.graphCandidates
         } else {
-            let (transcriptSummaryOpt, condensedOpt) = await summarizer.summarizeCondensed(clean)
+            let (transcriptSummaryOpt, condensed) = await summarizer.summarizeCondensed(clean)
             transcriptSummary = transcriptSummaryOpt ?? ""
-            condensed = condensedOpt
-
-            // Stage-2 LLM extraction: pull real people / projects / commitments out of
-            // the meeting so the graph, the Brief, and `list_commitments` have data
-            // worth querying — layered on top of the Stage-1 heuristics below. Runs the
-            // extractor over each ≤4000-char chunk of `condensed` (already within budget
-            // for short meetings; the joined map partials for long ones), then dedupes
-            // by (kind, lowercased name). When Apple Intelligence is unavailable the
-            // extractor returns [] for every chunk → no section, Stage-1-only ingest →
-            // finalize output is byte-identical to today. ALL of these awaits happen
-            // BEFORE store.add so the store.add→partial-removal block stays await-free
-            // (crash-atomic), per plan 01's finalize ordering.
             if contextGraph != nil, OnDeviceLLM.isAvailable {
                 let extractor = GraphLLMExtractor(summarizer: PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.1)))
                 var seenGraph = Set<String>()
@@ -908,70 +1020,11 @@ final class MeetingRecorder: ObservableObject {
                 }
             }
         }
-        digestBuilder = nil
         var summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
-
-        // Append an "## Action items" section built from the extracted commitments,
-        // but only when there's ≥1 AND the summary doesn't already list action items
-        // (the summarizer/fusion prompts emit their own best-effort bullets).
-        if let section = Self.actionItemsSection(
-            commitments: graphCandidates, existingSummary: summary
-        ) {
+        if let section = Self.actionItemsSection(commitments: graphCandidates, existingSummary: summary) {
             summary = summary.isEmpty ? section : summary + "\n\n" + section
         }
-
-        // Reuse the id fixed at start() so the `.md` basename matches the kept-audio
-        // filenames (only meaningful when keep-audio was on; harmless otherwise).
-        let id = pendingMeetingID ?? UUID()
-        pendingMeetingID = nil
-        // Fold in the kept-audio map, if this recording produced any files. Empty →
-        // nil, so a no-keep-audio meeting persists exactly like before (no key).
-        let audioFiles = keepAudioFiles.isEmpty ? nil : keepAudioFiles
-        let meeting = Meeting(
-            id: id,
-            title: eventTitle ?? Self.makeTitle(start: start),
-            startUnix: start.timeIntervalSince1970,
-            durationSec: duration,
-            transcript: clean,
-            summary: summary,
-            participants: participants,
-            source: farEverActive ? "talkie (mic + system audio)" : "talkie (mic-only)",
-            fileName: MeetingStore.fileName(for: start, id: id),
-            segments: segments,
-            chapters: chapters,
-            audioFiles: audioFiles
-        )
-        store.add(meeting)
-        keepAudioFiles = [:]
-        // The meeting is durably persisted only now — so the crash-partial can only
-        // be dropped here, AFTER store.add (not before the summarization awaits, where
-        // a crash would lose the whole transcript). No `await` between store.add and
-        // this delete: it stays atomic on the main actor.
-        if let partialURL { try? FileManager.default.removeItem(at: partialURL) }
-        partialURL = nil
-
-        // Feed the context graph: calendar attendees as people + Stage-1 heuristic
-        // entities + the Stage-2 LLM candidates extracted above. `ingest` upserts
-        // with dedupe, so overlaps between the stages collapse. Stays await-free
-        // (single `@MainActor` `ingest` call) — the extraction awaits already ran
-        // before store.add.
-        if let graph = contextGraph {
-            let provenance = Provenance(source: .meeting, sourceID: meeting.id.uuidString,
-                                        dateUnix: start.timeIntervalSince1970, snippet: nil)
-            var candidates = eventAttendees.map {
-                ContextGraphExtractor.Candidate(kind: .person, displayName: $0)
-            }
-            candidates += ContextGraphExtractor.candidates(from: clean)
-            candidates += graphCandidates
-            graph.ingest(candidates, provenance: provenance)
-        }
-
-        // Cleared only after the meeting is durably persisted above (P2-01): the
-        // user's notes are never wiped before they're saved somewhere.
-        // isFinishing / capturingFarEnd are cleared by the `defer` at the top.
-        notes = ""
-        eventTitle = nil
-        eventAttendees = []
+        return (summary, graphCandidates)
     }
 
     /// Compose the meeting summary, guaranteeing the user's typed notes are never

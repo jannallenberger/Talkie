@@ -854,3 +854,6 @@
 /* Paste everything at once */
 "Paste everything at once" = "まとめて一度にペースト";
 "Never type your words in letter by letter, in any app." = "どのアプリでも、1文字ずつ入力しません。";
+
+/* Meeting summary in background */
+"Writing the summary… the transcript is already saved." = "要約を作成中… 文字起こしは保存済みです。";

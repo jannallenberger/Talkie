@@ -854,3 +854,6 @@
 /* Paste everything at once */
 "Paste everything at once" = "한 번에 모두 붙여넣기";
 "Never type your words in letter by letter, in any app." = "어떤 앱에서도 한 글자씩 입력하지 않습니다.";
+
+/* Meeting summary in background */
+"Writing the summary… the transcript is already saved." = "요약을 작성하는 중… 전사본은 이미 저장되었습니다.";
