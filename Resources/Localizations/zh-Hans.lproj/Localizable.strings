@@ -854,3 +854,6 @@
 /* Paste everything at once */
 "Paste everything at once" = "一次性全部粘贴";
 "Never type your words in letter by letter, in any app." = "在任何应用中都不逐字输入。";
+
+/* Meeting summary in background */
+"Writing the summary… the transcript is already saved." = "正在撰写摘要… 转写内容已保存。";
