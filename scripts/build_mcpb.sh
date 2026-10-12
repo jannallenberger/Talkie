@@ -28,6 +28,14 @@ mkdir -p "$STAGE/server"
 cp "$ROOT/connector/manifest.json" "$STAGE/manifest.json"
 cp "$BIN" "$STAGE/server/talkie-mcp"
 chmod +x "$STAGE/server/talkie-mcp"
+# The notary service scans INSIDE archives, and the .mcpb ships embedded in
+# Talkie.app/Contents/Resources — so for a release build the nested binary must
+# carry a Developer ID signature, a secure timestamp and the hardened runtime, or
+# the whole app submission is rejected. Dev builds (Apple Development/ad-hoc) skip it.
+if [[ "${TALKIE_SIGN_ID:-}" == Developer\ ID* ]]; then
+  echo "› Signing talkie-mcp for notarization…"
+  codesign --force --options runtime --timestamp --sign "$TALKIE_SIGN_ID" "$STAGE/server/talkie-mcp"
+fi
 # Optional on-brand icon (ignored if the master art isn't present).
 if [ -f "$ROOT/icon_assets/talkie_parrot_transparent.png" ]; then
   cp "$ROOT/icon_assets/talkie_parrot_transparent.png" "$STAGE/icon.png"
