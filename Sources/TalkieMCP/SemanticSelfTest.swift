@@ -406,6 +406,21 @@ enum SemanticSelfTest {
         check("scratchpad mirror: done + task + note fields survive decode",
               padLines[0].isTask && !padLines[0].done && padLines[1].done && !padLines[2].isTask)
 
+        // --- W2 speaker names: the mirror applies names like the app does -------
+        do {
+            let json = #"{"id":"00000000-0000-0000-0000-000000000001","title":"T","startUnix":1,"durationSec":2,"transcript":"[00:01] Me: hi Speaker 2\n[00:03] Speaker 2: hello\n[00:05] Speaker 12: x","summary":"- Speaker 2: send it\n- Them: book\nAsk them.","participants":["Me","Speaker 2","Speaker 12"],"fileName":"f.md","speakerNames":{"Speaker 2":{"name":"Ann","source":"manual"},"Them":{"name":"Tom","source":"future"},"Me":{"name":"X","source":"manual"}}}"#
+            let legacy = #"{"id":"00000000-0000-0000-0000-000000000002","title":"T","startUnix":1,"durationSec":2,"transcript":"Speaker 2: a","summary":"","fileName":"f.md"}"#
+            let m = try JSONDecoder().decode(TalkieStore.Meeting.self, from: Data(json.utf8)).named
+            check("speaker names: transcript prefixes only",
+                  m.transcript == "[00:01] Me: hi Speaker 2\n[00:03] Ann: hello\n[00:05] Speaker 12: x")
+            check("speaker names: summary owners", m.summary == "- Ann: send it\n- Tom: book\nAsk them.")
+            check("speaker names: participants, Me never renamed", m.participants == ["Me", "Ann", "Speaker 12"])
+            let l = try JSONDecoder().decode(TalkieStore.Meeting.self, from: Data(legacy.utf8)).named
+            check("speaker names: legacy meeting unchanged", l.transcript == "Speaker 2: a")
+        } catch {
+            check("speaker names: decode", false)
+        }
+
         print(failures == 0 ? "\nOK — all semantic-core checks passed."
                             : "\n\(failures) semantic-core check(s) FAILED.")
         exit(failures == 0 ? 0 : 1)
