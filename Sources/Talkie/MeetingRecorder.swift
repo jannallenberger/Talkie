@@ -117,6 +117,11 @@ final class MeetingRecorder: ObservableObject {
     /// (the pass runs on `summaryQueue`, before the summary). Seam for the Meetings tab's
     /// transient "Identifying speakers…" state (WP-B2); nothing reads it yet.
     @Published private(set) var diarizingMeetingIDs: Set<UUID> = []
+    #if DEBUG
+    /// Test-only seam: the UI snapshot test shows a meeting mid-summary without
+    /// running the real background pass.
+    func markSummarizingForTesting(_ id: UUID) { summarizingMeetingIDs.insert(id) }
+    #endif
     /// Chains background diarization + summaries so they run one at a time.
     private var summaryQueue: Task<Void, Never>?
     /// Where the speaker-diarization models live, or nil when unavailable (the pass is

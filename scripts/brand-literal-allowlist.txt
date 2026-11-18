@@ -40,7 +40,7 @@
 2 Sources/Talkie/JargonInstallPrompt.swift
 1 Sources/Talkie/LaunchAtLogin.swift
 3 Sources/Talkie/Meetings/FileImport.swift
-9 Sources/Talkie/MeetingsView.swift
+3 Sources/Talkie/MeetingsView.swift
 # dash-integrate: pre-existing drift found while reconciling the dashboard-polish
 # merge — actual count here was already 2, not 3, before either side touched this
 # file. Lowered to the real floor per the checker (--print).
@@ -57,7 +57,7 @@
 2 Sources/Talkie/Settings/CalendarSettings.swift
 7 Sources/Talkie/Settings/ExportDestinationsSettings.swift
 7 Sources/Talkie/Settings/LanguageSettings.swift
-9 Sources/Talkie/Settings/MeetingsSettings.swift
+12 Sources/Talkie/Settings/MeetingsSettings.swift
 10 Sources/Talkie/Settings/PrivacySettings.swift
 # J2: +1 for the dev-tools updater consent-copy literal ("…new Talkie builds…"),
 # a user-visible .loc string that follows the AppUpdateSection's existing

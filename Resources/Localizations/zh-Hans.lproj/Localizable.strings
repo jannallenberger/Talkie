@@ -867,3 +867,23 @@
 "Your voice" = "你的声音";
 "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "这台 Mac 上保存着一份小型声音档案，用于在会议中识别你。删除后即被移除，并会在以后的会议中重新学习。";
 "Forget my voice" = "忘记我的声音";
+
+/* Meetings page: two-pane layout */
+"Record" = "录制";
+"Today" = "今天";
+"Yesterday" = "昨天";
+"Earlier this week" = "本周早些时候";
+"%d min" = "%d 分钟";
+"1 speaker" = "1 位发言人";
+"%d speakers" = "%d 位发言人";
+"Imported" = "已导入";
+"Mic + call audio" = "麦克风 + 通话音频";
+"Mic only" = "仅麦克风";
+"Notes only" = "仅笔记";
+"Recovered" = "已恢复";
+"Show in Finder" = "在访达中显示";
+"Summary" = "摘要";
+"Transcript" = "转写稿";
+"%d words" = "%d 个词";
+"Click a line to hear that moment" = "点击某一行即可收听那一刻";
+"Press Record before your next call, or drop audio or video here to transcribe it." = "在下次通话前点按“录制”，或将音频或视频拖到这里进行转写。";

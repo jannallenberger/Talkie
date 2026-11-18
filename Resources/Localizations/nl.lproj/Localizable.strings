@@ -867,3 +867,23 @@
 "Your voice" = "Jouw stem";
 "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "Op deze Mac wordt een klein stemprofiel bewaard om je in vergaderingen te herkennen. Vergeten verwijdert het; het wordt opnieuw geleerd uit toekomstige vergaderingen.";
 "Forget my voice" = "Mijn stem vergeten";
+
+/* Meetings page: two-pane layout */
+"Record" = "Opnemen";
+"Today" = "Vandaag";
+"Yesterday" = "Gisteren";
+"Earlier this week" = "Eerder deze week";
+"%d min" = "%d min";
+"1 speaker" = "1 spreker";
+"%d speakers" = "%d sprekers";
+"Imported" = "Geïmporteerd";
+"Mic + call audio" = "Microfoon + gespreksaudio";
+"Mic only" = "Alleen microfoon";
+"Notes only" = "Alleen notities";
+"Recovered" = "Hersteld";
+"Show in Finder" = "Toon in Finder";
+"Summary" = "Samenvatting";
+"Transcript" = "Transcript";
+"%d words" = "%d woorden";
+"Click a line to hear that moment" = "Klik op een regel om dat moment te horen";
+"Press Record before your next call, or drop audio or video here to transcribe it." = "Druk op Opnemen voor je volgende gesprek, of sleep hier audio of video naartoe om het uit te schrijven.";

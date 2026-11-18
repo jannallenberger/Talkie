@@ -20,6 +20,10 @@ struct MeetingsSettings: View {
     /// Observed so the destination reference row reflects a folder/vault change (and
     /// its reachability) live, exactly like the real control on the root.
     @ObservedObject private var exportPrefs = ExportPreferences.shared
+    /// The one watched-inbox folder (D6), moved here from the Meetings page with its
+    /// card. Plain absolute path, no bookmark — the app isn't sandboxed. Empty = OFF;
+    /// the watcher is never seeded with a default.
+    @ObservedObject private var inboxWatch = InboxWatchPreferences.shared
 
     /// Moved verbatim from `MeetingsView` with the allowlist card: the app-picker
     /// sheet toggle.
@@ -40,6 +44,8 @@ struct MeetingsSettings: View {
             VStack(alignment: .leading, spacing: 18) {
                 detectionCard
                 livePillCard
+                keepAudioCard
+                watchedInboxCard
                 allowlistCard
                 if !settings.mutedMeetingApps.isEmpty { mutedCard }
 
@@ -93,6 +99,83 @@ struct MeetingsSettings: View {
                 subtitle: "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident.".loc,
                 isOn: $settings.showMeetingPill)
         }
+    }
+
+    // MARK: Keep audio & watched folder (moved from the Meetings page)
+
+    /// Keep-audio toggle (D9). Default OFF — retaining raw call audio is a genuine
+    /// privacy + disk decision, so the subtitle says the cost in plain words and the
+    /// choice is snapshotted at recording start (flipping it mid-call doesn't change a
+    /// recording already underway). When on, each recording writes per-stream `.m4a`
+    /// files beside its note, and clicking a transcript line plays that exact moment.
+    @ViewBuilder
+    private var keepAudioCard: some View {
+        SettingsCard(
+            header: "Audio",
+            footer: "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept.".loc
+        ) {
+            SettingsToggleRow(
+                title: "Keep audio with meeting notes".loc,
+                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
+                isOn: $settings.keepMeetingAudio)
+        }
+    }
+
+    /// The watched-inbox folder (D6): pick ONE folder and any audio/video file that lands
+    /// there is transcribed into a note, then moved into a `Transcribed/` subfolder. Off
+    /// until you choose a folder (no default is ever set), and the copy says exactly what
+    /// will happen — this is a privacy-sensitive capability, so it's opt-in and explicit.
+    @ViewBuilder
+    private var watchedInboxCard: some View {
+        SettingsCard(
+            header: "Watch a folder",
+            footer: inboxWatch.folderPath.isEmpty
+                ? "Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection.".loc
+                : "Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection.".loc
+        ) {
+            SettingsRow(
+                title: "Watched folder".loc,
+                subtitle: inboxWatch.folderPath.isEmpty
+                    ? "No folder — this feature is off".loc
+                    : inboxWatch.folderPath
+            ) {
+                HStack(spacing: 8) {
+                    Button(inboxWatch.folderPath.isEmpty ? "Choose…".loc : "Change…".loc,
+                           action: pickInboxFolder)
+                    if !inboxWatch.folderPath.isEmpty {
+                        Button("Stop watching".loc, action: stopWatchingInbox)
+                    }
+                }
+            }
+            if !inboxWatch.folderPath.isEmpty, !inboxWatch.folderIsAccessible {
+                SettingsDivider(leadingInset: 0)
+                SettingsNote(
+                    text: "That folder isn’t reachable right now — nothing will be watched until it’s back.".loc,
+                    tone: Theme.warning, icon: "exclamationmark.triangle.fill")
+            }
+        }
+    }
+
+    /// Pick the single folder to watch. Directories only; the app isn't sandboxed, so we
+    /// store the plain path (no security-scoped bookmark), matching `ExportPreferences`.
+    private func pickInboxFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Watch"
+        panel.message = "Pick a folder to watch. Audio and video files that land in it will be transcribed into notes and moved into a “Transcribed” subfolder."
+        if !inboxWatch.folderPath.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: inboxWatch.folderPath)
+        }
+        if panel.runModal() == .OK, let url = panel.url {
+            inboxWatch.folderPath = url.path
+        }
+    }
+
+    /// Turn watching off by clearing the path — the watcher disarms on the next change.
+    private func stopWatchingInbox() {
+        inboxWatch.folderPath = ""
     }
 
     // MARK: Meeting apps allowlist + muted
@@ -169,7 +252,14 @@ struct MeetingsSettings: View {
                 title: "Notes are saved to".loc,
                 subtitle: destinationDescription
             ) {
-                Button("Open Notes & export".loc) { openNotesAndExport() }
+                HStack(spacing: 8) {
+                    // Moved from the Meetings page's folder row: opens the folder notes
+                    // ACTUALLY land in (the same resolution as the line above).
+                    Button("Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([resolvedNotesFolder])
+                    }
+                    Button("Open Notes & export".loc) { openNotesAndExport() }
+                }
             }
             if exportPrefs.destination == .folder,
                !exportPrefs.folderPath.isEmpty, !exportPrefs.folderIsAccessible {
@@ -196,6 +286,17 @@ struct MeetingsSettings: View {
                 ? exportPrefs.folderPath
                 : "~/Talkie Meetings".loc
         }
+    }
+
+    /// The folder where notes actually land: a reachable custom folder, else the
+    /// ~/Talkie Meetings default (the same fallback `resolvedDestination()` applies), so
+    /// Reveal never points at a folder notes aren't in.
+    private var resolvedNotesFolder: URL {
+        if exportPrefs.destination == .folder,
+           !exportPrefs.folderPath.isEmpty, exportPrefs.folderIsAccessible {
+            return URL(fileURLWithPath: exportPrefs.folderPath)
+        }
+        return AppPaths.meetingsDirectory()
     }
 
     /// Deep-link to the root "Notes & export" card (the real control). This subpage is

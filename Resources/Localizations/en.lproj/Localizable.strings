@@ -878,3 +878,23 @@
 "Your voice" = "Your voice";
 "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings.";
 "Forget my voice" = "Forget my voice";
+
+/* Meetings page: two-pane layout */
+"Record" = "Record";
+"Today" = "Today";
+"Yesterday" = "Yesterday";
+"Earlier this week" = "Earlier this week";
+"%d min" = "%d min";
+"1 speaker" = "1 speaker";
+"%d speakers" = "%d speakers";
+"Imported" = "Imported";
+"Mic + call audio" = "Mic + call audio";
+"Mic only" = "Mic only";
+"Notes only" = "Notes only";
+"Recovered" = "Recovered";
+"Show in Finder" = "Show in Finder";
+"Summary" = "Summary";
+"Transcript" = "Transcript";
+"%d words" = "%d words";
+"Click a line to hear that moment" = "Click a line to hear that moment";
+"Press Record before your next call, or drop audio or video here to transcribe it." = "Press Record before your next call, or drop audio or video here to transcribe it.";
