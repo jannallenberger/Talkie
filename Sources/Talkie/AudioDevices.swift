@@ -9,6 +9,8 @@ struct AudioInputDevice: Identifiable, Hashable, Sendable {
     let uid: String
     let name: String
     let isBuiltIn: Bool
+    /// Bluetooth (A2DP/HFP) transport: opening its input drops it to hands-free mode.
+    var isBluetooth = false
 }
 
 /// The outcome of evaluating a mid-session input-device change: whether the
@@ -45,7 +47,9 @@ enum AudioDevices {
                 id: id,
                 uid: uid,
                 name: name,
-                isBuiltIn: transportType(id) == kAudioDeviceTransportTypeBuiltIn
+                isBuiltIn: transportType(id) == kAudioDeviceTransportTypeBuiltIn,
+                isBluetooth: [kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE]
+                    .contains(transportType(id))
             )
         }
     }
@@ -109,7 +113,54 @@ enum AudioDevices {
         return .swap(to: target)
     }
 
+    // MARK: - Prewarm policy
+
+    /// The devices an input-node prewarm gets bound to. `AVAudioEngine.inputNode`
+    /// builds an aggregate of the default input + default output, so any change to
+    /// either default (or to what we resolve) makes a held prewarmed engine stale.
+    struct PrewarmKey: Equatable, Sendable {
+        var defaultInput: AudioDeviceID?
+        var defaultOutput: AudioDeviceID?
+        var resolvedInputUID: String?
+    }
+
+    static func currentPrewarmKey(preferredUID: String?) -> PrewarmKey {
+        PrewarmKey(defaultInput: defaultInputDeviceID(),
+                   defaultOutput: defaultOutputDeviceID(),
+                   resolvedInputUID: resolveInput(preferredUID: preferredUID)?.uid)
+    }
+
+    /// Prewarm instantiates the input node, which binds the engine to the default input
+    /// AND the resolved input. Only safe when both are the built-in mic; a Bluetooth
+    /// headset anywhere in that set would be dragged into hands-free mode while idle.
+    static func isSafeToPrewarm(resolved: AudioInputDevice?, defaultInput: AudioInputDevice?) -> Bool {
+        guard let resolved, let defaultInput else { return false }
+        return resolved.isBuiltIn && defaultInput.isBuiltIn && !resolved.isBluetooth && !defaultInput.isBluetooth
+    }
+
+    static func isSafeToPrewarm(preferredUID: String?) -> Bool {
+        let devices = inputDevices()
+        let defaultID = defaultInputDeviceID()
+        return isSafeToPrewarm(resolved: resolveInput(preferredUID: preferredUID),
+                               defaultInput: devices.first { $0.id == defaultID })
+    }
+
     // MARK: - Device property reads
+
+    /// `kAudioHardwarePropertyDefaultOutputDevice` → the current default output.
+    static func defaultOutputDeviceID() -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID)
+        guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
+        return deviceID
+    }
 
     /// `kAudioHardwarePropertyDevices` → every audio device the system knows about.
     private static func deviceIDs() -> [AudioDeviceID] {
