@@ -466,6 +466,10 @@ private struct SettingsHome: View {
                                          subtitle: "Tools that ship only in development builds.",
                                          page: .developer)
                     }
+                    // Public re-entry to the first-run introduction (it used to be
+                    // reachable only from the dev-gated Developer section).
+                    ReplayIntroductionCard(settings: settings)
+                        .padding(.top, 8)
                 }
                 .padding(28)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -657,6 +661,34 @@ struct SettingsSectionHeader: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 4)
+    }
+}
+
+/// Public "Replay introduction" row on the Settings root. Restarts the first-run
+/// onboarding; name, settings, history, and dictionary are untouched.
+private struct ReplayIntroductionCard: View {
+    @ObservedObject var settings: AppSettings
+    @State private var replaying = false
+
+    var body: some View {
+        SettingsCard(
+            header: "Introduction".loc,
+            footer: "Walks through the welcome flow again. Your name, settings, history, and dictionary are untouched.".loc
+        ) {
+            SettingsRow(
+                title: "Replay introduction".loc,
+                subtitle: replaying ? "Opening the welcome flow…".loc : "Show the welcome flow again".loc
+            ) {
+                Button("Replay") {
+                    replaying = true
+                    // Defer a tick so the press settles before the window crossfades.
+                    DispatchQueue.main.async { settings.hasOnboarded = false }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.coral)
+                .disabled(replaying)
+            }
+        }
     }
 }
 
@@ -920,7 +952,7 @@ private struct MCPConnectorCard: View {
     var body: some View {
         SettingsCard(
             header: "Connect your AI agent",
-            footer: String(format: "%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc, Brand.mcpDisplayName)
+            footer: String(format: "%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — and each change applies right away with an Undo pill so you can reverse it. Bundled with the app: no separate download or build.".loc, Brand.mcpDisplayName)
         ) {
             if let path {
                 // (a) Claude Desktop — one double-click via the bundled .mcpb. The
