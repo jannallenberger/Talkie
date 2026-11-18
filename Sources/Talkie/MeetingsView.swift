@@ -456,7 +456,7 @@ struct MeetingsView: View {
     private func copy(_ meeting: Meeting) {
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.setString(meeting.transcript, forType: .string)
+        pb.setString(meeting.namedTranscript, forType: .string)
     }
 
     /// Persist a hand-edited transcript back into the meeting (A8). `store.update`

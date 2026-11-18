@@ -168,6 +168,12 @@ struct Meeting: Codable, Identifiable, Hashable {
     /// notes saved before W2 (those live only inside `summary`). Decodes an older
     /// plain string too.
     var notes: [MeetingNote]? = nil
+    /// Names for this meeting's speakers, keyed by the stored label ("Speaker 2",
+    /// "Them") with where each came from (conversation / voice / manual). Applied
+    /// only at presentation (`namedTranscript` …): `transcript`, `segments` and
+    /// `summary` keep their raw labels. Nil for meetings without names and for every
+    /// note saved before the feature. "Me" is never a key.
+    var speakerNames: [String: SpeakerName]? = nil
 
     var date: Date { Date(timeIntervalSince1970: startUnix) }
 }
@@ -195,6 +201,8 @@ extension Meeting {
         speakerCount = try c.decodeIfPresent(Int.self, forKey: .speakerCount)
         diarizationState = try c.decodeIfPresent(String.self, forKey: .diarizationState)
         notes = MeetingNote.decodeFlexible(c, forKey: .notes)
+        // A newer build's unknown source (or any malformed entry) drops the names, never the meeting.
+        speakerNames = (try? c.decodeIfPresent([String: SpeakerName].self, forKey: .speakerNames)) ?? nil
     }
 
     var diarization: DiarizationState? { diarizationState.flatMap(DiarizationState.init(rawValue:)) }
@@ -461,6 +469,20 @@ final class MeetingStore: ObservableObject {
         return (meetings[index].id, old)
     }
 
+    /// Name (or, with nil/blank, un-name) one speaker of a meeting by hand. Applies to
+    /// every turn of that label; a manual name overrides automatic ones. Returns the
+    /// updated names, or nil when the meeting is gone or the label is "Me".
+    @discardableResult
+    func setSpeakerName(_ name: String?, label: String, meetingID: UUID) -> [String: SpeakerName]? {
+        guard SpeakerNames.isNameable(label),
+              let index = meetings.firstIndex(where: { $0.id == meetingID }) else { return nil }
+        let updated = SpeakerNames.settingManual(name, for: label, in: meetings[index].speakerNames)
+        meetings[index].speakerNames = updated.isEmpty ? nil : updated
+        writeMarkdown(meetings[index])
+        save()
+        return updated
+    }
+
     /// Restore a meeting's title — the Undo of `retitle`. No-op if the meeting is gone.
     func restoreTitle(id: UUID, to oldTitle: String) {
         guard let index = meetings.firstIndex(where: { $0.id == id }) else { return }
@@ -499,13 +521,13 @@ final class MeetingStore: ObservableObject {
         // destination value it returns is `Sendable`, so the blocking disk write is
         // handed off to a detached task and never touches @MainActor state.
         let minutes = Int((m.durationSec / 60).rounded())
-        let summary = m.summary.isEmpty ? "_(no summary)_" : m.summary
+        let summary = m.summary.isEmpty ? "_(no summary)_" : m.namedSummary
         // Insert a "## Chapters" section between Summary and Transcript, but only when
         // the meeting actually shifted topics (≥2 chapters) — a lone chapter is noise.
         let chaptersSection = Meeting.chaptersMarkdown(m.chapters)
         let body = chaptersSection.isEmpty
-            ? "## Summary\n\n\(summary)\n\n## Transcript\n\n\(m.transcript)"
-            : "## Summary\n\n\(summary)\n\n\(chaptersSection)\n\n## Transcript\n\n\(m.transcript)"
+            ? "## Summary\n\n\(summary)\n\n## Transcript\n\n\(m.namedTranscript)"
+            : "## Summary\n\n\(summary)\n\n\(chaptersSection)\n\n## Transcript\n\n\(m.namedTranscript)"
         let note = ExportableNote(
             kind: .meeting,
             title: m.title,
@@ -513,7 +535,7 @@ final class MeetingStore: ObservableObject {
             bodyMarkdown: body,
             frontMatter: [
                 "duration_min": "\(minutes)",
-                "participants": "[\(m.participants.joined(separator: ", "))]",
+                "participants": "[\(m.namedParticipants.joined(separator: ", "))]",
                 "source": m.source,
             ],
             suggestedFileName: m.fileName
