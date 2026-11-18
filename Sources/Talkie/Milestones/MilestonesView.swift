@@ -72,19 +72,16 @@ struct MilestonesView: View {
     // MARK: Header — current tier, total words, real time spoken
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            TalkieBackButton()
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Plumage")
-                    .font(.talkiePageTitle)
-                    .foregroundStyle(Theme.ink)
-                Text(currentTierName)
-                    .font(.talkieHeading(15, weight: .medium))
-                    .foregroundStyle(Theme.featherCoral)
-                Text(subtitle)
-                    .font(.talkieHeading(13, weight: .regular))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Plumage")
+                .font(.talkiePageTitle)
+                .foregroundStyle(Theme.ink)
+            Text(currentTierName)
+                .font(.talkieHeading(15, weight: .medium))
+                .foregroundStyle(Theme.featherCoral)
+            Text(subtitle)
+                .font(.talkieHeading(13, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
         }
     }
 

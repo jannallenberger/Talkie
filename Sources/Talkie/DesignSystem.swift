@@ -124,6 +124,11 @@ enum Theme {
         /// is the whole top area (it still clears the traffic lights, which sit
         /// over the sidebar).
         static let pageTop: CGFloat = 36
+        /// Pushed pages: the system back button (a ~32pt glass capsule) sits in
+        /// the 52pt window toolbar at the detail column's top-left, where the
+        /// title would be. Its exact x isn't knowable offscreen, so the title
+        /// starts just below the toolbar instead of beside the button.
+        static let pageTopPushed: CGFloat = 60
         /// Leading/trailing page inset.
         static let pageSide: CGFloat = 28
         /// Bottom inset under the last card of a scrolling page.
@@ -414,9 +419,9 @@ extension EnvironmentValues {
     }
 }
 
-/// Which back control a page shows. Exactly one per pushed page: the in-page
-/// chevron next to the title; the system navigation back button is hidden.
-/// Root pages show neither.
+/// Which back control a page shows. Exactly one per pushed page: the system
+/// navigation back button (the Liquid Glass capsule in the transparent window
+/// toolbar). There is no in-page chevron. Root pages show neither.
 enum TalkieBackPolicy {
     struct Controls: Equatable {
         let inPageChevron: Bool
@@ -424,45 +429,40 @@ enum TalkieBackPolicy {
     }
 
     static func controls(pushed: Bool) -> Controls {
-        Controls(inPageChevron: pushed, systemBackButton: false)
+        Controls(inPageChevron: false, systemBackButton: pushed)
     }
 }
 
 extension View {
-    /// Marks a navigation destination as a pushed page, so its header shows the
-    /// back chevron.
+    /// Marks a navigation destination as a pushed page: the system back button
+    /// shows in the toolbar, ⌘[ pops, and the page starts below the toolbar.
     /// Also re-applies the page default button style: navigation destinations
     /// don't inherit the environment set around the hosting `NavigationStack`.
     func talkiePushedPage() -> some View {
-        environment(\.talkiePushedPage, true)
-            .buttonStyle(.talkie(.secondary))
-            // The in-page chevron replaces the toolbar's back button, which
-            // would otherwise sit over the page title.
-            .navigationBarBackButtonHidden(!TalkieBackPolicy.controls(pushed: true).systemBackButton)
+        modifier(TalkiePushedPageModifier())
     }
 }
 
-/// A back chevron shown only on pushed pages (the system toolbar back button is
-/// hidden so it can't overlap the page title). Pops via `dismiss`; ⌘[ works too.
-struct TalkieBackButton: View {
-    @Environment(\.talkiePushedPage) private var pushed
+private struct TalkiePushedPageModifier: ViewModifier {
     @Environment(\.dismiss) private var dismiss
 
-    var body: some View {
-        if TalkieBackPolicy.controls(pushed: pushed).inPageChevron {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
+    func body(content: Content) -> some View {
+        content
+            .environment(\.talkiePushedPage, true)
+            .buttonStyle(.talkie(.secondary))
+            .navigationBarBackButtonHidden(!TalkieBackPolicy.controls(pushed: true).systemBackButton)
+            // ⌘[ pops one level, whether or not the system button binds it too
+            // (only one key-equivalent handler consumes the event).
+            .background {
+                Button("Back".loc) { dismiss() }
+                    .keyboardShortcut("[", modifiers: .command)
+                    .hidden()
+                    .accessibilityHidden(true)
             }
-            .buttonStyle(.talkie(.quiet))
-            .help("Back".loc)
-            .accessibilityLabel(Text("Back".loc))
-            .keyboardShortcut("[", modifiers: .command)
-        }
     }
 }
 
-/// The one page header: (back chevron when pushed) · serif-26 title + optional
+/// The one page header: serif-26 title + optional
 /// 13pt subtitle · optional trailing actions, top-aligned with the title.
 struct TalkiePageHeader<Actions: View>: View {
     let title: String
@@ -474,19 +474,15 @@ struct TalkiePageHeader<Actions: View>: View {
         // width; on a narrower window they drop to their own row under it.
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 12) {
-                TalkieBackButton()
                 titleBlock
                     .frame(minWidth: 300, idealWidth: 300, maxWidth: .infinity, alignment: .leading)
                 actionRow
             }
-            HStack(alignment: .top, spacing: 12) {
-                TalkieBackButton()
-                VStack(alignment: .leading, spacing: 12) {
-                    titleBlock
-                    actionRow
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 12) {
+                titleBlock
+                actionRow
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -526,8 +522,17 @@ enum TalkiePageBackground {
 extension View {
     /// The fixed page insets (top / sides / bottom) from `Theme.Space`.
     func talkiePagePadding(bottom: Bool = true) -> some View {
-        self
-            .padding(.top, Theme.Space.pageTop)
+        modifier(TalkiePagePadding(bottom: bottom))
+    }
+}
+
+private struct TalkiePagePadding: ViewModifier {
+    let bottom: Bool
+    @Environment(\.talkiePushedPage) private var pushed
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.top, pushed ? Theme.Space.pageTopPushed : Theme.Space.pageTop)
             .padding(.horizontal, Theme.Space.pageSide)
             .padding(.bottom, bottom ? Theme.Space.pageBottom : 0)
     }
@@ -547,6 +552,8 @@ struct TalkieScrollPage<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
+        // No toolbar material when content scrolls under the transparent toolbar.
+        .scrollEdgeEffectHidden(true, for: .top)
         .background { backgroundView }
     }
 
