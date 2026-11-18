@@ -373,12 +373,20 @@ actor TranscriptionEngine {
 
     private func ensureModelInstalled(for transcriber: any SpeechModule) async throws {
         let status = await AssetInventory.status(forModules: [transcriber])
-        guard status != .installed else { return }
+        guard status != .installed else {
+            await SpeechModelInstallTracker.shared.markInstalled()
+            return
+        }
         do {
             if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+                // Onboarding shows a visible "downloading" state with this progress.
+                nonisolated(unsafe) let progress = request.progress
+                await SpeechModelInstallTracker.shared.begin(progress: progress)
                 try await request.downloadAndInstall()
             }
+            await SpeechModelInstallTracker.shared.markInstalled()
         } catch {
+            await SpeechModelInstallTracker.shared.markFailed()
             throw TalkieEngineError.modelInstallFailed(error.localizedDescription)
         }
     }

@@ -25,8 +25,8 @@ enum JargonInstallPrompt {
     /// in this and recent sessions and call `get_dictionary` FIRST to avoid duplicates,
     /// (c) suggest genuinely-recurring terms Talkie would mis-hear via
     /// `add_vocabulary_term` / `add_replacement`, and fix or remove wrong entries with
-    /// the management tools, and (d) understand that nothing is applied silently —
-    /// every call is queued for the user to confirm in Talkie with a one-tap Undo.
+    /// the management tools, and (d) understand that each call is applied right away, visibly,
+    /// with a one-tap Undo pill in Talkie (queued only while Talkie is closed).
     /// The etiquette wording mirrors docs/MCP_TEACH_BACK.md so it stays consistent with
     /// L9's setup prompt.
     static func body() -> String {
@@ -63,10 +63,11 @@ enum JargonInstallPrompt {
         or `remove_vocabulary_term`. Only touch an entry you are confident about.
 
         Etiquette — this matters:
-        - Every one of these calls is only a SUGGESTION. Nothing changes my dictionary \
-        directly. Talkie queues each call and shows me a pill with a one-tap Undo, and \
-        it does NOT take effect until I confirm it. So you do not need to ask my \
-        permission first — just make the call and tell me what you queued and why.
+        - Every one of these calls is only a SUGGESTION from you. Talkie applies it \
+        right away and shows me a pill with a one-tap Undo (if Talkie is closed, it is \
+        queued and applied at the next launch), so I can reverse anything I don't \
+        want. You do not need to ask my permission first — just make the call and tell \
+        me what you queued and why.
         - Do not spam it: one call per genuinely new or genuinely wrong term. Skip common \
         English words, skip anything already in the dictionary, and skip a term you are \
         only guessing at. A short, high-signal batch I can confirm at a glance is far \
@@ -74,7 +75,7 @@ enum JargonInstallPrompt {
 
         When you're done, give me a plain-language summary: the terms you suggested \
         adding, any rules you added, and anything you fixed or removed — so I know what \
-        to confirm in Talkie.
+        to review in Talkie.
         """
     }
 }
@@ -82,15 +83,15 @@ enum JargonInstallPrompt {
 /// The card that lives in the Dictionary page's export area. It offers a single
 /// "Copy prompt" button that reuses the same copy-to-pasteboard + brief "Copied"
 /// flash the MCP connector card uses (L9), so the interaction is identical across the
-/// two Claude surfaces. The subtitle is honest: Claude *suggests* terms you confirm,
-/// each with an Undo — it never silently auto-corrects anything.
+/// two Claude surfaces. The subtitle is honest: Claude *suggests* terms that Talkie applies
+/// visibly, each with an Undo — it never changes anything out of sight.
 struct InstallMyJargonCard: View {
     @State private var copied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Eyebrow(text: "Install my jargon")
-            Text("Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Every suggestion waits for your one-tap confirmation in Talkie, with an Undo. Your AI agent never changes your dictionary on its own.".loc)
+            Text("Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Each suggestion is applied right away with a one-tap Undo pill in Talkie, so you can reverse any you don't want. Your AI agent can't change your dictionary without you seeing it.".loc)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
             HStack {

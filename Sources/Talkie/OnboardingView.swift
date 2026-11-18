@@ -19,6 +19,8 @@ struct OnboardingView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
     let onRetryHotKey: () -> Bool
+    // One-time speech-model download state (macOS performs it; Talkie only reports it).
+    @ObservedObject private var modelTracker = SpeechModelInstallTracker.shared
 
     // Speak-first order (H5): the mic-only try-it comes BEFORE the privacy promise,
     // the gesture, and — crucially — before Input Monitoring or Accessibility are ever
@@ -70,7 +72,50 @@ struct OnboardingView: View {
             .padding(.vertical, 28)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { permissions.refresh() }
+        // Poll for the whole flow (not just the permissions step) so the rows, the
+        // final-step hint and button label, and the hotkey-tap retry all stay live
+        // while System Settings changes land. Idempotent; stopped when the view goes.
+        .onAppear {
+            permissions.refresh()
+            permissions.startPolling()
+        }
+        .onDisappear { permissions.stopPolling() }
+        // Know whether the speech model is installed before the offline dare is
+        // offered; stops once it is (or when the view goes away).
+        .task {
+            while !Task.isCancelled, modelTracker.phase != .installed {
+                await modelTracker.probe(localeIdentifier: settings.spokenLanguages.first ?? "en-US")
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    // MARK: Model download notice
+
+    /// Visible state while macOS downloads the on-device speech model (first run on a
+    /// Mac that does not have it yet). Says plainly that macOS does this download.
+    @ViewBuilder
+    private var modelDownloadNotice: some View {
+        if modelTracker.phase.showsDownloadNotice {
+            VStack(spacing: 6) {
+                if let fraction = modelTracker.phase.progressFraction {
+                    ProgressView(value: fraction)
+                        .progressViewStyle(.linear)
+                        .tint(Theme.coral)
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Text("Downloading the speech model (one time)…")
+                    .font(.talkieHeading(12.5, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text("macOS does this one download itself — this app never connects to the internet. After it, everything runs offline.")
+                    .font(.talkieHeading(11.5, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 
     // MARK: Card
@@ -149,6 +194,8 @@ struct OnboardingView: View {
             TryItRecordButton(active: tryItActive) { toggleTryIt() }
                 .padding(.top, 2)
 
+            modelDownloadNotice
+
             // Read-only results field — the words appear here as you speak. Never
             // editable: this is a demo of recognition, not a place to type.
             ScrollView {
@@ -203,7 +250,13 @@ struct OnboardingView: View {
             // so the button must stay idle rather than lie about recording.
             let started = app.toggleTryItDictation(
                 onInterim: { tryItText = $0 },
-                onFinal: { tryItText = $0 },
+                onFinal: {
+                    tryItText = $0
+                    // Words came back, so the model is certainly installed.
+                    if !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        modelTracker.markInstalled()
+                    }
+                },
                 onError: { tryItError = $0; tryItActive = false },
                 onEnded: { tryItActive = false }
             )
@@ -221,9 +274,9 @@ struct OnboardingView: View {
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 9) {
-                PrivacyChip(icon: "lock.fill", text: "On-device")
-                PrivacyChip(icon: "wifi.slash", text: "No cloud")
-                PrivacyChip(icon: "person.crop.circle.badge.xmark", text: "No account")
+                PrivacyChip(icon: "lock.fill", text: "On-device".loc)
+                PrivacyChip(icon: "wifi.slash", text: "No cloud".loc)
+                PrivacyChip(icon: "person.crop.circle.badge.xmark", text: "No account".loc)
             }
             .padding(.top, 2)
 
@@ -247,6 +300,18 @@ struct OnboardingView: View {
     @ViewBuilder
     private var privacyDare: some View {
         VStack(spacing: 12) {
+            // The dare needs the model on this Mac: with the Wi-Fi off before it is
+            // installed, dictation would fail or hang. Until then show the download.
+            if !modelTracker.phase.offersOfflineDare && !privacySaluted {
+                if modelTracker.phase.showsDownloadNotice {
+                    modelDownloadNotice
+                } else {
+                    Text("Once the speech model is on this Mac, you can try dictation with the Wi-Fi off.")
+                        .font(.talkieHeading(12.5, weight: .regular))
+                        .foregroundStyle(Theme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
             Text("Don't take our word for it — turn off Wi-Fi and dictate.")
                 .font(.talkieHeading(13, weight: .semibold))
                 .foregroundStyle(Theme.inkSecondary)
@@ -266,6 +331,7 @@ struct OnboardingView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .tint(Theme.coral)
+            }
             }
         }
         .padding(.top, 4)
@@ -401,15 +467,21 @@ struct OnboardingView: View {
             .foregroundStyle(Theme.inkTertiary)
     }
 
+    /// Rows still needing a grant (the step lists all three, granted ones checked).
+    private var missingPermissionCount: Int {
+        PermissionKind.allCases.filter { permissions.rowAction($0) != .granted }.count
+    }
+
     private var permissionsStep: some View {
-        VStack(spacing: 15) {
-            // After the speak-first try-it, the mic is usually already granted, so the
-            // two remaining grants are the point of this step. Naming them honestly —
-            // and only them — keeps the ask small and non-alarming.
-            Text("Two more permissions")
+        let missing = missingPermissionCount
+        return VStack(spacing: 15) {
+            // The heading counts the rows that still need a grant, so it always
+            // matches what the step shows (the mic row stays listed, checked, once
+            // it has been granted by the try-it).
+            Text(LocalizedStringKey(OnboardingPermissionsCopy.headingKey(missing: missing)))
                 .font(.talkieDisplay(27))
                 .foregroundStyle(Theme.ink)
-            Text("To hear your dictation key and place your text into other apps, Talkie needs these two. Each is used only on this Mac.")
+            Text(LocalizedStringKey(OnboardingPermissionsCopy.bodyKey(missing: missing)))
                 .font(.talkieHeading(14, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -422,27 +494,20 @@ struct OnboardingView: View {
                     why: permissions.microphone
                         ? "Granted while you tried it out."
                         : "To hear you while you dictate.",
-                    granted: permissions.microphone
-                ) { Task { await permissions.requestMicrophone() } }
+                    action: permissions.rowAction(.microphone)
+                ) { permissions.performRowAction(.microphone) }
                 OnboardPermissionRow(
                     icon: "IconKeyboard",
                     title: "Input Monitoring",
                     why: "To notice your one dictation key — nothing else you type.",
-                    granted: permissions.inputMonitoring
-                ) {
-                    permissions.requestInputMonitoring()
-                    // If the grant is already live but the tap won't install yet,
-                    // surface a one-click relaunch instead of a dead hotkey.
-                    if !onRetryHotKey() && permissions.inputMonitoring {
-                        permissions.hotKeyNeedsRelaunch = true
-                    }
-                }
+                    action: permissions.rowAction(.inputMonitoring)
+                ) { permissions.performRowAction(.inputMonitoring, retryHotKey: onRetryHotKey) }
                 OnboardPermissionRow(
                     icon: "IconAccessibility",
                     title: "Accessibility",
                     why: "To place the finished text into the app you're using.",
-                    granted: permissions.accessibility
-                ) { permissions.promptAccessibility() }
+                    action: permissions.rowAction(.accessibility)
+                ) { permissions.performRowAction(.accessibility) }
             }
             .padding(.top, 2)
 
@@ -450,28 +515,27 @@ struct OnboardingView: View {
             // no manual "Re-check" needed. When the key grant lands but the tap
             // can't install, offer a one-click relaunch (always the user's tap).
             if permissions.hotKeyNeedsRelaunch {
-                VStack(spacing: 8) {
-                    Text("Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key.")
-                        .font(.talkieHeading(12.5, weight: .regular))
-                        .foregroundStyle(Theme.inkSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button("Relaunch now") { permissions.relaunch() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.coral)
-                        .controlSize(.large)
-                }
-                .padding(.top, 2)
+                relaunchHint
             } else if permissions.allGranted {
                 Label("All set", systemImage: "checkmark.seal.fill")
                     .font(.talkieHeading(13, weight: .semibold))
                     .foregroundStyle(Theme.positive)
             }
         }
-        // Poll only while this step is on screen; the rows above flip to granted
-        // live as System Settings changes land. Stopped on disappear so no loop
-        // runs once the user moves past permissions.
-        .onAppear { permissions.startPolling() }
-        .onDisappear { permissions.stopPolling() }
+    }
+
+    private var relaunchHint: some View {
+        VStack(spacing: 8) {
+            Text("Input Monitoring is on, but Talkie needs a quick relaunch to start hearing your key.")
+                .font(.talkieHeading(12.5, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Relaunch now") { permissions.relaunch() }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.coral)
+                .controlSize(.large)
+        }
+        .padding(.top, 2)
     }
 
     private var ready: some View {
@@ -499,15 +563,34 @@ struct OnboardingView: View {
                 .accessibilityLabel("Try dictation here")
                 .accessibilityHint("Hold your dictation key and speak; the words appear in this field.")
 
-                if !permissions.allGranted {
-                    Label("Grant the permissions to try it now — or skip and start using Talkie.",
-                          systemImage: "info.circle")
-                        .font(.talkieHeading(11.5, weight: .regular))
-                        .foregroundStyle(Theme.inkTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+                if !readiness.canDictate {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(String(format: "Still off: %@".loc, missingList),
+                              systemImage: "info.circle")
+                            .font(.talkieHeading(11.5, weight: .regular))
+                            .foregroundStyle(Theme.inkTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Review permissions") { jumpToPermissions() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                }
+                if permissions.hotKeyNeedsRelaunch {
+                    relaunchHint
                 }
             }
         }
+    }
+
+    private var readiness: OnboardingReadiness {
+        OnboardingReadiness(microphone: permissions.microphone,
+                            inputMonitoring: permissions.inputMonitoring,
+                            accessibility: permissions.accessibility)
+    }
+
+    /// "Microphone, Input Monitoring" — the permissions still missing, localised.
+    private var missingList: String {
+        readiness.missing.map { $0.nameKey.loc }.joined(separator: ", ")
     }
 
     // MARK: Footer
@@ -550,7 +633,7 @@ struct OnboardingView: View {
     private var primaryTitle: LocalizedStringKey {
         switch current {
         case .welcome:     return "Get started"
-        case .ready:       return "Start dictating"
+        case .ready:       return LocalizedStringKey(readiness.finishTitleKey)
         default:           return "Continue"
         }
     }
@@ -580,11 +663,12 @@ struct OnboardingView: View {
 
 private struct PrivacyChip: View {
     let icon: String
+    /// Already localised by the caller (`.loc`).
     let text: String
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: icon).font(.system(size: 10, weight: .semibold))
-            Text(text).font(.talkieHeading(11.5, weight: .semibold))
+            Text(verbatim: text).font(.talkieHeading(11.5, weight: .semibold))
         }
         .foregroundStyle(Theme.inkSecondary)
         .padding(.horizontal, 10)
@@ -660,32 +744,42 @@ private struct TryItRecordButton: View {
 
 private struct OnboardPermissionRow: View {
     let icon: String
+    /// Localisation keys, looked up with `.loc` (a `String` would bypass the catalog).
     let title: String
     let why: String
-    let granted: Bool
-    let action: () -> Void
+    let action: PermissionRowAction
+    let onTap: () -> Void
+
+    private var granted: Bool { action == .granted }
 
     var body: some View {
         HStack(spacing: 12) {
             ClayIcon(name: icon, size: 24)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title)
+                Text(verbatim: title.loc)
                     .font(.talkieHeading(14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text(why)
+                Text(verbatim: why.loc)
                     .font(.talkieHeading(11.5, weight: .regular))
                     .foregroundStyle(Theme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            if granted {
+            switch action {
+            case .granted:
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 17))
                     .foregroundStyle(Theme.positive)
                     .accessibilityHidden(true)
-            } else {
-                Button("Grant", action: action)
+            case .request:
+                Button("Grant", action: onTap)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            case .openSettings:
+                // The system dialog can no longer appear, so a "Grant" tap would do
+                // nothing: send the user to the matching System Settings pane.
+                Button("Open System Settings", action: onTap)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
@@ -695,6 +789,6 @@ private struct OnboardPermissionRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title). \(why) \(granted ? "Granted." : "Not granted.")")
+        .accessibilityLabel("\(title.loc). \(why.loc) \(granted ? "Granted.".loc : "Not granted.".loc)")
     }
 }

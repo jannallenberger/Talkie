@@ -823,6 +823,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         _ = monitor.start()
         hotKey = monitor
+        // Let the permissions poll install the tap the moment it sees the Input
+        // Monitoring grant (start() is idempotent once the tap is running).
+        permissions.hotKeyRetry = { [weak self] in self?.hotKey?.start() ?? false }
     }
 
     // MARK: Hands-free auto-stop (B5)
@@ -3523,6 +3526,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // content until `hasOnboarded`): a mid-flow close must not strip the Dock
             // icon out from under someone still setting up.
             controller.onGenuineClose = { [weak self] in
+                // The window is hidden, not destroyed, so the onboarding view's own
+                // onDisappear guards may never fire: stop a running try-it here so a
+                // closed window can never leave the microphone open.
+                self?.stopTryItDictationIfActive()
                 guard self?.settings.hasOnboarded == true else { return }
                 NSApp.setActivationPolicy(.accessory)
             }
@@ -3679,6 +3686,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
         return true
+    }
+
+    /// Ends a running onboarding try-it, if any. Idempotent; used when the window
+    /// closes mid-recording.
+    func stopTryItDictationIfActive() {
+        guard isTryItDictation, isDictating else { return }
+        endDictation()
     }
 
     /// Bridges `beginDictation`'s mic-declined branch to the onboarding field's inline
