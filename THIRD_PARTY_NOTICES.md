@@ -33,10 +33,20 @@ that revision.
 
 ## FluidAudio (Apache-2.0)
 
-<https://github.com/FluidInference/FluidAudio> (v0.18.3, linked with only the
-`Diarizer` trait — no TTS, no NeMo text-processing binary). Copyright Fluid
-Inference and contributors. Licensed under the Apache License, Version 2.0; the
-full license text is reproduced at the end of this file.
+<https://github.com/FluidInference/FluidAudio> (tag v0.18.3, commit
+c8b41f98eae668794dd0083bbe028fe7e6585051). Copyright Fluid Inference and
+contributors. Licensed under the Apache License, Version 2.0; the full license
+text is reproduced at the end of this file.
+
+Talkie does NOT link the FluidAudio package. It **vendors a modified subset**:
+only the offline community-1 diarizer sources (segmentation, FBank/embedding
+extraction, PLDA/VBx clustering and their shared utilities) in `Sources/FluidAudio`
+and `Sources/FastClusterWrapper`. The model downloader, Hugging Face client,
+ModelHub and all `URLSession` code were removed, so Talkie's binary contains no
+networking code, and a few files were edited as described in
+`Sources/FluidAudio/VENDORED.md` (which also records the upstream tag/commit
+and the re-sync procedure). The files are therefore modified versions of the
+upstream work, not the original.
 
 FluidAudio's diarizer in turn includes:
 

@@ -1,4 +1,4 @@
-// swift-tools-version:6.1
+// swift-tools-version:6.0
 import PackageDescription
 import Foundation
 
@@ -111,17 +111,37 @@ var targets: [Target] = [
     // SHA-256 manifest); see THIRD_PARTY_NOTICES.md for licenses.
     .target(
         name: "TalkieDiarization",
-        dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
+        dependencies: ["FluidAudio"],
         path: "Sources/TalkieDiarization",
         swiftSettings: [
             .swiftLanguageMode(.v6),
         ]
     ),
+    // Vendored subset of FluidAudio v0.18.3 (Apache-2.0): ONLY the offline
+    // community-1 diarizer. All model-download / Hugging Face / URLSession code
+    // is removed, so this module contains no networking. See
+    // Sources/FluidAudio/VENDORED.md for provenance and the re-sync procedure.
+    .target(
+        name: "FluidAudio",
+        dependencies: ["FastClusterWrapper"],
+        path: "Sources/FluidAudio",
+        exclude: ["VENDORED.md", "LICENSE", "fastcluster-LICENSE.md", "vbx-LICENSE.md"],
+        swiftSettings: [
+            .define("Diarizer"),
+        ]
+    ),
+    // Vendored C++ hierarchical clustering (fastcluster, BSD-2-Clause) used by
+    // the diarizer's AHC step. Pure computation, no I/O.
+    .target(
+        name: "FastClusterWrapper",
+        path: "Sources/FastClusterWrapper",
+        publicHeadersPath: "include"
+    ),
     // Model-dependent tests SKIP (not fail) when Vendor/DiarizationModels is
     // absent, so CI without the fetched models stays green.
     .testTarget(
         name: "TalkieDiarizationTests",
-        dependencies: ["TalkieDiarization", .product(name: "FluidAudio", package: "FluidAudio")],
+        dependencies: ["TalkieDiarization", "FluidAudio"],
         path: "Tests/TalkieDiarizationTests",
         swiftSettings: [
             .swiftLanguageMode(.v6),
@@ -194,19 +214,6 @@ let package = Package(
     name: "Talkie",
     platforms: [
         .macOS("26.0"),
-    ],
-    // FluidAudio with ONLY the `Diarizer` trait: drops the TTS subsystem (and its
-    // bundled G2P resources) and the prebuilt NemoTextProcessing binary
-    // xcframework, so the app links no extra binary/dylib. Trait-conditioned
-    // dependencies need a 6.1+ manifest (hence swift-tools-version:6.1) and a
-    // 6.2+ toolchain to actually drop the binary target (FluidAudio's
-    // Package@swift-6.2.swift); Xcode 26 satisfies both.
-    dependencies: [
-        .package(
-            url: "https://github.com/FluidInference/FluidAudio.git",
-            from: "0.18.3",
-            traits: ["Diarizer"]
-        ),
     ],
     targets: targets
 )
