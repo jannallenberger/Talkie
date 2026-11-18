@@ -157,9 +157,32 @@ final class MeetingRecorder: ObservableObject {
     /// when it fell back to mic-only. Drives the UI's honest status copy.
     @Published private(set) var capturingFarEnd = false
 
-    /// The user's live notes typed during the meeting (the Granola magic — fused
-    /// with the transcript on stop). Two-way bound by MeetingsView.
+    /// The user's live notes typed during the meeting, as the editor's text. Written
+    /// by MeetingsView's notes editor (debounced) together with `noteLines`.
     @Published var notes = ""
+    /// Per editor line, the meeting time it was started (W2). Not published: it only
+    /// changes together with `notes`, and nothing renders from it.
+    var noteLines: [MeetingNoteStamper.Line] = []
+    /// The notes as items, for the partial, the live hints and the summary.
+    var noteItems: [MeetingNote] { MeetingNoteStamper.notes(from: noteLines) }
+
+    /// The provisional "So far" view of the live summary (W2). Its own object so a
+    /// pass landing re-renders only that list, never the page.
+    let liveSummary = LiveSummaryState()
+    /// The live summary engine for THIS recording; nil when it doesn't run.
+    private var liveEngine: LiveSummaryEngine?
+    private var livePassTask: Task<Void, Never>?
+    private var livePassToken: UUID?
+    private var lastLivePassElapsed: TimeInterval = 0
+    /// Multi-language: the language-voted spans of every finished window, as turns
+    /// (the only text that is final before Stop in that mode), and where they end.
+    private var liveSettledTurns: [TurnLog.Turn] = []
+    private var liveSettledUntil: Double = 0
+    private var liveFromLaneWindows = false
+    /// Builds the live summary's model; injected for tests.
+    var liveSummaryModel: () -> (any MeetingSummaryModel)? = {
+        MeetingSummarizer.isAvailable ? OnDeviceMeetingSummaryModel() : nil
+    }
 
     /// Injected by AppDelegate so meetings feed the on-device context graph.
     weak var contextGraph: ContextGraphStore?
@@ -350,7 +373,8 @@ final class MeetingRecorder: ObservableObject {
         // timeline; `tick()` fills in notes/transcript/far-end as they change.
         let pURL = AppPaths.meetingsDirectory().appendingPathComponent(".recording.partial.json")
         if let seed = Self.encodePartial(
-            RecordingPartial(startedAt: start.timeIntervalSince1970, farEnd: false, notes: "", transcript: "")
+            RecordingPartial(startedAt: start.timeIntervalSince1970, farEnd: false, notes: "", transcript: "",
+                             noteItems: [])
         ) {
             try? seed.write(to: pURL, options: .atomic)
         }
@@ -621,6 +645,7 @@ final class MeetingRecorder: ObservableObject {
         lastFlushedNotes = ""
         lastFlushedTurnCount = 0
         lastFlushedFarEnd = false
+        setUpLiveSummary(micOnLanes: micMulti != nil, farOnLanes: farMulti != nil, farActive: farActive)
         // Clear any chapters left by a prior recording so this meeting starts fresh
         // (belt-and-suspenders: AppDelegate also resets at onRecordingStarted).
         pendingChapters = []
@@ -799,11 +824,16 @@ final class MeetingRecorder: ObservableObject {
                 let farSpans = await far?.rotate() ?? []
                 guard self?.isFinishing != true else { return }
                 let micSpans = await mic?.rotate() ?? []
-                // Hand the finished window to the live summary, both speakers in
-                // audio order, so it summarizes while the meeting is still running.
+                // Hand the finished window to the live digest and the live summary,
+                // both speakers in audio order, while the meeting is still running.
                 self?.ingestLaneWindow(me: micSpans, them: farSpans)
+                let micOpen = await mic?.openWindowStart ?? .infinity
+                let farOpen = await far?.openWindowStart ?? .infinity
+                self?.settleLaneWindow(me: micSpans, them: farSpans, until: min(micOpen, farOpen))
             }
         }
+
+        scheduleLivePass()
 
         // Periodic crash-safety flush of the structured partial (C7): transcript AND
         // the user's typed live notes AND the far-end flag, so a crash loses nothing.
@@ -833,13 +863,82 @@ final class MeetingRecorder: ObservableObject {
             startedAt: startedAt.timeIntervalSince1970,
             farEnd: farEnd,
             notes: notes,
-            transcript: MeetingTranscriptRenderer.render(turns)
+            transcript: MeetingTranscriptRenderer.render(turns),
+            noteItems: noteItems
         )
         guard let data = Self.encodePartial(partial) else { return }
         try? data.write(to: partialURL, options: .atomic)
         lastFlushedNotes = notes
         lastFlushedTurnCount = turns.count
         lastFlushedFarEnd = farEnd
+    }
+
+    // MARK: Live summary (W2)
+
+    /// Decide whether THIS recording builds its summary live. Single-language: yes
+    /// (finalized segments are final). Multi-language: only when every running stream
+    /// is on the language lanes, whose text becomes final window by window; a stream
+    /// on the single-recognizer fallback may be re-transcribed wholesale at Stop, so
+    /// nothing it said is final before then.
+    private func setUpLiveSummary(micOnLanes: Bool, farOnLanes: Bool, farActive: Bool) {
+        livePassTask?.cancel()
+        livePassTask = nil
+        liveEngine = nil
+        lastLivePassElapsed = 0
+        liveSettledTurns = []
+        liveSettledUntil = 0
+        let multi = langsAtStart.count > 1
+        liveFromLaneWindows = multi
+        let lanesWhole = micOnLanes && (farOnLanes || !farActive)
+        guard !multi || lanesWhole, let model = liveSummaryModel() else {
+            liveSummary.reset(.off)
+            return
+        }
+        liveEngine = LiveSummaryEngine(model: model)
+        liveSummary.reset(multi ? .waitingForLanguageWindow : .listening)
+    }
+
+    /// Multi-language: one finished window's language-voted spans become settled text.
+    private func settleLaneWindow(me: [StreamLanguageVoter.Span], them: [StreamLanguageVoter.Span], until: Double) {
+        guard liveEngine != nil, liveFromLaneWindows else { return }
+        for turn in Self.laneWindowTurns(me: me, them: them) {
+            let span = (turn.speaker == .me ? me : them).first { $0.start == turn.start && $0.text == turn.text }
+            liveSettledTurns.append(TurnLog.Turn(elapsed: turn.start, speaker: turn.speaker, text: turn.text,
+                                                 endSec: span?.end ?? turn.start))
+        }
+        if until.isFinite { liveSettledUntil = max(liveSettledUntil, until) }
+        // A window just closed: run a pass now rather than wait for the next interval.
+        lastLivePassElapsed = -LiveSummaryTiming.interval
+    }
+
+    /// Start one live pass when it is due and none is running. The pass runs detached
+    /// at background priority; recognition never waits for it.
+    private func scheduleLivePass() {
+        guard let engine = liveEngine, !isFinishing, livePassTask == nil,
+              elapsed - lastLivePassElapsed >= LiveSummaryTiming.interval else { return }
+        lastLivePassElapsed = elapsed
+        let notes = noteItems
+        let state = liveSummary
+        let segments: [MeetingSegment]
+        let stableUntil: Double
+        if liveFromLaneWindows {
+            segments = MeetingTranscriptRenderer.segments(from: liveSettledTurns) ?? []
+            stableUntil = liveSettledUntil
+        } else {
+            segments = MeetingTranscriptRenderer.segments(from: turnLog?.snapshot() ?? []) ?? []
+            stableUntil = LiveSummaryTiming.stableUntil(elapsed: elapsed)
+        }
+        guard !segments.isEmpty else { return }
+        let token = UUID()
+        livePassToken = token
+        livePassTask = Task.detached(priority: .background) { [weak self] in
+            let snapshot = await engine.pass(segments: segments, stableUntil: stableUntil, notes: notes)
+            await MainActor.run {
+                guard let self, self.livePassToken == token else { return }
+                if let snapshot { state.update(snapshot) }
+                self.livePassTask = nil
+            }
+        }
     }
 
     /// Stop, transcribe-finalize both streams, summarize, and save the meeting note.
@@ -858,6 +957,16 @@ final class MeetingRecorder: ObservableObject {
         isUsingSharedEngine = micMulti == nil
         timer?.invalidate()
         timer = nil
+        // The live summary takes no new calls; the one in flight finishes and its result
+        // is reused by the summary below.
+        let liveEngine = self.liveEngine
+        let liveTask = livePassTask
+        self.liveEngine = nil
+        livePassTask = nil
+        livePassToken = nil
+        liveSettledTurns = []
+        liveSummary.reset(.off)
+        if let liveEngine { Task { await liveEngine.stop() } }
 
         // Stop capture first so no more buffers arrive, then finalize each stream.
         systemAudio.stop()
@@ -873,7 +982,9 @@ final class MeetingRecorder: ObservableObject {
         let duration = Date().timeIntervalSince(start)
         let log = turnLog
         let langs = langsAtStart
-        let userNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Every line the user typed, with the moment it was started (a line never
+        // stamped — typed in the last instant — gets the stop time).
+        let userNotes = MeetingNoteStamper.finalNotes(lines: noteLines, text: notes, now: duration)
         // Snapshot the chapters SYNCHRONOUSLY here, before the first `await` below, so
         // the ordering trap is closed: the `$isRecording` sink (which fires the moment
         // we set `isRecording = false` above) resets the subtopic engine, but the
@@ -997,10 +1108,11 @@ final class MeetingRecorder: ObservableObject {
                     startUnix: start.timeIntervalSince1970,
                     durationSec: duration,
                     transcript: "",
-                    summary: Self.composeSummary(userNotes: userNotes, transcriptSummary: "", fused: nil),
+                    summary: Self.notesSummary(userNotes, transcript: ""),
                     participants: ["Me"],
                     source: "talkie (notes only)",
-                    fileName: MeetingStore.fileName(for: start, id: id)
+                    fileName: MeetingStore.fileName(for: start, id: id),
+                    notes: userNotes
                 )
                 store.add(meeting)
                 // Atomic with the persist above (no `await`) so the just-saved meeting
@@ -1013,6 +1125,7 @@ final class MeetingRecorder: ObservableObject {
             }
             // isFinishing / capturingFarEnd are cleared by the `defer` at the top.
             notes = ""
+            noteLines = []
             return
         }
 
@@ -1038,13 +1151,14 @@ final class MeetingRecorder: ObservableObject {
             startUnix: start.timeIntervalSince1970,
             durationSec: duration,
             transcript: clean,
-            summary: Self.composeSummary(userNotes: userNotes, transcriptSummary: "", fused: nil),
+            summary: Self.notesSummary(userNotes, transcript: clean),
             participants: participants,
             source: farEverActive ? "talkie (mic + system audio)" : "talkie (mic-only)",
             fileName: MeetingStore.fileName(for: start, id: id),
             segments: segments,
             chapters: chapters,
-            audioFiles: audioFiles
+            audioFiles: audioFiles,
+            notes: userNotes.isEmpty ? nil : userNotes
         )
         store.add(meeting)
         keepAudioFiles = [:]
@@ -1065,6 +1179,7 @@ final class MeetingRecorder: ObservableObject {
         let digest = digestBuilder
         digestBuilder = nil
         notes = ""
+        noteLines = []
         eventTitle = nil
         eventAttendees = []
 
@@ -1100,9 +1215,17 @@ final class MeetingRecorder: ObservableObject {
                     digest.cancel(); summaryDigest = nil
                 }
             }
+            // The live pass's extractions (the call in flight when Stop was pressed
+            // included). They were cut from the lane-labelled segments, so those go
+            // along; the pipeline relabels speakers from the diarized ones by time.
+            await liveTask?.value
+            var live: MeetingSummaryPipeline.LiveReuse?
+            if let cache = await liveEngine?.results(), !cache.isEmpty, let segments {
+                live = .init(cache: cache, laneSegments: segments)
+            }
             let (summary, graphCandidates) = await self.writeSummary(
                 transcript: step.transcript, segments: step.relabelled ? step.segments : segments,
-                userNotes: userNotes, digest: summaryDigest)
+                userNotes: userNotes, digest: summaryDigest, live: live)
             // Re-read: the user may have retitled or edited the note meanwhile — or
             // deleted it, in which case nothing (not even graph provenance) returns.
             if var current = self.store.meetings.first(where: { $0.id == id }) {
@@ -1263,23 +1386,17 @@ final class MeetingRecorder: ObservableObject {
             .map(\.element)
     }
 
-    /// The model-backed part of finishing a meeting: fuse the user's notes, summarize
-    /// the FINAL (diarized) transcript through `MeetingSummaryPipeline`, and gather
-    /// graph candidates (from the live digest when one ran, else extracted from the
-    /// summary's condensed items). Returns the final summary markdown (always keeping
-    /// the user's notes) plus the model's graph candidates. A failed summary is "":
-    /// the note keeps its transcript and offers Regenerate.
-    private func writeSummary(transcript clean: String, segments: [MeetingSegment]?, userNotes: String,
-                              digest: MeetingDigestBuilder?) async
+    /// The model-backed part of finishing a meeting: summarize the FINAL (diarized)
+    /// transcript through `MeetingSummaryPipeline` — with the user's notes as
+    /// first-class content and the live pass's extractions reused — and gather graph
+    /// candidates (from the live digest when one ran, else extracted from the summary's
+    /// condensed items). The summary always keeps the user's notes; a failed summary
+    /// without notes is "": the note keeps its transcript and offers Regenerate.
+    private func writeSummary(transcript clean: String, segments: [MeetingSegment]?, userNotes: [MeetingNote],
+                              digest: MeetingDigestBuilder?, live: MeetingSummaryPipeline.LiveReuse?) async
         -> (summary: String, graphCandidates: [ContextGraphExtractor.Candidate]) {
-        let fused: String?
-        if !userNotes.isEmpty {
-            fused = await MeetingNotesFusion().fuse(notes: userNotes, transcript: clean, using: PrivacyWall.assertLocal(OnDeviceLLM()))?.bodyMarkdown
-        } else {
-            fused = nil
-        }
-        let (transcriptSummaryOpt, condensed) = await summarizer.summarizeCondensed(clean, segments: segments)
-        let transcriptSummary = transcriptSummaryOpt ?? ""
+        let result = await summarizer.summarizeMeeting(clean, segments: segments, notes: userNotes, live: live)
+        let condensed = result.condensed
         var graphCandidates: [ContextGraphExtractor.Candidate] = []
         if let digest {
             graphCandidates = await digest.finish().graphCandidates
@@ -1293,33 +1410,19 @@ final class MeetingRecorder: ObservableObject {
                 }
             }
         }
-        // The summary's own action items are grounded in the transcript and written in
-        // the meeting's language; the graph's commitment candidates are not appended
-        // to it any more (they were ungrounded and always English).
-        let summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
+        let summary = result.markdown ?? Self.notesSummary(userNotes, transcript: clean)
         return (summary, graphCandidates)
     }
 
-    /// Compose the meeting summary, guaranteeing the user's typed notes are never
-    /// silently lost. Pure (no actor state) so it's unit-testable:
-    /// - `fused` present → the fusion already incorporated the notes; use it as-is.
-    /// - `fused == nil` but notes non-empty → on-device fusion was unavailable/failed,
-    ///   so preserve the raw notes verbatim under a "## Your notes" section with an
-    ///   explicit notice, followed by the plain transcript summary (if any).
-    /// - no notes → the plain transcript summary.
-    nonisolated static func composeSummary(userNotes: String, transcriptSummary: String, fused: String?) -> String {
-        let notes = userNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let summary = transcriptSummary.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let fused, !fused.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return fused
-        }
-        guard !notes.isEmpty else { return summary }
-        var parts = [
-            "_Notes fusion unavailable — your raw notes are preserved below._",
-            "## Your notes\n\n\(notes)",
-        ]
-        if !summary.isEmpty { parts.append(summary) }
-        return parts.joined(separator: "\n\n")
+    /// The summary while (or when) no model-written one exists: just the user's notes
+    /// section, in the meeting's language, or "" without notes. Pure, so the "never
+    /// lose a note" promise is unit-tested.
+    nonisolated static func notesSummary(_ notes: [MeetingNote], transcript: String) -> String {
+        guard !notes.isEmpty else { return "" }
+        let sample = transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? notes.map(\.text).joined(separator: " ") : transcript
+        let language = SummaryLanguage.detect(transcript: sample)
+        return SummaryRenderer.notesSection(notes, language: language) ?? ""
     }
 
     // MARK: Crash-safe partial (encode / decode / recovery mapping)
@@ -1343,6 +1446,12 @@ final class MeetingRecorder: ObservableObject {
         var notes: String
         /// The rendered transcript through the last flush.
         var transcript: String
+        /// The notes as time-stamped items (W2). Nil in a partial written before them;
+        /// `notes` (the plain text) is then the source.
+        var noteItems: [MeetingNote]? = nil
+
+        /// The notes to recover: the items, else the plain text split into lines.
+        var recoveredNotes: [MeetingNote] { noteItems ?? MeetingNote.fromPlain(notes) }
     }
 
     /// Deterministic JSON for the partial (sorted keys) so the cheap dirty-check in
@@ -1395,14 +1504,15 @@ final class MeetingRecorder: ObservableObject {
     /// - `duration` = an honest floor: the partial file's last-write time minus the
     ///   start (the recording ran at least that long), clamped to ≥ 0.
     /// - `participants` from the `farEnd` flag (no transcript string-sniff).
-    /// - `summary` = the raw notes under "## Your notes" via `composeSummary` (or empty
+    /// - `summary` = the notes section via `notesSummary` (or empty
     ///   when there were none) — recovery stays summary-less (no launch-time model call).
     nonisolated static func recoveryPlan(
         from partial: RecordingPartial,
         modified: Date
-    ) -> (start: Date, duration: Double, transcript: String, participants: [String], summary: String)? {
+    ) -> (start: Date, duration: Double, transcript: String, participants: [String], summary: String,
+          notes: [MeetingNote])? {
         let transcript = partial.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        let notes = partial.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let notes = partial.recoveredNotes
         guard !transcript.isEmpty || !notes.isEmpty else { return nil }
 
         let start = partial.startedAt > 0
@@ -1417,9 +1527,10 @@ final class MeetingRecorder: ObservableObject {
             duration: duration,
             transcript: transcript,
             participants: partial.farEnd ? ["Me", "Them"] : ["Me"],
-            // Summary-less by design; the raw notes land under "## Your notes" so the
-            // user's typed work survives the crash.
-            summary: Self.composeSummary(userNotes: notes, transcriptSummary: "", fused: nil)
+            // Summary-less by design; the notes land in their own section, with their
+            // time stamps, so the user's typed work survives the crash.
+            summary: Self.notesSummary(notes, transcript: transcript),
+            notes: notes
         )
     }
 
@@ -1440,7 +1551,8 @@ final class MeetingRecorder: ObservableObject {
             summary: plan.summary,
             participants: plan.participants,
             source: "talkie (recovered)",
-            fileName: MeetingStore.fileName(for: plan.start, id: id)
+            fileName: MeetingStore.fileName(for: plan.start, id: id),
+            notes: plan.notes.isEmpty ? nil : plan.notes
         )
     }
 
@@ -1517,7 +1629,7 @@ final class MeetingRecorder: ObservableObject {
     /// falls back to a legacy plaintext `.recording.partial.txt` an older build may
     /// have left behind. The recovered note carries the TRUE start time and an honest
     /// duration floor (from the partial's last-write time), the far-end flag drives
-    /// participants, and the user's typed notes are preserved under "## Your notes".
+    /// participants, and the user's typed notes are preserved in their own section.
     func recoverPartialIfNeeded() {
         // A crash can leave per-lane diarization audio behind. Called once at launch,
         // before any recording or pass exists, so every file in there is stale.
