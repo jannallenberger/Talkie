@@ -271,12 +271,7 @@ struct MeetingsView: View {
             }
             .buttonStyle(.talkie(.primary, tint: Theme.featherRed))
         } else if recorder.isFinishing {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Transcribing & summarizing…")
-                    .font(.talkieHeading(13, weight: .medium))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
+            TalkieStatusLine(text: "Transcribing & summarizing…".loc, tone: .progress)
         } else {
             Button { Task { await recorder.start() } } label: {
                 Label("Record".loc, systemImage: "record.circle")
@@ -300,10 +295,7 @@ struct MeetingsView: View {
                 // lets an unchanged row skip its body on the 1 Hz recording tick.
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(groups) { group in
-                        Text(group.bucket.title().uppercased())
-                            .font(.talkieEyebrow)
-                            .tracking(0.8)
-                            .foregroundStyle(Theme.inkTertiary)
+                        Eyebrow(text: group.bucket.title())
                             .padding(.horizontal, 12)
                             .padding(.top, 14)
                             .padding(.bottom, 4)
@@ -391,9 +383,9 @@ struct MeetingsView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "person.2.wave.2")
-                .font(.system(size: 28))
+            ClayIcon(name: "IconWaveform", size: 44, fallback: "person.2.wave.2")
                 .foregroundStyle(Theme.inkTertiary)
+                .accessibilityHidden(true)
             Text("No meetings yet")
                 .font(.talkieHeading(15, weight: .medium))
                 .foregroundStyle(Theme.inkSecondary)
@@ -467,20 +459,18 @@ struct MeetingQuickSettingsPopover: View {
     let onOpenAll: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsToggleRow(
+        TalkiePopover(title: "Meeting settings", width: Theme.Width.popoverWide) {
+            TalkieSwitchRow(
                 title: "Keep audio with meeting notes".loc,
                 subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
                 isOn: $settings.keepMeetingAudio)
-            HStack {
-                Spacer()
+            TalkiePopoverDivider()
+        } actions: {
+            TalkieActionRow {
                 Button("All meeting settings…") { onOpenAll() }
-                .buttonStyle(.talkie(.secondary, size: .small))
+                    .buttonStyle(.talkie(.secondary))
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
         }
-        .frame(width: 340)
     }
 }
 
@@ -589,17 +579,9 @@ struct RecordingNotesEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkTertiary)
-                Text("Your notes")
-                    .font(.talkieEyebrow)
-                    .foregroundStyle(Theme.inkSecondary)
+            HStack(alignment: .center, spacing: 8) {
+                Eyebrow(text: "Your notes")
                 Spacer()
-                Text("Kept word for word in the summary, with times".loc)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.inkTertiary)
                 Button {
                     draft = MeetingNoteStamper.appendingMarker(to: draft, at: recorder.elapsed)
                     isFocused = true
@@ -612,10 +594,8 @@ struct RecordingNotesEditor: View {
             TextEditor(text: $draft)
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.ink)
-                .scrollContentBackground(.hidden)
                 .frame(minHeight: 88, maxHeight: 150)
-                .padding(8)
-                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                .talkieWell()
                 .overlay(alignment: .topLeading) {
                     if draft.isEmpty {
                         Text("Jot key points — each line keeps the moment you started it…".loc)
@@ -627,6 +607,9 @@ struct RecordingNotesEditor: View {
                     }
                 }
                 .focused($isFocused)
+            Text("Kept word for word in the summary, with times".loc)
+                .font(.talkieHeading(11.5, weight: .regular))
+                .foregroundStyle(Theme.inkTertiary)
         }
         // The surrounding recording panel draws the card.
         .frame(maxWidth: .infinity)
@@ -682,23 +665,14 @@ struct LiveSoFarView: View {
     var body: some View {
         if state.phase != .off {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "text.badge.checkmark")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.inkTertiary)
-                    Text("So far".loc)
-                        .font(.talkieEyebrow)
-                        .foregroundStyle(Theme.inkSecondary)
+                HStack(alignment: .center, spacing: 8) {
+                    Eyebrow(text: "So far")
                     Spacer()
-                    Text("Provisional".loc)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.inkTertiary)
+                    TalkieTag(text: "Provisional".loc)
                 }
+                .frame(minHeight: 24)
                 if state.snapshot.isEmpty {
-                    Text(waitingText)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.inkTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    TalkieStatusLine(text: waitingText, tone: .progress)
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 10) {
@@ -710,7 +684,7 @@ struct LiveSoFarView: View {
                     }
                     .frame(maxHeight: 150)
                     Text(footerText)
-                        .font(.system(size: 11))
+                        .font(.talkieHeading(11.5, weight: .regular))
                         .foregroundStyle(Theme.inkTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -737,15 +711,18 @@ struct LiveSoFarView: View {
     private func group(_ title: String, _ items: [String]) -> some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title.uppercased())
-                    .font(.talkieEyebrow)
-                    .tracking(0.8)
-                    .foregroundStyle(Theme.inkTertiary)
+                Text(verbatim: title)
+                    .font(.talkieHeading(12, weight: .semibold))
+                    .foregroundStyle(Theme.inkSecondary)
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    Text("• " + item)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.ink)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Circle().fill(Theme.brand).frame(width: 4, height: 4)
+                            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                        Text(verbatim: item)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
@@ -981,7 +958,7 @@ private struct MeetingDetail: View, Equatable {
                 audioFiles: meeting.audioFiles, baseName: exportBaseName,
                 fileExists: { FileManager.default.fileExists(atPath: folderURL.appendingPathComponent($0).path) })
             if !segments.isEmpty || !audioItems.isEmpty {
-                Menu {
+                TalkieMenuButton(size: .small) {
                     if !segments.isEmpty {
                         Button("Subtitles (.srt)") { export(segments, as: .srt) }
                         Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
@@ -1006,8 +983,6 @@ private struct MeetingDetail: View, Equatable {
                 } label: {
                     Label("Export…".loc, systemImage: "square.and.arrow.up")
                 }
-                .menuStyle(.button)
-                .fixedSize()
                 .help("Export…")
             }
             Button(action: onReveal) { Label("Show in Finder".loc, systemImage: "folder") }
@@ -1053,20 +1028,10 @@ private struct MeetingDetail: View, Equatable {
             // Transient: `isDiarizing` flips off when the pass finishes or fails, so
             // this disappears on its own. Wins over the summary line because the
             // summary waits for the pass.
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Identifying speakers…".loc)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkTertiary)
-            }
-            .transition(.opacity)
+            TalkieStatusLine(text: "Identifying speakers…".loc, tone: .progress)
+                .transition(.opacity)
         } else if isSummarizing {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Writing the summary… the transcript is already saved.".loc)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
+            TalkieStatusLine(text: "Writing the summary… the transcript is already saved.".loc, tone: .progress)
         }
     }
 
@@ -1139,8 +1104,7 @@ private struct MeetingDetail: View, Equatable {
                 .foregroundStyle(Theme.ink)
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 120, maxHeight: 320)
-                .padding(8)
-                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                .talkieWell()
                 .onExitCommand { cancelEditing() }
 
             HStack(spacing: 8) {
@@ -1529,15 +1493,15 @@ struct MeetingPlaybackView: View {
     }
 }
 
-/// A small speaker name above a turn: tinted by the speaker's stable accent slot. Reads
-/// as a caption — no pill, no fill — so it aids scanning without decorating.
+/// The speaker above a turn: the speaker's colour dot and name. Inside the meeting
+/// detail a renameable speaker is a chip (with a pencil) that opens the naming popover;
+/// everywhere else, and for "Me", it is plain text.
 struct SpeakerLabel: View {
     let speaker: String
     let slot: Int
     /// Set only inside the meeting detail: names + the naming popover.
     @Environment(\.speakerNaming) private var naming
     @State private var editing = false
-    @State private var hovering = false
 
     static func color(slot: Int) -> Color {
         let palette: [Color] = [Theme.coral, Theme.featherGold, Theme.featherGreen,
@@ -1548,36 +1512,15 @@ struct SpeakerLabel: View {
     var body: some View {
         let named = naming?.names[speaker]
         let title = SpeakerNames.name(for: speaker, in: naming?.names) ?? SpeakerPresentation.displayName(for: speaker)
-        let text = HStack(spacing: 3) {
-            Text(title)
-            // A name that came from a remembered voice is marked as such.
-            if named?.source == .voice {
-                Image(systemName: "waveform").font(.system(size: 9, weight: .semibold))
-                    .accessibilityLabel("Recognised by voice".loc)
-            }
-        }
-        .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(Self.color(slot: slot))
         if let naming, SpeakerNames.isNameable(speaker) {
-            Button { editing = true } label: {
-                text
-                    .padding(.horizontal, 4).padding(.vertical, 1)
-                    .background(Capsule(style: .continuous).fill(hovering ? Theme.surfaceSunken : .clear))
-                    // The whole label (padding included) is the hit area, not just the glyphs.
-                    .contentShape(Rectangle())
-            }
-                .buttonStyle(.plain)
-                .padding(.horizontal, -4)
-                .onHover { hovering = $0 }
-                .pointerStyle(.link)
-                .help(named?.source == .voice ? "Recognised by voice. Click to change the name.".loc
-                                              : "Name this speaker".loc)
+            SpeakerNameButton(title: title, slot: slot, voiceDerived: named?.source == .voice) { editing = true }
                 .accessibilityAddTraits(.isHeader)
                 .popover(isPresented: $editing, arrowEdge: .bottom) {
                     SpeakerNamePopover(label: speaker, context: naming)
                 }
         } else {
-            text.accessibilityAddTraits(.isHeader)
+            SpeakerNameText(title: title, slot: slot, voiceDerived: named?.source == .voice)
+                .accessibilityAddTraits(.isHeader)
         }
     }
 }
@@ -1591,7 +1534,7 @@ struct SpeakerTurnsView: View {
         let slots = SpeakerPresentation.colorIndices(for: segments.map(\.speaker))
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(SpeakerPresentation.turns(segments).enumerated()), id: \.offset) { _, turn in
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 3) {
                     SpeakerLabel(speaker: turn.speaker, slot: slots[turn.speaker] ?? 0)
                     Text(turn.text)
                         .font(.system(size: 12.5))

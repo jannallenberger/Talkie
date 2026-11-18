@@ -498,6 +498,7 @@ struct TalkieTag: View {
 }
 
 /// One of the user's real keys drawn as a key cap (dictation key, format key).
+/// Never clickable; pair it with a separate "Change…" button.
 struct TalkieKeycap: View {
     let text: String
     var symbol: String? = nil
@@ -513,8 +514,11 @@ struct TalkieKeycap: View {
         .foregroundStyle(Theme.ink)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+        // A raised key (canvas + a 1pt key shadow), deliberately unlike the sunken
+        // fill of buttons and chips: a keycap shows a key, it is not clickable.
         .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-            .fill(Theme.surfaceSunken))
+            .fill(Theme.canvas)
+            .shadow(color: .black.opacity(0.18), radius: 0.5, x: 0, y: 1))
     }
 }
 

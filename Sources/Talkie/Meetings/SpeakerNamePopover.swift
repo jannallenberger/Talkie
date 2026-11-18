@@ -62,62 +62,66 @@ struct SpeakerNamePopover: View {
     }
     private var trimmed: String { SpeakerNames.clean(draft) }
 
+    /// The voice switch can be turned on (a name, a usable voice) or is already on.
+    private var voiceSwitchEnabled: Bool {
+        !working && (remembered || (!trimmed.isEmpty && availability.isAvailable))
+    }
+
+    /// Why the voice switch is off-limits right now, or what happened when it was tried.
+    private var voiceStatus: (String, TalkieStatusTone)? {
+        if working { return ("Reading this person’s voice…".loc, .progress) }
+        if remembered { return nil }
+        if let message { return (message, .warning) }
+        if trimmed.isEmpty { return ("Give this speaker a name first.".loc, .info) }
+        return SpeakerNamingCopy.unavailableReason(availability).map { ($0, .info) }
+    }
+
+    private var saveDisabled: Bool {
+        trimmed.isEmpty || trimmed == current?.name && current?.source == .manual
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Eyebrow(text: "Name this speaker")
+        TalkiePopover(title: "Name this speaker",
+                      subtitle: SpeakerPresentation.displayName(for: label)) {
+            TalkieField(label: "Name", help: SpeakerNamingCopy.sourceNote(current?.source)) {
                 TextField("Name".loc, text: $draft)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 260)
                     .onSubmit(save)
-                if let note = vocabularyNote {
-                    Text(note).font(.system(size: 11)).foregroundStyle(Theme.inkTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if let note = SpeakerNamingCopy.sourceNote(current?.source) {
-                    Text(note).font(.system(size: 11)).foregroundStyle(Theme.inkTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                HStack {
-                    if current != nil {
-                        Button("Clear name".loc) {
-                            context.recorder.setSpeakerName(nil, label: label, meetingID: context.meetingID)
-                            dismiss()
-                        }
-                        .buttonStyle(.talkie(.secondary, size: .small))
-                    }
-                    Spacer()
-                    Button("Save".loc, action: save)
-                        .buttonStyle(.talkie(.primary, size: .small))
-                        .disabled(trimmed.isEmpty || trimmed == current?.name && current?.source == .manual)
-                }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            Divider().overlay(Theme.hairline)
-            VStack(alignment: .leading, spacing: 4) {
-                SettingsToggleRow(
+            if let note = vocabularyNote {
+                TalkieStatusLine(text: note, tone: .info)
+            }
+            TalkiePopoverDivider()
+            VStack(alignment: .leading, spacing: 8) {
+                TalkieSwitchRow(
                     title: "Recognise this voice in future meetings".loc,
                     subtitle: "A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings.".loc,
                     isOn: Binding(get: { remembered }, set: { setRemembered($0) }))
-                    .disabled(working || (!remembered && (trimmed.isEmpty || !availability.isAvailable)))
-                if let why = remembered ? nil : (message ?? (trimmed.isEmpty
-                    ? "Give this speaker a name first.".loc
-                    : SpeakerNamingCopy.unavailableReason(availability))) {
-                    Text(why).font(.system(size: 11)).foregroundStyle(Theme.inkTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 16)
-                }
-                if working {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Reading this person’s voice…".loc).font(.system(size: 11)).foregroundStyle(Theme.inkTertiary)
-                    }
-                    .padding(.horizontal, 16)
+                    .disabled(!voiceSwitchEnabled)
+                if let (text, tone) = voiceStatus {
+                    TalkieStatusLine(text: text, tone: tone)
                 }
             }
-            .padding(.bottom, 12)
+            TalkiePopoverDivider()
+        } actions: {
+            TalkieActionRow {
+                if current != nil {
+                    Button("Clear name".loc) {
+                        context.recorder.setSpeakerName(nil, label: label, meetingID: context.meetingID)
+                        dismiss()
+                    }
+                    .buttonStyle(.talkie(.destructive))
+                }
+            } trailing: {
+                Button("Cancel".loc) { dismiss() }
+                    .buttonStyle(.talkie(.secondary))
+                    .keyboardShortcut(.cancelAction)
+                Button("Save".loc, action: save)
+                    .buttonStyle(.talkie(.primary))
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(saveDisabled)
+            }
         }
-        .frame(width: 320)
         .onAppear {
             draft = current?.name ?? ""
             remembered = context.recorder.knownVoiceStore.entry(meetingID: context.meetingID, label: label) != nil
@@ -191,8 +195,8 @@ struct SpeakerChip: Equatable {
     }
 }
 
-/// "Speakers" under the meta line: every speaker of the meeting as a small chip that
-/// opens the naming popover, whatever way the transcript itself is rendered.
+/// "Speakers" under the meta line: every speaker of the meeting as a chip that opens
+/// the naming popover, whatever way the transcript itself is rendered.
 struct SpeakersRow: View {
     let meeting: Meeting
     @Environment(\.speakerNaming) private var naming
@@ -200,9 +204,14 @@ struct SpeakersRow: View {
     var body: some View {
         let chips = SpeakerChip.chips(for: meeting)
         if !chips.isEmpty {
-            HStack(spacing: 8) {
+            let slots = SpeakerPresentation.colorIndices(for: (meeting.segments ?? []).map(\.speaker))
+            HStack(alignment: .center, spacing: 8) {
                 Eyebrow(text: "Speakers")
-                ForEach(chips, id: \.label) { chip in SpeakerChipView(chip: chip, naming: naming) }
+                FlowLayout(spacing: 6) {
+                    ForEach(chips, id: \.label) { chip in
+                        SpeakerChipView(chip: chip, slot: slots[chip.label] ?? 0, naming: naming)
+                    }
+                }
             }
         }
     }
@@ -210,30 +219,83 @@ struct SpeakersRow: View {
 
 private struct SpeakerChipView: View {
     let chip: SpeakerChip
+    let slot: Int
     let naming: SpeakerNamingContext?
     @State private var editing = false
 
-    private var title: some View {
-        HStack(spacing: 3) {
-            Text(chip.name ?? SpeakerPresentation.displayName(for: chip.label))
-            if chip.voiceDerived {
-                Image(systemName: "waveform").font(.system(size: 9, weight: .semibold))
-                    .accessibilityLabel("Recognised by voice".loc)
-            }
-        }
-    }
-
     var body: some View {
+        let title = chip.name ?? SpeakerPresentation.displayName(for: chip.label)
         if chip.nameable, let naming {
-            Button { editing = true } label: { title }
-                .buttonStyle(.talkie(.secondary, size: .small))
-                .help(chip.voiceDerived ? "Recognised by voice. Click to change the name.".loc : "Name this speaker".loc)
-                .pointerStyle(.link)
+            SpeakerNameButton(title: title, slot: slot, voiceDerived: chip.voiceDerived) { editing = true }
                 .popover(isPresented: $editing, arrowEdge: .bottom) {
                     SpeakerNamePopover(label: chip.label, context: naming)
                 }
         } else {
-            title.font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.inkSecondary)
+            SpeakerNameText(title: title, slot: slot, voiceDerived: chip.voiceDerived)
         }
+    }
+}
+
+/// The speaker's data colour as a small dot. Feathers stay on data marks; the name
+/// itself is ink (docs/DESIGN_GUIDELINES.md §1).
+struct SpeakerDot: View {
+    let slot: Int
+    var body: some View {
+        Circle().fill(SpeakerLabel.color(slot: slot)).frame(width: 7, height: 7)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A speaker name that cannot be renamed ("Me"): dot + name, no chip, no hover.
+struct SpeakerNameText: View {
+    let title: String
+    let slot: Int
+    var voiceDerived = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            SpeakerDot(slot: slot)
+            Text(verbatim: title)
+            if voiceDerived {
+                Image(systemName: "waveform").font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+                    .accessibilityLabel("Recognised by voice".loc)
+            }
+        }
+        .font(.talkieHeading(12, weight: .semibold))
+        .foregroundStyle(Theme.ink)
+        // Same inset as a chip, so dots line up down the transcript.
+        .padding(.horizontal, 9)
+        .frame(minHeight: 24)
+    }
+}
+
+/// A renameable speaker: a clickable chip (dot, name, trailing pencil) that opens the
+/// naming popover.
+struct SpeakerNameButton: View {
+    let title: String
+    let slot: Int
+    var voiceDerived = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                SpeakerDot(slot: slot)
+                Text(verbatim: title)
+                if voiceDerived {
+                    Image(systemName: "waveform").font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.inkTertiary)
+                        .accessibilityLabel("Recognised by voice".loc)
+                }
+                Image(systemName: "pencil")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(Theme.inkTertiary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .buttonStyle(.talkieChip)
+        .help(voiceDerived ? "Recognised by voice. Click to change the name.".loc : "Name this speaker".loc)
+        .pointerStyle(.link)
     }
 }
