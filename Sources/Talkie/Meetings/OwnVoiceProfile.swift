@@ -117,10 +117,17 @@ final class OwnVoiceProfileStore: @unchecked Sendable {
         lock.withLock { loadLocked() }
     }
 
+    private var epoch = 0
+    /// Bumped by every `delete()`. A pass captures it before it starts and hands it to
+    /// `learn(_:ifEpoch:)`, so a sample from a pass that began before a deletion is dropped.
+    var currentEpoch: Int { lock.withLock { epoch } }
+
     /// Fold one learning sample in and persist. Returns whether the profile changed.
+    /// With `ifEpoch`, the sample is dropped when a `delete()` happened since that epoch.
     @discardableResult
-    func learn(_ sample: MicSpeakerCandidate) -> Bool {
+    func learn(_ sample: MicSpeakerCandidate, ifEpoch: Int? = nil) -> Bool {
         lock.withLock {
+            if let ifEpoch, ifEpoch != epoch { return false }
             let old = loadLocked()
             guard let updated = OwnVoiceProfile.folding(sample, into: old), updated != old else { return false }
             guard persistLocked(updated) else { return false }
@@ -132,6 +139,7 @@ final class OwnVoiceProfileStore: @unchecked Sendable {
     /// Remove the profile (overwrite-then-delete, like the other personal data files).
     func delete() {
         lock.withLock {
+            epoch += 1
             FileShredder.shred(url)
             cache = nil
             loaded = true

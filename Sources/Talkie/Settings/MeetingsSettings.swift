@@ -58,16 +58,9 @@ struct MeetingsSettings: View {
     // MARK: Voice profile (privacy control, shown only when one exists)
 
     private var voiceProfileCard: some View {
-        SettingsCard {
-            SettingsRow(
-                title: "Your voice".loc,
-                subtitle: "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings.".loc
-            ) {
-                Button("Forget my voice".loc) {
-                    OwnVoiceProfileStore.shared.delete()
-                    hasVoiceProfile = false
-                }
-            }
+        VoiceProfileCard {
+            OwnVoiceProfileStore.shared.delete()
+            hasVoiceProfile = false
         }
     }
 
@@ -254,5 +247,22 @@ struct MeetingsSettingsLinkRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+}
+
+/// The "Your voice" privacy card: one plain button plus one line of explanation.
+/// Internal so the opt-in UI snapshot test can render it standalone.
+struct VoiceProfileCard: View {
+    let onForget: () -> Void
+
+    var body: some View {
+        SettingsCard {
+            SettingsRow(
+                title: "Your voice".loc,
+                subtitle: "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings.".loc
+            ) {
+                Button("Forget my voice".loc, action: onForget)
+            }
+        }
     }
 }

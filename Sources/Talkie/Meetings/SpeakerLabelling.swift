@@ -197,6 +197,12 @@ enum SpeakerLabelling {
             numbers[c] = numbers.count + 1
         }
 
+        // The spec's unchanged 1+1 shape, judged on POST-guard counts: one own mic voice
+        // (Me) and one far-end person (even when the mic also hears them as bleed) is
+        // still Me / Them, never "Speaker 1".
+        let farPeople = Set(assigned.compactMap { $0.map(person) }.filter { $0 != meCluster })
+        let oneToOne = meCluster != nil && micOwn.count == 1 && sysActive.count == 1 && farPeople.count == 1
+
         // 6. Write labels. A segment with no overlap takes the label of the nearest-in-time
         //    segment of the SAME lane that was resolved, so a leftover lane label ("Them",
         //    or "Me" when nobody was recognised) never sits next to "Speaker N" or inflates
@@ -206,7 +212,8 @@ enum SpeakerLabelling {
         for (i, seg) in segments.enumerated() {
             guard let c = assigned[i].map(person) else { continue }
             out[i].lane = seg.speaker
-            let label = (c == meCluster) ? SpeakerLabels.me : SpeakerLabels.numbered(numbers[c] ?? 0)
+            let label = (c == meCluster) ? SpeakerLabels.me
+                : (oneToOne ? SpeakerLabels.them : SpeakerLabels.numbered(numbers[c] ?? 0))
             out[i].speaker = label
             resolved[i] = label
         }

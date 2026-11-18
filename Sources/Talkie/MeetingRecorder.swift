@@ -1150,6 +1150,7 @@ final class MeetingRecorder: ObservableObject {
             diarizer = laneDiarizerFactory(root)
             cachedDiarizer = (root, diarizer)
         }
+        let voiceEpoch = ownVoiceStore.currentEpoch // a "Forget my voice" during the pass drops its sample
         let outcome = await MeetingDiarizationPipeline.run(
             inputs: inputs, segments: segments, diarizer: diarizer,
             budgetSeconds: diarizationBudget(durationSec * Double(inputs.count)),
@@ -1174,7 +1175,7 @@ final class MeetingRecorder: ObservableObject {
             // Learn the owner's voice from a single-speaker mic lane (never from a
             // multi-speaker one — the labeller only sets the sample in that case).
             // Not for a note the user deleted or edited meanwhile (guard above).
-            if let sample = result.ownVoiceSample { ownVoiceStore.learn(sample) }
+            if let sample = result.ownVoiceSample { ownVoiceStore.learn(sample, ifEpoch: voiceEpoch) }
             if result.changed {
                 let updated = MeetingDiarizationPipeline.apply(result, to: current)
                 store.update(updated)

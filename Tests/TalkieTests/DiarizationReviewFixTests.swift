@@ -335,4 +335,65 @@ final class DiarizationReviewFixTests: XCTestCase {
         let reloaded = MeetingStore(supportDirectory: tmp, meetingsDirectory: tmp)
         XCTAssertEqual(reloaded.meetings.first?.transcript, awkward)
     }
+
+    // MARK: follow-up 1 - post-guard 1+1 is Me / Them
+
+    func testCallWithOwnerPlusBleedOfTheSingleFarSpeakerIsExactlyMeAndThem() {
+        let segments = [seg("Me", 0, 10), seg("Them", 12, 20), seg("Me", 12, 20)]
+        let r = SpeakerLabelling.label(
+            segments: segments,
+            mic: out([(0, 0, 10), (1, 12, 20)], [0: eA, 1: eBBleed]),
+            system: out([(0, 12, 20)], [0: eB]),
+            minSpeakerSeconds: 3)
+        XCTAssertEqual(r.segments.map(\.speaker), ["Me", "Them", "Them"])
+        XCTAssertEqual(r.participants, ["Me", "Them"])
+        XCTAssertEqual(r.speakerCount, 2)
+        XCTAssertEqual(r.ownVoiceSample?.cluster, 0, "the profile still learns from the owner")
+        XCTAssertEqual(r.segments[2].lane, "Me", "bleed segment keeps its mic audio key")
+    }
+
+    // MARK: follow-up 2 - forget-my-voice race
+
+    func testLearnFromAPassThatStartedBeforeDeleteIsDropped() {
+        let url = tmp.appendingPathComponent("race.json")
+        let store = OwnVoiceProfileStore(url: url)
+        let sample = MicSpeakerCandidate(cluster: 0, embedding: [1, 0.2, 0, 0], speechSeconds: 60)
+        XCTAssertTrue(store.learn(sample, ifEpoch: store.currentEpoch))
+        let epochAtPassStart = store.currentEpoch
+        store.delete()                                   // user presses Forget my voice mid-pass
+        XCTAssertFalse(store.learn(sample, ifEpoch: epochAtPassStart))
+        XCTAssertFalse(store.exists)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "nothing re-created")
+        XCTAssertTrue(store.learn(sample, ifEpoch: store.currentEpoch), "a later pass learns again")
+    }
+
+    func testRecorderStepDropsOwnVoiceSampleWhenForgottenDuringThePass() async throws {
+        let store = MeetingStore(supportDirectory: tmp, meetingsDirectory: tmp)
+        let recorder = MeetingRecorder(engine: TranscriptionEngine(localeIdentifier: "en-US"), store: store)
+        let voice = OwnVoiceProfileStore(url: tmp.appendingPathComponent("v2.json"))
+        recorder.ownVoiceStore = voice
+        recorder.diarizationModelsDirectory = { self.tmp }
+        // A single-voice mic lane yields a learning sample; the fake "forgets" mid-pass.
+        struct ForgettingDiarizer: LaneDiarizing {
+            let voice: OwnVoiceProfileStore
+            func diarize(fileURL: URL) async throws -> DiarizationOutput {
+                voice.delete()
+                return DiarizationOutput(
+                    turns: [DiarizedTurn(speaker: 0, start: 0, end: 40)],
+                    speakers: [SpeakerProfile(speaker: 0, embedding: [1, 0, 0, 0], speechSeconds: 40)])
+            }
+        }
+        recorder.laneDiarizerFactory = { _ in ForgettingDiarizer(voice: voice) }
+        let segs = [seg("Me", 0, 20), seg("Me", 21, 40)]
+        let id = UUID()
+        let mic = MeetingDiarizationTemp.url(meetingID: id, lane: "Me", in: tmp)
+        try Data([0]).write(to: mic)
+        let m = Meeting(title: "t", startUnix: 1, durationSec: 40,
+                        transcript: MeetingTranscriptRenderer.render(segments: segs), summary: "",
+                        fileName: "r.md", segments: segs)
+        store.add(m)
+        _ = await recorder.diarizationStep(id: m.id, inputs: [.init(lane: "Me", fileURL: mic)], segments: segs,
+                                           transcript: m.transcript, durationSec: 40)
+        XCTAssertFalse(voice.exists, "the pass must not re-learn a voice forgotten while it ran")
+    }
 }

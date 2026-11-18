@@ -1102,7 +1102,7 @@ private struct MeetingRow: View, Equatable {
 /// All state is main-actor `@State`; `AVAudioPlayer` is created, seeked, and polled on
 /// the main actor (no background audio thread of ours), and torn down on disappear so a
 /// collapsed row isn't left holding an open file.
-private struct MeetingPlaybackView: View {
+struct MeetingPlaybackView: View {
     let segments: [MeetingSegment]
     let audioFiles: [String: String]?
     let folderURL: URL
@@ -1110,6 +1110,14 @@ private struct MeetingPlaybackView: View {
     /// transcript is unedited (`SpeakerPresentation.showsTurns`); any other meeting
     /// plays back exactly as it did before speaker labels existed.
     var showsSpeakerLabels = false
+
+    init(segments: [MeetingSegment], audioFiles: [String: String]?, folderURL: URL,
+         showsSpeakerLabels: Bool = false) {
+        self.segments = segments
+        self.audioFiles = audioFiles
+        self.folderURL = folderURL
+        self.showsSpeakerLabels = showsSpeakerLabels
+    }
 
     /// The loaded player, or nil before the first tap. Recreated when a tap targets a
     /// different file than the one currently loaded (two-stream Me↔Them switch).
@@ -1268,7 +1276,7 @@ private struct MeetingPlaybackView: View {
 
 /// A small speaker name above a turn: tinted by the speaker's stable accent slot. Reads
 /// as a caption — no pill, no fill — so it aids scanning without decorating.
-private struct SpeakerLabel: View {
+struct SpeakerLabel: View {
     let speaker: String
     let slot: Int
 
@@ -1288,7 +1296,7 @@ private struct SpeakerLabel: View {
 
 /// The read-only transcript for a meeting with two or more speakers (no kept audio):
 /// consecutive same-speaker segments merged into one turn under a single label.
-private struct SpeakerTurnsView: View {
+struct SpeakerTurnsView: View {
     let segments: [MeetingSegment]
 
     var body: some View {
