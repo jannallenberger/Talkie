@@ -58,6 +58,33 @@ struct FormatKeyGesture: Sendable, Equatable {
         return .span(start: start, end: t)
     }
 
+    /// Feed one observed tap event. Inert (and reset) unless a dictation is active and
+    /// a command key is configured. The command key's own edges drive the machine; any
+    /// OTHER key, modifier or mouse button spoils a hold in progress — except the
+    /// dictation key, which push-to-talk keeps held on purpose, and the command key's
+    /// own auto-repeat.
+    mutating func step(_ event: ActivationKey.Event, rawFlags: UInt64, commandKey: ActivationKey?,
+                       dictationKey: ActivationKey, dictationActive: Bool, now: TimeInterval) -> Output? {
+        guard let commandKey, commandKey != dictationKey, dictationActive else {
+            reset()
+            return nil
+        }
+        if let down = commandKey.edge(for: event) {
+            if down {
+                let othersHeld = FormatCommandKey.otherModifiersHeld(rawFlags: rawFlags,
+                                                                     excluding: [commandKey, dictationKey])
+                return keyDown(at: now, othersHeld: othersHeld)
+            }
+            return keyUp(at: now)
+        }
+        if commandKey.involves(event) || dictationKey.involves(event) { return nil }
+        switch event {
+        case .keyDown, .flagsChanged, .mouseDown: otherInput()
+        case .keyUp, .mouseUp: break
+        }
+        return nil
+    }
+
     /// Drop any in-flight hold without output (dictation ended, rebind, suspend).
     @discardableResult
     mutating func reset() -> Bool {

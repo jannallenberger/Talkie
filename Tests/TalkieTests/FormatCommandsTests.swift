@@ -491,3 +491,95 @@ final class FormatModelPassGuardTests: XCTestCase {
                                             preset: .translateToEnglish, outputCode: nil))
     }
 }
+
+/// The command key fed with synthetic tap events, exactly as `HotKeyMonitor` does.
+final class FormatKeyStepTests: XCTestCase {
+    private let command = FormatCommandKey.defaultKey      // Left ⌃ (59, bit 0x1)
+    private let dictation = ActivationKey.rightOption       // Right ⌥ (61, bit 0x40)
+
+    private func ctrl(_ down: Bool, extra: UInt64 = 0) -> ActivationKey.Event {
+        .flagsChanged(keyCode: 59, rawFlags: (down ? 0x1 : 0) | extra)
+    }
+
+    private func step(_ g: inout FormatKeyGesture, _ e: ActivationKey.Event, flags: UInt64 = 0,
+                      active: Bool = true, at t: TimeInterval) -> FormatKeyGesture.Output? {
+        g.step(e, rawFlags: flags, commandKey: command, dictationKey: dictation, dictationActive: active, now: t)
+    }
+
+    func testAloneHoldIsASpan() {
+        var g = FormatKeyGesture()
+        XCTAssertEqual(step(&g, ctrl(true), flags: 0x1, at: 1), .pressed(at: 1))
+        XCTAssertEqual(step(&g, ctrl(false), at: 2), .span(start: 1, end: 2))
+    }
+
+    func testControlCShortcutCancels() {
+        var g = FormatKeyGesture()
+        _ = step(&g, ctrl(true), flags: 0x1, at: 1)
+        XCTAssertNil(step(&g, .keyDown(keyCode: 8, isAutorepeat: false), flags: 0x1, at: 1.3))   // C
+        XCTAssertNil(step(&g, .keyUp(keyCode: 8), flags: 0x1, at: 1.4))
+        XCTAssertEqual(step(&g, ctrl(false), at: 2), .cancelled)
+    }
+
+    func testMouseClickDuringHoldCancels() {
+        var g = FormatKeyGesture()
+        _ = step(&g, ctrl(true), flags: 0x1, at: 1)
+        _ = step(&g, .mouseDown(button: 0), flags: 0x1, at: 1.5)
+        XCTAssertEqual(step(&g, ctrl(false), at: 2), .cancelled)
+    }
+
+    func testChordStartedWithAnotherModifierCancels() {
+        var g = FormatKeyGesture()
+        // ⌘ already down (bit 0x8), then ⌃.
+        XCTAssertNil(step(&g, ctrl(true, extra: 0x8), flags: 0x1 | 0x8, at: 1))
+        XCTAssertEqual(step(&g, ctrl(false, extra: 0x8), flags: 0x8, at: 2), .cancelled)
+    }
+
+    func testShiftPressedDuringHoldCancels() {
+        var g = FormatKeyGesture()
+        _ = step(&g, ctrl(true), flags: 0x1, at: 1)
+        _ = step(&g, .flagsChanged(keyCode: 56, rawFlags: 0x1 | 0x2), flags: 0x1 | 0x2, at: 1.2)
+        XCTAssertEqual(step(&g, ctrl(false), at: 2), .cancelled)
+    }
+
+    func testHeldDictationKeyDoesNotCancel() {
+        // Push-to-talk: Right ⌥ is held the whole time; its flags are present.
+        var g = FormatKeyGesture()
+        XCTAssertEqual(step(&g, ctrl(true, extra: 0x40), flags: 0x41, at: 1), .pressed(at: 1))
+        XCTAssertEqual(step(&g, ctrl(false, extra: 0x40), flags: 0x40, at: 1.6), .span(start: 1, end: 1.6))
+    }
+
+    func testShortTapEndsAndMinimumHold() {
+        var g = FormatKeyGesture()
+        _ = step(&g, ctrl(true), flags: 0x1, at: 1)
+        XCTAssertEqual(step(&g, ctrl(false), at: 1.1), .tap(at: 1.1))
+    }
+
+    func testIgnoredWhenNoDictationIsActive() {
+        var g = FormatKeyGesture()
+        XCTAssertNil(step(&g, ctrl(true), flags: 0x1, active: false, at: 1))
+        XCTAssertNil(step(&g, ctrl(false), active: false, at: 2))
+        // A hold that was running when the dictation ended is dropped.
+        _ = step(&g, ctrl(true), flags: 0x1, at: 3)
+        XCTAssertNil(step(&g, .keyDown(keyCode: 0, isAutorepeat: false), active: false, at: 3.2))
+        XCTAssertNil(step(&g, ctrl(false), at: 4))
+    }
+
+    func testFeatureOffOrSameKeyIsInert() {
+        var g = FormatKeyGesture()
+        XCTAssertNil(g.step(ctrl(true), rawFlags: 0x1, commandKey: nil, dictationKey: dictation,
+                            dictationActive: true, now: 1))
+        XCTAssertNil(g.step(ctrl(true), rawFlags: 0x1, commandKey: command, dictationKey: command,
+                            dictationActive: true, now: 1))
+    }
+
+    func testFunctionKeyCommandIgnoresItsOwnAutorepeat() {
+        let f5 = ActivationKey(kind: .function, code: 96)
+        var g = FormatKeyGesture()
+        func s(_ e: ActivationKey.Event, _ t: TimeInterval) -> FormatKeyGesture.Output? {
+            g.step(e, rawFlags: 0, commandKey: f5, dictationKey: dictation, dictationActive: true, now: t)
+        }
+        XCTAssertEqual(s(.keyDown(keyCode: 96, isAutorepeat: false), 1), .pressed(at: 1))
+        XCTAssertNil(s(.keyDown(keyCode: 96, isAutorepeat: true), 1.5))
+        XCTAssertEqual(s(.keyUp(keyCode: 96), 2), .span(start: 1, end: 2))
+    }
+}

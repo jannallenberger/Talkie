@@ -214,6 +214,18 @@ struct ActivationKey: Hashable, Sendable, Codable, RawRepresentable {
         }
     }
 
+    /// Whether `event` is about this trigger at all — any edge of it, including the
+    /// auto-repeat key-downs `edge(for:)` drops. Used so a held key's own repeats (or
+    /// the dictation key) never count as "another key pressed".
+    func involves(_ event: Event) -> Bool {
+        switch (kind, event) {
+        case (.modifier, .flagsChanged(let keyCode, _)): return keyCode == code
+        case (.function, .keyDown(let keyCode, _)), (.function, .keyUp(let keyCode)): return keyCode == code
+        case (.mouse, .mouseDown(let button)), (.mouse, .mouseUp(let button)): return button == code
+        default: return false
+        }
+    }
+
     /// Live physical state, for the stuck-key reconcile tick.
     func isPhysicallyDown(sessionState state: CGEventSourceStateID) -> Bool {
         switch kind {
