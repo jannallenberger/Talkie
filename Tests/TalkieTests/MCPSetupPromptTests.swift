@@ -101,10 +101,10 @@ final class MCPSetupPromptTests: XCTestCase {
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("queued"),
                       "prompt must say each write is queued")
         XCTAssertTrue(prompt.contains("Undo"), "prompt must mention the one-tap Undo")
-        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("confirm"),
-                      "prompt must say the user confirms each write")
-        XCTAssertTrue(prompt.contains("does NOT take effect"),
-                      "prompt must state writes don't take effect until confirmed")
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("right away"),
+                      "prompt must say a write is applied right away (apply-with-Undo)")
+        XCTAssertFalse(prompt.contains("does NOT take effect"),
+                       "prompt must not claim writes wait for confirmation")
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("suggest"),
                       "prompt must frame writes as suggestions")
     }

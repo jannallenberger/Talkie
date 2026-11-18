@@ -185,11 +185,11 @@ struct MCPServer {
             // file into the inbox, and the app applies it only after showing an
             // Undo pill. Annotated `readOnlyHint: false` so an MCP host gates them
             // rather than auto-approving like the reads above.
-            spec("add_vocabulary_term", "Suggest a niche/jargon term (a name, product, or acronym) for the user's Talkie dictionary, so their speech recognition spells it right. QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it. Call this when the user corrects a mis-transcribed term in their prompt (e.g. they wrote \"Higgsfield\" where recognition would mishear it).",
+            spec("add_vocabulary_term", "Suggest a niche/jargon term (a name, product, or acronym) for the user's Talkie dictionary, so their speech recognition spells it right. Applied by Talkie right away, visibly, with a one-tap Undo pill for the user (queued only while the app is closed). Call this when the user corrects a mis-transcribed term in their prompt (e.g. they wrote \"Higgsfield\" where recognition would mishear it).",
                  ["term": strProp("The exact spelling to add (e.g. \"Higgsfield\", \"tsconfig.json\", \"GitHub\")."),
                   "note": strProp("Optional: why you're suggesting it (kept for the user's provenance).")],
                  required: ["term"], mutating: true),
-            spec("add_replacement", "Suggest a spoken→written replacement rule for the user's Talkie dictionary — when recognition reliably hears one thing (\"get hub\", \"higgs field\") but the user means another (\"GitHub\", \"Higgsfield\"). QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it.",
+            spec("add_replacement", "Suggest a spoken→written replacement rule for the user's Talkie dictionary — when recognition reliably hears one thing (\"get hub\", \"higgs field\") but the user means another (\"GitHub\", \"Higgsfield\"). Applied by Talkie right away, visibly, with a one-tap Undo pill for the user (queued only while the app is closed).",
                  ["from": strProp("What recognition tends to produce (the misheard form)."),
                   "to": strProp("What it should become (the canonical spelling)."),
                   "note": strProp("Optional: why you're suggesting it (kept for the user's provenance).")],
@@ -201,25 +201,25 @@ struct MCPServer {
             // silently change recognition). Annotated `readOnlyHint: false` so a host
             // gates them. Call `get_dictionary` first to see the exact `from → to` /
             // term strings to target.
-            spec("remove_replacement", "Remove a spoken→written replacement rule from the user's Talkie dictionary (identified by its exact from → to). QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it, and the Undo restores the rule. Call get_dictionary first to get the exact from/to. No-ops harmlessly if the rule is already gone.",
+            spec("remove_replacement", "Remove a spoken→written replacement rule from the user's Talkie dictionary (identified by its exact from → to). Applied by Talkie right away, visibly, with a one-tap Undo pill for the user (queued only while the app is closed), and the Undo restores the rule. Call get_dictionary first to get the exact from/to. No-ops harmlessly if the rule is already gone.",
                  ["from": strProp("The rule's misheard form (its `from`), exactly as get_dictionary shows it."),
                   "to": strProp("The rule's current target (its `to`), exactly as get_dictionary shows it."),
                   "note": strProp("Optional: why you're suggesting the removal (kept for the user's provenance).")],
                  required: ["from", "to"], mutating: true),
-            spec("update_replacement", "Change the target of an existing replacement rule in the user's Talkie dictionary — the rule matched by (from, to) should instead produce new_to (its `from` is unchanged). QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it, and the Undo restores the previous target. Call get_dictionary first to get the exact from/to. No-ops harmlessly if the rule is already gone.",
+            spec("update_replacement", "Change the target of an existing replacement rule in the user's Talkie dictionary — the rule matched by (from, to) should instead produce new_to (its `from` is unchanged). Applied by Talkie right away, visibly, with a one-tap Undo pill for the user (queued only while the app is closed), and the Undo restores the previous target. Call get_dictionary first to get the exact from/to. No-ops harmlessly if the rule is already gone.",
                  ["from": strProp("The rule's misheard form (its `from`), exactly as get_dictionary shows it."),
                   "to": strProp("The rule's CURRENT target (its `to`), exactly as get_dictionary shows it."),
                   "new_to": strProp("The new canonical spelling the rule should produce instead."),
                   "note": strProp("Optional: why you're suggesting the change (kept for the user's provenance).")],
                  required: ["from", "to", "new_to"], mutating: true),
-            spec("remove_vocabulary_term", "Remove a niche/jargon vocabulary term from the user's Talkie dictionary. QUEUED for the user to confirm in Talkie with a one-tap Undo — it does NOT take effect until they accept it, and the Undo restores the term. Call get_dictionary first to get the exact term. No-ops harmlessly if the term isn't present.",
+            spec("remove_vocabulary_term", "Remove a niche/jargon vocabulary term from the user's Talkie dictionary. Applied by Talkie right away, visibly, with a one-tap Undo pill for the user (queued only while the app is closed), and the Undo restores the term. Call get_dictionary first to get the exact term. No-ops harmlessly if the term isn't present.",
                  ["term": strProp("The exact vocabulary term to remove, as get_dictionary shows it."),
                   "note": strProp("Optional: why you're suggesting the removal (kept for the user's provenance).")],
                  required: ["term"], mutating: true),
             // L15-b meeting-notes MANAGEMENT (retitle). Same queued confirm-with-Undo
             // contract as the dictionary writers: MUTATING but never a direct write —
             // one atomic inbox file, applied only behind the app's Undo pill.
-            spec("retitle_meeting", "Rename a meeting in the user's \(BrandMirror.displayName) history (matched by its id or 8-char id prefix from list_meetings / get_meeting). QUEUED for the user to confirm in \(BrandMirror.displayName) with a one-tap Undo — it does NOT take effect until they accept it, and the Undo restores the previous title. Call list_meetings or get_meeting first to get the id.",
+            spec("retitle_meeting", "Rename a meeting in the user's \(BrandMirror.displayName) history (matched by its id or 8-char id prefix from list_meetings / get_meeting). Applied by \(BrandMirror.displayName) right away, visibly, with a one-tap Undo pill for the user (queued only while the app is closed), and the Undo restores the previous title. Call list_meetings or get_meeting first to get the id.",
                  ["id": strProp("The meeting's id, or its 8-char prefix, exactly as list_meetings / get_meeting shows it."),
                   "title": strProp("The new title for the meeting."),
                   "note": strProp("Optional: why you're suggesting the rename (kept for the user's provenance).")],

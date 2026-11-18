@@ -44,8 +44,10 @@ final class JargonInstallPromptTests: XCTestCase {
     /// The trust model, mirrored from MCP_TEACH_BACK.md: queued, confirm, Undo, and
     /// explicitly NOT applied until the user confirms.
     func testStatesConfirmWithUndoEtiquette() {
-        XCTAssertTrue(body.localizedCaseInsensitiveContains("confirm"),
-                      "prompt must say the user confirms each suggestion")
+        XCTAssertTrue(body.localizedCaseInsensitiveContains("right away"),
+                      "prompt must say a suggestion is applied right away (apply-with-Undo)")
+        XCTAssertFalse(body.contains("does NOT take effect"),
+                       "prompt must not claim suggestions wait for confirmation")
         XCTAssertTrue(body.contains("Undo"), "prompt must mention the one-tap Undo")
         XCTAssertTrue(body.localizedCaseInsensitiveContains("queue"),
                       "prompt must say each call is queued")

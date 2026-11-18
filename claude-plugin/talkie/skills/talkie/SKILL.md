@@ -26,7 +26,7 @@ The **talkie** MCP server exposes the user's local Talkie data — meetings, tod
 
 ## Dictionary & meeting edits (QUEUED — the user confirms in Talkie with a one-tap Undo)
 
-These do **not** change anything directly. Each call drops one suggestion into Talkie's inbox; Talkie applies it only after the user accepts it, and an Undo restores the prior state. So a session can never silently change the user's speech recognition. Just call the tool and tell the user what you queued — don't ask first and wait.
+These do **not** change anything directly. Each call drops one suggestion into Talkie's inbox; Talkie applies it right away and shows the user a pill with a one-tap Undo that restores the prior state (if Talkie is closed, it applies at next launch). So a session can never change the user's speech recognition out of sight. Just call the tool and tell the user what you queued — don't ask first and wait.
 
 | Tool | Use it for | Key args |
 |---|---|---|
