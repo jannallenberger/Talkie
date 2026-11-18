@@ -960,3 +960,19 @@
 "Left, right and middle click can't be used as the dictation key." = "左・右・中央クリックは音声入力キーに使えません。";
 "macOS reserves Fn/Globe, so %@ can't use it." = "Fn/地球儀キーは macOS が予約しているため、%@ では使えません。";
 "You press this constantly; %@ would start listening during normal shortcuts." = "このキーは常に押すため、通常のショートカット中に %@ が聞き取りを始めてしまいます。";
+
+/* W2 live meeting notes: time-stamped notes, Mark this moment, So far view */
+"Kept word for word in the summary, with times" = "時刻付きで、そのまま要約に残ります";
+"Mark this moment" = "この瞬間をマーク";
+"Adds a time-stamped line to your notes" = "時刻付きの行をメモに追加します";
+"Jot key points — each line keeps the moment you started it…" = "要点をメモ — 各行は書き始めた時刻を記録します…";
+"So far" = "ここまで";
+"Provisional" = "暫定";
+"Topics" = "トピック";
+"Decisions" = "決定事項";
+"Action items" = "アクションアイテム";
+"With several languages, the text settles every 10 minutes — the first items appear then." = "複数の言語では、テキストは10分ごとに確定します。最初の項目はそのときに表示されます。";
+"Topics, decisions and tasks appear here after a few minutes of conversation." = "数分間会話すると、トピック・決定事項・タスクがここに表示されます。";
+"Updates every 10 minutes, when the languages settle. The final summary is written when you stop." = "言語が確定する10分ごとに更新されます。最終的な要約は停止時に作成されます。";
+"Updates every minute. The final summary is written when you stop." = "1分ごとに更新されます。最終的な要約は停止時に作成されます。";
+"This replaces the summary with a fresh one. Your notes are kept. This can't be undone." = "要約を新しいものに置き換えます。メモはそのまま残ります。元に戻せません。";

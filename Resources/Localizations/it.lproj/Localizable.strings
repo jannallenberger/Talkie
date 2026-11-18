@@ -960,3 +960,19 @@
 "Left, right and middle click can't be used as the dictation key." = "Clic sinistro, destro e centrale non possono essere usati come tasto di dettatura.";
 "macOS reserves Fn/Globe, so %@ can't use it." = "macOS riserva Fn/Globo, quindi %@ non può usarlo.";
 "You press this constantly; %@ would start listening during normal shortcuts." = "Premi sempre questo tasto; %@ inizierebbe ad ascoltare durante le normali scorciatoie.";
+
+/* W2 live meeting notes: time-stamped notes, Mark this moment, So far view */
+"Kept word for word in the summary, with times" = "Riportate alla lettera nel riepilogo, con l’orario";
+"Mark this moment" = "Segna questo momento";
+"Adds a time-stamped line to your notes" = "Aggiunge alle tue note una riga con l’orario";
+"Jot key points — each line keeps the moment you started it…" = "Annota i punti chiave: ogni riga ricorda il momento in cui l’hai iniziata…";
+"So far" = "Finora";
+"Provisional" = "Provvisorio";
+"Topics" = "Argomenti";
+"Decisions" = "Decisioni";
+"Action items" = "Azioni";
+"With several languages, the text settles every 10 minutes — the first items appear then." = "Con più lingue, il testo si stabilizza ogni 10 minuti: allora compaiono i primi punti.";
+"Topics, decisions and tasks appear here after a few minutes of conversation." = "Argomenti, decisioni e attività compaiono qui dopo qualche minuto di conversazione.";
+"Updates every 10 minutes, when the languages settle. The final summary is written when you stop." = "Si aggiorna ogni 10 minuti, quando le lingue si stabilizzano. Il riepilogo finale viene scritto quando ti fermi.";
+"Updates every minute. The final summary is written when you stop." = "Si aggiorna ogni minuto. Il riepilogo finale viene scritto quando ti fermi.";
+"This replaces the summary with a fresh one. Your notes are kept. This can't be undone." = "Questo sostituisce il riepilogo con uno nuovo. Le tue note restano. Non si può annullare.";

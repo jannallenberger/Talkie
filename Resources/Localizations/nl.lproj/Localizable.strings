@@ -960,3 +960,19 @@
 "Left, right and middle click can't be used as the dictation key." = "Links-, rechts- en middenklik kunnen niet als dicteertoets worden gebruikt.";
 "macOS reserves Fn/Globe, so %@ can't use it." = "macOS reserveert Fn/Globe, dus %@ kan die niet gebruiken.";
 "You press this constantly; %@ would start listening during normal shortcuts." = "Je drukt hier constant op; %@ zou gaan luisteren tijdens normale sneltoetsen.";
+
+/* W2 live meeting notes: time-stamped notes, Mark this moment, So far view */
+"Kept word for word in the summary, with times" = "Woordelijk in de samenvatting, met tijd";
+"Mark this moment" = "Dit moment markeren";
+"Adds a time-stamped line to your notes" = "Voegt een regel met tijdstempel toe aan je notities";
+"Jot key points — each line keeps the moment you started it…" = "Noteer kernpunten — elke regel onthoudt wanneer je eraan begon…";
+"So far" = "Tot nu toe";
+"Provisional" = "Voorlopig";
+"Topics" = "Onderwerpen";
+"Decisions" = "Besluiten";
+"Action items" = "Actiepunten";
+"With several languages, the text settles every 10 minutes — the first items appear then." = "Bij meerdere talen ligt de tekst elke 10 minuten vast — dan verschijnen de eerste punten.";
+"Topics, decisions and tasks appear here after a few minutes of conversation." = "Onderwerpen, besluiten en taken verschijnen hier na een paar minuten gesprek.";
+"Updates every 10 minutes, when the languages settle. The final summary is written when you stop." = "Wordt elke 10 minuten bijgewerkt, als de talen vastliggen. De definitieve samenvatting wordt geschreven als je stopt.";
+"Updates every minute. The final summary is written when you stop." = "Wordt elke minuut bijgewerkt. De definitieve samenvatting wordt geschreven als je stopt.";
+"This replaces the summary with a fresh one. Your notes are kept. This can't be undone." = "Dit vervangt de samenvatting door een nieuwe. Je notities blijven bewaard. Dit kan niet ongedaan worden gemaakt.";
