@@ -422,11 +422,14 @@ extension View {
     func talkiePushedPage() -> some View {
         environment(\.talkiePushedPage, true)
             .buttonStyle(.talkie(.secondary))
+            // The in-page chevron replaces the toolbar's back button, which
+            // would otherwise sit over the page title.
+            .navigationBarBackButtonHidden(true)
     }
 }
 
-/// A back chevron shown only on pushed pages (the window has no toolbar, so the
-/// system back button is gone). Pops via `dismiss`; ⌘[ works too.
+/// A back chevron shown only on pushed pages (the system toolbar back button is
+/// hidden so it can't overlap the page title). Pops via `dismiss`; ⌘[ works too.
 struct TalkieBackButton: View {
     @Environment(\.talkiePushedPage) private var pushed
     @Environment(\.dismiss) private var dismiss

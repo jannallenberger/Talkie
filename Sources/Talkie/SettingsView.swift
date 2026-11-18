@@ -194,9 +194,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
                 ? NSColor(hex: 0x000000) : NSColor(hex: 0xFFFFFF)
         }
-        // NSHostingController hosts the SwiftUI root. MainView hides the window
-        // toolbar (`.toolbar(.hidden, for: .windowToolbar)`), so the only chrome is
-        // the transparent 28pt titlebar with the traffic lights over the sidebar.
+        // NSHostingController (not NSHostingView) so SwiftUI `.toolbar {}` bridges to a
+        // real macOS window toolbar — the native Liquid-Glass bar (like Finder), with
+        // the system scroll-edge gradient as content passes under it.
         let hostingController = NSHostingController(rootView: root)
         window.contentViewController = hostingController
         window.toolbarStyle = .unified
@@ -228,9 +228,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         onGenuineClose?()
     }
 
-    /// Native fullscreen: belt-and-braces with the hidden toolbar — should SwiftUI
-    /// ever re-create a toolbar, it auto-hides with the menu bar instead of being
-    /// drawn as a fixed strip above the canvas.
+    /// Native fullscreen: the toolbar (kept for the native sidebar + its toggle)
+    /// auto-hides with the menu bar instead of being drawn as a fixed strip above
+    /// the canvas. Its background is also hidden (see `MainView`).
     func window(_ window: NSWindow,
                 willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = [])
         -> NSApplication.PresentationOptions {
@@ -276,29 +276,30 @@ struct MainView: View {
     var body: some View {
         Group {
             if settings.hasOnboarded {
-                // The sidebar is permanently shown (no collapse toggle), so the
-                // window needs no toolbar at all: NavigationSplitView used to
-                // auto-install a 52pt unified toolbar just for the sidebar toggle,
-                // which pushed every page 52pt down and, in native fullscreen,
-                // became a separately drawn grey strip above the canvas.
                 NavigationSplitView {
                     SidebarList(router: router, settings: settings, permissions: permissions)
-                        .toolbar(removing: .sidebarToggle)
-                        .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
                 } detail: {
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        // Pages own their top inset (`Theme.Space.pageTop`), measured
-                        // from the window's top edge, so the canvas runs up under the
-                        // transparent titlebar in windowed AND fullscreen mode.
+                        // ONLY the detail pages extend under the (background-less)
+                        // window toolbar: they own their top inset
+                        // (`Theme.Space.pageTop`, measured from the window's top
+                        // edge). The sidebar keeps its native safe areas.
                         .ignoresSafeArea(.container, edges: .top)
                         .background(Theme.canvas.ignoresSafeArea())
+                        // No toolbar strip in windowed or fullscreen mode: the
+                        // toolbar stays (sidebar toggle, native sidebar look) but
+                        // draws no background of its own.
+                        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
                         // The default button look of every main-window page: a bare
                         // `Button` reads as a secondary capsule. Sites that need
                         // another role say so explicitly.
                         .buttonStyle(.talkie(.secondary))
+                        // No principal toolbar item: the floating Liquid-Glass title
+                        // "pill" it produced was removed app-wide (each page already
+                        // carries its own in-content header), so nothing bridges to the
+                        // window toolbar here anymore.
                 }
-                .toolbar(.hidden, for: .windowToolbar)
                 .transition(.opacity)
             } else {
                 OnboardingView(settings: settings, permissions: permissions, onRetryHotKey: onRetryHotKey)
@@ -373,8 +374,7 @@ private struct SidebarList: View {
                 .badge(tab == .general && !permissions.allGranted ? 1 : 0)
         }
         .listStyle(.sidebar)
-        // Column width is set at the NavigationSplitView call site, after
-        // `.toolbar(removing:)` — set here, it was lost (sidebar shrank to 148pt).
+        .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 3) {
                 Eyebrow(text: "Hold to talk · keep holding to lock")
