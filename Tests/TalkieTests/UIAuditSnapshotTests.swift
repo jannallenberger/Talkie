@@ -94,7 +94,7 @@ final class UIAuditSnapshotTests: XCTestCase {
             contextGraph: s.contextGraph, macros: s.macros, profiles: s.profiles, searchEngine: s.search,
             nicheVocab: s.nicheVocab, commandRouter: s.commandRouter, hud: s.hud, router: s.router,
             onRetryHotKey: { true })
-        // Mirrors MainWindowController.init (SettingsView.swift:177-203).
+        // Mirrors MainWindowController.init (SettingsView.swift); MainView itself hides the toolbar.
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
@@ -178,7 +178,10 @@ final class UIAuditSnapshotTests: XCTestCase {
                 if d <= 3 || n.lowercased().contains("toolbar") || n.lowercased().contains("titlebar") {
                     log.append("[\(label)] \(String(repeating: "  ", count: d))\(n) frame=\(v.frame)")
                 }
-                if d < 4 { v.subviews.forEach { walk($0, d + 1) } }
+                if n.contains("Split") || n.contains("Hosting") {
+                    log.append("[\(label)] split/host d\(d) \(n) frame=\(v.frame)")
+                }
+                if d < 9 { v.subviews.forEach { walk($0, d + 1) } }
             }
             walk(frame, 0)
         }
@@ -197,6 +200,10 @@ final class UIAuditSnapshotTests: XCTestCase {
         s.meetingRecorder.markSummarizingForTesting(s.meetingStore.meetings[0].id)
         measureReal(s, tab: .dashboard, label: "dashboard")
         measureReal(s, tab: .meetings, label: "meetings")
+        if ProcessInfo.processInfo.environment["TALKIE_UI_MEASURE_ONLY"] != nil {
+            try log.joined(separator: "\n").write(to: dir.appendingPathComponent("measure.txt"), atomically: true, encoding: .utf8)
+            return
+        }
         let tabs: [(SettingsTab, String)] = [(.dashboard, "dashboard"), (.memory, "memory"), (.meetings, "meetings"),
                                              (.dictionary, "dictionary"), (.commands, "commands"),
                                              (.vibeCoding, "vibecoding"), (.general, "settings-index")]

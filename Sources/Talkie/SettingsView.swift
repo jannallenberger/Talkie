@@ -47,7 +47,9 @@ enum SettingsTab: Hashable, CaseIterable {
         case .memory:      return Theme.featherGold
         case .meetings:    return Theme.featherPlum
         case .dictionary:  return Theme.featherGreen
-        case .commands:    return Theme.featherPlum
+        // Neutral, so Commands no longer shares Meetings' plum (every feather is
+        // already taken by another tab).
+        case .commands:    return Theme.inkSecondary
         case .vibeCoding:  return Theme.featherBlue
         case .general:     return Theme.coral
         }
@@ -192,9 +194,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
                 ? NSColor(hex: 0x000000) : NSColor(hex: 0xFFFFFF)
         }
-        // NSHostingController (not NSHostingView) so SwiftUI `.toolbar {}` bridges to a
-        // real macOS window toolbar — the native Liquid-Glass bar (like Finder), with
-        // the system scroll-edge gradient as content passes under it.
+        // NSHostingController hosts the SwiftUI root. MainView hides the window
+        // toolbar (`.toolbar(.hidden, for: .windowToolbar)`), so the only chrome is
+        // the transparent 28pt titlebar with the traffic lights over the sidebar.
         let hostingController = NSHostingController(rootView: root)
         window.contentViewController = hostingController
         window.toolbarStyle = .unified
@@ -224,6 +226,15 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard window.attachedSheet == nil else { return }
         onGenuineClose?()
+    }
+
+    /// Native fullscreen: belt-and-braces with the hidden toolbar — should SwiftUI
+    /// ever re-create a toolbar, it auto-hides with the menu bar instead of being
+    /// drawn as a fixed strip above the canvas.
+    func window(_ window: NSWindow,
+                willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = [])
+        -> NSApplication.PresentationOptions {
+        proposedOptions.union([.fullScreen, .autoHideMenuBar, .autoHideToolbar])
     }
 }
 
@@ -265,17 +276,29 @@ struct MainView: View {
     var body: some View {
         Group {
             if settings.hasOnboarded {
+                // The sidebar is permanently shown (no collapse toggle), so the
+                // window needs no toolbar at all: NavigationSplitView used to
+                // auto-install a 52pt unified toolbar just for the sidebar toggle,
+                // which pushed every page 52pt down and, in native fullscreen,
+                // became a separately drawn grey strip above the canvas.
                 NavigationSplitView {
                     SidebarList(router: router, settings: settings, permissions: permissions)
+                        .toolbar(removing: .sidebarToggle)
+                        .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
                 } detail: {
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .background(Theme.canvas)
-                        // No principal toolbar item: the floating Liquid-Glass title
-                        // "pill" it produced was removed app-wide (each page already
-                        // carries its own in-content header), so nothing bridges to the
-                        // window toolbar here anymore.
+                        // Pages own their top inset (`Theme.Space.pageTop`), measured
+                        // from the window's top edge, so the canvas runs up under the
+                        // transparent titlebar in windowed AND fullscreen mode.
+                        .ignoresSafeArea(.container, edges: .top)
+                        .background(Theme.canvas.ignoresSafeArea())
+                        // The default button look of every main-window page: a bare
+                        // `Button` reads as a secondary capsule. Sites that need
+                        // another role say so explicitly.
+                        .buttonStyle(.talkie(.secondary))
                 }
+                .toolbar(.hidden, for: .windowToolbar)
                 .transition(.opacity)
             } else {
                 OnboardingView(settings: settings, permissions: permissions, onRetryHotKey: onRetryHotKey)
@@ -350,7 +373,8 @@ private struct SidebarList: View {
                 .badge(tab == .general && !permissions.allGranted ? 1 : 0)
         }
         .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
+        // Column width is set at the NavigationSplitView call site, after
+        // `.toolbar(removing:)` — set here, it was lost (sidebar shrank to 148pt).
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 3) {
                 Eyebrow(text: "Hold to talk · keep holding to lock")
