@@ -938,3 +938,9 @@
 "Walks through the welcome flow again. Your name, settings, history, and dictionary are untouched." = "ウェルカムフローをもう一度たどります。名前、設定、履歴、辞書はそのままです。";
 "Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Each suggestion is applied right away with a one-tap Undo pill in Talkie, so you can reverse any you don't want. Your AI agent can't change your dictionary without you seeing it." = "AIエージェントにTalkieへあなたの専門用語を教えてもらいましょう。このプロンプトをAIエージェント（Talkieコネクタをオンにした状態）に貼り付けると、あなたの普段の話し方から名前、製品、用語を読み取り、Talkieが聞き間違えそうなものを提案します。各提案はすぐに適用され、Talkieに「取り消す」ピルが表示されるので、不要なものは元に戻せます。AIエージェントがあなたに見えないところで辞書を変更することはありません。";
 "%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — and each change applies right away with an Undo pill so you can reverse it. Bundled with the app: no separate download or build." = "%@には小さなローカルサーバーが付属しており、AIエージェントがミーティング、ブリーフ、コミットメント、コンテキスト、統計、辞書、メモを読み取れます。すべてオンデバイスで、Macの外には何も出ません。AIエージェントは辞書の管理（用語やルールの追加・変更・削除）もでき、各変更はすぐに適用され、「取り消す」ピルで元に戻せます。アプリに同梱されているので、別途ダウンロードやビルドは不要です。";
+/* Update reminder (build age, no network) */
+"This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you." = "このバージョンのTalkieは公開から%d日が経っています。Talkieはオンラインに接続しないため、確認できません。";
+"See the latest version" = "最新バージョンを見る";
+"Version %@ (build %@), built on %@" = "バージョン %@（ビルド %@）、%@ にビルド";
+"Version %@ (build %@)" = "バージョン %@（ビルド %@）";
+"Talkie never goes online, so it cannot check for updates." = "Talkieはオンラインに接続しないため、アップデートを確認できません。";

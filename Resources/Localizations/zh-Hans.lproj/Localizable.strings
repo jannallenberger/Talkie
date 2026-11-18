@@ -938,3 +938,9 @@
 "Walks through the welcome flow again. Your name, settings, history, and dictionary are untouched." = "重新走一遍欢迎流程。你的名字、设置、历史记录和词典都不会改变。";
 "Let your AI agent teach Talkie your jargon. Paste this prompt into your AI agent (with the Talkie connector on) and it reads how you actually talk to it — your names, products, and terms — and suggests the ones Talkie would mis-hear. Each suggestion is applied right away with a one-tap Undo pill in Talkie, so you can reverse any you don't want. Your AI agent can't change your dictionary without you seeing it." = "让你的 AI 智能体教 Talkie 你的行话。把这段提示词粘贴给你的 AI 智能体（并开启 Talkie 连接器），它会读取你平时对它说话的方式——你的名字、产品和术语——并建议 Talkie 可能听错的词。每条建议都会立即生效，并在 Talkie 中显示一个“撤销”提示，你可以撤回不想要的。你的 AI 智能体无法在你看不到的情况下更改你的词典。";
 "%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — and each change applies right away with an Undo pill so you can reverse it. Bundled with the app: no separate download or build." = "%@ 自带一个很小的本地服务器，让你的 AI 智能体可以读取你的会议、简报、承诺事项、上下文、统计、词典和笔记——全部在设备端，没有任何内容离开你的 Mac。你的 AI 智能体还可以管理你的词典——添加、修改或删除术语和规则——每项更改都会立即生效，并显示“撤销”提示，方便你撤回。已随 App 内置：无需单独下载或构建。";
+/* Update reminder (build age, no network) */
+"This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you." = "此版本的 Talkie 已有 %d 天。Talkie 从不联网，因此无法为你检查更新。";
+"See the latest version" = "查看最新版本";
+"Version %@ (build %@), built on %@" = "版本 %@（构建 %@），构建于 %@";
+"Version %@ (build %@)" = "版本 %@（构建 %@）";
+"Talkie never goes online, so it cannot check for updates." = "Talkie 从不联网，因此无法检查更新。";

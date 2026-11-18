@@ -471,6 +471,7 @@ private struct SettingsHome: View {
                     // reachable only from the dev-gated Developer section).
                     ReplayIntroductionCard(settings: settings)
                         .padding(.top, 8)
+                    VersionRow()
                 }
                 .padding(28)
                 .frame(maxWidth: .infinity, alignment: .leading)
