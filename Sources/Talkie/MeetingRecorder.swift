@@ -1097,7 +1097,8 @@ final class MeetingRecorder: ObservableObject {
                 }
             }
             let (summary, graphCandidates) = await self.writeSummary(
-                transcript: step.transcript, userNotes: userNotes, digest: summaryDigest)
+                transcript: step.transcript, segments: step.relabelled ? step.segments : segments,
+                userNotes: userNotes, digest: summaryDigest)
             // Re-read: the user may have retitled or edited the note meanwhile — or
             // deleted it, in which case nothing (not even graph provenance) returns.
             if var current = self.store.meetings.first(where: { $0.id == id }) {
@@ -1259,10 +1260,12 @@ final class MeetingRecorder: ObservableObject {
     }
 
     /// The model-backed part of finishing a meeting: fuse the user's notes, summarize
-    /// (from the live digest when one ran, else map-reduce over the transcript), and
-    /// extract graph candidates. Returns the final summary markdown (always keeping
-    /// the user's notes) plus the model's graph candidates.
-    private func writeSummary(transcript clean: String, userNotes: String,
+    /// the FINAL (diarized) transcript through `MeetingSummaryPipeline`, and gather
+    /// graph candidates (from the live digest when one ran, else extracted from the
+    /// summary's condensed items). Returns the final summary markdown (always keeping
+    /// the user's notes) plus the model's graph candidates. A failed summary is "":
+    /// the note keeps its transcript and offers Regenerate.
+    private func writeSummary(transcript clean: String, segments: [MeetingSegment]?, userNotes: String,
                               digest: MeetingDigestBuilder?) async
         -> (summary: String, graphCandidates: [ContextGraphExtractor.Candidate]) {
         let fused: String?
@@ -1271,30 +1274,25 @@ final class MeetingRecorder: ObservableObject {
         } else {
             fused = nil
         }
-        let transcriptSummary: String
+        let (transcriptSummaryOpt, condensed) = await summarizer.summarizeCondensed(clean, segments: segments)
+        let transcriptSummary = transcriptSummaryOpt ?? ""
         var graphCandidates: [ContextGraphExtractor.Candidate] = []
         if let digest {
-            let result = await digest.finish()
-            transcriptSummary = result.summary ?? ""
-            graphCandidates = result.graphCandidates
-        } else {
-            let (transcriptSummaryOpt, condensed) = await summarizer.summarizeCondensed(clean)
-            transcriptSummary = transcriptSummaryOpt ?? ""
-            if contextGraph != nil, OnDeviceLLM.isAvailable {
-                let extractor = GraphLLMExtractor(summarizer: PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.1)))
-                var seenGraph = Set<String>()
-                for chunk in MeetingSummarizer.chunkForSinglePass(condensed) {
-                    for candidate in await extractor.extract(from: chunk) {
-                        let key = "\(candidate.kind.rawValue)|\(candidate.displayName.lowercased())"
-                        if seenGraph.insert(key).inserted { graphCandidates.append(candidate) }
-                    }
+            graphCandidates = await digest.finish().graphCandidates
+        } else if contextGraph != nil, OnDeviceLLM.isAvailable {
+            let extractor = GraphLLMExtractor(summarizer: PrivacyWall.assertLocal(OnDeviceLLM(temperature: 0.1)))
+            var seenGraph = Set<String>()
+            for chunk in MeetingSummarizer.chunkForSinglePass(condensed) {
+                for candidate in await extractor.extract(from: chunk) {
+                    let key = "\(candidate.kind.rawValue)|\(candidate.displayName.lowercased())"
+                    if seenGraph.insert(key).inserted { graphCandidates.append(candidate) }
                 }
             }
         }
-        var summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
-        if let section = Self.actionItemsSection(commitments: graphCandidates, existingSummary: summary) {
-            summary = summary.isEmpty ? section : summary + "\n\n" + section
-        }
+        // The summary's own action items are grounded in the transcript and written in
+        // the meeting's language; the graph's commitment candidates are not appended
+        // to it any more (they were ungrounded and always English).
+        let summary = Self.composeSummary(userNotes: userNotes, transcriptSummary: transcriptSummary, fused: fused)
         return (summary, graphCandidates)
     }
 
@@ -1440,44 +1438,6 @@ final class MeetingRecorder: ObservableObject {
             source: "talkie (recovered)",
             fileName: MeetingStore.fileName(for: plan.start, id: id)
         )
-    }
-
-    /// Compose the "## Action items" note section from Stage-2 commitment
-    /// candidates. Pure (no actor state) so it's unit-testable, mirroring
-    /// `composeSummary`. Returns the section markdown, or `nil` — no empty
-    /// heading — when it must not be appended:
-    /// - No commitment candidates → `nil` (Stage-1-only / model-unavailable path).
-    /// - `existingSummary` already contains "action items" (case-insensitively)
-    ///   → `nil`, the duplication guard: the `MeetingSummarizer` /
-    ///   `MeetingNotesFusion` prompts already ask for best-effort action-item
-    ///   bullets, so we don't stack a second heading on top of theirs.
-    ///
-    /// Candidates are de-duplicated case-insensitively (preserving first-seen
-    /// order and surface form) so a repeated commitment yields one bullet.
-    nonisolated static func actionItemsSection(
-        commitments: [ContextGraphExtractor.Candidate],
-        existingSummary: String
-    ) -> String? {
-        // Only COMMITMENT candidates become action items; ignore any other kind
-        // the caller may pass through.
-        let clauses = commitments
-            .filter { $0.kind == .commitment }
-            .map { $0.displayName.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard !clauses.isEmpty else { return nil }
-
-        // Duplication guard: don't add our heading if the summary already speaks
-        // of action items (the summarizer/fusion prompts emit their own).
-        guard !existingSummary.lowercased().contains("action items") else { return nil }
-
-        var seen = Set<String>()
-        var unique: [String] = []
-        for clause in clauses where seen.insert(clause.lowercased()).inserted {
-            unique.append(clause)
-        }
-
-        let bullets = unique.map { "- \($0)" }.joined(separator: "\n")
-        return "## Action items\n\(bullets)"
     }
 
     /// Decide, by AUDIO self-consistency, whether one stream's speech was actually

@@ -1,25 +1,19 @@
 import Foundation
 
-// Incrementally builds a meeting's summarizable "map" facts + graph candidates DURING
-// the recording, chunk by chunk, so MeetingRecorder.stop() only pays for a final reduce
-// instead of re-running the whole map phase over the complete transcript at stop time.
+// Incrementally extracts a meeting's context-graph candidates DURING the recording,
+// chunk by chunk, so MeetingRecorder.stop() doesn't pay for the whole extraction pass
+// at stop time.
+//
+// It used to also map each chunk to "decision / action item" facts that a final reduce
+// turned into the summary. That path is gone (W1): the summary is now written from the
+// FINAL, diarized transcript by `MeetingSummaryPipeline`, which reads every speaker turn
+// with structured extraction and grounding. The live digest only feeds the graph.
 //
 // A plain class guarded by an `NSLock`, NOT an actor -- mirroring `StreamingCleanup` /
-// `TurnLog.add` exactly, not just "in shape". `ingest()` is genuinely synchronous and
-// safe to call directly from the transcriber's `@Sendable` segment-handler closures (off
-// the main actor), so the ordering-critical buffer append happens AT THE CALL SITE,
-// before `ingest` returns -- no unstructured `Task` is needed to bridge into it. An
-// earlier actor-based version required exactly that bridging Task per call, which gave
-// no ordering guarantee between segments (unrelated Tasks reaching an actor's queue in
-// creation order isn't promised) and no happens-before guarantee against a later
-// `finish()` call racing a straggler's ingest -- both real, reviewer-caught bugs this
-// shape closes by construction. Only the two genuinely async pieces -- `mapExcerpt` and
-// `GraphLLMExtractor.extract` -- run in background Tasks, tracked and awaited IN ORDER at
-// `finish()`, exactly like `StreamingCleanup.finishCleaned()`.
-//
-// Reuses MeetingSummarizer's existing mapExcerpt/reduceWithFallback/mapAll so the
-// prompts, retry-on-transient-error logic, and guardrails are identical to the stop-time
-// path this replaces -- only the SCHEDULING moves earlier.
+// `TurnLog.add`. `ingest()` is genuinely synchronous and safe to call directly from the
+// transcriber's `@Sendable` segment-handler closures (off the main actor), so the
+// ordering-critical buffer append happens AT THE CALL SITE. Only
+// `GraphLLMExtractor.extract` runs in background Tasks, awaited IN ORDER at `finish()`.
 final class MeetingDigestBuilder: @unchecked Sendable {
     private let summarizer: MeetingSummarizer
     private let graphExtractor: GraphLLMExtractor?
@@ -40,13 +34,8 @@ final class MeetingDigestBuilder: @unchecked Sendable {
     private var pendingBuffer: [Entry] = []
     /// Set by `remapSpeakers`: tag every line (a diarized meeting has >= 2 people).
     private var tagAll = false
-    /// Sealed excerpts were mapped under the lane labels; when their extracted facts
-    /// name a lane that diarization turned into exactly one person, `finish()` swaps
-    /// the name. Empty = leave the facts untouched.
-    private var factSubstitutions: [String: String] = [:]
     private var pendingChars = 0
     private var excerptIndex = 0
-    private var mapTasks: [Task<String, Never>] = []
     private var graphTasks: [Task<[ContextGraphExtractor.Candidate], Never>] = []
     /// Every distinct speaker heard so far. A meeting that's only ever heard "Me" (the
     /// common mic-only case) stays untagged -- matching `MeetingTranscriptRenderer`'s
@@ -86,7 +75,7 @@ final class MeetingDigestBuilder: @unchecked Sendable {
             pendingBuffer.append(Entry(elapsed: elapsed, lane: speaker, text: t, label: nil))
             let tagged = (speaker == .me ? "Me" : "Them") + ": " + t // length estimate only
             pendingChars += tagged.count + 1
-            if pendingChars >= MeetingSummarizer.chunkChars, mapTasks.count < Self.maxSealedChunks {
+            if pendingChars >= MeetingSummarizer.chunkChars, excerptIndex < Self.maxSealedChunks {
                 sealChunkLocked()
             }
         }
@@ -103,12 +92,6 @@ final class MeetingDigestBuilder: @unchecked Sendable {
         pendingBuffer.removeAll()
         pendingChars = 0
         excerptIndex += 1
-        let index = excerptIndex
-        let summarizer = self.summarizer
-        mapTasks.append(Task<String, Never> {
-            let facts = await summarizer.mapExcerpt(excerpt)
-            return "Excerpt " + String(index) + ": " + facts
-        })
         if let graphExtractor {
             graphTasks.append(Task<[ContextGraphExtractor.Candidate], Never> {
                 await graphExtractor.extract(from: excerpt)
@@ -116,68 +99,24 @@ final class MeetingDigestBuilder: @unchecked Sendable {
         }
     }
 
-    /// Seal whatever's left in the tail buffer, await every in-flight map/graph task IN
-    /// ORDER (so the joined partials read in chronological order like mapAll's output
-    /// does today), compress if the joined partials overflow (mirroring
-    /// summarizeCondensed's own compression loop), and reduce to the final summary.
-    /// Returns the same shape summarizeCondensed does, plus deduped graph candidates.
+    /// Seal whatever's left in the tail buffer and await every in-flight graph task IN
+    /// ORDER, returning the de-duplicated candidates. `summary` is always nil and
+    /// `condensed` empty: the summary is written from the final transcript (see the
+    /// type comment). The shape is kept so callers read the same fields.
     func finish() async -> (summary: String?, condensed: String, graphCandidates: [ContextGraphExtractor.Candidate]) {
-        // Short transcript: mirror summarizeCondensed's own direct-pass branch. A
-        // transcript that never crossed one chunk during the whole recording
-        // (excerptIndex == 0 -- ingest() never sealed a background chunk) skips the map
-        // phase entirely and reduces the raw text directly. Without this, a short,
-        // no-decision meeting's mapExcerpt call would legitimately answer "None" (it's
-        // prompted to extract decisions/action items from an EXCERPT of a LARGER
-        // meeting) and the final reduce would be writing "the summary" from that bare
-        // sentinel instead of from the actual conversation.
-        let (isShort, rawTail) = lock.withLock { () -> (Bool, String) in
-            let short = excerptIndex == 0 && !pendingBuffer.isEmpty
-                && pendingChars <= MeetingSummarizer.chunkChars
-            let raw = renderPendingLocked().trimmingCharacters(in: .whitespacesAndNewlines)
-            if short { pendingBuffer.removeAll(); pendingChars = 0 }
-            return (short, raw)
-        }
-        if isShort {
-            let summary = await summarizer.reduceWithFallback(rawTail)
-            var seen = Set<String>()
-            var candidates: [ContextGraphExtractor.Candidate] = []
-            if let graphExtractor {
-                for c in await graphExtractor.extract(from: rawTail) {
-                    let key = c.kind.rawValue + "|" + c.displayName.lowercased()
-                    if seen.insert(key).inserted { candidates.append(c) }
-                }
-            }
-            return (summary, rawTail, candidates)
-        }
-
-        let snapshot = lock.withLock { () -> ([Task<String, Never>], [Task<[ContextGraphExtractor.Candidate], Never>]) in
+        let tasks = lock.withLock { () -> [Task<[ContextGraphExtractor.Candidate], Never>] in
             sealChunkLocked()
-            return (mapTasks, graphTasks)
+            return graphTasks
         }
-        var partials: [String] = []
-        let subs = lock.withLock { factSubstitutions }
-        for t in snapshot.0 { partials.append(Self.substituteLabels(in: await t.value, with: subs)) }
-        var combined = partials.joined(separator: "\n\n")
-
-        var compressionPasses = 0
-        while combined.count > MeetingSummarizer.chunkChars, compressionPasses < 3 {
-            combined = await summarizer.mapAll(combined)
-            compressionPasses += 1
-        }
-        if combined.count > MeetingSummarizer.chunkChars {
-            combined = String(combined.prefix(MeetingSummarizer.chunkChars))
-        }
-        let summary = await summarizer.reduceWithFallback(combined)
-
         var seen = Set<String>()
         var candidates: [ContextGraphExtractor.Candidate] = []
-        for t in snapshot.1 {
+        for t in tasks {
             for c in await t.value {
                 let key = c.kind.rawValue + "|" + c.displayName.lowercased()
                 if seen.insert(key).inserted { candidates.append(c) }
             }
         }
-        return (summary, combined, candidates)
+        return (nil, "", candidates)
     }
 
     /// The pending lines, in audio-clock order, tagged per `tagAll` / speakers heard.
@@ -194,41 +133,21 @@ final class MeetingDigestBuilder: @unchecked Sendable {
 
     // MARK: Speaker remap (after diarization)
 
-    /// Make the digest speak the diarized labels instead of the lane labels, without
-    /// redoing any model work. Returns false when that is impossible, in which case
-    /// the caller drops the digest and summarizes from the relabelled transcript.
-    ///
-    /// What the digest holds: (a) the unsealed tail of raw, speaker-tagged lines, whose
-    /// tags are rewritten exactly from the lane + time mapping (every buffered line
-    /// must match a segment's start, else false); (b) sealed excerpts, already reduced
-    /// by the model to terse decision/action bullets, which carry no per-line labels
-    /// and usually name no lane at all. Those are kept untouched, unless a bullet does
-    /// name "Me"/"Them": that is swapped only when the lane became exactly one person
-    /// (so the name is unambiguous), otherwise remapping is impossible.
+    /// Make the digest's unsealed tail speak the diarized labels instead of the lane
+    /// labels (every buffered line must match a segment's start, else false and the
+    /// caller drops the digest). Sealed excerpts are already in flight to the graph
+    /// extractor and carry nothing the summary reads, so they need no remap.
     func remapSpeakers(_ map: DigestSpeakerRemap) async -> Bool {
-        let tasks: [Task<String, Never>]? = lock.withLock {
+        lock.withLock {
             var updated = pendingBuffer
             for i in updated.indices {
-                guard let label = map.label(lane: updated[i].lane, at: updated[i].elapsed) else { return nil }
+                guard let label = map.label(lane: updated[i].lane, at: updated[i].elapsed) else { return false }
                 updated[i].label = label
             }
             pendingBuffer = updated
             tagAll = true
-            return mapTasks
+            return true
         }
-        guard let tasks else { return false }
-        var named: Set<MeetingSpeaker> = []
-        for t in tasks {
-            let facts = await t.value
-            for lane in [MeetingSpeaker.me, .them] where Self.mentions(lane.rawValue, in: facts) { named.insert(lane) }
-        }
-        var subs: [String: String] = [:]
-        for lane in named {
-            guard let label = map.laneWideLabel(lane) else { return false }
-            if label != lane.rawValue { subs[lane.rawValue] = label }
-        }
-        lock.withLock { factSubstitutions = subs }
-        return true
     }
 
     private static func tokenRegex() -> NSRegularExpression? {
@@ -254,13 +173,11 @@ final class MeetingDigestBuilder: @unchecked Sendable {
     /// discarded (nothing transcribed) so background model calls for a note that will
     /// never be saved don't keep running pointlessly. Mirrors StreamingCleanup.cancel().
     func cancel() {
-        let snapshot = lock.withLock { () -> ([Task<String, Never>], [Task<[ContextGraphExtractor.Candidate], Never>]) in
-            let m = mapTasks, g = graphTasks
-            mapTasks.removeAll()
+        let snapshot = lock.withLock { () -> [Task<[ContextGraphExtractor.Candidate], Never>] in
+            let g = graphTasks
             graphTasks.removeAll()
-            return (m, g)
+            return g
         }
-        for t in snapshot.0 { t.cancel() }
-        for t in snapshot.1 { t.cancel() }
+        for t in snapshot { t.cancel() }
     }
 }
