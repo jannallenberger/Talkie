@@ -302,9 +302,10 @@ struct MainView: View {
                          settings: settings, profileImage: profileImage,
                          router: router)
         case .dictionary:
-            DictionarySettings(dictionary: dictionary, nicheVocab: nicheVocab)
+            DictionarySettings(settings: settings, dictionary: dictionary, nicheVocab: nicheVocab)
         case .memory:
-            MemoryView(contextGraph: contextGraph, history: history,
+            MemoryView(settings: settings,
+                       contextGraph: contextGraph, history: history,
                        searchEngine: searchEngine, meetingStore: meetingStore,
                        wordFreq: wordFreq, scratchpad: scratchpad,
                        autoAddPreviewLog: autoAddPreviewLog,
@@ -1849,6 +1850,9 @@ private struct BehaviorSettings: View {
 // MARK: - Dictionary
 
 private struct DictionarySettings: View {
+    /// For the header's "Learn from my edits" switch — the same
+    /// `AppSettings.learnFromEdits` as Settings > Context & learning.
+    @ObservedObject var settings: AppSettings
     @ObservedObject var dictionary: DictionaryStore
     @ObservedObject var nicheVocab: NicheVocabStore
     @State private var newTerm: String = ""
@@ -1891,6 +1895,11 @@ private struct DictionarySettings: View {
                     PageHeader(title: "Dictionary",
                                subtitle: "Names, brands, and jargon Talkie should spell correctly.")
                     Spacer()
+                    Toggle("Learn from my edits", isOn: $settings.learnFromEdits)
+                        .toggleStyle(.switch)
+                        .tint(Theme.coral)
+                        .fixedSize()
+                        .help("Auto-improve the dictionary.".loc)
                     importExportButtons
                 }
 

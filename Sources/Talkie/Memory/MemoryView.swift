@@ -10,6 +10,9 @@ import SwiftUI
 /// it doesn't have. Search doesn't have that problem: a query either matches or
 /// it doesn't, so it's the one honest way to reach the graph's contents.
 struct MemoryView: View {
+    /// For the header's "Keep history" picker — bound to the same
+    /// `historyRetentionDays` as Settings > Privacy & history.
+    @ObservedObject var settings: AppSettings
     @ObservedObject var contextGraph: ContextGraphStore
     @ObservedObject var history: HistoryStore
     @ObservedObject var searchEngine: SearchEngine
@@ -44,6 +47,10 @@ struct MemoryView: View {
     /// every keystroke but on every unrelated re-render too (any `@Published`
     /// change on `history`/`contextGraph`/`meetingStore`/etc. recomputes `body`).
     @State private var hits: [SearchHit] = []
+    /// A shorter retention the user picked that would delete entries, held until
+    /// they confirm (or cancel) — the setting itself is untouched until then.
+    @State private var pendingRetention: HistoryRetention?
+    @State private var pendingDeleteCount = 0
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -100,6 +107,7 @@ struct MemoryView: View {
                 PageHeader(title: "Memory",
                            subtitle: "Everything you've dictated and recorded, and everyone and everything Talkie has picked up from it.")
                 Spacer()
+                retentionPicker
                 Button {
                     copyToClipboard(history.allAsText())
                 } label: {
@@ -111,6 +119,56 @@ struct MemoryView: View {
             searchField
 
             content
+        }
+    }
+
+    // MARK: Keep history (inline retention)
+
+    /// Reads the live setting; a write that would delete entries is parked in
+    /// `pendingRetention` for confirmation instead of applied.
+    private var retentionSelection: Binding<HistoryRetention> {
+        Binding(
+            get: { HistoryRetention.from(days: settings.historyRetentionDays) },
+            set: { choice in
+                if let n = RetentionChange.confirmationCount(
+                    from: settings.historyRetentionDays, to: choice.rawValue,
+                    timestamps: history.entries.map(\.timestampUnix), now: Date()) {
+                    pendingDeleteCount = n
+                    pendingRetention = choice
+                } else {
+                    settings.historyRetentionDays = choice.rawValue
+                }
+            }
+        )
+    }
+
+    /// "Keep history: 7 days ▾" — the dictation feed below is exactly what this
+    /// window prunes (`HistoryStore.entries`).
+    private var retentionPicker: some View {
+        Picker(selection: retentionSelection) {
+            ForEach(RetentionChange.quickOptions(
+                current: HistoryRetention.from(days: settings.historyRetentionDays))) {
+                Text($0.displayName).tag($0)
+            }
+        } label: {
+            Text("Keep history")
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+        .help("Older dictations are deleted from this Mac after this long.".loc)
+        .alert(
+            String(format: "Keep history for %@?".loc, pendingRetention?.displayName ?? ""),
+            isPresented: Binding(get: { pendingRetention != nil },
+                                 set: { if !$0 { pendingRetention = nil } }),
+            presenting: pendingRetention
+        ) { choice in
+            Button("Delete older dictations", role: .destructive) {
+                settings.historyRetentionDays = choice.rawValue
+                pendingRetention = nil
+            }
+            Button("Cancel", role: .cancel) { pendingRetention = nil }
+        } message: { _ in
+            Text(RetentionChange.confirmationMessage(count: pendingDeleteCount))
         }
     }
 
