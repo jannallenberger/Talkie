@@ -162,6 +162,12 @@ struct Meeting: Codable, Identifiable, Hashable {
     /// Stored as the raw string so a newer build's unknown state can't break decoding
     /// in an older one; read it through `diarization`.
     var diarizationState: String? = nil
+    /// The user's notes taken during the recording, each with the moment it was
+    /// started (W2). Also rendered into `summary`'s notes section; kept here so a
+    /// regenerated summary still carries them. Nil for meetings without notes and for
+    /// notes saved before W2 (those live only inside `summary`). Decodes an older
+    /// plain string too.
+    var notes: [MeetingNote]? = nil
 
     var date: Date { Date(timeIntervalSince1970: startUnix) }
 }
@@ -188,6 +194,7 @@ extension Meeting {
         audioFiles = try c.decodeIfPresent([String: String].self, forKey: .audioFiles)
         speakerCount = try c.decodeIfPresent(Int.self, forKey: .speakerCount)
         diarizationState = try c.decodeIfPresent(String.self, forKey: .diarizationState)
+        notes = MeetingNote.decodeFlexible(c, forKey: .notes)
     }
 
     var diarization: DiarizationState? { diarizationState.flatMap(DiarizationState.init(rawValue:)) }
@@ -239,6 +246,18 @@ actor MeetingSummarizer {
         let secs = Int(Date().timeIntervalSince(started))
         Self.log.notice("summary: lang=\(result.language.code, privacy: .public) chunks=\(result.chunks) failed=\(result.failedChunks) ok=\(result.markdown != nil) \(secs)s errors=\(Set(result.errors).sorted().joined(separator: ","), privacy: .public)")
         return (result.markdown, result.condensed)
+    }
+
+    /// The recorded-meeting path (W2): the user's notes go in as first-class content
+    /// and the live pass's chunk extractions are reused. Always returns the user's
+    /// notes in the markdown, even when the model is unavailable or fails.
+    func summarizeMeeting(_ transcript: String, segments: [MeetingSegment]?, notes: [MeetingNote],
+                          live: MeetingSummaryPipeline.LiveReuse?) async -> MeetingSummaryResult {
+        let started = Date()
+        let result = await pipeline.run(transcript: transcript, segments: segments, notes: notes, live: live)
+        let secs = Int(Date().timeIntervalSince(started))
+        Self.log.notice("summary: lang=\(result.language.code, privacy: .public) chunks=\(result.chunks) reused=\(result.reusedChunks) live=\(result.usedLive) failed=\(result.failedChunks) notes=\(notes.count) ok=\(result.markdown != nil) \(secs)s errors=\(Set(result.errors).sorted().joined(separator: ","), privacy: .public)")
+        return result
     }
 
     /// Greedily pack lines into chunks, sized so the whole text fits in at
