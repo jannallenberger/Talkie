@@ -887,3 +887,20 @@
 "%d words" = "%d mots";
 "Click a line to hear that moment" = "Cliquez sur une ligne pour entendre ce moment";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "Appuyez sur Enregistrer avant votre prochain appel, ou déposez ici un audio ou une vidéo pour le transcrire.";
+
+/* Feature: assignable activation key */
+"Mouse Button %d" = "Bouton de souris %d";
+"Left ⇧ Shift" = "⇧ Majuscule gauche";
+"Right ⇧ Shift" = "⇧ Majuscule droite";
+"Left ⌃ Control" = "⌃ Contrôle gauche";
+"Left ⌘ Command" = "⌘ Commande gauche";
+"Right ⌘ Command" = "⌘ Commande droite";
+"Modifier key" = "Touche de modification";
+"Change…" = "Modifier…";
+"Press the key you want" = "Appuyez sur la touche souhaitée";
+"Press Esc to cancel" = "Appuyez sur Échap pour annuler";
+"That key would still be typed into the app you're in. Use a modifier key, F1–F20 or a mouse button." = "Cette touche serait quand même saisie dans l’app active. Utilisez une touche de modification, F1–F20 ou un bouton de souris.";
+"Caps Lock can't be used as the dictation key." = "Verr. maj. ne peut pas servir de touche de dictée.";
+"Left, right and middle click can't be used as the dictation key." = "Les clics gauche, droit et central ne peuvent pas servir de touche de dictée.";
+"macOS reserves Fn/Globe, so %@ can't use it." = "macOS réserve Fn/Globe, %@ ne peut donc pas l’utiliser.";
+"You press this constantly; %@ would start listening during normal shortcuts." = "Vous appuyez sans cesse sur cette touche ; %@ se mettrait à écouter pendant les raccourcis habituels.";
