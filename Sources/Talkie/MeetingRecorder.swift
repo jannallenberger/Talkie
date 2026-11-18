@@ -121,11 +121,11 @@ final class MeetingRecorder: ObservableObject {
     /// Test-only seam: the UI snapshot test shows a meeting mid-summary without
     /// running the real background pass.
     func markSummarizingForTesting(_ id: UUID) { summarizingMeetingIDs.insert(id) }
+    #endif
     /// An imported file's background summary uses the same "Writing the summary…" state.
     func setSummarizing(_ id: UUID, _ on: Bool) {
         if on { summarizingMeetingIDs.insert(id) } else { summarizingMeetingIDs.remove(id) }
     }
-    #endif
     /// Chains background diarization + summaries so they run one at a time.
     private var summaryQueue: Task<Void, Never>?
     /// Where the speaker-diarization models live, or nil when unavailable (the pass is
