@@ -25,9 +25,11 @@ private func requireModels() throws -> URL {
 }
 
 final class SpeakerDiarizerUnitTests: XCTestCase {
-    func testOfflineModeIsForcedOnInit() {
-        _ = SpeakerDiarizer(modelsDirectory: FileManager.default.temporaryDirectory)
-        XCTAssertTrue(ModelHub.offlineMode)
+    func testInitTouchesNothingOnDisk() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tk-diar-init-\(UUID().uuidString)", isDirectory: true)
+        _ = SpeakerDiarizer(modelsDirectory: root)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
     }
 
     func testMissingModelsThrowWithoutDownloading() async throws {
@@ -75,7 +77,7 @@ final class SpeakerDiarizerUnitTests: XCTestCase {
         let text = try String(contentsOf: script, encoding: .utf8)
         XCTAssertTrue(
             text.contains("REVISION=\"\(SpeakerDiarizer.pinnedRevision)\""),
-            "fetch script pin drifted from FluidAudio's Repo.diarizer.revision")
+            "fetch script pin drifted from SpeakerDiarizer.pinnedRevision (vendored FluidAudio pin)")
     }
 
     func testConvertRenumbersByFirstAppearanceAndSumsSpeech() {

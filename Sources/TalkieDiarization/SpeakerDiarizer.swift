@@ -13,8 +13,9 @@ import Foundation
 //     or anything in `ModelHub` that can download — and it also avoids
 //     `prepareModels`' failure path, which PURGES the models folder before a
 //     fallback re-download.
-//   • `ModelHub.offlineMode` is forced on before anything else is touched, as a
-//     second wall should any FluidAudio code path ever reach its downloader.
+//   • The FluidAudio code it uses is VENDORED (Sources/FluidAudio, see VENDORED.md)
+//     with its downloader / Hugging Face / ModelHub / URLSession code deleted, so
+//     there is no network path to guard — the binary contains none.
 //   • Nothing is written: the folder can be read-only (a signed app bundle).
 
 /// One contiguous stretch of a single speaker. Turns are non-overlapping
@@ -95,21 +96,15 @@ public actor SpeakerDiarizer {
     public static let sampleRate: Double = 16_000
 
     /// Sub-folder of the models root that holds the files (FluidAudio layout).
-    public static var modelFolderName: String { Repo.diarizer.folderName }
+    public static var modelFolderName: String { "speaker-diarization" }
 
     /// The Hugging Face revision the linked FluidAudio was validated against.
     /// scripts/fetch_diarization_models.sh pins the same value.
-    public static var pinnedRevision: String { Repo.diarizer.revision }
+    public static var pinnedRevision: String { "df2625ac79a7ac6b65ad868fee6d80f320da4232" }
 
     static let revisionMarkerName = ".fluidaudio-revision"
     static let compiledModelNames = ["Segmentation", "FBank", "Embedding", "PldaRho"]
     static let pldaParametersName = "plda-parameters.json"
-
-    /// `ModelHub.offlineMode = true`, exactly once per process, before any model
-    /// work. A `static let` initializer is thread-safe (dispatch_once).
-    private static let forceOffline: Void = {
-        ModelHub.offlineMode = true
-    }()
 
     private let modelsDirectory: URL
     private var models: OfflineDiarizerModels?
@@ -117,7 +112,6 @@ public actor SpeakerDiarizer {
     /// - Parameter modelsDirectory: the root containing
     ///   `speaker-diarization/` (FluidAudio's folder name; e.g. `Contents/Resources/DiarizationModels`).
     public init(modelsDirectory: URL) {
-        Self.forceOffline
         self.modelsDirectory = modelsDirectory
     }
 
@@ -171,7 +165,6 @@ public actor SpeakerDiarizer {
 
     private func loadedModels() throws -> OfflineDiarizerModels {
         if let models { return models }
-        Self.forceOffline
         let repo = try Self.validateLayout(modelsDirectory)
         let loaded = try Self.loadModels(from: repo)
         models = loaded
