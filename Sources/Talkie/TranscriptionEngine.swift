@@ -283,6 +283,16 @@ actor TranscriptionEngine {
 
     /// The live session's transcript so far (committed + still-changing tail), for
     /// the mid-dictation text vote. Reading it costs nothing — no re-decode.
+    /// The timed segments of the most recent re-transcription per locale id (memory
+    /// only). Taking them clears the store, so no transcript lingers past the stop.
+    private var reTranscribedSegments: [String: [TimedSegment]] = [:]
+
+    func takeReTranscribedSegments(localeID: String) -> [TimedSegment] {
+        let segments = reTranscribedSegments[localeID] ?? []
+        reTranscribedSegments = [:]
+        return segments
+    }
+
     func liveTranscript() -> String {
         volatileText.isEmpty ? finalizedText : finalizedText + " " + volatileText
     }
@@ -547,6 +557,7 @@ actor TranscriptionEngine {
         textTarget: String? = nil,
         liveConfidence: Double? = nil
     ) async -> LanguageDetector.LanguageCandidate? {
+        reTranscribedSegments = [:]   // only this decision's re-transcriptions are kept
         func score(probe: Double?) async -> [LanguageDetector.LanguageCandidate] {
             let scored = await transcribeCandidates(buffers, localeIdentifiers: ids, installIfNeeded: true,
                                                     model: model, probeSeconds: probe)
@@ -697,14 +708,25 @@ actor TranscriptionEngine {
         // (text:confidence per run) is diagnostic — it shows whether confidence
         // separates right-vs-wrong model per word (the prerequisite for future
         // per-segment code-switch routing).
-        let reader = Task { () -> (text: String, confSum: Double, confCount: Int, words: [(String, Double)]) in
+        let reader = Task { () -> (text: String, confSum: Double, confCount: Int, words: [(String, Double)],
+                                   timed: [TimedSegment]) in
             var text = ""
             var confSum = 0.0
             var confCount = 0
             var words: [(String, Double)] = []
+            // The same results' audio-clock spans + word timings, kept in memory only
+            // so "format while you dictate" can place its command spans in a
+            // re-transcribed dictation (see `takeReTranscribedSegments`).
+            var timed: [TimedSegment] = []
             do {
                 for try await result in Self.recognizedResults(of: transcriber) where result.isFinal {
                     text = appendCommitted(text, String(result.text.characters))
+                    let segText = HesitationMarkers.strip(String(result.text.characters))
+                    if !segText.isEmpty, result.start.isFinite {
+                        timed.append(TimedSegment(text: segText, start: result.start,
+                                                  end: result.end.isFinite ? result.end : result.start,
+                                                  words: result.words))
+                    }
                     for run in result.text.runs {
                         if let c = run.transcriptionConfidence {
                             confSum += c
@@ -715,7 +737,7 @@ actor TranscriptionEngine {
                     }
                 }
             } catch {}
-            return (text, confSum, confCount, words)
+            return (text, confSum, confCount, words, timed)
         }
 
         do {
@@ -738,6 +760,7 @@ actor TranscriptionEngine {
             return nil
         }
         let confidence = collected.confCount > 0 ? collected.confSum / Double(collected.confCount) : 0
+        reTranscribedSegments[id] = collected.timed
         // Per-word text is dictated content — never log it, even when the sink
         // is enabled. The min/max spread (vs. the mean above) is what actually
         // showed whether confidence separates right-vs-wrong model per word;

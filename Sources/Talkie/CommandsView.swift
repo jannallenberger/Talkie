@@ -1,12 +1,11 @@
 import SwiftUI
 
-/// "Commands" — a front door for Talkie's voice-copilot layer: the macros you've
-/// taught it, a live reference for the imperative-verb grammar, the opt-in
-/// cross-surface commands toggle, and a sandbox to try any command against the
-/// real `CommandRouter` before it ever runs live during dictation.
+/// "Commands" — three plain sections: format while you dictate (hold a second key,
+/// say a format), the spoken commands that edit selected text, and snippets.
 struct CommandsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var macros: MacroStore
+    // Kept for the call site's shape; the page no longer runs commands itself.
     let commandRouter: CommandRouter
     let hud: HUDController
     let meetingStore: MeetingStore
@@ -14,197 +13,169 @@ struct CommandsView: View {
     @State private var newTrigger = ""
     @State private var newExpansion = ""
 
+    /// German UI → the German phrases; otherwise the English ones (the two languages
+    /// the format matcher understands — both always work, whatever the UI language).
+    private var uiLanguageCode: String? { Bundle.main.preferredLocalizations.first }
+
     var body: some View {
         SubPage(title: "Commands",
-                subtitle: "Say a verb to run a command, a trigger to expand a snippet, or ask about your meetings.") {
-            trySandbox
+                subtitle: "Format text while you dictate, edit text by voice, and keep snippets you use often.") {
+            formatSection
+            editSection
+            snippetsSection
+        }
+    }
 
-            SettingsCard(header: "Examples") {
-                exampleChips
-            }
+    // MARK: 1 · Format while you dictate
 
-            SettingsCard(
-                header: "Cross-surface commands",
-                footer: "Lets a spoken request like \u{201c}email Sarah the action items from my last meeting\u{201d} run as a command instead of being dictated word for word. It draws only on meetings and notes already on your Mac, and it never sends anything. Off by default; try a few examples above first."
-            ) {
-                SettingsToggleRow(
-                    title: "Turn on cross-surface commands",
-                    subtitle: "Runs on every dictation once enabled. Every match previews as a pill you confirm before a single word is inserted.",
-                    isOn: $settings.crossSurfaceCommandsEnabled
-                )
-            }
+    private var commandKeyBinding: Binding<ActivationKey> {
+        Binding(get: { settings.effectiveFormatCommandKey },
+                set: { settings.formatCommandKey = $0 })
+    }
 
-            // New macro.
-            SettingsCard(
-                header: "New macro",
-                footer: "Optional: write {date}, {today}, or {time} in the expansion and Talkie replaces it with the real date or time at the moment you SPEAK the trigger — not when you create the macro here."
-            ) {
-                SettingsRow(title: "When I say") {
-                    TextField("a trigger phrase", text: $newTrigger)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 240)
-                }
+    @ViewBuilder
+    private var formatSection: some View {
+        let dictationKey = settings.activationKey
+        let commandKey = settings.effectiveFormatCommandKey
+        SettingsCard(
+            header: "Format while you dictate",
+            footer: "Formats marked \u{201C}slower\u{201D} use the on-device model. If it isn't available, your words are pasted as plain text and the pill says so.".loc
+        ) {
+            SettingsToggleRow(
+                title: "Format while you dictate".loc,
+                subtitle: "Turn the next part of a dictation into a list, an e-mail, capitals and more.".loc,
+                isOn: $settings.formatCommandsEnabled
+            )
+            if settings.formatCommandsEnabled {
                 SettingsDivider()
-                SettingsRow(title: "Insert") {
-                    TextField("the expansion", text: $newExpansion, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(1...4)
-                        .frame(width: 240)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        CommandKeycap(key: dictationKey)
+                        Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.inkTertiary)
+                        CommandKeycap(key: commandKey)
+                        Image(systemName: "arrow.right").font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.inkTertiary)
+                        Text(String(format: "say \u{201C}%@\u{201D}".loc,
+                                    FormatPreset.bulletList.shownPhrase(uiLanguageCode: uiLanguageCode)))
+                            .font(.talkieHeading(13, weight: .medium))
+                            .foregroundStyle(Theme.ink)
+                    }
+                    Text(String(format: "While you dictate, hold %@, say a format and let go — what you say next is pasted in that format. Tap %@ again, or say \u{201C}%@\u{201D}, to go back to normal text.".loc,
+                                commandKey.displayName, commandKey.displayName,
+                                FormatCommand.shownEndPhrase(uiLanguageCode: uiLanguageCode)))
+                        .font(.talkieHeading(12.5, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                SettingsDivider(leadingInset: 0)
-                HStack {
-                    Spacer()
-                    Button("Add macro", action: addMacro)
-                        .buttonStyle(.talkie(.primary))
-                        .disabled(!canAdd)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 11)
-            }
-
-            // Existing macros.
-            SettingsCard(header: macros.macros.isEmpty ? nil : "Your macros") {
-                if macros.macros.isEmpty {
-                    SettingsNote(
-                        text: "No macros yet. Add one above — for example, \u{201c}my address\u{201d} \u{2192} your full mailing address.",
-                        tone: Theme.inkTertiary
-                    )
-                } else {
-                    ForEach(Array(macros.macros.enumerated()), id: \.element.id) { index, macro in
-                        if index > 0 { SettingsDivider() }
-                        CommandMacroRow(macro: macro) { macros.delete(macro) }
+                SettingsDivider()
+                SettingsRow(
+                    title: "Format key".loc,
+                    subtitle: "Only listened to while you dictate. Pressed together with any other key or a click, it does nothing.".loc
+                ) {
+                    ActivationKeyRecorder(key: commandKeyBinding) { candidate in
+                        FormatCommandKey.refusal(for: candidate, dictationKey: settings.activationKey)
                     }
+                }
+            }
+        }
+
+        if settings.formatCommandsEnabled {
+            SettingsCard(header: "Formats") {
+                ForEach(Array(FormatPreset.allCases.enumerated()), id: \.element.id) { index, preset in
+                    if index > 0 { SettingsDivider() }
+                    FormatPresetRow(preset: preset, uiLanguageCode: uiLanguageCode)
                 }
             }
         }
     }
 
-    // MARK: Try a command
+    // MARK: 2 · Edit selected text
 
-    @State private var tryText = ""
-    @State private var trySelection = ""
-    @State private var tryFeedback: String?
-
-    /// "make this a list" / "fix this" / "translate to German" / "summarize this"
-    /// all route through `RewriteIntent`, which needs a non-empty selection to do
-    /// anything — there's no real text selected anywhere while you're sitting in
-    /// Settings, so this field lets you stand in for "the text you'd have
-    /// highlighted" when trying one of those.
-    private var trySandbox: some View {
+    @ViewBuilder
+    private var editSection: some View {
         SettingsCard(
-            header: "Try a command",
-            footer: tryFeedback
+            header: "Edit selected text",
+            footer: "Say the command as its own dictation. With nothing selected, it works on what you just dictated in the same app (within the last 45 seconds). Rewrites always show a preview first.".loc
         ) {
-            SettingsRow(title: "Say something") {
-                TextField("e.g. \u{201c}make this a list\u{201d}", text: $tryText)
+            VoiceCommandRow(say: "\u{201C}make this a list\u{201D} · \u{201C}fix this\u{201D} · \u{201C}translate to German\u{201D}",
+                            does: "Start with an English editing word (make, fix, rewrite, translate, summarize, shorten, rephrase …) and the selected text is rewritten on this Mac.".loc)
+            SettingsDivider()
+            VoiceCommandRow(say: "\u{201C}scratch that\u{201D} · \u{201C}delete that\u{201D}",
+                            does: "Removes what you just dictated.".loc)
+            SettingsDivider()
+            VoiceCommandRow(say: "\u{201C}replace Monday with Friday\u{201D} · \u{201C}change Monday to Friday\u{201D}",
+                            does: "Swaps a word in what you just dictated — only if that word is in it.".loc)
+            SettingsDivider()
+            VoiceCommandRow(say: "\u{201C}spell kilo eight sierra\u{201D}",
+                            does: "Types k8s — for codes and names that are hard to dictate.".loc)
+            SettingsDivider()
+            VoiceCommandRow(say: "\u{201C}run shortcut Ship It\u{201D}",
+                            does: "Runs the Shortcut with exactly that name.".loc)
+        }
+
+        SettingsCard(
+            header: "Ask about your meetings",
+            footer: "Uses only meetings and notes already on this Mac and never sends anything. Off by default.".loc
+        ) {
+            SettingsToggleRow(
+                title: "Let requests about my meetings run as commands".loc,
+                subtitle: "A spoken request like \u{201C}email Sarah the action items from my last meeting\u{201D} runs as a command instead of being typed, and shows a preview before anything is inserted.".loc,
+                isOn: $settings.crossSurfaceCommandsEnabled
+            )
+        }
+    }
+
+    // MARK: 3 · Snippets
+
+    @ViewBuilder
+    private var snippetsSection: some View {
+        SettingsCard(
+            header: "Snippets",
+            footer: "Say the trigger as its own dictation and the text is inserted instead. Write {date}, {today} or {time} to insert the date or time at the moment you say it.".loc
+        ) {
+            SettingsRow(title: "When I say".loc) {
+                TextField("a trigger phrase".loc, text: $newTrigger)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 280)
-                    .onSubmit { run(tryText) }
+                    .frame(width: 240)
             }
             SettingsDivider()
-            SettingsRow(
-                title: "As if you had this selected",
-                subtitle: "Only needed for commands like \u{201c}make this a list\u{201d} that act on selected text."
-            ) {
-                TextField("buy milk, eggs, bread", text: $trySelection)
+            SettingsRow(title: "Insert".loc) {
+                TextField("the text to insert".loc, text: $newExpansion, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 280)
+                    .lineLimit(1...4)
+                    .frame(width: 240)
             }
             SettingsDivider(leadingInset: 0)
             HStack {
                 Spacer()
-                Button("Run") { run(tryText) }
+                Button("Add snippet".loc, action: addMacro)
                     .buttonStyle(.talkie(.primary))
-                    .disabled(tryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!canAdd)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 11)
         }
-    }
 
-    private var exampleChips: some View {
-        FlowLayout(spacing: 8) {
-            ForEach(exampleCommands, id: \.self) { example in
-                Button {
-                    tryText = example
-                    if trySelection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        trySelection = "buy milk, eggs, bread"
-                    }
-                    run(example)
-                } label: {
-                    Text(example)
-                        .font(.talkieHeading(12.5, weight: .medium))
-                        .foregroundStyle(Theme.ink)
+        SettingsCard(header: macros.macros.isEmpty ? nil : "Your snippets") {
+            if macros.macros.isEmpty {
+                SettingsNote(
+                    text: "No snippets yet. Add one above — for example, \u{201C}my address\u{201D} \u{2192} your full mailing address.".loc,
+                    tone: Theme.inkTertiary
+                )
+            } else {
+                ForEach(Array(macros.macros.enumerated()), id: \.element.id) { index, macro in
+                    if index > 0 { SettingsDivider() }
+                    CommandMacroRow(macro: macro) { macros.delete(macro) }
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 11)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(Theme.surfaceSunken))
             }
         }
     }
 
-    private var exampleCommands: [String] {
-        // "spell …" is the honest escape hatch for strings the recognizer mangles and
-        // the corrector can't rescue (ticket IDs, license keys). NATO words are the
-        // reliable path — the recognizer nails "tango/alpha" but garbles bare letters.
-        var examples = ["make this a list", "fix this", "translate to German", "summarize this",
-                        "spell tango alpha lima kilo india echo"]
-        if settings.crossSurfaceCommandsEnabled {
-            examples.append("what did I commit to this week")
-        }
-        return examples
-    }
-
-    /// Runs `text` through the real `CommandRouter` — the same instance live
-    /// dictation uses — and previews the result through the same HUD pill.
-    /// Cross-surface parsing is always exercised here (`crossSurfaceEnabled:
-    /// true`) regardless of the toggle's state, so the sandbox always
-    /// demonstrates the full feature even before you turn it on for live dictation.
-    private func run(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        tryFeedback = nil
-        guard let intent = commandRouter.intent(
-            for: trimmed,
-            meetings: MeetingSnapshot(meetings: meetingStore.meetings),
-            crossSurfaceEnabled: true
-        ) else {
-            tryFeedback = "No command matched — that phrase would be dictated as plain text."
-            return
-        }
-        let selection = trySelection.trimmingCharacters(in: .whitespacesAndNewlines)
-        if intent.needsSelection, selection.isEmpty {
-            tryFeedback = "This command needs selected text to act on — fill in \u{201c}As if you had this selected\u{201d} above and run it again."
-            return
-        }
-        Task {
-            let ctx = CommandContext(
-                spokenCommand: trimmed,
-                selection: selection.isEmpty ? nil : selection,
-                target: .unknown,
-                graph: .empty,
-                summarizer: PrivacyWall.assertLocal(OnDeviceLLM())
-            )
-            guard let result = await intent.run(ctx) else {
-                tryFeedback = "The command matched, but the on-device model didn't return anything — it may be unavailable right now."
-                return
-            }
-            hud.showCommandPreview(
-                result.replacement,
-                onConfirm: { copyToClipboard(result.replacement) },
-                onUndo: { }
-            )
-        }
-    }
-
-    private func copyToClipboard(_ text: String) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
-    }
-
-    // MARK: Macro CRUD
+    // MARK: Snippet CRUD
 
     private var canAdd: Bool {
         !newTrigger.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -218,7 +189,103 @@ struct CommandsView: View {
     }
 }
 
-/// One macro row: the trigger, an arrow, the expansion, and a delete affordance.
+extension FormatCommand {
+    /// The "back to normal" phrase to show in the UI language.
+    static func shownEndPhrase(uiLanguageCode: String?) -> String {
+        uiLanguageCode?.lowercased().hasPrefix("de") == true ? germanEndPhrases[0] : englishEndPhrases[0]
+    }
+}
+
+/// One preset: its name (+ "slower" for model formats), what to say, and a tiny
+/// before → after example.
+private struct FormatPresetRow: View {
+    let preset: FormatPreset
+    let uiLanguageCode: String?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(preset.displayName)
+                        .font(.talkieHeading(14, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                    if preset.usesModel {
+                        Text("slower".loc)
+                            .font(.talkieHeading(11, weight: .medium))
+                            .foregroundStyle(Theme.inkSecondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Theme.surfaceSunken))
+                    }
+                }
+                Text(String(format: "Say \u{201C}%@\u{201D}".loc, preset.shownPhrase(uiLanguageCode: uiLanguageCode)))
+                    .font(.talkieHeading(12.5, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(preset.example.before)
+                    .font(.talkieHeading(12, weight: .regular))
+                    .foregroundStyle(Theme.inkTertiary)
+                Text(preset.example.after)
+                    .font(.talkieHeading(12, weight: .medium))
+                    .foregroundStyle(Theme.ink)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+}
+
+/// One spoken command: what to say, and what happens.
+private struct VoiceCommandRow: View {
+    /// The literal spoken command — English, as `CommandRouter` understands it, so it
+    /// is deliberately not localized.
+    let say: String
+    let does: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(say)
+                .font(.talkieHeading(14, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(does)
+                .font(.talkieHeading(12.5, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A key cap showing one of the user's real keys.
+private struct CommandKeycap: View {
+    let key: ActivationKey
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let symbol = key.symbolName {
+                Image(systemName: symbol).font(.talkieHeading(12, weight: .semibold))
+            }
+            Text(key.displayName)
+        }
+        .font(.talkieHeading(13, weight: .semibold))
+        .foregroundStyle(Theme.ink)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.surfaceSunken))
+    }
+}
+
+/// One snippet row: the trigger, an arrow, the inserted text, and a delete affordance.
 private struct CommandMacroRow: View {
     let macro: Macro
     let onDelete: () -> Void
@@ -248,7 +315,7 @@ private struct CommandMacroRow: View {
                     .foregroundStyle(hovering ? Theme.danger : Theme.inkTertiary)
             }
             .buttonStyle(.talkie(.quiet, size: .small))
-            .help("Delete this macro")
+            .help("Delete this snippet".loc)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)

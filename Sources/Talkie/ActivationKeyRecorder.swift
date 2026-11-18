@@ -9,6 +9,9 @@ import AppKit
 /// lives in the pure `ActivationKey.evaluate`.
 struct ActivationKeyRecorder: View {
     @Binding var key: ActivationKey
+    /// Extra refusal on top of `ActivationKey.evaluate` (e.g. the command key may not
+    /// be the dictation key). Returns the one-line reason, or nil to accept.
+    var refuse: ((ActivationKey) -> String?)? = nil
     @State private var recording = false
     @State private var message: String?
     @State private var messageIsRefusal = false
@@ -70,6 +73,10 @@ struct ActivationKeyRecorder: View {
         case .refused(let reason):
             message = reason; messageIsRefusal = true
         case .accepted(let newKey, let warning):
+            if let reason = refuse?(newKey) {
+                message = reason; messageIsRefusal = true
+                return
+            }
             key = newKey
             message = warning; messageIsRefusal = false
             stop()

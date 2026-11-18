@@ -117,6 +117,12 @@ final class HUDModel: ObservableObject {
     /// let go of the key and it keeps recording until you tap once to stop. Only
     /// meaningful during the capture phases; reset when a session ends.
     @Published var handsFreeLocked: Bool = false
+    /// "Format while you dictate": the active format's name, shown as a chip in the
+    /// capture pill while the following speech will be pasted in that format. Non-nil
+    /// also turns the waveform blue. Reset when a session ends.
+    @Published var formatChip: String?
+    /// A brief line in the capture pill ("format not recognised"); nil = none.
+    @Published var formatNotice: String?
     /// The live transcript's *finalized* portion — segments the recognizer has
     /// committed and won't revise — rendered firmly (higher opacity) as the head of
     /// the capture-pill's one-line tail (C1). Empty renders nothing, i.e. today's
@@ -400,6 +406,8 @@ final class HUDController {
         cancelHide()
         resetLevels()
         model.handsFreeLocked = false   // fresh session starts un-locked
+        model.formatChip = nil          // and in normal text, with no format notice
+        model.formatNotice = nil
         model.isHoveringPill = false    // nor a stale hover carried in from a prior pill
         model.silenceCountingDown = false   // and never inherits a stale auto-stop countdown
         model.latchArmedTick &+= 1      // (re)start the hold-to-lock progress fill from empty
@@ -812,6 +820,27 @@ final class HUDController {
     /// Flip the listening pill's hands-free lock glyph on/off. Called when a tap-tap
     /// locks (on) and when the session ends (off). Purely presentational — the pill
     /// must already be in a capture phase for the glyph to be visible.
+    /// "Format while you dictate": show the active format (nil = back to normal text).
+    func setFormatChip(_ title: String?) {
+        formatNoticeTask?.cancel()
+        model.formatNotice = nil
+        model.formatChip = title
+    }
+
+    /// A command span matched no format: say so briefly; the active format (if any)
+    /// stays as it was.
+    func flashFormatNotRecognised() {
+        formatNoticeTask?.cancel()
+        model.formatNotice = "format not recognised".loc
+        announce("Format not recognised.".loc)
+        formatNoticeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !Task.isCancelled else { return }
+            self?.model.formatNotice = nil
+        }
+    }
+    private var formatNoticeTask: Task<Void, Never>?
+
     func setHandsFreeLocked(_ locked: Bool) {
         model.handsFreeLocked = locked
     }
@@ -998,6 +1027,8 @@ final class HUDController {
     private func finishHide() {
         panel?.ignoresMouseEvents = true
         model.handsFreeLocked = false     // never carry a lock glyph into the next session
+        model.formatChip = nil            // nor a format chip / notice
+        model.formatNotice = nil
         model.silenceCountingDown = false // nor a stale auto-stop countdown
         model.isHoveringPill = false      // nor a stale hover (which would freeze the next timer)
         model.countdownProgress = 1
@@ -1180,6 +1211,31 @@ private struct HUDView: View {
         }
     }
 
+    /// "Format while you dictate": the active format as a small blue chip, or a brief
+    /// "format not recognised" line. Nothing at all in normal dictation.
+    @ViewBuilder
+    private var formatChipView: some View {
+        if let chip = model.formatChip {
+            Text(chip)
+                .font(.system(size: model.highContrast ? 12 : 11, weight: .semibold))
+                .foregroundStyle(Theme.featherBlue)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(chipFill(0.13)))
+                .transition(.scale.combined(with: .opacity))
+                .accessibilityLabel(String(format: "Format: %@".loc, chip))
+        } else if let notice = model.formatNotice {
+            Text(notice)
+                .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
+                .foregroundStyle(ink(0.72))
+                .lineLimit(1)
+                .fixedSize()
+                .transition(.opacity)
+        }
+    }
+
     /// C1 — the live tail as a WRAPPING block below the waveform. `PillColumnLayout`
     /// offers it at most `liveTailWidth`, and it takes only the width its words need
     /// (so a few words keep the pill compact); a line cap stops it past a few lines;
@@ -1333,6 +1389,8 @@ private struct HUDView: View {
             // "not yet recording" ring stays legible; the live red is already a
             // saturated feather color, left as-is.
             let tint = recording ? Theme.featherRed : ink(model.highContrast ? 0.9 : 0.55)
+            // "Format while you dictate": the waves turn blue while a format is active.
+            let waveTint = (recording && model.formatChip != nil) ? Theme.featherBlue : tint
             Group {
                 if model.silenceCountingDown {
                     // B5: the auto-stop countdown owns the row (and hides the live tail).
@@ -1342,9 +1400,10 @@ private struct HUDView: View {
                         // A red waveform: equal-width bars whose heights move with your
                         // voice. A one-shot wave of opacity sweeps across it the instant
                         // recording starts, then it settles to steady red.
-                        Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
+                        Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID)
                             .accessibilityHidden(true)
                         lockGlyph
+                        formatChipView
                         // Feature 14: the active cleanup style/level, tappable to cycle —
                         // change how the dictation is polished without leaving the record.
                         // Hidden entirely when no switcher is wired (today's pill).
@@ -1371,10 +1430,11 @@ private struct HUDView: View {
                             // A red waveform: equal-width bars whose heights move with your
                             // voice. A one-shot wave of opacity sweeps across it the instant
                             // recording starts, then it settles to steady red.
-                            Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
+                            Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID)
                                 .accessibilityHidden(true)
                             HStack(spacing: 8) {
                                 lockGlyph
+                                formatChipView
                                 // Feature 14: the active cleanup style/level, tappable to cycle —
                                 // change how the dictation is polished without leaving the record.
                                 // Hidden entirely when no switcher is wired (today's pill).
@@ -1391,6 +1451,8 @@ private struct HUDView: View {
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.handsFreeLocked)
+            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.formatChip)
+            .animation(.easeInOut(duration: 0.2), value: model.formatNotice)
             .animation(.easeInOut(duration: 0.2), value: model.silenceCountingDown)
             .transition(.blurReplace)
             // The dot + waveform are one status glyph to VoiceOver: state it plainly
