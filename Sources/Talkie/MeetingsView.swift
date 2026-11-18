@@ -410,7 +410,7 @@ struct MeetingsView: View {
                     onReveal: { reveal(meeting) },
                     onCopy: { copy(meeting) },
                     onDelete: { pendingDelete = meeting },
-                    onRegenerate: { await regenerateSummary(meeting) },
+                    onRegenerate: { recorder.regenerateSummary(id: meeting.id) },
                     onSaveTranscript: { edited in saveTranscript(meeting, edited: edited) },
                     onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
                 )
@@ -455,16 +455,6 @@ struct MeetingsView: View {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(meeting.transcript, forType: .string)
-    }
-
-    /// Re-runs on-device summarization for one past meeting and persists the result.
-    /// Notes taken since W2 are stored on the meeting and go back into the new summary.
-    private func regenerateSummary(_ meeting: Meeting) async {
-        guard let summary = await MeetingSummarizer().summarizeMeeting(
-            meeting.transcript, segments: meeting.segments, notes: meeting.notes ?? [], live: nil).markdown else { return }
-        var updated = meeting
-        updated.summary = summary
-        store.update(updated)
     }
 
     /// Persist a hand-edited transcript back into the meeting (A8). `store.update`
@@ -845,14 +835,14 @@ private struct MeetingDetail: View, Equatable {
     let onReveal: () -> Void
     let onCopy: () -> Void
     let onDelete: () -> Void
-    let onRegenerate: () async -> Void
+    /// Queues the regeneration on the recorder (it outlives this view).
+    let onRegenerate: () -> Void
     /// Persist a hand-edited transcript (A8). Called on Save with the new text.
     let onSaveTranscript: (String) -> Void
     /// Accept a learn chip: add the dictionary rule + record the niche confirmation.
     /// Returns whether a NEW rule was added (false if it was already known), so the
     /// chip can show the right confirmation.
     let onLearn: (_ from: String, _ to: String) -> Bool
-    @State private var regenerating = false
     /// Gates "Regenerate summary" behind an explicit confirmation whenever there's an
     /// existing summary to lose. `regenerateSummary` replaces the WHOLE `summary`
     /// field with a fresh transcript-only pass — and that field is also where the
@@ -915,7 +905,7 @@ private struct MeetingDetail: View, Equatable {
             titleVisibility: .visible
         ) {
             Button("Regenerate", role: .destructive) {
-                Task { regenerating = true; await onRegenerate(); regenerating = false }
+                onRegenerate()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -1021,7 +1011,7 @@ private struct MeetingDetail: View, Equatable {
                     // existing summary may hold fused/typed notes that a regenerate
                     // would silently replace, so confirm first.
                     if meeting.summary.isEmpty {
-                        Task { regenerating = true; await onRegenerate(); regenerating = false }
+                        onRegenerate()
                     } else {
                         confirmRegenerate = true
                     }
@@ -1029,7 +1019,6 @@ private struct MeetingDetail: View, Equatable {
                     Label("Regenerate".loc, systemImage: "arrow.clockwise")
                 }
                 .help("Regenerate summary")
-                .disabled(regenerating)
             }
             Spacer(minLength: 12)
             Button(role: .destructive, action: onDelete) {
@@ -1043,14 +1032,7 @@ private struct MeetingDetail: View, Equatable {
 
     @ViewBuilder
     private var status: some View {
-        if regenerating {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Writing the summary… the transcript is already saved.".loc)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
-        } else if isDiarizing {
+        if isDiarizing {
             // Transient: `isDiarizing` flips off when the pass finishes or fails, so
             // this disappears on its own. Wins over the summary line because the
             // summary waits for the pass.

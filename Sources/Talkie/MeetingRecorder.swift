@@ -1241,6 +1241,51 @@ final class MeetingRecorder: ObservableObject {
         }
     }
 
+    // MARK: Regenerate (owned here, not by a view)
+
+    /// Writes a fresh summary for a saved meeting; nil = the on-device pipeline.
+    /// Injected for tests.
+    var regenerationWriter: ((_ transcript: String, _ segments: [MeetingSegment]?, _ notes: [MeetingNote]) async -> String?)?
+
+    /// Regenerate a saved meeting's summary in the background, queued behind any other
+    /// summary/diarization work and shown as "Writing the summary…" through
+    /// `summarizingMeetingIDs`. It belongs to the recorder (app lifetime), so leaving
+    /// the Meetings page or selecting another meeting never cancels it, and the result
+    /// is written to the store even when no view is alive. Returns false (and does
+    /// nothing) when that meeting's summary is already being written, or it has no
+    /// transcript. The user's stored notes go back into the new summary.
+    @discardableResult
+    func regenerateSummary(id: UUID) -> Bool {
+        guard !summarizingMeetingIDs.contains(id),
+              let meeting = store.meetings.first(where: { $0.id == id }),
+              !meeting.transcript.isEmpty else { return false }
+        summarizingMeetingIDs.insert(id)
+        let previous = summaryQueue
+        summaryQueue = Task { @MainActor [weak self] in
+            await previous?.value
+            guard let self else { return }
+            defer { self.summarizingMeetingIDs.remove(id) }
+            // Re-read after the queue: an earlier pass (diarization) may have changed it.
+            guard let start = self.store.meetings.first(where: { $0.id == id }) else { return }
+            let summary: String?
+            if let writer = self.regenerationWriter {
+                summary = await writer(start.transcript, start.segments, start.notes ?? [])
+            } else {
+                summary = await self.summarizer.summarizeMeeting(start.transcript, segments: start.segments,
+                                                                 notes: start.notes ?? [], live: nil).markdown
+            }
+            guard let summary, !summary.isEmpty else { return }
+            // Deleted meanwhile → nothing; otherwise keep the user's other edits.
+            guard var current = self.store.meetings.first(where: { $0.id == id }) else { return }
+            current.summary = summary
+            self.store.update(current)
+        }
+        return true
+    }
+
+    /// Await every queued summary/diarization pass (tests).
+    func waitForSummaryQueue() async { await summaryQueue?.value }
+
     /// Seconds allowed for the digest remap (it only awaits map calls the digest was
     /// already running; this bounds a wedged one).
     var digestRemapBudget: Double = 120

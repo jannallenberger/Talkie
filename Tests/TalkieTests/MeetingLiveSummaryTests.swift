@@ -399,3 +399,55 @@ final class MeetingLiveSummaryTests: XCTestCase {
     }
 }
 
+/// Regenerate is owned by the recorder: queued, de-duplicated, and written to the
+/// store without any view.
+@MainActor
+final class MeetingRegenerateQueueTests: XCTestCase {
+    private func makeRecorder() -> (MeetingRecorder, MeetingStore, UUID) {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("regen-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let store = MeetingStore(supportDirectory: tmp, meetingsDirectory: tmp)
+        let id = UUID()
+        store.add(Meeting(id: id, title: "t", startUnix: 0, durationSec: 60, transcript: "Hallo zusammen",
+                          summary: "alt", fileName: "regen-\(id).md",
+                          notes: [MeetingNote(text: "meine Notiz", secondsIntoMeeting: 5)]))
+        return (MeetingRecorder(engine: TranscriptionEngine(localeIdentifier: "en-US"), store: store), store, id)
+    }
+
+    func testRegenerateIsQueuedDeduplicatedAndWrittenWithoutAView() async {
+        let (recorder, store, id) = makeRecorder()
+        var calls = 0
+        var seenNotes: [MeetingNote] = []
+        recorder.regenerationWriter = { _, _, notes in
+            calls += 1
+            seenNotes = notes
+            try? await Task.sleep(for: .milliseconds(50))
+            return "neu"
+        }
+        XCTAssertTrue(recorder.regenerateSummary(id: id))
+        XCTAssertTrue(recorder.summarizingMeetingIDs.contains(id), "shows Writing the summary… at once")
+        XCTAssertFalse(recorder.regenerateSummary(id: id), "a second start for the same meeting is refused")
+        await recorder.waitForSummaryQueue()
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(seenNotes.map(\.text), ["meine Notiz"], "stored notes go into the new summary")
+        XCTAssertEqual(store.meetings.first { $0.id == id }?.summary, "neu")
+        XCTAssertFalse(recorder.summarizingMeetingIDs.contains(id))
+        XCTAssertTrue(recorder.regenerateSummary(id: id), "can run again once finished")
+        await recorder.waitForSummaryQueue()
+        XCTAssertEqual(calls, 2)
+    }
+
+    func testAFailedRegenerateKeepsTheOldSummaryAndADeletedMeetingIsLeftAlone() async {
+        let (recorder, store, id) = makeRecorder()
+        recorder.regenerationWriter = { _, _, _ in nil }
+        recorder.regenerateSummary(id: id)
+        await recorder.waitForSummaryQueue()
+        XCTAssertEqual(store.meetings.first { $0.id == id }?.summary, "alt")
+        recorder.regenerationWriter = { _, _, _ in "neu" }
+        recorder.regenerateSummary(id: id)
+        store.delete(store.meetings.first { $0.id == id }!)
+        await recorder.waitForSummaryQueue()
+        XCTAssertNil(store.meetings.first { $0.id == id })
+        XCTAssertFalse(recorder.regenerateSummary(id: UUID()), "unknown meeting")
+    }
+}
