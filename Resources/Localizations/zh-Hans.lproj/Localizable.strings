@@ -976,3 +976,25 @@
 "Updates every 10 minutes, when the languages settle. The final summary is written when you stop." = "每 10 分钟在语言确定后更新。最终摘要在你停止时生成。";
 "Updates every minute. The final summary is written when you stop." = "每分钟更新一次。最终摘要在你停止时生成。";
 "This replaces the summary with a fresh one. Your notes are kept. This can't be undone." = "这会用新的摘要替换当前摘要。你的笔记会保留。此操作无法撤销。";
+
+/* W2 speaker names */
+"A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings." = "此人的声纹仅存储在这台 Mac 上，可在此处或会议设置中删除。";
+"Clear name" = "清除名字";
+"Click to name this speaker" = "点按以为此说话人命名";
+"Couldn’t read this person’s voice." = "无法读取此人的声音。";
+"Forget all known voices" = "忘记所有已知声音";
+"Forget all" = "全部忘记";
+"Give this speaker a name first." = "请先为此说话人命名。";
+"Known voices" = "已知声音";
+"Name this speaker" = "为此说话人命名";
+"Name" = "名字";
+"Named from what was said in this meeting." = "根据此会议中所说的内容命名。";
+"Not enough speech from this person to recognise their voice. At least 20 seconds are needed." = "此人的语音太少，无法识别其声音。至少需要 20 秒。";
+"Reading this person’s voice…" = "正在读取此人的声音…";
+"Recognise this voice in future meetings" = "在以后的会议中识别此声音";
+"Recognised by a voice you chose to remember." = "通过你选择记住的声音识别。";
+"Recognised by voice" = "通过声音识别";
+"Recognised by voice. Click to change the name." = "通过声音识别。点按以更改名字。";
+"Speaker recognition isn’t available on this Mac." = "此 Mac 不支持说话人识别。";
+"This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "此会议中此人的声音已不可用。若要以后使用此功能，请随会议笔记保留音频。";
+"Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "你选择在会议中识别的人的声纹。它们仅存储在这台 Mac 上；删除后将永久移除。";

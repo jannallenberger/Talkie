@@ -416,6 +416,9 @@ struct MeetingsView: View {
                     onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
                 )
                 .equatable()
+                // Speaker labels in this pane show names and open the naming popover.
+                .environment(\.speakerNaming, SpeakerNamingContext(
+                    meetingID: meeting.id, names: meeting.speakerNames ?? [:], recorder: recorder))
                 // Fresh per-meeting state (edit draft, learn chips, playback) on switch.
                 .id(meeting.id)
                 .padding(.leading, 4)
@@ -884,7 +887,7 @@ private struct MeetingDetail: View, Equatable {
             if !meeting.summary.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Eyebrow(text: "Summary")
-                    MarkdownText(markdown: meeting.summary, bulletColor: Theme.coral)
+                    MarkdownText(markdown: meeting.namedSummary, bulletColor: Theme.coral)
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.ink)
                         .textSelection(.enabled)
@@ -1096,7 +1099,7 @@ private struct MeetingDetail: View, Equatable {
             } else if SpeakerPresentation.showsTurns(for: meeting), let segments = meeting.segments {
                 SpeakerTurnsView(segments: segments)
             } else {
-                Text(meeting.transcript)
+                Text(meeting.namedTranscript)
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.inkSecondary)
                     .textSelection(.enabled)
@@ -1519,6 +1522,9 @@ struct MeetingPlaybackView: View {
 struct SpeakerLabel: View {
     let speaker: String
     let slot: Int
+    /// Set only inside the meeting detail: names + the naming popover.
+    @Environment(\.speakerNaming) private var naming
+    @State private var editing = false
 
     static func color(slot: Int) -> Color {
         let palette: [Color] = [Theme.coral, Theme.featherGold, Theme.featherGreen,
@@ -1527,10 +1533,30 @@ struct SpeakerLabel: View {
     }
 
     var body: some View {
-        Text(SpeakerPresentation.displayName(for: speaker))
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Self.color(slot: slot))
-            .accessibilityAddTraits(.isHeader)
+        let named = naming?.names[speaker]
+        let title = SpeakerNames.name(for: speaker, in: naming?.names) ?? SpeakerPresentation.displayName(for: speaker)
+        let text = HStack(spacing: 3) {
+            Text(title)
+            // A name that came from a remembered voice is marked as such.
+            if named?.source == .voice {
+                Image(systemName: "waveform").font(.system(size: 9, weight: .semibold))
+                    .accessibilityLabel("Recognised by voice".loc)
+            }
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(Self.color(slot: slot))
+        if let naming, SpeakerNames.isNameable(speaker) {
+            Button { editing = true } label: { text }
+                .buttonStyle(.plain)
+                .help(named?.source == .voice ? "Recognised by voice. Click to change the name.".loc
+                                              : "Click to name this speaker".loc)
+                .accessibilityAddTraits(.isHeader)
+                .popover(isPresented: $editing, arrowEdge: .bottom) {
+                    SpeakerNamePopover(label: speaker, context: naming)
+                }
+        } else {
+            text.accessibilityAddTraits(.isHeader)
+        }
     }
 }
 

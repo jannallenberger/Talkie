@@ -276,4 +276,33 @@ final class KnownVoicesTests: XCTestCase {
         recorder.diarizationModelsDirectory = { nil }
         XCTAssertEqual(recorder.voiceRememberAvailability(meetingID: meeting.id, label: "Speaker 1"), .unavailable(.modelsMissing))
     }
+
+    // MARK: Doctor report + copy
+
+    func testDoctorReportListsTheStoreWithACountOnly() throws {
+        let support = tmp.appendingPathComponent("Application Support/Talkie", isDirectory: true)
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        let paths = DoctorReport.Paths(support: support, meetings: tmp.appendingPathComponent("M", isDirectory: true))
+        XCTAssertTrue(DoctorReport.generate(includeTCC: false, paths: paths).contains("known-voices.json"))
+        let store = KnownVoiceStore(url: support.appendingPathComponent("known-voices.json"))
+        XCTAssertTrue(store.add(name: "Zelda Q", sample: cand(eA), meetingID: nil, label: nil))
+        XCTAssertTrue(store.add(name: "Yuri P", sample: cand(eB), meetingID: nil, label: nil))
+        let report = DoctorReport.generate(includeTCC: false, paths: paths)
+        XCTAssertTrue(report.contains("2 voice prints of people you chose to recognise"))
+        XCTAssertFalse(report.contains("Zelda"), "never a name")
+        XCTAssertFalse(report.contains("Yuri"))
+    }
+
+    func testPopoverCopyForEveryAvailabilityAndSource() {
+        XCTAssertNil(SpeakerNamingCopy.unavailableReason(.inMemory))
+        XCTAssertNil(SpeakerNamingCopy.unavailableReason(.fromKeptAudio))
+        for r in [MeetingRecorder.VoiceRememberAvailability.Reason.notEnoughSpeech, .noVoice, .modelsMissing] {
+            XCTAssertNotNil(SpeakerNamingCopy.unavailableReason(.unavailable(r)))
+        }
+        XCTAssertNotNil(SpeakerNamingCopy.sourceNote(.voice))
+        XCTAssertNotNil(SpeakerNamingCopy.sourceNote(.conversation))
+        XCTAssertNil(SpeakerNamingCopy.sourceNote(.manual))
+        XCTAssertNil(SpeakerNamingCopy.outcomeMessage(.remembered))
+        XCTAssertNotNil(SpeakerNamingCopy.outcomeMessage(.failed))
+    }
 }

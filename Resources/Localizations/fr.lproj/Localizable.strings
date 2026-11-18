@@ -976,3 +976,25 @@
 "Updates every 10 minutes, when the languages settle. The final summary is written when you stop." = "Mis à jour toutes les 10 minutes, quand les langues sont fixées. Le résumé final est rédigé à l’arrêt.";
 "Updates every minute. The final summary is written when you stop." = "Mis à jour chaque minute. Le résumé final est rédigé à l’arrêt.";
 "This replaces the summary with a fresh one. Your notes are kept. This can't be undone." = "Cela remplace le résumé par un nouveau. Vos notes sont conservées. Action irréversible.";
+
+/* W2 speaker names */
+"A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings." = "Une empreinte vocale de cette personne est stockée uniquement sur ce Mac et peut être supprimée ici ou dans les réglages des réunions.";
+"Clear name" = "Effacer le nom";
+"Click to name this speaker" = "Cliquez pour nommer cette personne";
+"Couldn’t read this person’s voice." = "Impossible de lire la voix de cette personne.";
+"Forget all known voices" = "Oublier toutes les voix connues";
+"Forget all" = "Tout oublier";
+"Give this speaker a name first." = "Donnez d’abord un nom à cette personne.";
+"Known voices" = "Voix connues";
+"Name this speaker" = "Nommer cette personne";
+"Name" = "Nom";
+"Named from what was said in this meeting." = "Nommé d’après ce qui a été dit dans cette réunion.";
+"Not enough speech from this person to recognise their voice. At least 20 seconds are needed." = "Pas assez de parole de cette personne pour reconnaître sa voix. Il faut au moins 20 secondes.";
+"Reading this person’s voice…" = "Lecture de la voix de cette personne…";
+"Recognise this voice in future meetings" = "Reconnaître cette voix lors des prochaines réunions";
+"Recognised by a voice you chose to remember." = "Reconnu grâce à une voix que vous avez choisi de mémoriser.";
+"Recognised by voice" = "Reconnu à la voix";
+"Recognised by voice. Click to change the name." = "Reconnu à la voix. Cliquez pour changer le nom.";
+"Speaker recognition isn’t available on this Mac." = "La reconnaissance des interlocuteurs n’est pas disponible sur ce Mac.";
+"This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "La voix de cette personne n’est plus disponible pour cette réunion. Conservez l’audio avec les notes de réunion pour utiliser cette option plus tard.";
+"Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "Empreintes vocales des personnes que vous avez choisi de reconnaître en réunion. Elles sont stockées uniquement sur ce Mac ; en supprimer une l’efface définitivement.";

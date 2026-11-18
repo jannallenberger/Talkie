@@ -32,6 +32,8 @@ struct MeetingsSettings: View {
     /// Whether a locally learned voice profile exists (read once on appear; presence
     /// only — the profile's contents are never shown or logged).
     @State private var hasVoiceProfile = false
+    /// Voices the user chose to recognise (names only are shown; never the prints).
+    @State private var knownVoices: [KnownVoice] = []
 
     /// Pops this pushed subpage back to the Settings root, where the "Notes & export"
     /// card lives inline. Used by the destination reference button, alongside a tab
@@ -56,9 +58,21 @@ struct MeetingsSettings: View {
 
                 destinationReferenceRow
                 if hasVoiceProfile { voiceProfileCard }
+                if !knownVoices.isEmpty {
+                    KnownVoicesCard(voices: knownVoices, onDelete: { id in
+                        KnownVoiceStore.shared.remove(id: id)
+                        knownVoices = KnownVoiceStore.shared.all()
+                    }, onForgetAll: {
+                        KnownVoiceStore.shared.removeAll()
+                        knownVoices = []
+                    })
+                }
             }
         }
-        .onAppear { hasVoiceProfile = OwnVoiceProfileStore.shared.exists }
+        .onAppear {
+            hasVoiceProfile = OwnVoiceProfileStore.shared.exists
+            knownVoices = KnownVoiceStore.shared.all()
+        }
     }
 
     // MARK: Voice profile (privacy control, shown only when one exists)
@@ -363,6 +377,32 @@ struct VoiceProfileCard: View {
                 subtitle: "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings.".loc
             ) {
                 Button("Forget my voice".loc, action: onForget)
+                    .buttonStyle(.talkie(.destructive))
+            }
+        }
+    }
+}
+
+/// "Known voices": the people the user chose to recognise in future meetings, each with
+/// its own delete, plus Forget all. Shown only when at least one is stored.
+struct KnownVoicesCard: View {
+    let voices: [KnownVoice]
+    let onDelete: (UUID) -> Void
+    let onForgetAll: () -> Void
+
+    var body: some View {
+        SettingsCard(header: "Known voices".loc,
+                     footer: "Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good.".loc) {
+            ForEach(Array(voices.sorted { $0.createdUnix < $1.createdUnix }.enumerated()), id: \.element.id) { i, v in
+                if i > 0 { SettingsDivider() }
+                SettingsRow(title: v.name) {
+                    Button("Delete".loc) { onDelete(v.id) }
+                        .buttonStyle(.talkie(.destructive, size: .small))
+                }
+            }
+            SettingsDivider()
+            SettingsRow(title: "Forget all known voices".loc) {
+                Button("Forget all".loc, action: onForgetAll)
                     .buttonStyle(.talkie(.destructive))
             }
         }
