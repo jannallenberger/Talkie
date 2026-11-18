@@ -1049,3 +1049,25 @@
 "slower" = "più lento";
 "Say “%@”" = "Di' «%@»";
 "Delete this snippet" = "Elimina questo frammento";
+
+/* W2 speaker names */
+"A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings." = "Un’impronta vocale di questa persona viene salvata solo su questo Mac e può essere eliminata qui o nelle impostazioni delle riunioni.";
+"Clear name" = "Cancella nome";
+"Click to name this speaker" = "Fai clic per dare un nome a questa persona";
+"Couldn’t read this person’s voice." = "Impossibile leggere la voce di questa persona.";
+"Forget all known voices" = "Dimentica tutte le voci note";
+"Forget all" = "Dimentica tutte";
+"Give this speaker a name first." = "Prima dai un nome a questa persona.";
+"Known voices" = "Voci note";
+"Name this speaker" = "Dai un nome a questa persona";
+"Name" = "Nome";
+"Named from what was said in this meeting." = "Nome ricavato da ciò che è stato detto in questa riunione.";
+"Not enough speech from this person to recognise their voice. At least 20 seconds are needed." = "Questa persona ha parlato troppo poco per riconoscerne la voce. Servono almeno 20 secondi.";
+"Reading this person’s voice…" = "Lettura della voce di questa persona…";
+"Recognise this voice in future meetings" = "Riconosci questa voce nelle prossime riunioni";
+"Recognised by a voice you chose to remember." = "Riconosciuto da una voce che hai scelto di ricordare.";
+"Recognised by voice" = "Riconosciuto dalla voce";
+"Recognised by voice. Click to change the name." = "Riconosciuto dalla voce. Fai clic per cambiare il nome.";
+"Speaker recognition isn’t available on this Mac." = "Il riconoscimento dei parlanti non è disponibile su questo Mac.";
+"This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "La voce di questa persona non è più disponibile per questa riunione. Conserva l’audio con le note della riunione per usare questa funzione in seguito.";
+"Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "Impronte vocali delle persone che hai scelto di riconoscere nelle riunioni. Sono salvate solo su questo Mac; eliminarne una la rimuove definitivamente.";

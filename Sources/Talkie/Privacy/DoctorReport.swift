@@ -275,6 +275,12 @@ enum DoctorReport {
         let voiceURL = paths.support.appendingPathComponent("own-voice-profile.json")
         lines.append(fileLine(voiceURL, detail: FileManager.default.fileExists(atPath: voiceURL.path)
             ? "your voice profile, kept to recognise you in meetings (Settings → Meeting settings → Forget my voice)" : nil))
+        // Known voices (only people the user explicitly chose to recognise): existence,
+        // size and how many — never names or voice prints.
+        let knownURL = paths.support.appendingPathComponent("known-voices.json")
+        let knownCount = FileManager.default.fileExists(atPath: knownURL.path) ? KnownVoiceStore(url: knownURL).all().count : 0
+        lines.append(fileLine(knownURL, detail: knownCount > 0
+            ? "\(knownCount) voice print\(knownCount == 1 ? "" : "s") of people you chose to recognise in meetings (Settings → Meeting settings → Known voices)" : nil))
 
         lines.append("")
         lines.append("**`\(tildeAbbreviated(paths.meetings.path))`** — your recordings and transcripts, in plain folders you own:")

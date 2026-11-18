@@ -1049,3 +1049,25 @@
 "slower" = "trager";
 "Say “%@”" = "Zeg „%@”";
 "Delete this snippet" = "Dit fragment verwijderen";
+
+/* W2 speaker names */
+"A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings." = "Een stemafdruk van deze persoon wordt alleen op deze Mac bewaard en kan hier of in de vergaderinstellingen worden verwijderd.";
+"Clear name" = "Naam wissen";
+"Click to name this speaker" = "Klik om deze spreker een naam te geven";
+"Couldn’t read this person’s voice." = "De stem van deze persoon kon niet worden gelezen.";
+"Forget all known voices" = "Alle bekende stemmen vergeten";
+"Forget all" = "Alles vergeten";
+"Give this speaker a name first." = "Geef deze spreker eerst een naam.";
+"Known voices" = "Bekende stemmen";
+"Name this speaker" = "Deze spreker een naam geven";
+"Name" = "Naam";
+"Named from what was said in this meeting." = "Benoemd op basis van wat er in deze vergadering is gezegd.";
+"Not enough speech from this person to recognise their voice. At least 20 seconds are needed." = "Te weinig spraak van deze persoon om de stem te herkennen. Er is minstens 20 seconden nodig.";
+"Reading this person’s voice…" = "Stem van deze persoon wordt gelezen…";
+"Recognise this voice in future meetings" = "Deze stem herkennen in toekomstige vergaderingen";
+"Recognised by a voice you chose to remember." = "Herkend aan een stem die je wilde onthouden.";
+"Recognised by voice" = "Herkend aan de stem";
+"Recognised by voice. Click to change the name." = "Herkend aan de stem. Klik om de naam te wijzigen.";
+"Speaker recognition isn’t available on this Mac." = "Sprekerherkenning is niet beschikbaar op deze Mac.";
+"This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "De stem van deze persoon is niet meer beschikbaar voor deze vergadering. Bewaar audio bij vergadernotities om dit later te gebruiken.";
+"Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "Stemafdrukken van de mensen die je in vergaderingen wilde herkennen. Ze worden alleen op deze Mac bewaard; verwijderen haalt ze definitief weg.";

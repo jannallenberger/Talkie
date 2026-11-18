@@ -1049,3 +1049,25 @@
 "slower" = "時間がかかる";
 "Say “%@”" = "「%@」と言う";
 "Delete this snippet" = "このスニペットを削除";
+
+/* W2 speaker names */
+"A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings." = "この人の声紋はこのMacにのみ保存され、ここまたはミーティング設定で削除できます。";
+"Clear name" = "名前を消去";
+"Click to name this speaker" = "クリックしてこの話者に名前を付ける";
+"Couldn’t read this person’s voice." = "この人の声を読み取れませんでした。";
+"Forget all known voices" = "既知の声をすべて削除";
+"Forget all" = "すべて削除";
+"Give this speaker a name first." = "先にこの話者に名前を付けてください。";
+"Known voices" = "既知の声";
+"Name this speaker" = "この話者に名前を付ける";
+"Name" = "名前";
+"Named from what was said in this meeting." = "このミーティングでの発言から名前を付けました。";
+"Not enough speech from this person to recognise their voice. At least 20 seconds are needed." = "この人の発話が少なすぎて声を認識できません。少なくとも20秒必要です。";
+"Reading this person’s voice…" = "この人の声を読み取っています…";
+"Recognise this voice in future meetings" = "今後のミーティングでこの声を認識する";
+"Recognised by a voice you chose to remember." = "記憶するよう選んだ声で認識されました。";
+"Recognised by voice" = "声で認識";
+"Recognised by voice. Click to change the name." = "声で認識されました。クリックして名前を変更します。";
+"Speaker recognition isn’t available on this Mac." = "このMacでは話者認識を利用できません。";
+"This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "このミーティングでは、この人の声はもう利用できません。後で使うには、ミーティングノートと一緒に音声を保存してください。";
+"Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "ミーティングで認識するよう選んだ人の声紋です。このMacにのみ保存され、削除すると完全に消去されます。";

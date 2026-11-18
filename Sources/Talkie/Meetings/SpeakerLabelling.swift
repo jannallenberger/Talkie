@@ -96,6 +96,11 @@ enum SpeakerLabelling {
         /// speaker's. Never set for a multi-speaker mic lane. Biometric-like: callers
         /// feed it to the own-voice store and must not log or persist it elsewhere.
         var ownVoiceSample: MicSpeakerCandidate? = nil
+        /// Each final non-"Me" label's voice: the cluster embedding and its speech
+        /// seconds (all raw clusters folded into that person). Biometric-like: held in
+        /// memory only — used to match voices the user asked to recognise and, only on
+        /// the user's explicit per-person opt-in, stored. Never persisted otherwise.
+        var voices: [String: MicSpeakerCandidate] = [:]
     }
 
     private struct Cluster: Hashable { let lane: Int; let id: Int } // lane 0 = mic, 1 = system
@@ -181,6 +186,13 @@ enum SpeakerLabelling {
         func embedding(_ lane: Int, _ id: Int) -> [Float]? {
             outputs[lane]?.speakers.first { $0.speaker == id }?.embedding
         }
+        /// One person's voice in a lane: its embedding, speech of every raw cluster folded into it.
+        func voice(_ lane: Int, _ id: Int) -> MicSpeakerCandidate? {
+            guard let emb = embedding(lane, id), !emb.isEmpty else { return nil }
+            let secs = (outputs[lane]?.speakers ?? []).filter { (canon[lane][$0.speaker] ?? $0.speaker) == id }
+                .reduce(0.0) { $0 + $1.speechSeconds }
+            return MicSpeakerCandidate(cluster: id, embedding: emb, speechSeconds: secs)
+        }
         // The single mic voice as a learning sample: all raw clusters folded into it
         // count toward its speech. Declined when it sounds like ANY active system
         // speaker (threshold only, no margin — for learning, doubt means skip), since a
@@ -199,6 +211,9 @@ enum SpeakerLabelling {
         if micActive.count <= 1 && sysActive.count <= 1 {
             var legacy = unchanged
             if micActive.count == 1 { legacy.ownVoiceSample = learningSample(micActive[0]) }
+            // "Them" is one far-end person here; only a lane that actually kept its label.
+            if sysActive.count == 1, legacy.participants.contains(SpeakerLabels.them),
+               let v = voice(1, sysActive[0]) { legacy.voices[SpeakerLabels.them] = v }
             return legacy
         }
 
@@ -283,8 +298,14 @@ enum SpeakerLabelling {
         }
         var participants = distinct(out.map(\.speaker))
         participants.sort { rank($0) < rank($1) }
+        var voices: [String: MicSpeakerCandidate] = [:]
+        for (i, _) in pieces.enumerated() {
+            guard let c = assigned[i].map(person), c != meCluster, let label = resolved[i],
+                  label != SpeakerLabels.me, voices[label] == nil, let v = voice(c.lane, c.id) else { continue }
+            voices[label] = v
+        }
         return Result(segments: out, sourceIndex: sourceIndex, participants: participants, speakerCount: participants.count, changed: true,
-                      ownVoiceSample: micOwn.count == 1 ? learningSample(micOwn[0]) : nil)
+                      ownVoiceSample: micOwn.count == 1 ? learningSample(micOwn[0]) : nil, voices: voices)
     }
 
     // MARK: - Pieces (internal for tests)

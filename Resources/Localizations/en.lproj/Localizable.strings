@@ -1060,3 +1060,25 @@
 "slower" = "slower";
 "Say “%@”" = "Say “%@”";
 "Delete this snippet" = "Delete this snippet";
+
+/* W2 speaker names */
+"A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings." = "A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings.";
+"Clear name" = "Clear name";
+"Click to name this speaker" = "Click to name this speaker";
+"Couldn’t read this person’s voice." = "Couldn’t read this person’s voice.";
+"Forget all known voices" = "Forget all known voices";
+"Forget all" = "Forget all";
+"Give this speaker a name first." = "Give this speaker a name first.";
+"Known voices" = "Known voices";
+"Name this speaker" = "Name this speaker";
+"Name" = "Name";
+"Named from what was said in this meeting." = "Named from what was said in this meeting.";
+"Not enough speech from this person to recognise their voice. At least 20 seconds are needed." = "Not enough speech from this person to recognise their voice. At least 20 seconds are needed.";
+"Reading this person’s voice…" = "Reading this person’s voice…";
+"Recognise this voice in future meetings" = "Recognise this voice in future meetings";
+"Recognised by a voice you chose to remember." = "Recognised by a voice you chose to remember.";
+"Recognised by voice" = "Recognised by voice";
+"Recognised by voice. Click to change the name." = "Recognised by voice. Click to change the name.";
+"Speaker recognition isn’t available on this Mac." = "Speaker recognition isn’t available on this Mac.";
+"This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later.";
+"Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good.";

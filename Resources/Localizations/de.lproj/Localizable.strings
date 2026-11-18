@@ -1049,3 +1049,25 @@
 "slower" = "langsamer";
 "Say “%@”" = "Sagen Sie „%@“";
 "Delete this snippet" = "Diesen Baustein löschen";
+
+/* W2 speaker names */
+"A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings." = "Ein Stimmabdruck dieser Person wird nur auf diesem Mac gespeichert und kann hier oder in den Meeting-Einstellungen gelöscht werden.";
+"Clear name" = "Name entfernen";
+"Click to name this speaker" = "Klicken, um diese Person zu benennen";
+"Couldn’t read this person’s voice." = "Die Stimme dieser Person konnte nicht gelesen werden.";
+"Forget all known voices" = "Alle bekannten Stimmen vergessen";
+"Forget all" = "Alle vergessen";
+"Give this speaker a name first." = "Geben Sie dieser Person zuerst einen Namen.";
+"Known voices" = "Bekannte Stimmen";
+"Name this speaker" = "Diese Person benennen";
+"Name" = "Name";
+"Named from what was said in this meeting." = "Benannt nach dem, was in diesem Meeting gesagt wurde.";
+"Not enough speech from this person to recognise their voice. At least 20 seconds are needed." = "Zu wenig Sprache von dieser Person, um ihre Stimme zu erkennen. Es werden mindestens 20 Sekunden benötigt.";
+"Reading this person’s voice…" = "Stimme dieser Person wird gelesen …";
+"Recognise this voice in future meetings" = "Diese Stimme in künftigen Meetings erkennen";
+"Recognised by a voice you chose to remember." = "Erkannt an einer Stimme, die Sie sich merken lassen wollten.";
+"Recognised by voice" = "An der Stimme erkannt";
+"Recognised by voice. Click to change the name." = "An der Stimme erkannt. Klicken, um den Namen zu ändern.";
+"Speaker recognition isn’t available on this Mac." = "Sprechererkennung ist auf diesem Mac nicht verfügbar.";
+"This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "Die Stimme dieser Person ist für dieses Meeting nicht mehr verfügbar. Bewahren Sie Audio mit den Meeting-Notizen auf, um dies später zu nutzen.";
+"Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "Stimmabdrücke der Personen, die Sie in Meetings erkennen lassen wollten. Sie werden nur auf diesem Mac gespeichert; Löschen entfernt sie endgültig.";
