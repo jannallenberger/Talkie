@@ -124,8 +124,12 @@ final class MeetingRecorder: ObservableObject {
     var diarizationModelsDirectory: () -> URL? = { DiarizationModels.bundledDirectory() }
     /// Builds the diarizer for a models folder; created once per folder and reused.
     var laneDiarizerFactory: @Sendable (URL) -> any LaneDiarizing = { SpeakerDiarizer(modelsDirectory: $0) }
-    /// "Which mic speaker is Me" (WP-C plugs in here). Default: nobody is identified.
-    var ownVoiceResolver: OwnVoiceResolver = SpeakerLabelling.noOwnVoice
+    /// The locally persisted own-voice profile (WP-C): learned from single-speaker mic
+    /// lanes, consulted when the mic lane has several people. Injected for tests.
+    var ownVoiceStore = OwnVoiceProfileStore()
+    /// "Which mic speaker is Me" override for tests. nil (production) = the profile
+    /// matcher: nobody until a profile exists and one voice clears its threshold + margin.
+    var ownVoiceResolver: OwnVoiceResolver?
     /// Seconds allowed for one pass, from the total lane audio seconds. Injected for tests.
     var diarizationBudget: (Double) -> Double = { MeetingDiarizationPipeline.budget(audioSeconds: $0) }
     private var cachedDiarizer: (root: URL, instance: any LaneDiarizing)?
@@ -1055,10 +1059,15 @@ final class MeetingRecorder: ObservableObject {
             let step = await self.diarizationStep(
                 id: id, inputs: diarizationInputs, segments: segments,
                 transcript: clean, durationSec: durationSec)
-            // Relabelled labels invalidate the live digest (its excerpts carry the old
-            // Me/Them tags): drop it so the summary is built from the relabelled transcript.
+            // Relabelled: keep the live digest usable by remapping its lane labels to
+            // the diarized speakers (no model calls); only when that is impossible drop
+            // it so the summary is rebuilt from the relabelled transcript (slower).
             var summaryDigest = digest
-            if step.relabelled { digest?.cancel(); summaryDigest = nil }
+            if step.relabelled, let digest {
+                if await self.remapDigest(digest, segments: step.segments) == false {
+                    digest.cancel(); summaryDigest = nil
+                }
+            }
             let (summary, graphCandidates) = await self.writeSummary(
                 transcript: step.transcript, userNotes: userNotes, digest: summaryDigest)
             // Re-read: the user may have retitled or edited the note meanwhile — or
@@ -1076,10 +1085,23 @@ final class MeetingRecorder: ObservableObject {
         }
     }
 
+    /// Seconds allowed for the digest remap (it only awaits map calls the digest was
+    /// already running; this bounds a wedged one).
+    var digestRemapBudget: Double = 120
+
+    /// Remap the live digest to the diarized labels; false = impossible or timed out.
+    func remapDigest(_ digest: MeetingDigestBuilder, segments: [MeetingSegment]?) async -> Bool {
+        guard let segments, !segments.isEmpty else { return false }
+        let remap = DigestSpeakerRemap(segments: segments)
+        return await TimeBox.run(seconds: digestRemapBudget) { await digest.remapSpeakers(remap) } ?? false
+    }
+
     /// What the diarization step hands the summary.
     struct DiarizationStep {
         var transcript: String
         var relabelled = false
+        /// The relabelled segments (set with `relabelled`), for remapping the live digest.
+        var segments: [MeetingSegment]?
         var speakerCount: Int?
         var state: DiarizationState?
     }
@@ -1108,7 +1130,7 @@ final class MeetingRecorder: ObservableObject {
         let outcome = await MeetingDiarizationPipeline.run(
             inputs: inputs, segments: segments, diarizer: diarizer,
             budgetSeconds: diarizationBudget(durationSec * Double(inputs.count)),
-            resolveMe: ownVoiceResolver)
+            resolveMe: ownVoiceResolver ?? ownVoiceStore.resolver)
         switch outcome {
         case .unavailable:
             break
@@ -1124,10 +1146,15 @@ final class MeetingRecorder: ObservableObject {
             guard let current = store.meetings.first(where: { $0.id == id }),
                   current.transcript == transcript else { return step }
             step.speakerCount = result.speakerCount
+            // Learn the owner's voice from a single-speaker mic lane (never from a
+            // multi-speaker one — the labeller only sets the sample in that case).
+            // Not for a note the user deleted or edited meanwhile (guard above).
+            if let sample = result.ownVoiceSample { ownVoiceStore.learn(sample) }
             if result.changed {
                 let updated = MeetingDiarizationPipeline.apply(result, to: current)
                 store.update(updated)
                 step.transcript = updated.transcript
+                step.segments = updated.segments
                 step.relabelled = true
                 step.state = .applied
             } else {

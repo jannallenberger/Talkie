@@ -199,4 +199,170 @@ final class MeetingDiarizationIntegrationTests: XCTestCase {
         XCTAssertEqual(Set(micRalph), Set(sysRalph), "bleed is merged into the system speaker")
         XCTAssertEqual(r.speakerCount, 3, "Samantha, Ralph, Daniel")
     }
+
+    // MARK: opt-in lane-concurrency probe
+
+    private static func peakRSSMB() -> Double {
+        var u = rusage(); getrusage(RUSAGE_SELF, &u)
+        return Double(u.ru_maxrss) / 1_048_576 // bytes on macOS
+    }
+
+    /// TALKIE_DIAR_PERF=1 (use a release build): two ~15 min lanes, serial vs concurrent.
+    func testLaneConcurrencyProbe() async throws {
+        guard ProcessInfo.processInfo.environment["TALKIE_DIAR_PERF"] == "1" else {
+            throw XCTSkip("set TALKIE_DIAR_PERF=1 to run the lane-concurrency probe")
+        }
+        let models = try modelsRoot()
+        let micScript = (0..<90).map { ($0 % 2 == 0 ? "Daniel" : "Samantha", nil as (([Float]) -> [Float])?) }
+        let sysScript = (0..<90).map { _ in ("Ralph", nil as (([Float]) -> [Float])?) }
+        let mic = try lane(lead: 0, micScript), sys = try lane(lead: 1, sysScript)
+        let micURL = try tee(mic, name: "pm.wav", rate: 16_000), sysURL = try tee(sys, name: "ps.wav", rate: 16_000)
+        let minutes = Double(mic.samples.count) / 16_000 / 60
+        let diarizer = SpeakerDiarizer(modelsDirectory: models)
+        _ = try await diarizer.diarize(fileURL: micURL.deletingLastPathComponent().appendingPathComponent("pm.wav")) // warm: load + CoreML compile
+        let inputs = [MeetingDiarizationPipeline.LaneInput(lane: "Me", fileURL: micURL),
+                      MeetingDiarizationPipeline.LaneInput(lane: "Them", fileURL: sysURL)]
+        let segs = segments(mic, as: "Me") + segments(sys, as: "Them")
+        for round in 1...3 {
+            for concurrent in [false, true] {
+                let t0 = Date()
+                let outcome = await MeetingDiarizationPipeline.run(
+                    inputs: inputs, segments: segs, diarizer: diarizer, budgetSeconds: 1800, concurrent: concurrent)
+                let wall = Date().timeIntervalSince(t0)
+                guard case .labelled = outcome else { return XCTFail("pass did not label: \(outcome)") }
+                print(String(format: "[perf] round %d %@ 2 lanes x %.1f min: wall %.1f s, peak RSS %.0f MB",
+                             round, concurrent ? "CONCURRENT" : "SERIAL    ", minutes, wall, Self.peakRSSMB()))
+            }
+        }
+    }
+
+    // MARK: own-voice evidence (WP-C)
+
+    /// One mic lane of a single voice reading `lines` (indices into `lines`), with an
+    /// optional channel transform; returns the diarized dominant cluster.
+    private func voiceSample(_ voice: String, lines idx: [Int], models: URL,
+                             channel: (([Float]) -> [Float])? = nil) async throws -> MicSpeakerCandidate {
+        let gap = [Float](repeating: 0, count: Int(0.7 * 16_000))
+        var l = Lane()
+        l.samples = gap
+        for i in idx {
+            var pcm = try say(voice, i)
+            if let channel { pcm = channel(pcm) }
+            l.samples += pcm + gap
+        }
+        let url = try tee(l, name: "vs-\(UUID().uuidString).wav", rate: 16_000)
+        let out = try await SpeakerDiarizer(modelsDirectory: models).diarize(fileURL: url)
+        let top = try XCTUnwrap(out.speakers.max { $0.speechSeconds < $1.speechSeconds })
+        return MicSpeakerCandidate(cluster: top.speaker, embedding: top.embedding, speechSeconds: top.speechSeconds)
+    }
+
+    /// Prints the similarity evidence the thresholds in `OwnVoiceProfile.Policy` rest on:
+    /// same voice across SEPARATE recordings (different lines, and a different channel)
+    /// versus different voices, and same-voice similarity versus amount of speech.
+    func testOwnVoiceSimilarityEvidence() async throws {
+        let models = try modelsRoot()
+        let voices = ["Daniel", "Samantha", "Ralph", "Fred", "Karen", "Kathy", "Tara", "Reed", "Rishi"]
+        var ref: [String: MicSpeakerCandidate] = [:], again: [String: MicSpeakerCandidate] = [:]
+        var degraded: [String: MicSpeakerCandidate] = [:]
+        for v in voices {
+            ref[v] = try await voiceSample(v, lines: [0, 1, 2], models: models)
+            again[v] = try await voiceSample(v, lines: [3, 4, 5], models: models)
+            degraded[v] = try await voiceSample(v, lines: [3, 4, 5], models: models,
+                                                channel: { self.throughLaptopSpeakers($0, gain: 0.6) })
+        }
+        var same: [Double] = [], sameDeg: [Double] = [], diff: [Double] = []
+        for v in voices {
+            same.append(SpeakerLabelling.cosine(ref[v]!.embedding, again[v]!.embedding))
+            sameDeg.append(SpeakerLabelling.cosine(ref[v]!.embedding, degraded[v]!.embedding))
+            for w in voices where w != v { diff.append(SpeakerLabelling.cosine(ref[v]!.embedding, again[w]!.embedding)) }
+        }
+        func stat(_ x: [Double]) -> String {
+            String(format: "min %.3f mean %.3f max %.3f (n=%d)", x.min()!, x.reduce(0, +) / Double(x.count), x.max()!, x.count)
+        }
+        print("[own] speech per sample: \(voices.map { String(format: "%@=%.1fs", $0, ref[$0]!.speechSeconds) })")
+        print("[own] SAME voice, separate recordings:       \(stat(same))")
+        print("[own] SAME voice, degraded channel (lp+gain): \(stat(sameDeg))")
+        print("[own] DIFFERENT voices:                      \(stat(diff))")
+        for v in voices {
+            let row = voices.map { w in String(format: "%.2f", SpeakerLabelling.cosine(ref[v]!.embedding, again[w]!.embedding)) }
+            print("[own] \(v.padding(toLength: 9, withPad: " ", startingAt: 0)) \(row.joined(separator: " "))")
+        }
+        // Same voice vs how much speech the probe sample holds.
+        for v in ["Daniel", "Samantha", "Ralph"] {
+            var line = "[own] \(v) vs 3-line reference by sample length:"
+            for n in 1...3 {
+                let s = try await voiceSample(v, lines: Array(3..<(3 + n)), models: models)
+                line += String(format: "  %.1fs->%.3f", s.speechSeconds, SpeakerLabelling.cosine(ref[v]!.embedding, s.embedding))
+            }
+            print(line)
+        }
+    }
+
+    // MARK: own-voice learning + recognition (WP-C)
+
+    private func laneOfLines(_ script: [(voice: String, line: Int)]) throws -> Lane {
+        let gap = [Float](repeating: 0, count: Int(0.7 * 16_000))
+        var l = Lane()
+        l.samples = gap
+        for item in script {
+            let pcm = try say(item.voice, item.line)
+            l.clips.append(Clip(voice: item.voice, start: Double(l.samples.count) / 16_000,
+                                end: Double(l.samples.count + pcm.count) / 16_000))
+            l.samples += pcm + gap
+        }
+        return l
+    }
+
+    private func label(mic: Lane, sys: Lane? = nil, models: URL, resolve: @escaping OwnVoiceResolver)
+        async throws -> SpeakerLabelling.Result
+    {
+        let diarizer = SpeakerDiarizer(modelsDirectory: models)
+        let micOut = try await diarizer.diarize(fileURL: try tee(mic, name: "m-\(UUID().uuidString).wav", rate: 16_000))
+        var sysOut: DiarizationOutput?
+        var segs = segments(mic, as: "Me")
+        if let sys {
+            sysOut = try await diarizer.diarize(fileURL: try tee(sys, name: "s-\(UUID().uuidString).wav", rate: 16_000))
+            segs = interleaved(segs, segments(sys, as: "Them"))
+        }
+        return SpeakerLabelling.label(segments: segs, mic: micOut, system: sysOut, resolveMe: resolve)
+    }
+
+    /// Learn voice A (Daniel) from a single-speaker mic-only meeting, then: A+B on the
+    /// mic (with a far-end speaker) -> A is "Me", B is "Speaker N"; B+C (A absent) ->
+    /// nobody is "Me".
+    func testLearnedVoiceBecomesMeOnlyWhenPresent() async throws {
+        let models = try modelsRoot()
+        let store = OwnVoiceProfileStore(url: tmp.appendingPathComponent("ovp.json"))
+
+        // 1. Single-speaker meeting teaches the profile.
+        let solo = try laneOfLines((0..<6).map { ("Daniel", $0) })
+        let first = try await label(mic: solo, models: models, resolve: store.resolver)
+        XCTAssertFalse(first.changed)
+        let sample = try XCTUnwrap(first.ownVoiceSample, "one mic speaker -> learning sample")
+        print(String(format: "[own] learned sample: %.1f s of speech", sample.speechSeconds))
+        XCTAssertGreaterThanOrEqual(sample.speechSeconds, OwnVoiceProfile.Policy.minSampleSeconds)
+        XCTAssertTrue(store.learn(sample))
+
+        // 2. A + B on the mic (separate recording, different lines), C far end.
+        let micAB = try laneOfLines([("Samantha", 0), ("Daniel", 3), ("Samantha", 1), ("Daniel", 4), ("Samantha", 2)])
+        let sysC = try laneOfLines([("Ralph", 1), ("Ralph", 2), ("Ralph", 3)])
+        let ab = try await label(mic: micAB, sys: sysC, models: models, resolve: store.resolver)
+        print("[own] A+B+C labels: \(ab.segments.map { "\($0.text):\($0.speaker)" })")
+        XCTAssertNil(ab.ownVoiceSample, "multi-speaker mic lane never teaches")
+        XCTAssertTrue(ab.changed)
+        let labelsOf = { (voice: String) in Set(ab.segments.filter { $0.text == voice }.map(\.speaker)) }
+        XCTAssertEqual(labelsOf("Daniel"), ["Me"], "the learned voice is Me")
+        XCTAssertEqual(labelsOf("Samantha").count, 1)
+        XCTAssertTrue(labelsOf("Samantha").first?.hasPrefix("Speaker ") == true)
+        XCTAssertEqual(labelsOf("Ralph").count, 1)
+        XCTAssertEqual(Set(ab.participants), ["Me", "Speaker 1", "Speaker 2"], "gap-free numbering")
+
+        // 3. B + C on the mic, A absent -> nobody is Me.
+        let micBC = try laneOfLines([("Samantha", 0), ("Ralph", 3), ("Samantha", 1), ("Ralph", 4), ("Samantha", 2)])
+        let bc = try await label(mic: micBC, models: models, resolve: store.resolver)
+        print("[own] B+C labels: \(bc.segments.map { "\($0.text):\($0.speaker)" })")
+        XCTAssertTrue(bc.changed)
+        XCTAssertFalse(bc.participants.contains("Me"), "A is absent: nobody is Me")
+        XCTAssertEqual(bc.speakerCount, 2)
+    }
 }

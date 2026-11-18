@@ -329,6 +329,7 @@ final class MeetingDiarizationPipelineTests: XCTestCase {
         let store = MeetingStore(supportDirectory: tmp, meetingsDirectory: tmp)
         let recorder = MeetingRecorder(engine: TranscriptionEngine(localeIdentifier: "en-US"), store: store)
         recorder.diarizationModelsDirectory = { self.tmp }   // any non-nil: the fake ignores it
+        recorder.ownVoiceStore = OwnVoiceProfileStore(url: tmp.appendingPathComponent("own-voice.json"))
         let transcript = MeetingTranscriptRenderer.render(segments: segs)
         let m = Meeting(title: "T", startUnix: 1_700_000_000, durationSec: 40, transcript: transcript, summary: "",
                         participants: ["Me", "Them"], source: "talkie (mic + system audio)",
@@ -400,6 +401,54 @@ final class MeetingDiarizationPipelineTests: XCTestCase {
             transcript: original.transcript, durationSec: 40)
         XCTAssertFalse(step.relabelled)
         XCTAssertEqual(store.meetings.first?.transcript, "user edited this")
+    }
+
+    func testStepLearnsOwnVoiceFromSingleMicSpeakerButNotFromTwo() async throws {
+        let (recorder, _, original) = makeRecorder()
+        let two = twoOnMic()
+        recorder.laneDiarizerFactory = { _ in FakeLaneDiarizer(behavior: .perLane(two)) }
+        _ = await recorder.diarizationStep(
+            id: original.id, inputs: try inputs(original.id), segments: original.segments,
+            transcript: original.transcript, durationSec: 40)
+        XCTAssertNil(recorder.ownVoiceStore.load(), "two mic speakers: nothing learned")
+
+        let (recorder2, _, original2) = makeRecorder()
+        let oneEach: [String: DiarizationOutput] = [
+            "-mic.wav": DiarizationOutput(
+                turns: [DiarizedTurn(speaker: 0, start: 0, end: 40)],
+                speakers: [SpeakerProfile(speaker: 0, embedding: eA, speechSeconds: 40)]),
+            "-sys.wav": DiarizationOutput(
+                turns: [DiarizedTurn(speaker: 0, start: 0, end: 40)],
+                speakers: [SpeakerProfile(speaker: 0, embedding: eB, speechSeconds: 40)])]
+        recorder2.laneDiarizerFactory = { _ in FakeLaneDiarizer(behavior: .perLane(oneEach)) }
+        _ = await recorder2.diarizationStep(
+            id: original2.id, inputs: try inputs(original2.id), segments: original2.segments,
+            transcript: original2.transcript, durationSec: 40)
+        XCTAssertEqual(recorder2.ownVoiceStore.load()?.sampleCount, 1, "single mic speaker: learned")
+    }
+
+    func testStepKeepsAndRemapsTheLiveDigest() async throws {
+        let (recorder, _, original) = makeRecorder()
+        let two = twoOnMic()
+        recorder.laneDiarizerFactory = { _ in FakeLaneDiarizer(behavior: .perLane(two)) }
+        let digest = MeetingDigestBuilder(summarizer: MeetingSummarizer(), graphExtractor: nil)
+        digest.ingest(.me, "hello", at: 0)
+        digest.ingest(.them, "hi", at: 12)
+        digest.ingest(.me, "yes", at: 22)
+        let step = await recorder.diarizationStep(
+            id: original.id, inputs: try inputs(original.id), segments: original.segments,
+            transcript: original.transcript, durationSec: 40)
+        XCTAssertTrue(step.relabelled)
+        let kept = await recorder.remapDigest(digest, segments: step.segments)
+        XCTAssertTrue(kept, "digest stays usable: no transcript rebuild")
+        XCTAssertEqual(digest.pendingTextForTesting(), "Speaker 1: hello Speaker 2: hi Speaker 3: yes")
+        // Impossible remap (a line with no matching segment) reports false -> rebuild.
+        let stray = MeetingDigestBuilder(summarizer: MeetingSummarizer(), graphExtractor: nil)
+        stray.ingest(.me, "x", at: 5)
+        let rebuilt = await recorder.remapDigest(stray, segments: step.segments)
+        XCTAssertFalse(rebuilt)
+        let none = await recorder.remapDigest(digest, segments: nil)
+        XCTAssertFalse(none)
     }
 
     func testStepOnePlusOneKeepsLabelsAndRecordsMetadataOnly() async throws {

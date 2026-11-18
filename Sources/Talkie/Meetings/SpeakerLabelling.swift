@@ -73,6 +73,11 @@ enum SpeakerLabelling {
         var speakerCount: Int
         /// False for the legacy Me/Them outcome: labels untouched.
         var changed: Bool
+        /// WP-C learning sample: set only when the mic lane held exactly ONE person
+        /// after the fold and the bleed guard, and that voice is not a far-end
+        /// speaker's. Never set for a multi-speaker mic lane. Biometric-like: callers
+        /// feed it to the own-voice store and must not log or persist it elsewhere.
+        var ownVoiceSample: MicSpeakerCandidate? = nil
     }
 
     private struct Cluster: Hashable { let lane: Int; let id: Int } // lane 0 = mic, 1 = system
@@ -111,14 +116,32 @@ enum SpeakerLabelling {
         }
         let micActive = active[0], sysActive = active[1]
 
-        // 2. Legacy outcome: at most one person per lane keeps Me/Them exactly.
-        if micActive.count <= 1 && sysActive.count <= 1 { return unchanged }
-
-        // 3. Bleed guard: a mic cluster that sounds like an active system speaker IS
-        //    that person (their voice through the laptop speakers).
         func embedding(_ lane: Int, _ id: Int) -> [Float]? {
             outputs[lane]?.speakers.first { $0.speaker == id }?.embedding
         }
+        // The single mic voice as a learning sample: all raw clusters folded into it
+        // count toward its speech. Declined when it sounds like ANY active system
+        // speaker (threshold only, no margin — for learning, doubt means skip), since a
+        // mic lane holding only laptop-speaker bleed is not the owner talking.
+        func learningSample(_ id: Int) -> MicSpeakerCandidate? {
+            guard let emb = embedding(0, id), !emb.isEmpty else { return nil }
+            for s in sysActive {
+                if let se = embedding(1, s), cosine(emb, se) >= bleedThreshold { return nil }
+            }
+            let secs = (outputs[0]?.speakers ?? []).filter { (canon[0][$0.speaker] ?? $0.speaker) == id }
+                .reduce(0.0) { $0 + $1.speechSeconds }
+            return MicSpeakerCandidate(cluster: id, embedding: emb, speechSeconds: secs)
+        }
+
+        // 2. Legacy outcome: at most one person per lane keeps Me/Them exactly.
+        if micActive.count <= 1 && sysActive.count <= 1 {
+            var legacy = unchanged
+            if micActive.count == 1 { legacy.ownVoiceSample = learningSample(micActive[0]) }
+            return legacy
+        }
+
+        // 3. Bleed guard: a mic cluster that sounds like an active system speaker IS
+        //    that person (their voice through the laptop speakers).
         var identity: [Cluster: Cluster] = [:] // mic cluster -> system cluster
         for m in micActive {
             guard let me = embedding(0, m) else { continue }
@@ -169,7 +192,8 @@ enum SpeakerLabelling {
         }
         var participants = distinct(out.map(\.speaker))
         participants.sort { rank($0) < rank($1) }
-        return Result(segments: out, participants: participants, speakerCount: participants.count, changed: true)
+        return Result(segments: out, participants: participants, speakerCount: participants.count, changed: true,
+                      ownVoiceSample: micOwn.count == 1 ? learningSample(micOwn[0]) : nil)
     }
 
     // MARK: - Pieces (internal for tests)

@@ -248,7 +248,8 @@ enum MeetingDiarizationPipeline {
         diarizer: any LaneDiarizing,
         budgetSeconds: Double,
         bleedThreshold: Double = SpeakerLabelling.defaultBleedThreshold,
-        resolveMe: OwnVoiceResolver = SpeakerLabelling.noOwnVoice
+        resolveMe: OwnVoiceResolver = SpeakerLabelling.noOwnVoice,
+        concurrent: Bool = false
     ) async -> Outcome {
         let lanesWithSpeech = Set(segments.map(\.speaker)).intersection([SpeakerLabels.me, SpeakerLabels.them])
         guard !lanesWithSpeech.isEmpty else { return .unavailable }
@@ -260,6 +261,28 @@ enum MeetingDiarizationPipeline {
         let work = lanesWithSpeech.sorted().map { (lane: $0, url: byLane[$0]!) }
         let raw = await TimeBox.run(seconds: budgetSeconds) { () -> Swift.Result<[String: DiarizationOutput], DiarizationFailure> in
             var outputs: [String: DiarizationOutput] = [:]
+            if concurrent, work.count > 1 {
+                // Opt-in only: measured in a release build, overlapping the two lanes was
+                // not materially faster than serial (CoreML work serialises on the
+                // accelerator) and used ~170 MB more peak memory, so the default is serial.
+                return await withTaskGroup(of: (String, Swift.Result<DiarizationOutput, DiarizationFailure>).self) { group in
+                    for item in work {
+                        group.addTask {
+                            do { return (item.lane, .success(try await diarizer.diarize(fileURL: item.url))) }
+                            catch { return (item.lane, .failure(DiarizationFailure(String(describing: error)))) }
+                        }
+                    }
+                    var failure: DiarizationFailure?
+                    for await (lane, r) in group {
+                        switch r {
+                        case .success(let o): outputs[lane] = o
+                        case .failure(let f): failure = failure ?? f
+                        }
+                    }
+                    if let failure { return .failure(failure) }
+                    return Task.isCancelled ? .failure(DiarizationFailure("cancelled")) : .success(outputs)
+                }
+            }
             for item in work {
                 do { outputs[item.lane] = try await diarizer.diarize(fileURL: item.url) }
                 catch { return .failure(DiarizationFailure(String(describing: error))) }
