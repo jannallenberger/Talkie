@@ -811,6 +811,14 @@ private struct MeetingRow: View, Equatable {
                     }
                     Button(action: onReveal) { Image(systemName: "folder") }.buttonStyle(.plain).help("Reveal note in Finder")
                         .accessibilityLabel("Reveal note in Finder")
+                    // Delete goes through MeetingsView's existing confirmation dialog
+                    // (`pendingDelete`) — the row never deletes on its own.
+                    Button(action: onDelete) {
+                        Image(systemName: "trash").foregroundStyle(Theme.featherRed)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete")
+                    .accessibilityLabel("Delete")
                 }
             }
 
