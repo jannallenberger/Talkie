@@ -1053,7 +1053,12 @@ actor TranscriptionEngine {
     /// low-confidence review gate. The plain `segments` shape is unchanged;
     /// `timedSegments` and `wordConfidences` are purely additive — a caller that
     /// ignores them pays nothing. Concrete-only.
-    func finishSessionDetailed() async
+    ///
+    /// `finalizeTimeoutSeconds` bounds the finalize + drain (default 4 s: right for live
+    /// dictation, where almost nothing is pending). File import feeds audio far faster
+    /// than real time, so a whole window of it is still queued in the recognizer when
+    /// input ends; it passes a generous bound so that backlog is finished, not cancelled.
+    func finishSessionDetailed(finalizeTimeoutSeconds: Double = 4) async
         -> (text: String, segments: [String], timedSegments: [TimedSegment], wordConfidences: [WordConfidence]) {
         isFinishing = true
         inputContinuation?.finish()
@@ -1075,14 +1080,14 @@ actor TranscriptionEngine {
         // through and return whatever accumulated (empty on the degenerate case), so the
         // caller reaches its empty-transcript path and cleanly resolves the pill.
         let finishedInTime = await withAsyncTimeout(
-            seconds: 4,
+            seconds: finalizeTimeoutSeconds,
             operation: { [weak self] in await self?.finalizeAndDrainInput() },
             // On timeout, hard-abort the analyzer + reader. This is what actually
             // unblocks the stuck finalize inside `operation` so the bound can return.
             onTimeout: { [weak self] in await self?.forceCancelAnalyzer() }
         )
         if !finishedInTime {
-            talkieDebugLog("TranscriptionEngine: finalize/drain exceeded 4s — force-cancelled the analyzer (degenerate/no-audio capture)")
+            talkieDebugLog("TranscriptionEngine: finalize/drain exceeded \(Int(finalizeTimeoutSeconds))s — force-cancelled the analyzer (degenerate/no-audio capture)")
         }
         resultsTask = nil
 

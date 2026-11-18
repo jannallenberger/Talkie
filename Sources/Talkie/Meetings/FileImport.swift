@@ -130,6 +130,13 @@ struct FileImportResult: Sendable {
     /// Per-segment audio-clock timings (single speaker) for the imported meeting's
     /// `Meeting.segments`. Nil when there was nothing timed to persist.
     var segments: [MeetingSegment]? = nil
+    /// Per-segment word timings (aligned with `segments`), in memory only, for the
+    /// speaker-labelling pass; never persisted.
+    var words: [[SegmentWord]?]? = nil
+    /// A temp 16 kHz mono WAV of the decoded audio on the SAME clock as `segments`, for
+    /// the post-save diarization pass. Nil when the diarization models are absent. The
+    /// consumer owns it and must delete it.
+    var laneAudioURL: URL? = nil
 }
 
 // MARK: - Importer seam
@@ -160,6 +167,15 @@ actor FileImportEngine: FileImporting {
     private static let chunkSeconds: Double = 1.0
 
     static var isAvailable: Bool { TranscriptionEngine.isAvailable }
+
+    /// Whether to tee the decoded audio to a temp WAV for the post-save diarization pass.
+    /// True only when the diarization models exist (nothing is recorded for a pass that
+    /// cannot run). A timeout cooldown is honoured later, by the pass itself.
+    private let teeLaneAudio: @Sendable () -> Bool
+
+    init(teeLaneAudio: @escaping @Sendable () -> Bool = { DiarizationModels.bundledDirectory() != nil }) {
+        self.teeLaneAudio = teeLaneAudio
+    }
 
     /// Import `url`, streaming progress (0…1, fraction of audio fed) to `onProgress`.
     /// `localeIDs` is the user's spoken languages; when ≥2 distinct and the multilingual
@@ -194,92 +210,134 @@ actor FileImportEngine: FileImporting {
         return try await transcribeSingle(url: url, primaryLocale: primaryLocale, onProgress: onProgress)
     }
 
-    /// Single-locale path: a fresh `TranscriptionEngine` (never the shared mic engine),
-    /// fed chunk-by-chunk as they're decoded, then finalized. The segment handler stamps
-    /// each finalized segment into a `TurnLog` so the rendered transcript matches a
-    /// recording's shape.
+    /// Single-locale path: a fresh `TranscriptionEngine` (never the shared mic engine) per
+    /// window of audio (see `ImportWindowing`), fed chunk-by-chunk as they're decoded, then
+    /// finalized with a bound long enough for the backlog.
     private func transcribeSingle(
         url: URL,
         primaryLocale: String,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> FileImportResult {
-        let engine = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: primaryLocale))
-        let log = TurnLog(startedAt: Date())
-        let session: (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation)
-        do {
-            // Timed handler: the recognizer's audio-clock span drives both the turn's
-            // time and `Meeting.segments`, so an imported file's segments are as real
-            // as a live recording's (the whole file is one "Me" speaker).
-            session = try await engine.beginSession(timedSegmentHandler: { seg in
-                log.add(.me, seg.text, at: seg.start, end: seg.end)
-            })
-        } catch {
-            throw FileImportError.speechUnavailable
-        }
-
-        let duration: Double
-        do {
-            duration = try await decodeAndFeed(url: url, target: session.format, onProgress: onProgress) { buffer in
-                session.continuation.yield(AnalyzerInput(buffer: buffer))
+        let openWindow: () async throws -> (format: AVAudioFormat, session: ImportSession) = {
+            let engine = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: primaryLocale))
+            let box = ChunkBox()
+            let live: (format: AVAudioFormat, continuation: AsyncStream<AnalyzerInput>.Continuation)
+            do {
+                // Timed handler: the recognizer's audio-clock span drives both the turn's
+                // time and `Meeting.segments`, so an imported file's segments are as real
+                // as a live recording's (the whole file is one "Me" lane).
+                live = try await engine.beginSession(timedSegmentHandler: { seg in
+                    box.add(ImportChunk(text: seg.text, start: seg.start, end: seg.end, words: seg.words))
+                })
+            } catch {
+                throw FileImportError.speechUnavailable
             }
-        } catch {
-            session.continuation.finish()
-            _ = await engine.finishSessionDetailed()
-            throw error
+            let session = ImportSession(
+                feed: { live.continuation.yield(AnalyzerInput(buffer: $0)) },
+                finish: {
+                    live.continuation.finish()
+                    _ = await engine.finishSessionDetailed(finalizeTimeoutSeconds: ImportWindowing.finalizeTimeout)
+                    return box.take()
+                })
+            return (live.format, session)
         }
-
-        session.continuation.finish()
-        _ = await engine.finishSessionDetailed()
-
-        let snapshot = log.snapshot()
-        let transcript = MeetingTranscriptRenderer.render(snapshot)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !transcript.isEmpty else { throw FileImportError.emptyTranscript }
-        let segments = MeetingTranscriptRenderer.segments(from: snapshot)
-        return FileImportResult(transcript: transcript, durationSec: duration, segments: segments)
+        let firstWindow = try await openWindow()
+        return try await runWindows(url: url, format: firstWindow.format, first: firstWindow.session,
+                                    open: { try await openWindow().session }, onProgress: onProgress)
     }
 
     /// Multilingual path: fan the decoded chunks into `MultiLangStreamTranscriber`'s
-    /// continuation (identical to how `MeetingRecorder` feeds it), then resolve the
-    /// per-language vote at the end. Returns nil if the lanes couldn't start (the caller
-    /// then uses the single-locale path).
+    /// continuation (identical to how `MeetingRecorder` feeds it), one transcriber per
+    /// window (see `ImportWindowing`), resolving the per-language vote at each window's
+    /// end. Returns nil if the lanes couldn't start (the caller then uses the
+    /// single-locale path).
     private func transcribeMultiLang(
         url: URL,
         primaryLocale: String,
         distinct: [String],
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> FileImportResult? {
-        let multi = MultiLangStreamTranscriber()
-        guard let session = try? await multi.start(localeIDs: distinct) else {
-            await multi.cancel()
-            return nil
+        let openWindow: () async -> (format: AVAudioFormat, session: ImportSession)? = {
+            let multi = MultiLangStreamTranscriber()
+            guard let live = try? await multi.start(localeIDs: distinct) else {
+                await multi.cancel()
+                return nil
+            }
+            let session = ImportSession(
+                feed: { live.continuation.yield(AnalyzerInput(buffer: $0)) },
+                finish: {
+                    live.continuation.finish()
+                    let spans = await multi.finish(anchorLocale: primaryLocale,
+                                                   finalizeTimeout: ImportWindowing.finalizeTimeout)
+                    return spans.map {
+                        ImportChunk(text: $0.text, start: $0.start, end: $0.end,
+                                    words: $0.words.isEmpty ? nil : $0.words)
+                    }
+                })
+            return (live.format, session)
+        }
+        guard let firstWindow = await openWindow() else { return nil }
+        return try await runWindows(
+            url: url, format: firstWindow.format, first: firstWindow.session,
+            open: {
+                guard let next = await openWindow() else { throw FileImportError.speechUnavailable }
+                return next.session
+            }, onProgress: onProgress)
+    }
+
+    /// Shared tail of both paths: decode `url` through the windowed sessions (teeing the
+    /// converted audio to a temp WAV for diarization when the models exist), then build the
+    /// timed transcript on the single "Me" lane.
+    private func runWindows(
+        url: URL,
+        format: AVAudioFormat,
+        first: ImportSession,
+        open: @escaping () async throws -> ImportSession,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws -> FileImportResult {
+        let tee: MeetingDiarizationTee? = teeLaneAudio()
+            ? MeetingDiarizationTee(url: MeetingDiarizationTemp.url(meetingID: UUID(), lane: SpeakerLabels.me))
+            : nil
+        func discardTee() {
+            if let tee { tee.close(); try? FileManager.default.removeItem(at: tee.url) }
         }
 
+        let windower = ImportWindower(sampleRate: format.sampleRate, first: first, open: open)
         let duration: Double
         do {
-            duration = try await decodeAndFeed(url: url, target: session.format, onProgress: onProgress) { buffer in
-                session.continuation.yield(AnalyzerInput(buffer: buffer))
+            duration = try await decodeAndFeed(url: url, target: format, onProgress: onProgress) { buffer in
+                tee?.append(buffer)
+                try await windower.feed(buffer)
             }
         } catch {
-            session.continuation.finish()
-            _ = await multi.finish(anchorLocale: primaryLocale)
+            await windower.abort()
+            discardTee()
             throw error
         }
+        let chunks = await windower.finish()
 
-        session.continuation.finish()
-        let spans = await multi.finish(anchorLocale: primaryLocale)
-
-        // Rebuild a turn log from the language-routed spans, one timed turn per span, so
-        // mid-file language switches survive into the rendered transcript AND the
-        // persisted per-segment timings.
         let log = TurnLog(startedAt: Date())
-        log.replace(.me, withTimedTurns: spans.map { (elapsed: $0.start, text: $0.text, end: $0.end) })
+        for c in chunks { log.add(.me, c.text, at: c.start, end: c.end, words: c.words) }
         let snapshot = log.snapshot()
         let transcript = MeetingTranscriptRenderer.render(snapshot)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !transcript.isEmpty else { throw FileImportError.emptyTranscript }
-        let segments = MeetingTranscriptRenderer.segments(from: snapshot)
-        return FileImportResult(transcript: transcript, durationSec: duration, segments: segments)
+        guard !transcript.isEmpty else {
+            discardTee()
+            throw FileImportError.emptyTranscript
+        }
+        let timed = MeetingTranscriptRenderer.segmentsWithWords(from: snapshot)
+        let laneURL = tee?.close()?.url
+        return FileImportResult(transcript: transcript, durationSec: duration,
+                                segments: timed?.segments, words: timed?.words, laneAudioURL: laneURL)
+    }
+
+    /// Collects one window's chunks from the recognizer's result handler (which runs off
+    /// the engine's actor).
+    private final class ChunkBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var chunks: [ImportChunk] = []
+        func add(_ c: ImportChunk) { lock.withLock { chunks.append(c) } }
+        func take() -> [ImportChunk] { lock.withLock { let out = chunks; chunks = []; return out } }
     }
 
     // MARK: Incremental decode
@@ -292,12 +350,12 @@ actor FileImportEngine: FileImporting {
         url: URL,
         target: AVAudioFormat,
         onProgress: @escaping @Sendable (Double) -> Void,
-        feed: (AVAudioPCMBuffer) -> Void
+        feed: (AVAudioPCMBuffer) async throws -> Void
     ) async throws -> Double {
         if ImportableMedia.isVideo(url) {
             return try await decodeVideo(url: url, target: target, onProgress: onProgress, feed: feed)
         }
-        return try decodeAudioFile(url: url, target: target, onProgress: onProgress, feed: feed)
+        return try await decodeAudioFile(url: url, target: target, onProgress: onProgress, feed: feed)
     }
 
     /// Incremental `AVAudioFile` reader: reads a fixed frame count per iteration,
@@ -307,8 +365,8 @@ actor FileImportEngine: FileImporting {
         url: URL,
         target: AVAudioFormat,
         onProgress: @escaping @Sendable (Double) -> Void,
-        feed: (AVAudioPCMBuffer) -> Void
-    ) throws -> Double {
+        feed: (AVAudioPCMBuffer) async throws -> Void
+    ) async throws -> Double {
         guard let file = try? AVAudioFile(forReading: url) else {
             throw FileImportError.cannotOpen(url.lastPathComponent)
         }
@@ -340,7 +398,7 @@ actor FileImportEngine: FileImporting {
             framesRead += AVAudioFramePosition(got)
 
             if let converted = converter.convert(chunk, to: target), converted.frameLength > 0 {
-                feed(converted)
+                try await feed(converted)
             }
             let fraction = totalFrames > 0 ? min(1, Double(framesRead) / Double(totalFrames)) : 1
             onProgress(fraction)
@@ -357,7 +415,7 @@ actor FileImportEngine: FileImporting {
         url: URL,
         target: AVAudioFormat,
         onProgress: @escaping @Sendable (Double) -> Void,
-        feed: (AVAudioPCMBuffer) -> Void
+        feed: (AVAudioPCMBuffer) async throws -> Void
     ) async throws -> Double {
         let asset = AVURLAsset(url: url)
         // macOS 13+ prefers the async loaders over the deprecated sync `.tracks`/`.duration`.
@@ -401,7 +459,7 @@ actor FileImportEngine: FileImporting {
             guard let sample = output.copyNextSampleBuffer() else { break }
             guard let pcm = Self.pcmBuffer(from: sample) else { continue }
             if let converted = converter.convert(pcm, to: target), converted.frameLength > 0 {
-                feed(converted)
+                try await feed(converted)
             }
             // Progress by presentation time / total duration — the reader has no frame
             // count up front, but sample timestamps map cleanly onto the known duration.
@@ -499,6 +557,14 @@ final class FileImportCoordinator: ObservableObject {
     /// slow). Defaults to the real `MeetingSummarizer`; returns "" when the model isn't
     /// available, exactly as before.
     private let summarize: @Sendable (String) async -> String
+    /// The post-save speaker-diarization pass, injected from AppDelegate (it is the
+    /// recorder's own `diarizationStep`, so an import gets the same models, own-voice
+    /// profile, time box and circuit breaker as a recorded meeting). Nil (tests) = skip.
+    typealias Diarize = @MainActor (
+        _ id: UUID, _ inputs: [MeetingDiarizationPipeline.LaneInput], _ segments: [MeetingSegment]?,
+        _ words: [[SegmentWord]?]?, _ transcript: String, _ durationSec: Double
+    ) async -> MeetingRecorder.DiarizationStep
+    private let diarize: Diarize?
 
     /// The user's spoken-language config + live-session probes, injected from AppDelegate
     /// (mirrors how `MeetingRecorder` is wired). Imports must not run while any of these
@@ -538,8 +604,10 @@ final class FileImportCoordinator: ObservableObject {
         isProcessing: @escaping () -> Bool,
         isRecording: @escaping () -> Bool,
         importer: FileImporting = FileImportEngine(),
-        summarize: (@Sendable (String) async -> String)? = nil
+        summarize: (@Sendable (String) async -> String)? = nil,
+        diarize: Diarize? = nil
     ) {
+        self.diarize = diarize
         self.meetingStore = meetingStore
         self.contextGraph = contextGraph
         self.primaryLocale = primaryLocale
@@ -669,6 +737,11 @@ final class FileImportCoordinator: ObservableObject {
             imported: imported, skipped: skips, evicted: evicted)
     }
 
+    /// Why a lone file was skipped as a duplicate, and how to import it again.
+    static func alreadyImportedMessage(_ name: String) -> String {
+        String(format: "“%@” is already in your meetings. Delete that meeting first if you want to import the file again.".loc, name)
+    }
+
     /// Build the human completion line: "11 imported, 1 skipped: foo.mp3", appending a
     /// one-line eviction note when the retention cap trimmed the index. Second person,
     /// honest, no invented metrics — just what happened.
@@ -721,6 +794,9 @@ final class FileImportCoordinator: ObservableObject {
         let dupeMarker = "(imported: \(item.fileName))"
         if meetingStore.meetings.contains(where: { $0.source.contains(dupeMarker) }) {
             skipped.append((name: item.fileName, reason: "already imported"))
+            // The batch summary only lists the name, so a lone re-import (the usual way to
+            // retry) would read as a silent no-op. Say why, inline.
+            if batchTotal <= 1 { lastError = Self.alreadyImportedMessage(item.fileName) }
             return
         }
 
@@ -747,6 +823,10 @@ final class FileImportCoordinator: ObservableObject {
             if batchTotal <= 1 { lastError = error.localizedDescription }
             return
         }
+
+        // The lane audio is ours to delete unless it is handed to the diarization pass.
+        var laneAudio = result.laneAudioURL
+        defer { if let laneAudio { MeetingDiarizationTemp.remove([laneAudio]) } }
 
         guard generation == self.generation, !Task.isCancelled else { return }
 
@@ -797,6 +877,24 @@ final class FileImportCoordinator: ObservableObject {
         let provenance = Provenance(source: .meeting, sourceID: id.uuidString,
                                     dateUnix: start.timeIntervalSince1970, snippet: nil)
         contextGraph.ingest(ContextGraphExtractor.candidates(from: result.transcript), provenance: provenance)
+
+        // Speaker labels, exactly like a recorded meeting: one "Me" lane, split where the
+        // speaker changes, "Me" only when the own-voice profile matches. Runs AFTER the
+        // save and off the queue, so a slow, failed or timed-out pass can never lose or
+        // delay the transcript (and never holds up the next file).
+        if let lane = laneAudio, let diarize, let segments = result.segments, !segments.isEmpty {
+            laneAudio = nil // handed over: the pass deletes it
+            let transcript = result.transcript, duration = result.durationSec, words = result.words
+            Task { @MainActor [weak self] in
+                let step = await diarize(
+                    id, [.init(lane: SpeakerLabels.me, fileURL: lane)], segments, words, transcript, duration)
+                MeetingDiarizationTemp.remove([lane])
+                guard let self, var current = self.meetingStore.meetings.first(where: { $0.id == id }) else { return }
+                if let count = step.speakerCount { current.speakerCount = count }
+                if let state = step.state { current.diarizationState = state.rawValue }
+                self.meetingStore.update(current)
+            }
+        }
     }
 
     private func updateProgress(item: Item, fraction: Double) {

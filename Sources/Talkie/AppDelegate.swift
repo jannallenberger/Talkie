@@ -356,7 +356,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             spokenLanguages: { [weak self] in self?.settings.spokenLanguages ?? [] },
             isDictating: { [weak self] in self?.isDictating == true },
             isProcessing: { [weak self] in self?.isProcessing == true },
-            isRecording: { [weak self] in self?.meetingRecorder?.isRecording == true }
+            isRecording: { [weak self] in self?.meetingRecorder?.isRecording == true },
+            diarize: { [weak self] id, inputs, segments, words, transcript, duration in
+                guard let recorder = self?.meetingRecorder else {
+                    MeetingDiarizationTemp.remove(inputs.map(\.fileURL))
+                    return MeetingRecorder.DiarizationStep(transcript: transcript)
+                }
+                return await recorder.importDiarizationStep(
+                    id: id, inputs: inputs, segments: segments, words: words,
+                    transcript: transcript, durationSec: duration)
+            }
         )
 
         // Watched-inbox folder (D6): auto-transcribe audio/video that lands in a folder the
