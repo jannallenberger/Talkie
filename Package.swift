@@ -140,7 +140,7 @@ var targets: [Target] = [
     ),
     .testTarget(
         name: "TalkieTests",
-        dependencies: ["Talkie"],
+        dependencies: ["Talkie", "TalkieDiarization"],
         path: "Tests/TalkieTests",
         swiftSettings: [
             .swiftLanguageMode(.v6),

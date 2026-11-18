@@ -14,6 +14,25 @@ struct MeetingSegment: Codable, Hashable, Sendable {
     var start: Double
     var end: Double
     var text: String
+    /// The capture lane this segment came from ("Me" = mic, "Them" = system audio),
+    /// set ONLY when speaker diarization rewrote `speaker` to a person label
+    /// ("Speaker 2"). Kept so click-to-play still finds the right kept-audio file —
+    /// use `audioKey`, not `speaker`, to resolve audio. Nil for every pre-diarization
+    /// segment (the label IS the lane then), so old notes decode and render unchanged.
+    var lane: String? = nil
+
+    /// The key that selects this segment's kept audio file in `Meeting.audioFiles`.
+    var audioKey: String { lane ?? speaker }
+}
+
+/// How the post-stop speaker-diarization pass ended for a meeting.
+enum DiarizationState: String, Codable, Sendable {
+    /// People were told apart and the labels rewritten.
+    case applied
+    /// Ran, found at most one person per lane: Me/Them kept exactly as before.
+    case unchanged
+    /// Ran out of time, or failed: Me/Them kept exactly as before.
+    case timedOut, failed
 }
 
 /// One topic boundary in a meeting: a short section-heading label and the
@@ -74,7 +93,7 @@ extension Meeting {
         // The subset of segments that belong to this file, keeping original indices so
         // the caller can map the result straight back onto `segments`.
         let mine = segments.enumerated().filter {
-            audioFileName(forSpeaker: $0.element.speaker, in: audioFiles) == fileName
+            audioFileName(forSpeaker: $0.element.audioKey, in: audioFiles) == fileName
         }
         guard !mine.isEmpty else { return nil }
         var current: Int?
@@ -136,6 +155,13 @@ struct Meeting: Codable, Identifiable, Hashable {
     /// are removed with the meeting by `MeetingStore.delete`, and clicking a transcript
     /// segment seeks the matching stream's file to that moment (`MeetingsView`).
     var audioFiles: [String: String]? = nil
+    /// Distinct people the diarization pass found (Me included). Nil for meetings
+    /// recorded before speaker diarization and for ones it never completed on.
+    var speakerCount: Int? = nil
+    /// How the diarization pass ended; nil = never ran (old note, models absent).
+    /// Stored as the raw string so a newer build's unknown state can't break decoding
+    /// in an older one; read it through `diarization`.
+    var diarizationState: String? = nil
 
     var date: Date { Date(timeIntervalSince1970: startUnix) }
 }
@@ -160,7 +186,11 @@ extension Meeting {
         segments = try c.decodeIfPresent([MeetingSegment].self, forKey: .segments)
         chapters = try c.decodeIfPresent([Chapter].self, forKey: .chapters)
         audioFiles = try c.decodeIfPresent([String: String].self, forKey: .audioFiles)
+        speakerCount = try c.decodeIfPresent(Int.self, forKey: .speakerCount)
+        diarizationState = try c.decodeIfPresent(String.self, forKey: .diarizationState)
     }
+
+    var diarization: DiarizationState? { diarizationState.flatMap(DiarizationState.init(rawValue:)) }
 }
 
 /// Summarizes a meeting transcript on-device (decisions + action items + overview).

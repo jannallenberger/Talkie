@@ -128,11 +128,28 @@ enum MeetingTranscriptRenderer {
     static func render(_ turns: [TurnLog.Turn], duration: TimeInterval? = nil) -> String {
         let prepared = duration.map { decollapse(turns, duration: $0) } ?? turns
         let sorted = prepared.sorted { $0.elapsed < $1.elapsed }
+        return renderLines(sorted.map { (elapsed: $0.elapsed, label: $0.speaker.rawValue, text: $0.text) })
+    }
+
+    /// Re-render a transcript from persisted segments whose speaker labels may be
+    /// diarized people ("Speaker 2") rather than the two lane names. Same layout rules
+    /// as `render` (labels appear once at least two distinct speakers exist; same
+    /// coalescing), so for Me/Them segments built by `segments(from:)` it returns the
+    /// identical string. Segments are already de-collapsed, so no `duration` is needed.
+    static func render(segments: [MeetingSegment]) -> String {
+        // Index tiebreak: segments are already in transcript order, so equal starts keep it.
+        let sorted = segments.enumerated()
+            .sorted { $0.element.start != $1.element.start ? $0.element.start < $1.element.start : $0.offset < $1.offset }
+            .map(\.element)
+        return renderLines(sorted.map { (elapsed: $0.start, label: $0.speaker, text: $0.text) })
+    }
+
+    /// The shared layout core: items must already be sorted by `elapsed`.
+    private static func renderLines(_ sorted: [(elapsed: TimeInterval, label: String, text: String)]) -> String {
         guard !sorted.isEmpty else { return "" }
 
-        let speakers = sorted.reduce(into: [MeetingSpeaker]()) { acc, turn in
-            if !acc.contains(turn.speaker) { acc.append(turn.speaker) }
-        }
+        var speakers: [String] = []
+        for turn in sorted where !speakers.contains(turn.label) { speakers.append(turn.label) }
 
         // Solo (only one side spoke) → plain joined transcript (Phase 1 output shape).
         if speakers.count <= 1 {
@@ -144,19 +161,19 @@ enum MeetingTranscriptRenderer {
         // `coalesceMaxGap` of each other — a larger jump (a long pause, or the spread
         // pieces a de-collapsed stall produces) starts a fresh line, so a 35-minute
         // stall can never render as one block again.
-        var blocks: [(elapsed: TimeInterval, last: TimeInterval, speaker: MeetingSpeaker, text: String)] = []
+        var blocks: [(elapsed: TimeInterval, last: TimeInterval, label: String, text: String)] = []
         for turn in sorted {
-            if var block = blocks.last, block.speaker == turn.speaker,
+            if var block = blocks.last, block.label == turn.label,
                turn.elapsed - block.last <= coalesceMaxGap {
                 block.text += " " + turn.text
                 block.last = turn.elapsed
                 blocks[blocks.count - 1] = block
             } else {
-                blocks.append((turn.elapsed, turn.elapsed, turn.speaker, turn.text))
+                blocks.append((turn.elapsed, turn.elapsed, turn.label, turn.text))
             }
         }
 
-        let lines = blocks.map { "[\(timecode($0.elapsed))] \($0.speaker.rawValue): \($0.text)" }
+        let lines = blocks.map { "[\(timecode($0.elapsed))] \($0.label): \($0.text)" }
         return lines.joined(separator: "\n")
     }
 
