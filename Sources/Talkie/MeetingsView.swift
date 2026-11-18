@@ -92,6 +92,7 @@ struct MeetingsView: View {
                             MeetingRow(
                                 meeting: meeting,
                                 isSummarizing: recorder.summarizingMeetingIDs.contains(meeting.id),
+                                isDiarizing: recorder.diarizingMeetingIDs.contains(meeting.id),
                                 profileImage: profileImage,
                                 folderURL: store.folderURL,
                                 onReveal: { reveal(meeting) },
@@ -249,7 +250,7 @@ struct MeetingsView: View {
                     Text("Record a meeting")
                         .font(.talkieHeading(15, weight: .semibold))
                         .foregroundStyle(Theme.ink)
-                    Text("Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them.")
+                    Text("Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically.")
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.inkTertiary)
                 }
@@ -680,11 +681,14 @@ private struct MeetingRow: View, Equatable {
     // Safe here — it only reads Sendable `let`s (`Meeting`, `URL`).
     nonisolated static func == (lhs: MeetingRow, rhs: MeetingRow) -> Bool {
         lhs.meeting == rhs.meeting && lhs.folderURL == rhs.folderURL && lhs.isSummarizing == rhs.isSummarizing
+            && lhs.isDiarizing == rhs.isDiarizing
     }
 
     let meeting: Meeting
     /// The note is saved; its AI summary is still being written in the background.
     let isSummarizing: Bool
+    /// The background speaker-separation pass is still pending or running for this note.
+    let isDiarizing: Bool
     /// L7: the user's profile picture, shown leading the row header ONLY when a photo
     /// is set. In-app display only — never written into the exported note.
     @ObservedObject var profileImage: ProfileImageStore
@@ -810,7 +814,18 @@ private struct MeetingRow: View, Equatable {
                 }
             }
 
-            if isSummarizing {
+            if isDiarizing {
+                // Transient: the row's `isDiarizing` flips off when the pass finishes or
+                // fails, so this disappears on its own. Wins over the summary line
+                // because the summary waits for the pass.
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Identifying speakers…".loc)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.inkTertiary)
+                }
+                .transition(.opacity)
+            } else if isSummarizing {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
                     Text("Writing the summary… the transcript is already saved.".loc)
@@ -838,6 +853,9 @@ private struct MeetingRow: View, Equatable {
                     MeetingPlaybackView(segments: segments,
                                         audioFiles: meeting.audioFiles,
                                         folderURL: folderURL)
+                        .padding(.top, 4)
+                } else if SpeakerPresentation.showsLabels(meeting.segments), let segments = meeting.segments {
+                    SpeakerTurnsView(segments: segments)
                         .padding(.top, 4)
                 } else {
                     Text(meeting.transcript)
@@ -1113,9 +1131,20 @@ private struct MeetingPlaybackView: View {
             at: currentTime, segments: segments, fileName: currentFile, audioFiles: audioFiles)
     }
 
+    private var showLabels: Bool { SpeakerPresentation.showsLabels(segments) }
+    private var colorSlots: [String: Int] { SpeakerPresentation.colorIndices(for: segments.map(\.speaker)) }
+    private var turnStarts: [Bool] { SpeakerPresentation.turnStarts(segments) }
+
     var body: some View {
+        let slots = colorSlots
+        let starts = turnStarts
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
+                if showLabels, starts[index] {
+                    SpeakerLabel(speaker: segment.speaker, slot: slots[segment.speaker] ?? 0)
+                        .padding(.leading, 6)
+                        .padding(.top, index == 0 ? 0 : 8)
+                }
                 segmentRow(index: index, segment: segment)
             }
             if loadError {
@@ -1131,7 +1160,7 @@ private struct MeetingPlaybackView: View {
 
     @ViewBuilder
     private func segmentRow(index: Int, segment: MeetingSegment) -> some View {
-        let playable = Meeting.audioFileName(forSpeaker: segment.speaker, in: audioFiles) != nil
+        let playable = Meeting.audioFileName(forSpeaker: segment.audioKey, in: audioFiles) != nil
         let isActive = activeIndex == index
         Button {
             toggle(segment: segment)
@@ -1169,7 +1198,7 @@ private struct MeetingPlaybackView: View {
     /// segment's file to its start and play. Crossing to a segment on a different stream
     /// (Me↔Them) loads that file first.
     private func toggle(segment: MeetingSegment) {
-        guard let name = Meeting.audioFileName(forSpeaker: segment.speaker, in: audioFiles) else { return }
+        guard let name = Meeting.audioFileName(forSpeaker: segment.audioKey, in: audioFiles) else { return }
         // Already playing this exact moment's stream → treat the tap as pause.
         if isPlaying, currentFile == name,
            Meeting.activeSegmentIndex(at: currentTime, segments: segments,
@@ -1229,6 +1258,48 @@ private struct MeetingPlaybackView: View {
 
     private func indexOf(_ segment: MeetingSegment) -> Int? {
         segments.firstIndex(of: segment)
+    }
+}
+
+/// A small speaker name above a turn: tinted by the speaker's stable accent slot. Reads
+/// as a caption — no pill, no fill — so it aids scanning without decorating.
+private struct SpeakerLabel: View {
+    let speaker: String
+    let slot: Int
+
+    static func color(slot: Int) -> Color {
+        let palette: [Color] = [Theme.coral, Theme.featherGold, Theme.featherGreen,
+                                Theme.featherPlum, Theme.featherCoral, Theme.featherBlue]
+        return palette[max(0, slot) % palette.count]
+    }
+
+    var body: some View {
+        Text(SpeakerPresentation.displayName(for: speaker))
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Self.color(slot: slot))
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// The read-only transcript for a meeting with two or more speakers (no kept audio):
+/// consecutive same-speaker segments merged into one turn under a single label.
+private struct SpeakerTurnsView: View {
+    let segments: [MeetingSegment]
+
+    var body: some View {
+        let slots = SpeakerPresentation.colorIndices(for: segments.map(\.speaker))
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(SpeakerPresentation.turns(segments).enumerated()), id: \.offset) { _, turn in
+                VStack(alignment: .leading, spacing: 1) {
+                    SpeakerLabel(speaker: turn.speaker, slot: slots[turn.speaker] ?? 0)
+                    Text(turn.text)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 }
 

@@ -12,7 +12,7 @@
 "Auto (multilingual)" = "Automático (multilingüe)";
 "Back" = "Atrás";
 "Cancel" = "Cancelar";
-"Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them." = "Captura tu voz y la de los demás participantes en la llamada (Zoom, Meet, Teams) — etiquetadas como Yo / Ellos.";
+"Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically." = "Captura tu voz y la de los demás participantes en la llamada (Zoom, Meet, Teams) — y distingue a cada persona automáticamente.";
 "Case sensitive" = "Distinguir mayúsculas";
 "Choose project folders…" = "Elegir carpetas de proyecto…";
 "Cleanup style — tap to change how Talkie polishes this dictation" = "Estilo de limpieza — toca para cambiar cómo Talkie pule este dictado";
@@ -857,3 +857,9 @@
 
 /* Meeting summary in background */
 "Writing the summary… the transcript is already saved." = "Escribiendo el resumen… la transcripción ya está guardada.";
+
+/* Meeting speaker labels (display only; stored labels stay English) */
+"Me" = "Yo";
+"Them" = "Ellos";
+"Speaker %d" = "Hablante %d";
+"Identifying speakers…" = "Identificando hablantes…";
