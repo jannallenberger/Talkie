@@ -106,10 +106,15 @@ filenames. Then, when you dictate a filename, it snaps to the real file — say
 correctly cased. Your project's filenames also bias recognition. Only filenames
 are read, never file contents.
 
-> Talkie's look follows a small brand system — the layered-clay scarlet macaw
-> meets Anthropic's warm "Claude" canvas. See [docs/BRAND.md](docs/BRAND.md), and
+> Talkie's look follows a small brand system — the layered-clay scarlet macaw on
+> a clean native macOS 26 canvas with macaw-blue chrome. See [docs/BRAND.md](docs/BRAND.md), and
 > [docs/CLAUDE_DESIGN_PROMPT.md](docs/CLAUDE_DESIGN_PROMPT.md) for a ready-to-use
 > prompt to redesign the app with Claude.
+>
+> **Building UI?** [docs/DESIGN_GUIDELINES.md](docs/DESIGN_GUIDELINES.md) is the
+> binding rulebook (colour roles, buttons, popovers, forms, affordances). Compose
+> every new surface from the shared components in `DesignSystem.swift` and render a
+> light + dark snapshot of it before review.
 
 ## Claude Code plugin
 
