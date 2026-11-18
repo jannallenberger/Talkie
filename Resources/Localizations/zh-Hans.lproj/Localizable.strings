@@ -1071,3 +1071,6 @@
 "Speaker recognition isn’t available on this Mac." = "此 Mac 不支持说话人识别。";
 "This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "此会议中此人的声音已不可用。若要以后使用此功能，请随会议笔记保留音频。";
 "Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "你选择在会议中识别的人的声纹。它们仅存储在这台 Mac 上；删除后将永久移除。";
+"Speakers" = "说话人";
+"Name saved, not added to the dictionary: it is too short to tell apart from other words." = "名字已保存，但未加入词典：它太短，无法与其他词区分。";
+"Name saved, not added to the dictionary: it is also an everyday word, and dictation would start changing that word." = "名字已保存，但未加入词典：它也是日常用词，听写会开始改动这个词。";

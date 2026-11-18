@@ -1071,3 +1071,6 @@
 "Speaker recognition isn’t available on this Mac." = "O reconhecimento de falantes não está disponível neste Mac.";
 "This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "A voz desta pessoa não está mais disponível para esta reunião. Mantenha o áudio com as notas da reunião para usar isso depois.";
 "Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "Impressões de voz das pessoas que você escolheu reconhecer em reuniões. Ficam armazenadas apenas neste Mac; apagar uma a remove para sempre.";
+"Speakers" = "Participantes";
+"Name saved, not added to the dictionary: it is too short to tell apart from other words." = "Nome salvo, não adicionado ao dicionário: é curto demais para distinguir de outras palavras.";
+"Name saved, not added to the dictionary: it is also an everyday word, and dictation would start changing that word." = "Nome salvo, não adicionado ao dicionário: também é uma palavra comum, e o ditado passaria a alterar essa palavra.";

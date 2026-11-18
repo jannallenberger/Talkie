@@ -54,6 +54,7 @@ struct SpeakerNamePopover: View {
     @State private var remembered = false
     @State private var working = false
     @State private var message: String?
+    @State private var vocabularyNote: String?
 
     private var current: SpeakerName? { context.names[label] }
     private var availability: MeetingRecorder.VoiceRememberAvailability {
@@ -64,12 +65,15 @@ struct SpeakerNamePopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
-                Eyebrow(text: "Name this speaker".loc)
+                Eyebrow(text: "Name this speaker")
                 TextField("Name".loc, text: $draft)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
                     .onSubmit(save)
-                if let note = SpeakerNamingCopy.sourceNote(current?.source) {
+                if let note = vocabularyNote {
+                    Text(note).font(.system(size: 11)).foregroundStyle(Theme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if let note = SpeakerNamingCopy.sourceNote(current?.source) {
                     Text(note).font(.system(size: 11)).foregroundStyle(Theme.inkTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -122,8 +126,12 @@ struct SpeakerNamePopover: View {
 
     private func save() {
         guard !trimmed.isEmpty else { return }
-        context.recorder.setSpeakerName(trimmed, label: label, meetingID: context.meetingID)
-        dismiss()
+        // A name not added to the dictionary keeps the popover open with the reason.
+        if let why = context.recorder.saveManualSpeakerName(trimmed, label: label, meetingID: context.meetingID) {
+            vocabularyNote = why
+        } else {
+            dismiss()
+        }
     }
 
     private func setRemembered(_ on: Bool) {
@@ -136,7 +144,7 @@ struct SpeakerNamePopover: View {
         guard !trimmed.isEmpty else { return }
         // The voice is stored under the name shown here, so make that the speaker's name.
         if trimmed != current?.name {
-            context.recorder.setSpeakerName(trimmed, label: label, meetingID: context.meetingID)
+            vocabularyNote = context.recorder.saveManualSpeakerName(trimmed, label: label, meetingID: context.meetingID)
         }
         working = true
         let name = trimmed
@@ -145,6 +153,87 @@ struct SpeakerNamePopover: View {
             working = false
             remembered = outcome == .remembered
             message = SpeakerNamingCopy.outcomeMessage(outcome)
+        }
+    }
+}
+
+// MARK: - Speakers row (meeting detail header)
+
+/// One chip of the "Speakers" row. Pure so which chips appear is tested without a view.
+struct SpeakerChip: Equatable {
+    let label: String
+    /// The stored name, or nil (then the localized label is shown).
+    let name: String?
+    /// "Me" is shown plain and cannot be renamed.
+    let nameable: Bool
+    /// The name came from a remembered voice (shown with a waveform mark).
+    let voiceDerived: Bool
+
+    /// The chips for a meeting: one per speaker label in its segments — Me, Them,
+    /// Speaker 1…N (other labels such as an import's "Imported" are not people) — in
+    /// that order. Empty (no row) without segments or without any nameable speaker.
+    static func chips(for meeting: Meeting) -> [SpeakerChip] {
+        guard let segments = meeting.segments, !segments.isEmpty else { return [] }
+        var labels = Set<String>()
+        for s in segments where s.speaker == SpeakerLabels.me || s.speaker == SpeakerLabels.them
+            || SpeakerPresentation.speakerNumber(s.speaker) != nil { labels.insert(s.speaker) }
+        guard labels.contains(where: SpeakerNames.isNameable) else { return [] }
+        func rank(_ l: String) -> Int {
+            if l == SpeakerLabels.me { return -2 }
+            if l == SpeakerLabels.them { return -1 }
+            return SpeakerPresentation.speakerNumber(l) ?? Int.max
+        }
+        return labels.sorted { rank($0) < rank($1) }.map { l in
+            let n = SpeakerNames.name(for: l, in: meeting.speakerNames)
+            return SpeakerChip(label: l, name: n, nameable: SpeakerNames.isNameable(l),
+                               voiceDerived: n != nil && meeting.speakerNames?[l]?.source == .voice)
+        }
+    }
+}
+
+/// "Speakers" under the meta line: every speaker of the meeting as a small chip that
+/// opens the naming popover, whatever way the transcript itself is rendered.
+struct SpeakersRow: View {
+    let meeting: Meeting
+    @Environment(\.speakerNaming) private var naming
+
+    var body: some View {
+        let chips = SpeakerChip.chips(for: meeting)
+        if !chips.isEmpty {
+            HStack(spacing: 8) {
+                Eyebrow(text: "Speakers")
+                ForEach(chips, id: \.label) { chip in SpeakerChipView(chip: chip, naming: naming) }
+            }
+        }
+    }
+}
+
+private struct SpeakerChipView: View {
+    let chip: SpeakerChip
+    let naming: SpeakerNamingContext?
+    @State private var editing = false
+
+    private var title: some View {
+        HStack(spacing: 3) {
+            Text(chip.name ?? SpeakerPresentation.displayName(for: chip.label))
+            if chip.voiceDerived {
+                Image(systemName: "waveform").font(.system(size: 9, weight: .semibold))
+                    .accessibilityLabel("Recognised by voice".loc)
+            }
+        }
+    }
+
+    var body: some View {
+        if chip.nameable, let naming {
+            Button { editing = true } label: { title }
+                .buttonStyle(.talkie(.secondary, size: .small))
+                .help(chip.voiceDerived ? "Recognised by voice. Click to change the name.".loc : "Name this speaker".loc)
+                .pointerStyle(.link)
+                .popover(isPresented: $editing, arrowEdge: .bottom) {
+                    SpeakerNamePopover(label: chip.label, context: naming)
+                }
+        } else {
+            title.font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.inkSecondary)
         }
     }
 }

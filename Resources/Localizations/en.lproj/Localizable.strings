@@ -1082,3 +1082,6 @@
 "Speaker recognition isn’t available on this Mac." = "Speaker recognition isn’t available on this Mac.";
 "This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later.";
 "Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good.";
+"Speakers" = "Speakers";
+"Name saved, not added to the dictionary: it is too short to tell apart from other words." = "Name saved, not added to the dictionary: it is too short to tell apart from other words.";
+"Name saved, not added to the dictionary: it is also an everyday word, and dictation would start changing that word." = "Name saved, not added to the dictionary: it is also an everyday word, and dictation would start changing that word.";
