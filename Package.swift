@@ -158,6 +158,16 @@ var targets: [Target] = [
             .swiftLanguageMode(.v6),
         ]
     ),
+    // Opt-in end-to-end file harness (skips unless TALKIE_FILETEST_INPUT is set).
+    // Separate target so it builds in release (the main test target uses DEBUG-only hooks).
+    .testTarget(
+        name: "FileDiarizationHarnessTests",
+        dependencies: ["Talkie", "TalkieDiarization", "TalkieFileKit"],
+        path: "Tests/FileDiarizationHarnessTests",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+        ]
+    ),
     .testTarget(
         name: "TalkieTests",
         dependencies: ["Talkie", "TalkieDiarization"],
