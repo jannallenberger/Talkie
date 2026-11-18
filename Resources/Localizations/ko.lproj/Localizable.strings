@@ -12,7 +12,7 @@
 "Auto (multilingual)" = "자동(다국어)";
 "Back" = "뒤로";
 "Cancel" = "취소";
-"Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them." = "통화의 나와 다른 참가자(Zoom, Meet, Teams)를 캡처합니다 — 나 / 상대로 표시됩니다.";
+"Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically." = "통화의 나와 다른 참가자(Zoom, Meet, Teams)를 캡처하고 각 사람을 자동으로 구분합니다.";
 "Case sensitive" = "대소문자 구분";
 "Choose project folders…" = "프로젝트 폴더 선택…";
 "Cleanup style — tap to change how Talkie polishes this dictation" = "정리 스타일 — 탭하여 Talkie가 이 받아쓰기를 다듬는 방식을 변경";
@@ -857,3 +857,9 @@
 
 /* Meeting summary in background */
 "Writing the summary… the transcript is already saved." = "요약을 작성하는 중… 전사본은 이미 저장되었습니다.";
+
+/* Meeting speaker labels (display only; stored labels stay English) */
+"Me" = "나";
+"Them" = "상대";
+"Speaker %d" = "화자 %d";
+"Identifying speakers…" = "화자 식별 중…";

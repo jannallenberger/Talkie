@@ -12,7 +12,7 @@
 "Auto (multilingual)" = "自动（多语言）";
 "Back" = "返回";
 "Cancel" = "取消";
-"Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them." = "录制你和通话中的其他参与者（Zoom、Meet、Teams）——标注为“我 / 对方”。";
+"Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically." = "录制你和通话中的其他参与者（Zoom、Meet、Teams）——并自动区分每个人。";
 "Case sensitive" = "区分大小写";
 "Choose project folders…" = "选择项目文件夹…";
 "Cleanup style — tap to change how Talkie polishes this dictation" = "润色风格——点按可更改 Talkie 润色此听写的方式";
@@ -857,3 +857,9 @@
 
 /* Meeting summary in background */
 "Writing the summary… the transcript is already saved." = "正在撰写摘要… 转写内容已保存。";
+
+/* Meeting speaker labels (display only; stored labels stay English) */
+"Me" = "我";
+"Them" = "对方";
+"Speaker %d" = "发言人 %d";
+"Identifying speakers…" = "正在识别发言人…";

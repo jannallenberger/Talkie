@@ -12,7 +12,7 @@
 "Auto (multilingual)" = "自動（多言語）";
 "Back" = "戻る";
 "Cancel" = "キャンセル";
-"Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them." = "通話（Zoom、Meet、Teams）の自分と相手の音声を収録し、自分／相手としてラベル付けします。";
+"Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically." = "通話（Zoom、Meet、Teams）の自分と相手の音声を収録し、話者を自動で区別します。";
 "Case sensitive" = "大文字と小文字を区別";
 "Choose project folders…" = "プロジェクトフォルダを選択…";
 "Cleanup style — tap to change how Talkie polishes this dictation" = "整形スタイル — タップしてこの音声入力の整え方を変更";
@@ -857,3 +857,9 @@
 
 /* Meeting summary in background */
 "Writing the summary… the transcript is already saved." = "要約を作成中… 文字起こしは保存済みです。";
+
+/* Meeting speaker labels (display only; stored labels stay English) */
+"Me" = "自分";
+"Them" = "相手";
+"Speaker %d" = "話者 %d";
+"Identifying speakers…" = "話者を識別中…";
