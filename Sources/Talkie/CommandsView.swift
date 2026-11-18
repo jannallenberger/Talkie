@@ -210,12 +210,7 @@ private struct FormatPresetRow: View {
                         .font(.talkieHeading(14, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                     if preset.usesModel {
-                        Text("slower".loc)
-                            .font(.talkieHeading(11, weight: .medium))
-                            .foregroundStyle(Theme.inkSecondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(Theme.surfaceSunken))
+                        TalkieTag(text: "slower".loc)
                     }
                 }
                 Text(String(format: "Say \u{201C}%@\u{201D}".loc, preset.shownPhrase(uiLanguageCode: uiLanguageCode)))
@@ -266,22 +261,12 @@ private struct VoiceCommandRow: View {
     }
 }
 
-/// A key cap showing one of the user's real keys.
+/// A key cap showing one of the user's real keys (the shared `TalkieKeycap`).
 private struct CommandKeycap: View {
     let key: ActivationKey
 
     var body: some View {
-        HStack(spacing: 5) {
-            if let symbol = key.symbolName {
-                Image(systemName: symbol).font(.talkieHeading(12, weight: .semibold))
-            }
-            Text(key.displayName)
-        }
-        .font(.talkieHeading(13, weight: .semibold))
-        .foregroundStyle(Theme.ink)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.surfaceSunken))
+        TalkieKeycap(text: key.displayName, symbol: key.symbolName)
     }
 }
 

@@ -724,7 +724,8 @@ struct ReplayIntroductionCard: View {
                     // Defer a tick so the press settles before the window crossfades.
                     DispatchQueue.main.async { settings.hasOnboarded = false }
                 }
-                .buttonStyle(.talkie(.primary))
+                // Not the page's main action (the index rows are): secondary.
+                .buttonStyle(.talkie(.secondary))
                 .disabled(replaying)
             }
         }
@@ -1935,14 +1936,14 @@ struct DictionarySettings: View {
         TalkieScrollPage(spacing: 16, background: .none) {
                 TalkiePageHeader(title: "Dictionary",
                                  subtitle: "Names, brands, and jargon Talkie should spell correctly.") {
-                    Toggle("Learn from my edits", isOn: $settings.learnFromEdits)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .tint(Theme.coral)
-                        .fixedSize()
-                        .help("Auto-improve the dictionary.".loc)
-                        .padding(.trailing, 4)
                     importExportButtons
+                }
+
+                // Switches live in a card row, never in the page header.
+                SettingsCard {
+                    SettingsToggleRow(title: "Learn from my edits".loc,
+                                      subtitle: "Auto-improve the dictionary.".loc,
+                                      isOn: $settings.learnFromEdits)
                 }
 
                 // Custom vocabulary.

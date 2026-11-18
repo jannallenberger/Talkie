@@ -19,27 +19,23 @@ struct ActivationKeyRecorder: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
-            HStack(spacing: 10) {
-                if let symbol = key.symbolName {
-                    Label(key.displayName, systemImage: symbol)
-                        .foregroundStyle(Theme.ink)
-                } else {
-                    Text(key.displayName).foregroundStyle(Theme.ink)
-                }
+            HStack(spacing: 8) {
+                TalkieKeycap(text: key.displayName, symbol: key.symbolName)
+                    .accessibilityLabel(Text(verbatim: key.displayName))
+                // While listening the button is the one primary action on screen, so
+                // it is unmistakably "armed"; otherwise a plain secondary Change….
                 Button(recording ? "Press the key you want".loc : "Change…".loc) {
                     recording ? stop() : start()
                 }
+                .buttonStyle(.talkie(recording ? .primary : .secondary))
             }
             if recording {
-                Text("Press Esc to cancel".loc)
-                    .font(.caption).foregroundStyle(Theme.inkSecondary)
+                TalkieStatusLine(text: "Press Esc to cancel".loc, tone: .info)
             }
             if let message {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(messageIsRefusal ? Theme.coral : Theme.inkSecondary)
-                    .multilineTextAlignment(.trailing)
-                    .fixedSize(horizontal: false, vertical: true)
+                // A refusal is an error; a risky-but-saved key is a warning.
+                TalkieStatusLine(text: message, tone: messageIsRefusal ? .error : .warning)
+                    .frame(maxWidth: 320, alignment: .trailing)
             }
         }
         .onAppear { message = key.warning; messageIsRefusal = false }
