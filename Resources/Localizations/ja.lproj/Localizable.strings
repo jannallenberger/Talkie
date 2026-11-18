@@ -887,3 +887,10 @@
 "%d words" = "%d 語";
 "Click a line to hear that moment" = "行をクリックするとその場面を再生します";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "次の通話の前に「録音」を押すか、音声やビデオをここにドロップして文字起こしします。";
+
+/* Update reminder (build age, no network) */
+"This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you." = "このバージョンのTalkieは公開から%d日が経っています。Talkieはオンラインに接続しないため、確認できません。";
+"See the latest version" = "最新バージョンを見る";
+"Version %@ (build %@), built on %@" = "バージョン %@（ビルド %@）、%@ にビルド";
+"Version %@ (build %@)" = "バージョン %@（ビルド %@）";
+"Talkie never goes online, so it cannot check for updates." = "Talkieはオンラインに接続しないため、アップデートを確認できません。";

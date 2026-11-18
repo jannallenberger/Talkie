@@ -99,3 +99,5 @@
 # identifier on the REBRAND FREEZE list (mirrors "TalkieUpdaterAutoCheck" in
 # AppUpdater.swift), never user-visible, must not be converted.
 3 Sources/TalkieUpdater/UpdaterSupport.swift
+# W1 update reminder: +3 for the brief-mandated .loc keys ("This version of Talkie is N days old. Talkie never goes online..."); the keys double as localization lookups, so they stay literal.
+3 Sources/Talkie/UpdateReminder.swift

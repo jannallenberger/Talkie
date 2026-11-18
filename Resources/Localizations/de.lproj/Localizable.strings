@@ -887,3 +887,10 @@
 "%d words" = "%d Wörter";
 "Click a line to hear that moment" = "Klicken Sie auf eine Zeile, um diese Stelle zu hören";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "Drücken Sie vor Ihrem nächsten Anruf auf „Aufnehmen“ – oder ziehen Sie Audio oder Video hierher, um es zu transkribieren.";
+
+/* Update reminder (build age, no network) */
+"This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you." = "Diese Version von Talkie ist %d Tage alt. Talkie geht nie online und kann deshalb nicht für dich nachsehen.";
+"See the latest version" = "Neueste Version ansehen";
+"Version %@ (build %@), built on %@" = "Version %@ (Build %@), erstellt am %@";
+"Version %@ (build %@)" = "Version %@ (Build %@)";
+"Talkie never goes online, so it cannot check for updates." = "Talkie geht nie online und kann daher nicht nach Updates suchen.";

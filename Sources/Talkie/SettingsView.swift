@@ -466,6 +466,7 @@ private struct SettingsHome: View {
                                          subtitle: "Tools that ship only in development builds.",
                                          page: .developer)
                     }
+                    VersionRow()
                 }
                 .padding(28)
                 .frame(maxWidth: .infinity, alignment: .leading)

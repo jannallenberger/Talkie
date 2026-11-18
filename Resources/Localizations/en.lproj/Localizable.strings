@@ -898,3 +898,10 @@
 "%d words" = "%d words";
 "Click a line to hear that moment" = "Click a line to hear that moment";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "Press Record before your next call, or drop audio or video here to transcribe it.";
+
+/* Update reminder (build age, no network) */
+"This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you." = "This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you.";
+"See the latest version" = "See the latest version";
+"Version %@ (build %@), built on %@" = "Version %@ (build %@), built on %@";
+"Version %@ (build %@)" = "Version %@ (build %@)";
+"Talkie never goes online, so it cannot check for updates." = "Talkie never goes online, so it cannot check for updates.";

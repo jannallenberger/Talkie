@@ -60,6 +60,11 @@ struct DashboardView: View {
     /// "Add a photo" affordance when no photo is set (a set photo shows regardless).
     @State private var headerHovered = false
 
+    /// Update reminder: last dismissal (epoch seconds, 0 = never). Evaluated once per
+    /// appearance; no timers, no network.
+    @AppStorage("updateReminderDismissedAt") private var updateDismissedAt: Double = 0
+    @State private var updateDecision: UpdateReminder.Decision = .hidden
+
     /// The highest milestone tier the user has already been congratulated for.
     /// Persisted so the crossing banner fires ONCE per tier, never on relaunch.
     /// A raw threshold value (0 = none celebrated yet); we compare tiers by index.
@@ -76,6 +81,13 @@ struct DashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.section) {
                     header
+
+                    if case .show(let days) = updateDecision {
+                        UpdateReminderLine(days: days) {
+                            updateDismissedAt = Date().timeIntervalSince1970
+                            updateDecision = .hidden
+                        }
+                    }
 
                     if let banner = pendingCelebration {
                         MilestoneCelebrationBanner(
@@ -128,6 +140,11 @@ struct DashboardView: View {
             .background(LiveBackground(mood: .ambient))
             .scrollContentBackground(.hidden)
             .scrollEdgeEffectStyle(.soft, for: .top)
+            .onAppear {
+                updateDecision = UpdateReminder.decide(
+                    buildDate: UpdateReminder.bundleBuildDate, now: Date(),
+                    lastDismissed: updateDismissedAt > 0 ? Date(timeIntervalSince1970: updateDismissedAt) : nil)
+            }
             .navigationDestination(for: MilestoneRoute.self) { route in
                 switch route {
                 case .plumage:

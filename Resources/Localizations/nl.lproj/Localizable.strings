@@ -887,3 +887,10 @@
 "%d words" = "%d woorden";
 "Click a line to hear that moment" = "Klik op een regel om dat moment te horen";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "Druk op Opnemen voor je volgende gesprek, of sleep hier audio of video naartoe om het uit te schrijven.";
+
+/* Update reminder (build age, no network) */
+"This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you." = "Deze versie van Talkie is %d dagen oud. Talkie gaat nooit online en kan dus niet voor je controleren.";
+"See the latest version" = "Bekijk de nieuwste versie";
+"Version %@ (build %@), built on %@" = "Versie %@ (build %@), gebouwd op %@";
+"Version %@ (build %@)" = "Versie %@ (build %@)";
+"Talkie never goes online, so it cannot check for updates." = "Talkie gaat nooit online en kan dus niet op updates controleren.";

@@ -887,3 +887,10 @@
 "%d words" = "%d 个词";
 "Click a line to hear that moment" = "点击某一行即可收听那一刻";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "在下次通话前点按“录制”，或将音频或视频拖到这里进行转写。";
+
+/* Update reminder (build age, no network) */
+"This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you." = "此版本的 Talkie 已有 %d 天。Talkie 从不联网，因此无法为你检查更新。";
+"See the latest version" = "查看最新版本";
+"Version %@ (build %@), built on %@" = "版本 %@（构建 %@），构建于 %@";
+"Version %@ (build %@)" = "版本 %@（构建 %@）";
+"Talkie never goes online, so it cannot check for updates." = "Talkie 从不联网，因此无法检查更新。";

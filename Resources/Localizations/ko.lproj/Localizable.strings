@@ -887,3 +887,10 @@
 "%d words" = "%d단어";
 "Click a line to hear that moment" = "줄을 클릭하면 그 순간을 들을 수 있습니다";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "다음 통화 전에 녹음을 누르거나, 오디오나 비디오를 여기에 끌어다 놓아 전사하세요.";
+
+/* Update reminder (build age, no network) */
+"This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you." = "이 Talkie 버전은 빌드된 지 %d일이 되었습니다. Talkie는 온라인에 연결되지 않아 대신 확인할 수 없습니다.";
+"See the latest version" = "최신 버전 보기";
+"Version %@ (build %@), built on %@" = "버전 %@ (빌드 %@), %@에 빌드됨";
+"Version %@ (build %@)" = "버전 %@ (빌드 %@)";
+"Talkie never goes online, so it cannot check for updates." = "Talkie는 온라인에 연결되지 않아 업데이트를 확인할 수 없습니다.";
