@@ -273,6 +273,9 @@ enum MeetingDiarizationPipeline {
     static func run(
         inputs: [LaneInput],
         segments: [MeetingSegment],
+        /// Word timings per segment (aligned with `segments`), in memory only. Present
+        /// segments may be split where the speaker changes; absent ones keep one label.
+        words: [[SegmentWord]?]? = nil,
         diarizer: any LaneDiarizing,
         budgetSeconds: Double,
         bleedThreshold: Double = SpeakerLabelling.defaultBleedThreshold,
@@ -328,7 +331,7 @@ enum MeetingDiarizationPipeline {
         case .some(.failure(let f)): return .failed(f.message)
         case .some(.success(let outputs)):
             return .labelled(SpeakerLabelling.label(
-                segments: segments,
+                segments: segments, words: words,
                 mic: outputs[SpeakerLabels.me], system: outputs[SpeakerLabels.them],
                 bleedThreshold: bleedThreshold, resolveMe: resolveMe))
         }

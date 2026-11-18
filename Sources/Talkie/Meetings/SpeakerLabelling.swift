@@ -76,9 +76,15 @@ enum SpeakerLabelling {
     static let noOwnVoice: OwnVoiceResolver = { _ in nil }
 
     struct Result: Sendable, Equatable {
-        /// Final segments, same order/times/text as the input. Labels are rewritten and
-        /// `lane` is set only when `changed`.
+        /// Final segments. When not `changed` they are the input, untouched. When changed,
+        /// every input segment that carried word timings and whose speaker changed
+        /// mid-segment is replaced by its pieces (start/end per piece, text partitioned,
+        /// `lane` = the source lane so click-to-play keeps working); all others keep
+        /// their order/times/text with the label rewritten and `lane` set.
         var segments: [MeetingSegment]
+        /// For each entry of `segments`, the index of the input segment it came from
+        /// (identity unless pieces were split off).
+        var sourceIndex: [Int] = []
         /// Distinct labels, "Me" first, then Speaker 1…N, then any leftover lane label.
         var participants: [String]
         /// Distinct people (== participants.count).
@@ -96,6 +102,7 @@ enum SpeakerLabelling {
 
     static func label(
         segments: [MeetingSegment],
+        words: [[SegmentWord]?]? = nil,
         mic: DiarizationOutput?,
         system: DiarizationOutput?,
         bleedThreshold: Double = defaultBleedThreshold,
@@ -104,6 +111,7 @@ enum SpeakerLabelling {
     ) -> Result {
         let unchanged = Result(
             segments: segments,
+            sourceIndex: Array(segments.indices),
             participants: distinct(segments.map(\.speaker)),
             speakerCount: distinct(segments.map(\.speaker)).count,
             changed: false)
@@ -116,11 +124,53 @@ enum SpeakerLabelling {
         for lane in 0..<2 {
             if let out = outputs[lane] { canon[lane] = foldFragments(out, minSeconds: minSpeakerSeconds) }
         }
-        var assigned: [Cluster?] = Array(repeating: nil, count: segments.count)
+        // Split each segment at speaker changes when its words are known, else give it
+        // its majority speaker (the pre-split behaviour). `pieces` replaces `segments`
+        // for everything below.
+        let wordIndexes: [WordSpeakerIndex?] = outputs.map { $0.map { WordSpeakerIndex(turns: $0.turns) } }
+        let wordLists = (words?.count == segments.count) ? words : nil
+        var pieces: [MeetingSegment] = []
+        var assigned: [Cluster?] = []
+        var sourceIndex: [Int] = []
         for (i, seg) in segments.enumerated() {
-            guard let lane = laneNames.firstIndex(of: seg.speaker), let out = outputs[lane] else { continue }
+            guard let lane = laneNames.firstIndex(of: seg.speaker), let out = outputs[lane] else {
+                pieces.append(seg); assigned.append(nil); sourceIndex.append(i); continue
+            }
+            func canonical(_ raw: Int) -> Int { canon[lane][raw] ?? raw }
+            if let ws = SegmentWord.validated(wordLists?[i], for: seg.text), let index = wordIndexes[lane] {
+                let parts = SegmentSplitter.split(
+                    words: ws, speakers: ws.map { index.speaker(start: $0.start, end: $0.end).map(canonical) })
+                if parts.count > 1 {
+                    var made: [MeetingSegment] = []
+                    for (k, part) in parts.enumerated() {
+                        let slice = ws[part.words]
+                        var start = k == 0 ? seg.start : slice.first!.start
+                        if let prev = made.last { start = max(start, prev.start) }
+                        let end = max(start, k == parts.count - 1 ? seg.end : slice.last!.end)
+                        let text = SegmentWord.text(of: slice)
+                        if text.isEmpty { made = []; break }
+                        made.append(MeetingSegment(speaker: seg.speaker, start: start, end: end,
+                                                   text: text, lane: seg.lane))
+                    }
+                    if !made.isEmpty {
+                        for (part, piece) in zip(parts, made) {
+                            pieces.append(piece)
+                            assigned.append(part.speaker.map { Cluster(lane: lane, id: $0) })
+                            sourceIndex.append(i)
+                        }
+                        continue
+                    }
+                } else if let only = parts.first?.speaker {
+                    pieces.append(seg); assigned.append(Cluster(lane: lane, id: only)); sourceIndex.append(i)
+                    continue
+                }
+            }
+            pieces.append(seg)
+            sourceIndex.append(i)
             if let raw = dominantSpeaker(start: seg.start, end: seg.end, turns: out.turns) {
-                assigned[i] = Cluster(lane: lane, id: canon[lane][raw] ?? raw)
+                assigned.append(Cluster(lane: lane, id: canonical(raw)))
+            } else {
+                assigned.append(nil)
             }
         }
         let active: [[Int]] = (0..<2).map { lane in
@@ -188,8 +238,8 @@ enum SpeakerLabelling {
         }
 
         // 5. Number the other people by first appearance in transcript order.
-        let order = segments.indices.sorted {
-            segments[$0].start != segments[$1].start ? segments[$0].start < segments[$1].start : $0 < $1
+        let order = pieces.indices.sorted {
+            pieces[$0].start != pieces[$1].start ? pieces[$0].start < pieces[$1].start : $0 < $1
         }
         var numbers: [Cluster: Int] = [:]
         for i in order {
@@ -207,9 +257,9 @@ enum SpeakerLabelling {
         //    segment of the SAME lane that was resolved, so a leftover lane label ("Them",
         //    or "Me" when nobody was recognised) never sits next to "Speaker N" or inflates
         //    the speaker count. Only a lane with no resolved segment at all keeps its label.
-        var out = segments
+        var out = pieces
         var resolved: [Int: String] = [:]
-        for (i, seg) in segments.enumerated() {
+        for (i, seg) in pieces.enumerated() {
             guard let c = assigned[i].map(person) else { continue }
             out[i].lane = seg.speaker
             let label = (c == meCluster) ? SpeakerLabels.me
@@ -217,10 +267,10 @@ enum SpeakerLabelling {
             out[i].speaker = label
             resolved[i] = label
         }
-        for (i, seg) in segments.enumerated() where resolved[i] == nil {
+        for (i, seg) in pieces.enumerated() where resolved[i] == nil {
             var best: (gap: Double, label: String)?
-            for (j, label) in resolved.sorted(by: { $0.key < $1.key }) where segments[j].speaker == seg.speaker {
-                let other = segments[j]
+            for (j, label) in resolved.sorted(by: { $0.key < $1.key }) where pieces[j].speaker == seg.speaker {
+                let other = pieces[j]
                 let gap = max(0, max(seg.start, other.start) - min(seg.end, other.end))
                 if best == nil || gap < best!.gap { // ties keep the earlier segment
                     best = (gap, label)
@@ -233,7 +283,7 @@ enum SpeakerLabelling {
         }
         var participants = distinct(out.map(\.speaker))
         participants.sort { rank($0) < rank($1) }
-        return Result(segments: out, participants: participants, speakerCount: participants.count, changed: true,
+        return Result(segments: out, sourceIndex: sourceIndex, participants: participants, speakerCount: participants.count, changed: true,
                       ownVoiceSample: micOwn.count == 1 ? learningSample(micOwn[0]) : nil)
     }
 

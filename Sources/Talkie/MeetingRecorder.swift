@@ -484,7 +484,7 @@ final class MeetingRecorder: ObservableObject {
                 // rather than lagged wall-clock arrival. The live feed still gets the
                 // bare text.
                 let session = try await engine.beginSession(timedSegmentHandler: { seg in
-                    log.add(.me, seg.text, at: seg.start, end: seg.end)
+                    log.add(.me, seg.text, at: seg.start, end: seg.end, words: seg.words)
                     feedSegment(.me, seg.text, seg.start)
                 })
                 try audio.start(targetFormat: session.format, continuation: session.continuation,
@@ -555,7 +555,7 @@ final class MeetingRecorder: ObservableObject {
                     // cross-stream ordering carries a small relative skew — fine for
                     // interleaving, not promised sample-accurate.
                     let farSession = try await far.beginSession(timedSegmentHandler: { seg in
-                        log.add(.them, seg.text, at: seg.start, end: seg.end)
+                        log.add(.them, seg.text, at: seg.start, end: seg.end, words: seg.words)
                         feedSegment(.them, seg.text, seg.start)
                     })
                     try systemAudio.start(targetFormat: farSession.format, continuation: farSession.continuation,
@@ -961,7 +961,10 @@ final class MeetingRecorder: ObservableObject {
         // Per-segment audio-clock timings for captions/click-to-play/chapters. Built
         // from the SAME final snapshot as the transcript, so they never disagree; the
         // rendered transcript and `.md` are unchanged (segments live only in the index).
-        let segments = MeetingTranscriptRenderer.segments(from: finalTurns, duration: duration)
+        let timedSegments = MeetingTranscriptRenderer.segmentsWithWords(from: finalTurns, duration: duration)
+        let segments = timedSegments?.segments
+        // Word timings ride in memory to the labelling step only; never stored on the meeting.
+        let segmentWords = timedSegments?.words
         guard !clean.isEmpty else {
             // Discarded recording: any in-flight map/graph-extract jobs are for a note
             // that will never be saved, so cancel them rather than let them keep
@@ -1076,14 +1079,15 @@ final class MeetingRecorder: ObservableObject {
                 return
             }
             let step = await self.diarizationStep(
-                id: id, inputs: diarizationInputs, segments: segments,
+                id: id, inputs: diarizationInputs, segments: segments, words: segmentWords,
                 transcript: clean, durationSec: durationSec, skipLanes: skipLanes)
             // Relabelled: keep the live digest usable by remapping its lane labels to
             // the diarized speakers (no model calls); only when that is impossible drop
             // it so the summary is rebuilt from the relabelled transcript (slower).
             var summaryDigest = digest
             if step.relabelled, let digest {
-                if await self.remapDigest(digest, segments: step.segments) == false {
+                if await self.remapDigest(digest, segments: step.segments,
+                                          source: segments, sourceIndex: step.sourceIndex) == false {
                     digest.cancel(); summaryDigest = nil
                 }
             }
@@ -1109,9 +1113,10 @@ final class MeetingRecorder: ObservableObject {
     var digestRemapBudget: Double = 120
 
     /// Remap the live digest to the diarized labels; false = impossible or timed out.
-    func remapDigest(_ digest: MeetingDigestBuilder, segments: [MeetingSegment]?) async -> Bool {
+    func remapDigest(_ digest: MeetingDigestBuilder, segments: [MeetingSegment]?,
+                     source: [MeetingSegment]? = nil, sourceIndex: [Int]? = nil) async -> Bool {
         guard let segments, !segments.isEmpty else { return false }
-        let remap = DigestSpeakerRemap(segments: segments)
+        let remap = DigestSpeakerRemap(segments: segments, source: source, sourceIndex: sourceIndex)
         return await TimeBox.run(seconds: digestRemapBudget) { await digest.remapSpeakers(remap) } ?? false
     }
 
@@ -1121,6 +1126,9 @@ final class MeetingRecorder: ObservableObject {
         var relabelled = false
         /// The relabelled segments (set with `relabelled`), for remapping the live digest.
         var segments: [MeetingSegment]?
+        /// For each of `segments`, the index of the pre-split segment it came from (so the
+        /// digest, whose lines carry the original segment starts, can be remapped).
+        var sourceIndex: [Int]?
         var speakerCount: Int?
         var state: DiarizationState?
     }
@@ -1131,7 +1139,7 @@ final class MeetingRecorder: ObservableObject {
     /// Always deletes the temp lane audio and clears the "identifying" flag.
     func diarizationStep(
         id: UUID, inputs: [MeetingDiarizationPipeline.LaneInput], segments: [MeetingSegment]?,
-        transcript: String, durationSec: Double, skipLanes: Set<String> = []
+        words: [[SegmentWord]?]? = nil, transcript: String, durationSec: Double, skipLanes: Set<String> = []
     ) async -> DiarizationStep {
         var step = DiarizationStep(transcript: transcript)
         defer {
@@ -1152,7 +1160,7 @@ final class MeetingRecorder: ObservableObject {
         }
         let voiceEpoch = ownVoiceStore.currentEpoch // a "Forget my voice" during the pass drops its sample
         let outcome = await MeetingDiarizationPipeline.run(
-            inputs: inputs, segments: segments, diarizer: diarizer,
+            inputs: inputs, segments: segments, words: words, diarizer: diarizer,
             budgetSeconds: diarizationBudget(durationSec * Double(inputs.count)),
             resolveMe: ownVoiceResolver ?? ownVoiceStore.resolver,
             skipLanes: skipLanes)
@@ -1181,6 +1189,7 @@ final class MeetingRecorder: ObservableObject {
                 store.update(updated)
                 step.transcript = updated.transcript
                 step.segments = updated.segments
+                step.sourceIndex = result.sourceIndex
                 step.relabelled = true
                 step.state = .applied
             } else {
@@ -1460,7 +1469,9 @@ final class MeetingRecorder: ObservableObject {
     /// language span, so per-segment language and chronological interleaving survive.
     private func applyMergedSpans(_ spans: [StreamLanguageVoter.Span], speaker: MeetingSpeaker, log: TurnLog) {
         guard !spans.isEmpty else { return }
-        log.replace(speaker, withTimedTurns: spans.map { (elapsed: $0.start, text: $0.text, end: $0.end) })
+        log.replace(speaker, withTimedTurns: spans.map {
+            (elapsed: $0.start, text: $0.text, end: $0.end, words: $0.words.isEmpty ? nil : $0.words)
+        })
     }
 
     /// Returns true when the stream's turns were replaced by one untimed block.

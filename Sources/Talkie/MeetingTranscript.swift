@@ -22,12 +22,20 @@ final class TurnLog: @unchecked Sendable {
         /// whose duration is unknown. Used only to build `Meeting.segments`; the
         /// rendered transcript is unaffected.
         let endSec: TimeInterval?
+        /// The recognizer's per-token audio time ranges for this turn, in the same
+        /// clock as `elapsed`/`endSec`. In memory only, until speaker labelling splits
+        /// the segment where the diarized speaker changes; never persisted or rendered.
+        /// Nil when the source had none (wall-clock turns, de-collapsed pieces, the
+        /// legacy whole-stream correction).
+        let words: [SegmentWord]?
 
-        init(elapsed: TimeInterval, speaker: MeetingSpeaker, text: String, endSec: TimeInterval? = nil) {
+        init(elapsed: TimeInterval, speaker: MeetingSpeaker, text: String, endSec: TimeInterval? = nil,
+             words: [SegmentWord]? = nil) {
             self.elapsed = elapsed
             self.speaker = speaker
             self.text = text
             self.endSec = endSec
+            self.words = words
         }
     }
 
@@ -62,14 +70,15 @@ final class TurnLog: @unchecked Sendable {
     /// punctuation-only drop as `add`. Used by the single-locale meeting streams and
     /// file import so `Meeting.segments` carries real per-segment timings, and so
     /// the interleaving is on the audio clock rather than lagged by finalization.
-    func add(_ speaker: MeetingSpeaker, _ text: String, at start: TimeInterval, end: TimeInterval) {
+    func add(_ speaker: MeetingSpeaker, _ text: String, at start: TimeInterval, end: TimeInterval,
+             words: [SegmentWord]? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let depunctuated = trimmed.components(separatedBy: Self.punctuationAndSpace).joined()
         guard !depunctuated.isEmpty else { return }
         let s = max(0, start)
         let e = max(s, end)
-        lock.withLock { turns.append(Turn(elapsed: s, speaker: speaker, text: trimmed, endSec: e)) }
+        lock.withLock { turns.append(Turn(elapsed: s, speaker: speaker, text: trimmed, endSec: e, words: words)) }
     }
 
     func snapshot() -> [Turn] {
@@ -103,13 +112,20 @@ final class TurnLog: @unchecked Sendable {
     /// `end` its audio end), so per-language segments, `Meeting.segments` timings,
     /// AND cross-stream interleaving all survive.
     func replace(_ speaker: MeetingSpeaker, withTimedTurns newTurns: [(elapsed: TimeInterval, text: String, end: TimeInterval)]) {
+        replace(speaker, withTimedTurns: newTurns.map { (elapsed: $0.elapsed, text: $0.text, end: $0.end, words: nil) })
+    }
+
+    /// As above, each span optionally carrying its word timings (the multilingual merge).
+    func replace(_ speaker: MeetingSpeaker,
+                 withTimedTurns newTurns: [(elapsed: TimeInterval, text: String, end: TimeInterval, words: [SegmentWord]?)]) {
         lock.withLock {
             turns.removeAll { $0.speaker == speaker }
             for t in newTurns {
                 let trimmed = t.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
                     let s = max(0, t.elapsed)
-                    turns.append(Turn(elapsed: s, speaker: speaker, text: trimmed, endSec: max(s, t.end)))
+                    turns.append(Turn(elapsed: s, speaker: speaker, text: trimmed, endSec: max(s, t.end),
+                                      words: t.words))
                 }
             }
         }
@@ -186,10 +202,18 @@ enum MeetingTranscriptRenderer {
     /// when there is nothing timed to persist, so callers store `segments = nil` rather
     /// than an empty array (keeping the "no segments" and "pre-D2" cases identical).
     static func segments(from turns: [TurnLog.Turn], duration: TimeInterval? = nil) -> [MeetingSegment]? {
+        segmentsWithWords(from: turns, duration: duration)?.segments
+    }
+
+    /// `segments(from:)` plus, per segment (same index), the turn's word timings when it
+    /// had any. The words are for speaker labelling only and are never persisted.
+    static func segmentsWithWords(from turns: [TurnLog.Turn], duration: TimeInterval? = nil)
+        -> (segments: [MeetingSegment], words: [[SegmentWord]?])? {
         let prepared = duration.map { decollapse(turns, duration: $0) } ?? turns
         let sorted = prepared.sorted { $0.elapsed < $1.elapsed }
         guard !sorted.isEmpty else { return nil }
         var out: [MeetingSegment] = []
+        var outWords: [[SegmentWord]?] = []
         out.reserveCapacity(sorted.count)
         var lastStart = 0.0
         for (i, turn) in sorted.enumerated() {
@@ -205,8 +229,9 @@ enum MeetingTranscriptRenderer {
             if !end.isFinite { end = start }
             end = max(end, start)
             out.append(MeetingSegment(speaker: turn.speaker.rawValue, start: start, end: end, text: turn.text))
+            outWords.append(turn.words)
         }
-        return out
+        return (out, outWords)
     }
 
     // MARK: Stalled-recognizer safeguard (de-collapse)

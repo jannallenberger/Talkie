@@ -120,16 +120,23 @@ final class FileDiarizationHarness: XCTestCase {
         let ft = ready[best ?? first]!
         let fmt = try await ft.preferredAudioFormat()
         nonisolated(unsafe) let (buffers, _) = try AudioFileLoader.buffers(from: wav, target: fmt)
-        let timed = try await ft.transcribeTimed(buffers: buffers)
+        let timed = try await ft.transcribeTimed(buffers: buffers, wordTimings: true)
         stats["transcriptionWallSeconds"] = Self.now() - tr0
         stats["peakMemoryAfterTranscriptionMB"] = Self.peakMB()
         let segments = timed.segments.map {
             MeetingSegment(speaker: SpeakerLabels.me, start: $0.startSeconds, end: $0.endSeconds, text: $0.text)
         }
 
+        // Word timings, in memory only (exactly what the live path hands the labeller).
+        let words: [[SegmentWord]?] = timed.segments.map { seg in
+            seg.words.isEmpty ? nil : seg.words.map { SegmentWord(text: $0.text, start: $0.startSeconds, end: $0.endSeconds) }
+        }
+        stats["segmentsWithWordTimings"] = zip(segments, words).filter { SegmentWord.validated($1, for: $0.text) != nil }.count
+        stats["wordTimingTokens"] = words.reduce(0) { $0 + ($1?.count ?? 0) }
+
         // 4. Label through the real pipeline (single mic lane; cached diarization output).
         let outcome = await MeetingDiarizationPipeline.run(
-            inputs: [.init(lane: SpeakerLabels.me, fileURL: wav)], segments: segments,
+            inputs: [.init(lane: SpeakerLabels.me, fileURL: wav)], segments: segments, words: words,
             diarizer: CachedDiarizer(output: diar),
             budgetSeconds: MeetingDiarizationPipeline.budget(audioSeconds: audioSeconds))
         guard case .labelled(let result) = outcome else { XCTFail("pipeline outcome \(outcome)"); return }
@@ -155,6 +162,7 @@ final class FileDiarizationHarness: XCTestCase {
         // Segment statistics (folded clusters).
         var noOverlap = 0, changeCount = 0
         var changeTime = 0.0, totalSegTime = 0.0
+        var beforeMulti = 0.0 // diagnosis: failing time where a second person actually speaks
         for seg in segments {
             let dur = max(0, seg.end - seg.start)
             totalSegTime += dur
@@ -164,17 +172,77 @@ final class FileDiarizationHarness: XCTestCase {
                 if o > 0 { per[canon[t.speaker] ?? t.speaker, default: 0] += o }
             }
             if per.isEmpty { noOverlap += 1; continue }
-            if dur > 0, (per.values.max() ?? 0) / dur < 0.8 { changeCount += 1; changeTime += dur }
+            if dur > 0, (per.values.max() ?? 0) / dur < 0.8 {
+                changeCount += 1; changeTime += dur
+                if (per.values.max() ?? 0) / max(per.values.reduce(0, +), 1e-9) < 0.8 { beforeMulti += dur }
+            }
         }
+        stats["diag_beforeSplit_failingBecauseSecondSpeakerSpeechShareOfTime"] = totalSegTime > 0 ? beforeMulti / totalSegTime : 0
         let lens = segments.map { max(0, $0.end - $0.start) }
-        stats["segmentCount"] = segments.count
+        stats["segmentCountBeforeSplit"] = segments.count
         stats["segmentsNoDiarizerOverlap"] = noOverlap
-        stats["segmentLenMedian"] = Self.pct(lens, 0.5)
-        stats["segmentLenP90"] = Self.pct(lens, 0.9)
-        stats["segmentLenMax"] = lens.max() ?? 0
-        stats["segmentsWithSpeakerChange"] = changeCount
-        stats["speakerChangeShareOfSegmentTime"] = totalSegTime > 0 ? changeTime / totalSegTime : 0
-        stats["totalSegmentSeconds"] = totalSegTime
+        stats["segmentLenMedianBeforeSplit"] = Self.pct(lens, 0.5)
+        stats["segmentLenP90BeforeSplit"] = Self.pct(lens, 0.9)
+        stats["segmentLenMaxBeforeSplit"] = lens.max() ?? 0
+        stats["segmentsWithSpeakerChangeBeforeSplit"] = changeCount
+        stats["speakerChangeShareOfSegmentTimeBeforeSplit"] = totalSegTime > 0 ? changeTime / totalSegTime : 0
+        stats["totalSegmentSecondsBeforeSplit"] = totalSegTime
+
+        // The SAME metric (same definition: the majority speaker's diarizer turns cover under
+        // 80 % of the segment, folded clusters) on the FINAL (split) segments.
+        var finalChange = 0, finalNoOverlap = 0
+        var finalChangeTime = 0.0, finalTime = 0.0
+        // Diagnosis only (not the metric): of the failing segments, how many are failing because
+        // of pauses (all speakers together cover under 80 %, but the speech present is one
+        // person's) versus real second-speaker speech inside the segment.
+        var pauseOnly = 0, pauseOnlyTime = 0.0, multiSpeech = 0, multiSpeechTime = 0.0
+        for seg in result.segments {
+            let dur = max(0, seg.end - seg.start)
+            finalTime += dur
+            var per: [Int: Double] = [:]
+            for t in diar.turns {
+                let o = min(seg.end, t.end) - max(seg.start, t.start)
+                if o > 0 { per[canon[t.speaker] ?? t.speaker, default: 0] += o }
+            }
+            if per.isEmpty { finalNoOverlap += 1; continue }
+            if dur > 0, (per.values.max() ?? 0) / dur < 0.8 {
+                finalChange += 1; finalChangeTime += dur
+                let speech = per.values.reduce(0, +)
+                if (per.values.max() ?? 0) / max(speech, 1e-9) >= 0.8 { pauseOnly += 1; pauseOnlyTime += dur }
+                else { multiSpeech += 1; multiSpeechTime += dur }
+            }
+        }
+        stats["diag_failingBecausePauses"] = pauseOnly
+        stats["diag_failingBecausePausesShareOfTime"] = finalTime > 0 ? pauseOnlyTime / finalTime : 0
+        stats["diag_failingBecauseSecondSpeakerSpeech"] = multiSpeech
+        stats["diag_failingBecauseSecondSpeakerSpeechShareOfTime"] = finalTime > 0 ? multiSpeechTime / finalTime : 0
+        let finalLens = result.segments.map { max(0, $0.end - $0.start) }
+        stats["segmentCount"] = result.segments.count
+        stats["segmentsNoDiarizerOverlap"] = finalNoOverlap
+        stats["segmentLenMedian"] = Self.pct(finalLens, 0.5)
+        stats["segmentLenP90"] = Self.pct(finalLens, 0.9)
+        stats["segmentLenMax"] = finalLens.max() ?? 0
+        stats["segmentsWithSpeakerChange"] = finalChange
+        stats["speakerChangeShareOfSegmentTime"] = finalTime > 0 ? finalChangeTime / finalTime : 0
+        stats["totalSegmentSeconds"] = finalTime
+        stats["segmentsSplitIntoPieces"] = Set(result.sourceIndex).count == result.segments.count
+            ? 0 : Dictionary(grouping: result.sourceIndex, by: { $0 }).values.filter { $0.count > 1 }.count
+
+        // Structure: short pieces that carry their own label, and A-b-A islands.
+        let rs = result.segments
+        var shortPieces = 0, islands = 0, shortWithOwnLabel = 0
+        for (k, s) in rs.enumerated() {
+            let wc = SegmentWord.normalized(s.text).split(separator: " ").count
+            let isShort = (s.end - s.start) < 2.0 && wc <= 4
+            if isShort { shortPieces += 1 }
+            let prev = k > 0 ? rs[k - 1].speaker : nil, nextL = k + 1 < rs.count ? rs[k + 1].speaker : nil
+            if isShort, prev != nil, prev != s.speaker { shortWithOwnLabel += 1 }
+            if isShort, let prev, let nextL, prev == nextL, prev != s.speaker { islands += 1 }
+        }
+        stats["shortPieces(<2s,<=4w)"] = shortPieces
+        stats["shortPiecesWithOwnLabel"] = shortWithOwnLabel
+        stats["shortIslandsAbA"] = islands
+        stats["labelRunsPerHour"] = Double(zip(rs, rs.dropFirst()).filter { $0.speaker != $1.speaker }.count) / (audioSeconds / 3600)
 
         // Labelled transcript: merge consecutive segments with the same label into a turn.
         var lines: [String] = []
