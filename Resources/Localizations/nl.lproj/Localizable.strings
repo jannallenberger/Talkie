@@ -887,3 +887,17 @@
 "%d words" = "%d woorden";
 "Click a line to hear that moment" = "Klik op een regel om dat moment te horen";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "Druk op Opnemen voor je volgende gesprek, of sleep hier audio of video naartoe om het uit te schrijven.";
+
+/* W1 meetings: meeting audio export + page quick settings (Meetings, Memory, Dictionary) */
+"Audio (.%@)" = "Audio (.%@)";
+"Audio — your side (.%@)" = "Audio — jouw kant (.%@)";
+"Audio — other side (.%@)" = "Audio — andere kant (.%@)";
+"Audio — %@ (.%@)" = "Audio — %@ (.%@)";
+"No audio was kept for this meeting" = "Er is geen audio bewaard voor deze vergadering";
+"Couldn't export the audio." = "Kan de audio niet exporteren.";
+"All meeting settings…" = "Alle vergaderinstellingen…";
+"Keep history" = "Geschiedenis bewaren";
+"Keep history for %@?" = "Geschiedenis %@ bewaren?";
+"Delete older dictations" = "Oudere dictaten verwijderen";
+"1 older dictation will be deleted from this Mac right away. This can't be undone." = "1 ouder dictaat wordt meteen van deze Mac verwijderd. Dit kan niet ongedaan worden gemaakt.";
+"%d older dictations will be deleted from this Mac right away. This can't be undone." = "%d oudere dictaten worden meteen van deze Mac verwijderd. Dit kan niet ongedaan worden gemaakt.";

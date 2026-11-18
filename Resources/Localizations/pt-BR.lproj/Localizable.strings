@@ -887,3 +887,17 @@
 "%d words" = "%d palavras";
 "Click a line to hear that moment" = "Clique em uma linha para ouvir aquele momento";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "Toque em Gravar antes da próxima chamada ou solte áudio ou vídeo aqui para transcrever.";
+
+/* W1 meetings: meeting audio export + page quick settings (Meetings, Memory, Dictionary) */
+"Audio (.%@)" = "Áudio (.%@)";
+"Audio — your side (.%@)" = "Áudio — seu lado (.%@)";
+"Audio — other side (.%@)" = "Áudio — outro lado (.%@)";
+"Audio — %@ (.%@)" = "Áudio — %@ (.%@)";
+"No audio was kept for this meeting" = "Nenhum áudio foi mantido para esta reunião";
+"Couldn't export the audio." = "Não foi possível exportar o áudio.";
+"All meeting settings…" = "Todos os ajustes de reuniões…";
+"Keep history" = "Manter histórico";
+"Keep history for %@?" = "Manter o histórico por %@?";
+"Delete older dictations" = "Apagar ditados mais antigos";
+"1 older dictation will be deleted from this Mac right away. This can't be undone." = "1 ditado mais antigo será apagado deste Mac agora. Isso não pode ser desfeito.";
+"%d older dictations will be deleted from this Mac right away. This can't be undone." = "%d ditados mais antigos serão apagados deste Mac agora. Isso não pode ser desfeito.";

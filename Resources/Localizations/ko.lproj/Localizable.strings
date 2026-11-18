@@ -887,3 +887,17 @@
 "%d words" = "%d단어";
 "Click a line to hear that moment" = "줄을 클릭하면 그 순간을 들을 수 있습니다";
 "Press Record before your next call, or drop audio or video here to transcribe it." = "다음 통화 전에 녹음을 누르거나, 오디오나 비디오를 여기에 끌어다 놓아 전사하세요.";
+
+/* W1 meetings: meeting audio export + page quick settings (Meetings, Memory, Dictionary) */
+"Audio (.%@)" = "오디오 (.%@)";
+"Audio — your side (.%@)" = "오디오 — 내 쪽 (.%@)";
+"Audio — other side (.%@)" = "오디오 — 상대방 쪽 (.%@)";
+"Audio — %@ (.%@)" = "오디오 — %@ (.%@)";
+"No audio was kept for this meeting" = "이 회의의 오디오는 보관되지 않았습니다";
+"Couldn't export the audio." = "오디오를 내보낼 수 없습니다.";
+"All meeting settings…" = "모든 회의 설정…";
+"Keep history" = "기록 보관";
+"Keep history for %@?" = "기록을 %@ 보관할까요?";
+"Delete older dictations" = "이전 받아쓰기 삭제";
+"1 older dictation will be deleted from this Mac right away. This can't be undone." = "이전 받아쓰기 1개가 이 Mac에서 즉시 삭제됩니다. 실행 취소할 수 없습니다.";
+"%d older dictations will be deleted from this Mac right away. This can't be undone." = "이전 받아쓰기 %d개가 이 Mac에서 즉시 삭제됩니다. 실행 취소할 수 없습니다.";

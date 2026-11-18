@@ -32,6 +32,8 @@ struct MeetingsView: View {
     /// The meeting to show first, when it exists (else the newest). Snapshot tests use it.
     var initialSelection: UUID? = nil
 
+    /// The gear's quick-settings popover is open.
+    @State private var showQuickSettings = false
     /// Flashes the drop zone briefly when a non-audio file is rejected.
     @State private var rejectedDrop = false
     /// True while a supported file is hovering over the drop target.
@@ -194,19 +196,44 @@ struct MeetingsView: View {
             }
             if let router {
                 Button {
-                    router.selectedTab = .general
-                    router.pendingPage = .meetings
+                    showQuickSettings.toggle()
                 } label: {
                     Image(systemName: "gearshape")
                 }
                 .controlSize(.large)
                 .help("Meeting settings")
                 .accessibilityLabel("Meeting settings")
+                .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
+                    quickSettings(router: router)
+                }
             }
         }
         .padding(.horizontal, Self.pagePadding)
         .padding(.top, 22)
         .padding(.bottom, 16)
+    }
+
+    /// The gear's popover: the one meeting preference worth flipping from here (keep
+    /// audio — the same `AppSettings.keepMeetingAudio` the Settings page binds, so
+    /// there is one source of truth) and the deep link to the full Meeting settings.
+    private func quickSettings(router: SettingsRouter) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsToggleRow(
+                title: "Keep audio with meeting notes".loc,
+                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
+                isOn: $settings.keepMeetingAudio)
+            HStack {
+                Spacer()
+                Button("All meeting settings…") {
+                    showQuickSettings = false
+                    router.selectedTab = .general
+                    router.pendingPage = .meetings
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+        .frame(width: 340)
     }
 
     /// Auto (multilingual) or pin transcription to one of the user's languages. Read
@@ -837,18 +864,34 @@ private struct MeetingDetail: View, Equatable {
             Button(action: onCopy) { Label("Copy".loc, systemImage: "doc.on.doc") }
                 .help("Copy transcript")
             // Timestamped exports (D3) — only when this meeting actually has timed
-            // segments (recorded/imported after D2). Pre-D2 notes simply don't show
-            // the menu, so there's no dead UI and no migration.
-            if let segments = meeting.segments, !segments.isEmpty {
+            // segments (recorded/imported after D2) — plus the kept audio files.
+            // A meeting with neither shows no menu, so there's no dead UI.
+            let segments = meeting.segments ?? []
+            let audioItems = MeetingAudioExport.items(
+                audioFiles: meeting.audioFiles, baseName: exportBaseName,
+                fileExists: { FileManager.default.fileExists(atPath: folderURL.appendingPathComponent($0).path) })
+            if !segments.isEmpty || !audioItems.isEmpty {
                 Menu {
-                    Button("Subtitles (.srt)") { export(segments, as: .srt) }
-                    Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
-                    Button("Spreadsheet (.csv)") { export(segments, as: .csv) }
-                    Button("Data (.json)") { export(segments, as: .json) }
-                    // Chapter list (D8) — offered ONLY when the meeting shifted
-                    // topics (≥2 chapters); a lone/absent topic shows nothing.
-                    if let chapters = meeting.chapters, chapters.count >= 2 {
-                        Button("Chapters (.txt)") { exportChapters(chapters) }
+                    if !segments.isEmpty {
+                        Button("Subtitles (.srt)") { export(segments, as: .srt) }
+                        Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
+                        Button("Spreadsheet (.csv)") { export(segments, as: .csv) }
+                        Button("Data (.json)") { export(segments, as: .json) }
+                        // Chapter list (D8) — offered ONLY when the meeting shifted
+                        // topics (≥2 chapters); a lone/absent topic shows nothing.
+                        if let chapters = meeting.chapters, chapters.count >= 2 {
+                            Button("Chapters (.txt)") { exportChapters(chapters) }
+                        }
+                        Divider()
+                    }
+                    // Kept audio, one file per side, copied as-is (never mixed).
+                    if audioItems.isEmpty {
+                        Button("No audio was kept for this meeting") {}
+                            .disabled(true)
+                    } else {
+                        ForEach(audioItems, id: \.fileName) { item in
+                            Button(item.title) { exportAudio(item) }
+                        }
                     }
                 } label: {
                     Label("Export…".loc, systemImage: "square.and.arrow.up")
@@ -1149,6 +1192,33 @@ private struct MeetingDetail: View, Equatable {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             try? Data(contents.utf8).write(to: url, options: .atomic)
+        }
+    }
+
+    /// Copy one kept audio file out through a save panel. A byte-for-byte copy of the
+    /// file beside the note (no re-encode); the panel already confirmed any overwrite,
+    /// so an existing file at the destination is replaced. Local disk only.
+    private func exportAudio(_ item: MeetingAudioExport.Item) {
+        let source = folderURL.appendingPathComponent(item.fileName)
+        let panel = NSSavePanel()
+        panel.title = "Export…".loc
+        panel.nameFieldStringValue = item.defaultName
+        panel.canCreateDirectories = true
+        if let type = UTType(filenameExtension: item.fileExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let fm = FileManager.default
+            do {
+                if fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
+                try fm.copyItem(at: source, to: url)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Couldn't export the audio.".loc
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
         }
     }
 
