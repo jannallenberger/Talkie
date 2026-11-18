@@ -945,6 +945,8 @@ private struct MeetingDetail: View, Equatable {
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.inkSecondary)
             }
+            SpeakersRow(meeting: meeting)
+                .padding(.top, 2)
         }
     }
 
@@ -1525,6 +1527,7 @@ struct SpeakerLabel: View {
     /// Set only inside the meeting detail: names + the naming popover.
     @Environment(\.speakerNaming) private var naming
     @State private var editing = false
+    @State private var hovering = false
 
     static func color(slot: Int) -> Color {
         let palette: [Color] = [Theme.coral, Theme.featherGold, Theme.featherGreen,
@@ -1546,10 +1549,19 @@ struct SpeakerLabel: View {
         .font(.system(size: 11, weight: .semibold))
         .foregroundStyle(Self.color(slot: slot))
         if let naming, SpeakerNames.isNameable(speaker) {
-            Button { editing = true } label: { text }
+            Button { editing = true } label: {
+                text
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Capsule(style: .continuous).fill(hovering ? Theme.surfaceSunken : .clear))
+                    // The whole label (padding included) is the hit area, not just the glyphs.
+                    .contentShape(Rectangle())
+            }
                 .buttonStyle(.plain)
+                .padding(.horizontal, -4)
+                .onHover { hovering = $0 }
+                .pointerStyle(.link)
                 .help(named?.source == .voice ? "Recognised by voice. Click to change the name.".loc
-                                              : "Click to name this speaker".loc)
+                                              : "Name this speaker".loc)
                 .accessibilityAddTraits(.isHeader)
                 .popover(isPresented: $editing, arrowEdge: .bottom) {
                     SpeakerNamePopover(label: speaker, context: naming)

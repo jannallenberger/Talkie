@@ -1071,3 +1071,6 @@
 "Speaker recognition isn’t available on this Mac." = "このMacでは話者認識を利用できません。";
 "This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later." = "このミーティングでは、この人の声はもう利用できません。後で使うには、ミーティングノートと一緒に音声を保存してください。";
 "Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good." = "ミーティングで認識するよう選んだ人の声紋です。このMacにのみ保存され、削除すると完全に消去されます。";
+"Speakers" = "話者";
+"Name saved, not added to the dictionary: it is too short to tell apart from other words." = "名前を保存しました。辞書には追加していません：短すぎて他の単語と区別できません。";
+"Name saved, not added to the dictionary: it is also an everyday word, and dictation would start changing that word." = "名前を保存しました。辞書には追加していません：一般的な単語でもあるため、音声入力がその単語を書き換えてしまいます。";

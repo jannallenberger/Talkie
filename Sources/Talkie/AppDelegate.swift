@@ -345,6 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentLocaleID = settings.spokenLanguages.first ?? settings.localeIdentifier
         engine = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: currentLocaleID))
         meetingRecorder = MeetingRecorder(engine: engine, store: meetingStore)
+        meetingRecorder.speakerVocabulary = SpeakerVocabularyAdder(dictionary: dictionary, hud: hud)
         meetingRecorder.isDictating = { [weak self] in self?.isDictating == true }
         meetingRecorder.isProcessingDictation = { [weak self] in self?.isProcessing == true }
         meetingRecorder.primaryLocale = { [weak self] in

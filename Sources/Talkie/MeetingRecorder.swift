@@ -1498,6 +1498,20 @@ final class MeetingRecorder: ObservableObject {
         knownVoiceStore.remove(meetingID: meetingID, label: label)
     }
 
+    /// Adds manually saved speaker names to the custom vocabulary (set by the app;
+    /// nil in tests that don't care). Never used for conversation or voice names.
+    var speakerVocabulary: SpeakerVocabularyAdder?
+
+    /// The popover's Save: name the speaker, then offer the name to the dictionary.
+    /// Returns the one-line reason when the name was not added to the dictionary.
+    @discardableResult
+    func saveManualSpeakerName(_ name: String, label: String, meetingID: UUID) -> String? {
+        let n = SpeakerNames.clean(name)
+        guard !n.isEmpty, SpeakerNames.isNameable(label) else { return nil }
+        setSpeakerName(n, label: label, meetingID: meetingID)
+        return speakerVocabulary?.addManualName(n)
+    }
+
     /// Manual naming from the speaker popover; keeps a remembered voice's name in step.
     func setSpeakerName(_ name: String?, label: String, meetingID: UUID) {
         store.setSpeakerName(name, label: label, meetingID: meetingID)
