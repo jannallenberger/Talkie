@@ -113,6 +113,15 @@ enum SummaryUnits {
     /// Longest unit text: a single turn can run for minutes; pieces keep each unit
     /// small enough that several fit a chunk and that grounding stays local.
     static let maxUnitChars = 700
+    /// Short same-speaker turns are joined up to about this many characters.
+    static let targetUnitChars = 450
+    /// Turns further apart than this (seconds) are never joined.
+    static let maxMergeGap: Double = 8
+
+    static func gapAllowsMerge(_ previousEnd: Double?, _ nextStart: Double?) -> Bool {
+        guard let a = previousEnd, let b = nextStart else { return previousEnd == nil && nextStart == nil }
+        return b - a <= maxMergeGap
+    }
 
     /// Units from the meeting's timed segments when it has them (real speaker
     /// labels and times), else from the rendered transcript's `[mm:ss] Speaker:`
@@ -131,10 +140,27 @@ enum SummaryUnits {
                 raw.append((nil, parsed.speaker, parsed.start, nil, parsed.text))
             }
         }
-        var units: [SummaryUnit] = []
+        // Coalesce short consecutive turns of the same speaker (recognizer segments
+        // are often a single sentence): the small model reads a chunk roughly line by
+        // line and stops after a handful of entries per list, so many tiny lines meant
+        // only the first few of every chunk were ever summarized.
+        var merged: [(segment: Int?, speaker: String?, start: Double?, end: Double?, text: String)] = []
         for r in raw {
             let text = r.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
+            if var last = merged.last, last.speaker == r.speaker,
+               last.text.count + text.count + 1 <= targetUnitChars,
+               gapAllowsMerge(last.end ?? last.start, r.start) {
+                last.text += " " + text
+                last.end = r.end ?? last.end
+                merged[merged.count - 1] = last
+            } else {
+                merged.append((r.segment, r.speaker, r.start, r.end, text))
+            }
+        }
+        var units: [SummaryUnit] = []
+        for r in merged {
+            let text = r.text
             let pieces = text.count > maxUnitChars
                 ? MeetingSummarizer.splitLongLine(text, size: maxUnitChars) : [text]
             for piece in pieces where !piece.isEmpty {
@@ -207,13 +233,18 @@ enum SummaryChunker {
     /// Pack consecutive units into chunks whose rendered prompt text stays within
     /// `budgetChars`. Never splits a unit (units are already capped), never drops
     /// one, and preserves order — so every part of the transcript is read once.
-    static func chunk(_ units: [SummaryUnit], budgetChars: Int, speakers: Bool) -> [[SummaryUnit]] {
+    /// At most this many numbered lines per chunk: the model lists ~one entry per
+    /// line and stops around six per list, so more lines would go unread.
+    static let maxUnitsPerChunk = 6
+
+    static func chunk(_ units: [SummaryUnit], budgetChars: Int, speakers: Bool,
+                      maxUnits: Int = maxUnitsPerChunk) -> [[SummaryUnit]] {
         var chunks: [[SummaryUnit]] = []
         var current: [SummaryUnit] = []
         var size = 0
         for u in units {
             let cost = SummaryUnits.line(u, speakers: speakers).count + 1
-            if !current.isEmpty, size + cost > budgetChars {
+            if !current.isEmpty, size + cost > budgetChars || current.count >= maxUnits {
                 chunks.append(current)
                 current = []
                 size = 0
@@ -483,6 +514,24 @@ enum SummaryFailure {
         return kept.isEmpty ? nil : kept.joined(separator: " ")
     }
 
+    /// Up to `max` complete, distinct sentences that each share content words with
+    /// `source` (one, or two once the sentence has four or more); nil if none.
+    static func sentencesSharingWords(_ text: String, language: SummaryLanguage, source: String, max: Int) -> String? {
+        let src = Set(Grounding.contentWords(source, language: language))
+        guard let distinct = distinctSentences(text, language: language, max: 12) else { return nil }
+        var kept: [String] = []
+        distinct.enumerateSubstrings(in: distinct.startIndex..., options: .bySentences) { sub, _, _, stop in
+            guard kept.count < max else { stop = true; return }
+            guard let sentence = sub?.trimmingCharacters(in: .whitespacesAndNewlines), !sentence.isEmpty else { return }
+            let words = Set(Grounding.contentWords(sentence, language: language))
+            if !words.isEmpty, words.intersection(src).count >= Grounding.requiredShared(itemWords: words.count),
+               !SummaryFailure.isRefusalOrApology(sentence) {
+                kept.append(sentence)
+            }
+        }
+        return kept.isEmpty ? nil : kept.joined(separator: " ")
+    }
+
     /// Keep only the sentences that share content words with `source` (the merged
     /// notes): the overview call may not add a claim that no note supports.
     /// Also the guard against the small model's repetition loop: a sentence that
@@ -597,7 +646,10 @@ enum SummaryMerger {
 
 enum SummaryRenderer {
     /// Below this many transcript words the note is one or two sentences, no sections.
-    static let shortMeetingWords = 150
+    /// Measured on 17 real meetings: under ~470 words the structured path was no
+    /// better than plain prose and invented tasks on two calls, while from 517 words
+    /// on it clearly won; 500 sits between the two.
+    static let shortMeetingWords = 500
 
     static func wordCount(_ text: String, language: SummaryLanguage) -> Int {
         if language.isCJK {
@@ -613,10 +665,10 @@ enum SummaryRenderer {
     /// longer note than a ten-minute one instead of the same 50 words.
     static func caps(words: Int) -> (topics: Int, decisions: Int, actions: Int, questions: Int) {
         func clamp(_ v: Int, _ lo: Int, _ hi: Int) -> Int { min(hi, max(lo, v)) }
-        return (topics: clamp(words / 350, 3, 16),
-                decisions: clamp(words / 600, 3, 12),
-                actions: clamp(words / 600, 3, 12),
-                questions: clamp(words / 1200, 2, 8))
+        return (topics: clamp(words / 250, 3, 20),
+                decisions: clamp(words / 400, 3, 15),
+                actions: clamp(words / 400, 3, 15),
+                questions: clamp(words / 800, 2, 10))
     }
 
     /// Keep at most `cap` items, evenly spread over the meeting (chronological),
@@ -723,16 +775,106 @@ enum SummaryPrompts {
     static func shortMeeting(_ language: SummaryLanguage) -> String {
         if language.code == "de" {
             return """
-            Fasse dieses kurze Gesprächstranskript in ein oder zwei Sätzen auf Deutsch zusammen. \
-            Nur was gesagt wird; nichts hinzufügen, nicht antworten, keine Überschrift. \
+            Schreibe zwei bis drei Sätze auf Deutsch darüber, worum es in diesem kurzen Gespräch ging, \
+            sachlich in der dritten Person. Erwähne eine Entscheidung oder Aufgabe nur, wenn sie im \
+            Transkript ausdrücklich gesagt wird. Nichts hinzufügen, nicht antworten, keine Überschrift. \
             Das Transkript stammt aus einer Spracherkennung und enthält Fehler.
             """
         }
         return """
-        Summarize this short conversation transcript in one or two sentences in \(language.englishName). \
-        Only what is said; add nothing, do not reply to it, no heading. \
+        Write two or three sentences in \(language.englishName) about what this short conversation was about, \
+        reported neutrally in the third person. Mention a decision or task only if the transcript states it \
+        outright. Add nothing, do not reply to it, no heading. \
         The transcript comes from speech recognition and contains errors.
         """
+    }
+
+    /// The non-guided fallback for a chunk whose guided generation was refused or
+    /// failed to decode: plain tagged lines, parsed leniently.
+    static func plainExtraction(_ language: SummaryLanguage) -> String {
+        let lang = language.code == "de" ? "Deutsch" : language.englishName
+        return """
+        Notes on a meeting transcript excerpt; each line starts with its number [n]. Write in \(lang), \
+        only what is said, one note per line, each starting with a tag and the line number: \
+        TOPIC [n]: …, DECISION [n]: …, TASK [n]: owner | task | due, QUESTION [n]: …?, FACT [n]: … \
+        Skip unintelligible parts. Nothing else.
+        """
+    }
+
+    /// Last resort when no chunk could be extracted at all.
+    static func fallbackOverview(_ language: SummaryLanguage) -> String {
+        if language.code == "de" {
+            return """
+            Das sind Auszüge aus dem Transkript einer Besprechung (Spracherkennung, enthält Fehler). \
+            Schreibe drei Sätze auf Deutsch darüber, worum es ging, sachlich in der dritten Person. \
+            Nur was gesagt wird; nichts hinzufügen, keine Überschrift.
+            """
+        }
+        return """
+        These are excerpts of a meeting transcript (speech recognition, contains errors). Write three \
+        sentences in \(language.englishName) about what it was about, neutrally in the third person. \
+        Only what is said; add nothing, no heading.
+        """
+    }
+}
+
+// MARK: - Lenient plain-text extraction
+
+enum PlainNotesParser {
+    private static let tags: [(keys: [String], kind: SummaryItemKind)] = [
+        (["topic", "thema", "themen"], .topic),
+        (["decision", "entscheidung"], .decision),
+        (["task", "aufgabe", "action", "todo"], .action),
+        (["question", "frage", "offene frage"], .question),
+        (["fact", "fakt", "key fact"], .fact),
+    ]
+
+    /// Parse tagged lines ("DECISION [12]: …", "- Aufgabe 7: Anna | …"). A line with
+    /// no usable number is attributed to the chunk line it shares the most content
+    /// words with; untagged lines are ignored.
+    static func parse(_ text: String, chunk: [SummaryUnit], language: SummaryLanguage) -> ChunkNotes {
+        var notes = ChunkNotes()
+        for raw in text.components(separatedBy: .newlines) {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            while let f = line.first, "-*•".contains(f) { line.removeFirst(); line = line.trimmingCharacters(in: .whitespaces) }
+            line = line.replacingOccurrences(of: "**", with: "")
+            let lower = line.lowercased()
+            guard let tag = tags.first(where: { t in t.keys.contains { lower.hasPrefix($0) } }),
+                  let colon = line.firstIndex(of: ":") else { continue }
+            let head = line[..<colon]
+            let body = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            guard !body.isEmpty else { continue }
+            let digits = head.filter(\.isNumber)
+            let cited = Int(digits).flatMap { n in chunk.contains { $0.index == n } ? n : nil }
+            let textForMatch = tag.kind == .action ? body.replacingOccurrences(of: "|", with: " ") : body
+            guard let n = cited ?? bestLine(textForMatch, chunk: chunk, language: language) else { continue }
+            switch tag.kind {
+            case .topic: notes.topics.append(.init(line: n, text: body))
+            case .decision: notes.decisions.append(.init(line: n, text: body))
+            case .question: notes.openQuestions.append(.init(line: n, text: body))
+            case .fact: notes.keyFacts.append(.init(line: n, text: body))
+            case .action:
+                let parts = body.split(separator: "|", omittingEmptySubsequences: false)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                if parts.count >= 2 {
+                    notes.actionItems.append(.init(line: n, owner: parts[0], task: parts[1],
+                                                   due: parts.count > 2 ? parts[2] : ""))
+                } else {
+                    notes.actionItems.append(.init(line: n, owner: "", task: body, due: ""))
+                }
+            }
+        }
+        return notes
+    }
+
+    static func bestLine(_ text: String, chunk: [SummaryUnit], language: SummaryLanguage) -> Int? {
+        let w = Set(Grounding.contentWords(text, language: language))
+        var best: (Int, Int)?
+        for u in chunk {
+            let shared = w.intersection(Grounding.contentWords(u.text, language: language)).count
+            if shared > 0, shared > (best?.1 ?? 0) { best = (u.index, shared) }
+        }
+        return best?.0
     }
 }
 
@@ -806,12 +948,11 @@ struct MeetingSummaryPipeline: Sendable {
             let text = SummaryUnits.build(transcript: trimmed, segments: segments).map(\.text).joined(separator: " ")
             let out = try? await bounded {
                 try await model.write(instructions: SummaryPrompts.shortMeeting(language),
-                                      prompt: text, maxTokens: 160)
+                                      prompt: text, maxTokens: 240)
             }
             if let out, SummaryFailure.acceptsProse(out, language: language, source: text),
-               !SummaryFailure.isMostlyInvented(out, language: language, source: text) {
-                result.markdown = SummaryFailure.distinctSentences(out, language: language, max: 2)
-                    ?? out.trimmingCharacters(in: .whitespacesAndNewlines)
+               let kept = SummaryFailure.sentencesSharingWords(out, language: language, source: text, max: 3) {
+                result.markdown = kept
             } else {
                 result.failedChunks = 1
             }
@@ -836,7 +977,21 @@ struct MeetingSummaryPipeline: Sendable {
         let merged = SummaryMerger.merge(gathered, language: language, speakers: speakers)
         result.merged = merged
         result.condensed = SummaryRenderer.overviewInput(merged, maxChars: MeetingSummarizer.singlePassCharBudget)
-        guard !merged.isEmpty else { return result }
+        guard !merged.isEmpty else {
+            // Every structured attempt failed: one plain, grounded overview from
+            // excerpts spread over the whole meeting, so the note isn't left empty
+            // when the model can still write prose about it.
+            let sample = SummaryLanguage.spreadSample(of: units.map(\.text).joined(separator: "\n"), maxChars: chunkBudgetChars)
+            let out = try? await bounded {
+                try await model.write(instructions: SummaryPrompts.fallbackOverview(language),
+                                      prompt: sample, maxTokens: 240)
+            }
+            if let out, SummaryFailure.acceptsProse(out, language: language, source: sample) {
+                result.markdown = SummaryFailure.sentencesSharingWords(out, language: language, source: sample, max: 3)
+            }
+            if result.markdown != nil { result.errors.append("fallbackOverview") }
+            return result
+        }
 
         var overview: String?
         let input = SummaryRenderer.overviewInput(merged)
@@ -871,7 +1026,18 @@ struct MeetingSummaryPipeline: Sendable {
             } catch SummaryModelError.contextOverflow {
                 overflow = true
             } catch {
-                return ([], [Self.kind(of: error)])
+                // Guided generation refused or failed to decode: retry once with a
+                // plain tagged-lines prompt, parsed leniently.
+                let kind = Self.kind(of: error)
+                guard kind != "timeout" else { return ([], [kind]) }
+                if let out = try? await bounded({
+                       try await model.write(instructions: SummaryPrompts.plainExtraction(language),
+                                             prompt: prompt, maxTokens: 700) }),
+                   !SummaryFailure.isRefusalOrApology(out) {
+                    let notes = PlainNotesParser.parse(out, chunk: chunk, language: language)
+                    if notes != ChunkNotes() { return ([(chunk, notes)], [kind + "→plain"]) }
+                }
+                return ([], [kind])
             }
         }
         guard overflow, chunk.count > 1, depth < 2 else { return ([], ["contextOverflow"]) }

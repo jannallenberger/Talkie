@@ -144,7 +144,7 @@ final class MeetingSummaryPipelineTests: XCTestCase {
         let line = "Thomas schickt bis Mittwoch die Terminplanung an alle."
         let segs = [
             MeetingSegment(speaker: "Me", start: 0, end: 5, text: line),
-            MeetingSegment(speaker: "Me", start: 6, end: 9, text: line),
+            MeetingSegment(speaker: "Me", start: 20, end: 23, text: line),
             MeetingSegment(speaker: "Them", start: 600, end: 605, text: line),
         ]
         XCTAssertEqual(SummaryUnits.dropEchoes(SummaryUnits.build(transcript: "", segments: segs), language: de).count, 3)
@@ -351,6 +351,51 @@ final class MeetingSummaryPipelineTests: XCTestCase {
             language: de, source: source))
     }
 
+    func testShortSameSpeakerTurnsAreJoinedIntoOneLine() {
+        let segs = [
+            MeetingSegment(speaker: "Me", start: 0, end: 4, text: "Wir legen das Budget fest."),
+            MeetingSegment(speaker: "Me", start: 5, end: 9, text: "Und zwar bis Freitag."),
+            MeetingSegment(speaker: "Them", start: 10, end: 12, text: "Einverstanden."),
+            MeetingSegment(speaker: "Them", start: 40, end: 44, text: "Neues Thema nach der Pause."),
+        ]
+        let units = SummaryUnits.build(transcript: "", segments: segs)
+        XCTAssertEqual(units.map(\.text), ["Wir legen das Budget fest. Und zwar bis Freitag.", "Einverstanden.",
+                                          "Neues Thema nach der Pause."])
+        XCTAssertEqual(units[0].segment, 0)
+        XCTAssertEqual(units[0].end, 9)
+    }
+
+    func testChunksHoldAtMostSixLines() {
+        let units = (0..<20).map { SummaryUnit(index: $0, segment: $0, speaker: nil, start: nil, end: nil, text: "kurz") }
+        let chunks = SummaryChunker.chunk(units, budgetChars: 10_000, speakers: false)
+        XCTAssertEqual(chunks.map(\.count), [6, 6, 6, 2])
+    }
+
+    func testPlainTaggedLinesAreParsedLeniently() {
+        let chunk = SummaryUnits.build(transcript: "", segments: segments(6))
+        let text = """
+        Here are the notes:
+        - DECISION [2]: Kleinerer Stand in Halle drei
+        **Aufgabe 4:** Thomas | Terminplanung an alle schicken | Mittwoch
+        QUESTION: Druckt der Lieferant die Prospekte rechtzeitig?
+        TOPIC [99]: Budget zweites Quartal
+        random chatter line
+        """
+        let n = PlainNotesParser.parse(text, chunk: chunk, language: de)
+        XCTAssertEqual(n.decisions, [.init(line: 2, text: "Kleinerer Stand in Halle drei")])
+        XCTAssertEqual(n.actionItems, [.init(line: 4, owner: "Thomas", task: "Terminplanung an alle schicken", due: "Mittwoch")])
+        XCTAssertEqual(n.openQuestions.map(\.line), [3], "no number → the line it shares most words with")
+        XCTAssertEqual(n.topics.map(\.line), [0], "a number outside the chunk → best matching line")
+    }
+
+    func testShortSummarySentencesMustShareWordsWithTheTranscript() {
+        let source = Self.germanLines.joined(separator: " ")
+        let out = SummaryFailure.sentencesSharingWords(
+            "Es ging um das Budget für das zweite Quartal. Danach wurde über Urlaub auf Mallorca geplaudert. Thomas schickt die Terminplanung.",
+            language: de, source: source, max: 3)
+        XCTAssertEqual(out, "Es ging um das Budget für das zweite Quartal. Thomas schickt die Terminplanung.")
+    }
+
     // MARK: Pipeline with a fake model
 
     func testShortMeetingIsOneOrTwoSentencesWithoutSections() async {
@@ -397,11 +442,46 @@ final class MeetingSummaryPipelineTests: XCTestCase {
         let segs = segments(60)
         let model = FakeModel()
         model.extractHandler = { _ in throw SummaryModelError.refused }
-        model.writeHandler = { _, _ in XCTFail("no overview without items"); return "" }
+        model.writeHandler = { _, _ in "I'm sorry, but I cannot help with that." }
         var p = MeetingSummaryPipeline(model: model)
         p.chunkBudgetChars = 900
         let r = await p.run(transcript: transcript(segs), segments: segs)
         XCTAssertNil(r.markdown)
+        XCTAssertEqual(r.failedChunks, r.chunks)
+    }
+
+    func testRefusedGuidedChunkIsRetriedWithAPlainPrompt() async {
+        let segs = segments(60)
+        let model = FakeModel()
+        model.extractHandler = { _ in throw SummaryModelError.refused }
+        model.writeHandler = { instructions, prompt in
+            if instructions.contains("TOPIC [n]") {
+                // Cite the first line of the chunk this prompt holds.
+                let n = Self.lineNumbers(prompt).first(where: { Self.germanLines[$0 % 6].contains("Budget") }) ?? -1
+                return n < 0 ? "nothing" : "DECISION [\(n)]: Budget für das zweite Quartal bis Freitag festlegen"
+            }
+            return "Das Team legt das Budget für das zweite Quartal fest."
+        }
+        var p = MeetingSummaryPipeline(model: model)
+        p.chunkBudgetChars = 900
+        let r = await p.run(transcript: transcript(segs), segments: segs)
+        let md = try! XCTUnwrap(r.markdown)
+        XCTAssertTrue(md.contains("**Entscheidungen:**\n- Budget für das zweite Quartal bis Freitag festlegen"))
+        XCTAssertTrue(r.errors.contains("refused→plain"))
+    }
+
+    func testWhenEveryExtractionFailsAPlainGroundedOverviewIsWritten() async {
+        let segs = segments(60)
+        let model = FakeModel()
+        model.extractHandler = { _ in throw SummaryModelError.other("decodingFailure") }
+        model.writeHandler = { instructions, _ in
+            if instructions.contains("TOPIC [n]") { return "I'm sorry, but I cannot help with that." }
+            return "Es ging um das Budget für das zweite Quartal. Außerdem um Urlaubspläne in Spanien."
+        }
+        var p = MeetingSummaryPipeline(model: model)
+        p.chunkBudgetChars = 900
+        let r = await p.run(transcript: transcript(segs), segments: segs)
+        XCTAssertEqual(r.markdown, "Es ging um das Budget für das zweite Quartal.", "the unsupported sentence is dropped")
         XCTAssertEqual(r.failedChunks, r.chunks)
     }
 
@@ -441,7 +521,7 @@ final class MeetingSummaryPipelineTests: XCTestCase {
     }
 
     func testCountedTokensOverBudgetSplitBeforeCalling() async {
-        let segs = segments(30)
+        let segs = segments(60)
         let model = FakeModel()
         model.tokenHandler = { $0.count / 2 }
         model.extractHandler = { Self.faithfulNotes($0) }

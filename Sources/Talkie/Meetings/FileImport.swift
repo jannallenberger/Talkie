@@ -556,7 +556,12 @@ final class FileImportCoordinator: ObservableObject {
     /// unit-tested without the Foundation Models model (which is machine-dependent and
     /// slow). Defaults to the real `MeetingSummarizer`; returns "" when the model isn't
     /// available, exactly as before.
-    private let summarize: @Sendable (String) async -> String
+    private let summarize: @Sendable (String, [MeetingSegment]?) async -> String
+    /// Shows/hides the "Writing the summary…" state on a saved import (the recorder's
+    /// `summarizingMeetingIDs`, injected from AppDelegate). Nil in tests.
+    private let markSummarizing: (@MainActor (UUID, Bool) -> Void)?
+    /// Imports' background summaries run one at a time, in import order.
+    private var summaryChain: Task<Void, Never>?
     /// The post-save speaker-diarization pass, injected from AppDelegate (it is the
     /// recorder's own `diarizationStep`, so an import gets the same models, own-voice
     /// profile, time box and circuit breaker as a recorded meeting). Nil (tests) = skip.
@@ -604,9 +609,11 @@ final class FileImportCoordinator: ObservableObject {
         isProcessing: @escaping () -> Bool,
         isRecording: @escaping () -> Bool,
         importer: FileImporting = FileImportEngine(),
-        summarize: (@Sendable (String) async -> String)? = nil,
-        diarize: Diarize? = nil
+        summarize: (@Sendable (String, [MeetingSegment]?) async -> String)? = nil,
+        diarize: Diarize? = nil,
+        markSummarizing: (@MainActor (UUID, Bool) -> Void)? = nil
     ) {
+        self.markSummarizing = markSummarizing
         self.diarize = diarize
         self.meetingStore = meetingStore
         self.contextGraph = contextGraph
@@ -618,8 +625,8 @@ final class FileImportCoordinator: ObservableObject {
         self.importer = importer
         // Default: the real on-device summarizer (map-reduce is in-core now, so imports get
         // full summaries). A fresh actor per call matches the recorder's usage.
-        self.summarize = summarize ?? { transcript in
-            await MeetingSummarizer().summarize(transcript) ?? ""
+        self.summarize = summarize ?? { transcript, segments in
+            await MeetingSummarizer().summarize(transcript, segments: segments) ?? ""
         }
     }
 
@@ -830,10 +837,6 @@ final class FileImportCoordinator: ObservableObject {
 
         guard generation == self.generation, !Task.isCancelled else { return }
 
-        // Summarize on-device via the injected summarizer (real model in production, a fake
-        // in queue tests).
-        let summary = await summarize(result.transcript)
-        guard generation == self.generation, !Task.isCancelled else { return }
 
         // Build the Meeting. Title from the filename (extension stripped); startUnix
         // from the file's content-creation date, falling back to now. `segments`
@@ -858,7 +861,9 @@ final class FileImportCoordinator: ObservableObject {
             startUnix: start.timeIntervalSince1970,
             durationSec: result.durationSec,
             transcript: result.transcript,
-            summary: summary,
+            // Written in the background below, after the speaker pass — exactly like a
+            // recorded meeting — so the summary sees the real speaker labels.
+            summary: "",
             participants: ["Imported"],
             source: "talkie (imported: \(item.url.lastPathComponent))",
             fileName: fileName,
@@ -878,22 +883,47 @@ final class FileImportCoordinator: ObservableObject {
                                     dateUnix: start.timeIntervalSince1970, snippet: nil)
         contextGraph.ingest(ContextGraphExtractor.candidates(from: result.transcript), provenance: provenance)
 
-        // Speaker labels, exactly like a recorded meeting: one "Me" lane, split where the
-        // speaker changes, "Me" only when the own-voice profile matches. Runs AFTER the
-        // save and off the queue, so a slow, failed or timed-out pass can never lose or
-        // delay the transcript (and never holds up the next file).
-        if let lane = laneAudio, let diarize, let segments = result.segments, !segments.isEmpty {
+        // Speaker labels, then the summary — exactly like a recorded meeting: one "Me"
+        // lane, split where the speaker changes, "Me" only when the own-voice profile
+        // matches; the summary waits for that (time-boxed) pass so it is speaker-aware.
+        // Both run AFTER the save and off the import queue, so a slow, failed or
+        // timed-out pass can never lose or delay the transcript (or hold up the next
+        // file). Summaries are chained so imports don't race for the model.
+        let diarizeInput: (lane: URL, segments: [MeetingSegment])?
+        if let lane = laneAudio, diarize != nil, let segments = result.segments, !segments.isEmpty {
             laneAudio = nil // handed over: the pass deletes it
-            let transcript = result.transcript, duration = result.durationSec, words = result.words
-            Task { @MainActor [weak self] in
+            diarizeInput = (lane, segments)
+        } else {
+            diarizeInput = nil
+        }
+        let transcript = result.transcript, duration = result.durationSec, words = result.words
+        let importedSegments = result.segments
+        let diarize = self.diarize, summarize = self.summarize, mark = self.markSummarizing
+        let previous = summaryChain
+        mark?(id, true)
+        summaryChain = Task { @MainActor [weak self] in
+            if let input = diarizeInput, let diarize {
                 let step = await diarize(
-                    id, [.init(lane: SpeakerLabels.me, fileURL: lane)], segments, words, transcript, duration)
-                MeetingDiarizationTemp.remove([lane])
-                guard let self, var current = self.meetingStore.meetings.first(where: { $0.id == id }) else { return }
-                if let count = step.speakerCount { current.speakerCount = count }
-                if let state = step.state { current.diarizationState = state.rawValue }
-                self.meetingStore.update(current)
+                    id, [.init(lane: SpeakerLabels.me, fileURL: input.lane)], input.segments, words, transcript, duration)
+                MeetingDiarizationTemp.remove([input.lane])
+                if let self, var current = self.meetingStore.meetings.first(where: { $0.id == id }) {
+                    if let count = step.speakerCount { current.speakerCount = count }
+                    if let state = step.state { current.diarizationState = state.rawValue }
+                    self.meetingStore.update(current)
+                }
             }
+            await previous?.value
+            guard let self, let current = self.meetingStore.meetings.first(where: { $0.id == id }) else {
+                mark?(id, false); return
+            }
+            // The diarized note (relabelled transcript + segments) when the pass applied.
+            let summary = await summarize(current.transcript, current.segments ?? importedSegments)
+            if var latest = self.meetingStore.meetings.first(where: { $0.id == id }),
+               latest.summary.isEmpty, !summary.isEmpty {
+                latest.summary = summary
+                self.meetingStore.update(latest)
+            }
+            mark?(id, false)
         }
     }
 
