@@ -32,18 +32,28 @@ enum FormatDictationAssembler {
     ///     off / the model is unavailable (then the deterministic de-seam is used).
     ///   - postProcessFormatted: the deterministic dictionary/number pass for formatted
     ///     text (normal text gets the full chain later, through `normalStream`).
+    ///   - words: use these words instead of `segments`' (the proportional fallback).
+    ///   - fallbackCommands: per span, the command to use when its words here are empty
+    ///     or unmatched (see `FormatTimeline.layout`).
+    ///   - refineByPhrase: word times are estimates — snap span edges to the phrase.
     ///   - model: the model-format runner (injected so tests can stub it).
     static func assemble(
         segments: [TimedSegment],
         marks: [FormatMark],
+        words wordsOverride: [FormatWord]? = nil,
+        fallbackCommands: [FormatCommand?] = [],
+        refineByPhrase: Bool = false,
         clean: Cleaner?,
         postProcessFormatted: @Sendable (String) -> String,
         languageCode: String?,
         userName: String,
         model: ModelRunner = { await FormatModelPass.run($0, text: $1, languageCode: $2) }
     ) async -> Plan {
-        let words = FormatTimeline.words(from: segments)
-        let layout = FormatTimeline.layout(words: words, marks: marks)
+        let words = wordsOverride ?? FormatTimeline.words(from: segments)
+        let layout = FormatTimeline.layout(
+            words: words, marks: marks,
+            fallback: { n in n < fallbackCommands.count ? fallbackCommands[n] : nil },
+            refineByPhrase: refineByPhrase)
         var parts: [FormatAssembly.Part] = []
         var modelFallback = false
 
@@ -125,6 +135,35 @@ enum FormatDictationAssembler {
             var out = items
             for await (i, text) in group { out[i] = text }
             return out
+        }
+    }
+}
+
+/// "Format while you dictate" after the stop-time language check re-transcribed the
+/// audio in another language. The command spans are in audio time, so they carry
+/// over; only the words change.
+enum FormatRetranscription {
+
+    /// The words to lay out: the re-transcription's own timed words when they
+    /// reproduce its text, else per-token times estimated proportionally from the
+    /// original recording (`proportional` = true → snap spans to the phrase).
+    static func words(retranscribed segments: [TimedSegment], text: String,
+                      original: [FormatWord], duration: Double) -> (words: [FormatWord], proportional: Bool) {
+        let joined = SegmentWord.normalized(segments.map(\.text).joined(separator: " "))
+        let target = SegmentWord.normalized(text)
+        if !segments.isEmpty, joined == target {
+            let allTimed = segments.allSatisfy { SegmentWord.validated($0.words, for: $0.text) != nil }
+            return (FormatTimeline.words(from: segments), !allTimed)
+        }
+        return (FormatTimeline.proportionalWords(text: text, reference: original, duration: duration), true)
+    }
+
+    /// Per span: the command read from the ORIGINAL transcript's words in that span,
+    /// else the one the live preview matched at release.
+    static func fallbackCommands(original: [FormatWord], marks: [FormatMark],
+                                 live: [FormatCommand?]) -> [FormatCommand?] {
+        FormatTimeline.spanCommands(words: original, marks: marks).enumerated().map { n, fromOriginal in
+            fromOriginal ?? (n < live.count ? live[n] : nil)
         }
     }
 }

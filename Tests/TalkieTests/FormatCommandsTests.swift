@@ -602,3 +602,114 @@ final class FormatLivePreviewTests: XCTestCase {
         XCTAssertEqual(FormatLivePreview.resolve("banana"), .notRecognised("banana"))
     }
 }
+
+/// The stop-time language check stays on for dictations with format commands: the
+/// audio is re-transcribed in the right language and the command spans (audio time)
+/// are laid over the NEW words.
+final class FormatRetranscriptionTests: XCTestCase {
+
+    private func fw(_ t: String, _ s: Double, _ e: Double) -> FormatWord { FormatWord(text: t, start: s, end: e, segment: 0) }
+    private func sw(_ t: String, _ s: Double, _ e: Double) -> SegmentWord { SegmentWord(text: t, start: s, end: e) }
+
+    /// The live session decoded German speech with the English model (gibberish).
+    private let originalGibberish = [TimedSegment(text: "Ick brow ka in stick punk ten milk I a", start: 0, end: 5, words: nil)]
+
+    private func assemble(_ words: [FormatWord], marks: [FormatMark], fallback: [FormatCommand?] = [],
+                          refine: Bool = false) async -> FormatDictationAssembler.Plan {
+        await FormatDictationAssembler.assemble(
+            segments: [], marks: marks, words: words, fallbackCommands: fallback, refineByPhrase: refine,
+            clean: nil, postProcessFormatted: { $0 }, languageCode: "de", userName: "",
+            model: { _, _, _ in nil })
+    }
+
+    func testOneSpanOverReTranscribedTimedWords() async {
+        let text = "Ich brauche in Stichpunkten Milch Eier"
+        let seg = TimedSegment(text: text, start: 0, end: 4.2, words: [
+            sw("Ich", 0, 0.3), sw(" brauche", 0.35, 0.8), sw(" in", 1.2, 1.35), sw(" Stichpunkten", 1.4, 2.0),
+            sw(" Milch", 2.5, 2.9), sw(" Eier", 3.8, 4.1)])
+        let laid = FormatRetranscription.words(retranscribed: [seg], text: text,
+                                               original: FormatTimeline.words(from: originalGibberish), duration: 4.2)
+        XCTAssertFalse(laid.proportional)
+        let plan = await assemble(laid.words, marks: [.span(start: 1.1, end: 2.1)])
+        XCTAssertEqual(plan.resolutions, [.applied(.bulletList)])
+        XCTAssertEqual(plan.parts, [.normal("Ich brauche"), .formatted(.init(text: "- Milch\n- Eier", isBlock: true))])
+        XCTAssertFalse(plan.plainRaw.contains("Stichpunkten"))
+    }
+
+    func testTwoSpansOverReTranscribedTimedWords() async {
+        let text = "Liste Milch Eier alles groß wichtig"
+        let seg = TimedSegment(text: text, start: 0, end: 6, words: [
+            sw("Liste", 0.1, 0.5), sw(" Milch", 1.0, 1.3), sw(" Eier", 2.2, 2.5),
+            sw(" alles", 3.0, 3.3), sw(" groß", 3.35, 3.7), sw(" wichtig", 4.5, 5.0)])
+        let laid = FormatRetranscription.words(retranscribed: [seg], text: text, original: [], duration: 6)
+        let plan = await assemble(laid.words, marks: [.span(start: 0, end: 0.6), .span(start: 2.9, end: 3.8)])
+        XCTAssertEqual(plan.resolutions, [.applied(.bulletList), .applied(.allCaps)])
+        XCTAssertEqual(plan.parts, [.formatted(.init(text: "- Milch\n- Eier", isBlock: true)),
+                                    .formatted(.init(text: "WICHTIG", isBlock: false))])
+    }
+
+    func testEmptyReTranscribedSpanFallsBackToTheOriginalThenTheLivePreview() async {
+        // The re-transcription has no words inside the span (0.9–1.6 s).
+        let words = [fw("Hallo", 0, 0.4), fw(" Milch", 2.0, 2.3), fw(" Eier", 3.2, 3.5)]
+        let marks: [FormatMark] = [.span(start: 0.9, end: 1.6)]
+        // 1) The original transcript heard "bullet points" in that span.
+        let original = [fw("hello", 0, 0.4), fw(" bullet", 1.0, 1.2), fw(" points", 1.25, 1.5), fw(" milk", 2.0, 2.3)]
+        let fromOriginal = FormatRetranscription.fallbackCommands(original: original, marks: marks, live: [nil])
+        XCTAssertEqual(fromOriginal, [.apply(.bulletList)])
+        let plan = await assemble(words, marks: marks, fallback: fromOriginal)
+        XCTAssertEqual(plan.resolutions, [.applied(.bulletList)])
+        XCTAssertEqual(plan.parts.last, .formatted(.init(text: "- Milch\n- Eier", isBlock: true)))
+        // 2) The original span is gibberish too → the live preview's match at release.
+        let gibberish = [fw("hello", 0, 0.4), fw(" grumble", 1.0, 1.4)]
+        let fromLive = FormatRetranscription.fallbackCommands(original: gibberish, marks: marks, live: [.apply(.allCaps)])
+        XCTAssertEqual(fromLive, [.apply(.allCaps)])
+        let plan2 = await assemble(words, marks: marks, fallback: fromLive)
+        XCTAssertEqual(plan2.parts.last, .formatted(.init(text: "MILCH EIER", isBlock: false)))
+        // 3) No fallback at all → an empty span ends the mode, as before.
+        let plan3 = await assemble(words, marks: marks, fallback: [nil])
+        XCTAssertEqual(plan3.resolutions, [.ended])
+    }
+
+    func testUnmatchedReTranscribedSpanUsesTheFallback() async {
+        let words = [fw("Hallo", 0, 0.4), fw(" Stich", 1.0, 1.2), fw(" bunt", 1.25, 1.5), fw(" Milch", 2.0, 2.3)]
+        let plan = await assemble(words, marks: [.span(start: 0.9, end: 1.6)], fallback: [.apply(.bulletList)])
+        XCTAssertEqual(plan.resolutions, [.applied(.bulletList)])
+        XCTAssertFalse(plan.plainRaw.contains("Stich"))
+    }
+
+    func testNoWordTimingsUsesProportionalPositionAndNeverPastesCommandWords() async {
+        // Re-transcribed text with no usable timings (text mismatch / words nil).
+        let text = "Ich brauche heute in Stichpunkten Milch und Eier"
+        let reSegments = [TimedSegment(text: "something else", start: 0, end: 5, words: nil)]
+        // The original recording's word times (6 words; the new text has 8 tokens, so
+        // the proportional estimate is off by a word or so).
+        let original = [fw("Ick", 0, 0.3), fw(" brow", 0.35, 0.8), fw(" in", 1.2, 1.35),
+                        fw(" stickpunk", 1.4, 2.0), fw(" milk", 2.5, 2.9), fw(" eye", 3.8, 4.1)]
+        let laid = FormatRetranscription.words(retranscribed: reSegments, text: text, original: original, duration: 4.2)
+        XCTAssertTrue(laid.proportional)
+        XCTAssertEqual(laid.words.count, 8)
+        let marks: [FormatMark] = [.span(start: 1.1, end: 2.1)]
+        let fallback = FormatRetranscription.fallbackCommands(original: original, marks: marks, live: [.apply(.bulletList)])
+        let plan = await assemble(laid.words, marks: marks, fallback: fallback, refine: true)
+        XCTAssertEqual(plan.resolutions, [.applied(.bulletList)])
+        XCTAssertFalse(plan.plainRaw.contains("Stichpunkten"))
+        XCTAssertFalse(plan.plainRaw.split(separator: " ").contains("in"))
+        XCTAssertTrue(plan.plainRaw.contains("heute"))     // real words are kept
+        XCTAssertTrue(plan.plainRaw.contains("Eier"))
+        guard case .formatted(let piece)? = plan.parts.last else { return XCTFail("no formatted part") }
+        XCTAssertTrue(piece.text.hasPrefix("- Milch"))
+    }
+
+    func testProportionalWordsWithoutReferenceSpreadEvenly() {
+        let words = FormatTimeline.proportionalWords(text: "a b c d", reference: [], duration: 4)
+        XCTAssertEqual(words.map(\.start), [0, 1, 2, 3])
+        XCTAssertEqual(words.map(\.text), ["a", " b", " c", " d"])
+    }
+
+    func testTimedSegmentsWithoutWordTimingsAreMarkedEstimated() {
+        let seg = TimedSegment(text: "eins zwei", start: 1, end: 2, words: nil)
+        let laid = FormatRetranscription.words(retranscribed: [seg], text: "eins zwei", original: [], duration: 2)
+        XCTAssertTrue(laid.proportional)
+        XCTAssertEqual(laid.words.map(\.start), [1, 1.5])
+    }
+}

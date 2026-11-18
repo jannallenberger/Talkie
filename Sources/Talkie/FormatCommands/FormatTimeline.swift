@@ -87,67 +87,111 @@ enum FormatTimeline {
 
     /// Split `words` into regions. `match` maps a span's text to a command (injected
     /// so tests can stub it; the live caller passes `FormatPhraseMatcher.match`).
+    ///
+    /// - `fallback`: per span (in time order), the command to use when the span's
+    ///   words here are empty or match nothing — e.g. after a stop-time language
+    ///   re-transcription, the command recognised in the ORIGINAL transcript or by the
+    ///   live preview at release.
+    /// - `refineByPhrase`: the word times are only estimates (proportional fallback,
+    ///   no recognizer timings). Each span's word range is then nudged by up to
+    ///   `refineReach` words either way to the range that is exactly the command
+    ///   phrase, so command words don't leak into the paste when the estimate is off.
     static func layout(words: [FormatWord], marks: [FormatMark],
-                       match: (String) -> FormatCommand? = FormatPhraseMatcher.match) -> Layout {
+                       match: (String) -> FormatCommand? = FormatPhraseMatcher.match,
+                       fallback: (Int) -> FormatCommand? = { _ in nil },
+                       refineByPhrase: Bool = false) -> Layout {
         let sorted = marks.sorted { $0.effectiveTime < $1.effectiveTime }
         let spans: [(start: Double, end: Double)] = sorted.compactMap {
             if case .span(let s, let e) = $0 { return (s, e) } else { return nil }
         }
-        func spanIndex(of w: FormatWord) -> Int? {
+
+        // Which span (if any) owns each word.
+        var owner: [Int?] = words.map { w in
             spans.firstIndex { w.midpoint >= $0.start - spanLeadPadding && w.midpoint <= $0.end + spanTrailPadding }
         }
-
-        // Command words per span; content words keep their order.
-        var spanWords = [[FormatWord]](repeating: [], count: spans.count)
-        var content: [FormatWord] = []
-        for w in words {
-            if let i = spanIndex(of: w) { spanWords[i].append(w) } else { content.append(w) }
+        func ownedRange(_ n: Int) -> ClosedRange<Int>? {
+            guard let a = owner.firstIndex(of: n), let b = owner.lastIndex(of: n) else { return nil }
+            return a...b
+        }
+        func firstIndex(atOrAfter t: Double) -> Int {
+            words.firstIndex { $0.midpoint >= t } ?? words.count
         }
 
-        // Resolve every mark into a timed format change. A span whose words are empty
-        // behaves like a tap (held the key, said nothing → end). An unrecognised span
-        // changes nothing (its words are still dropped — they were spoken as a command).
-        var changes: [(time: Double, format: FormatPreset?)] = []
+        // Resolve each span's command: its own words first, then the fallback.
+        var commands: [FormatCommand?] = []
+        var spokenTexts: [String] = []
+        for n in spans.indices {
+            let spoken = ownedRange(n).map { text(of: Array(words[$0])) } ?? ""
+            spokenTexts.append(spoken)
+            commands.append((spoken.isEmpty ? nil : match(spoken)) ?? fallback(n))
+        }
+
+        if refineByPhrase {
+            for n in spans.indices {
+                guard let expected = commands[n] else { continue }
+                guard !words.isEmpty else { continue }
+                let estimate = ownedRange(n) ?? {
+                    let i = min(words.count - 1, firstIndex(atOrAfter: spans[n].start))
+                    return i...i
+                }()
+                if let better = bestPhraseRange(in: words, around: estimate, owner: owner, span: n,
+                                                expected: expected) {
+                    for i in owner.indices where owner[i] == n { owner[i] = nil }
+                    for i in better { owner[i] = n }
+                    spokenTexts[n] = text(of: Array(words[better]))
+                }
+            }
+        }
+
+        // Each mark becomes a format change that takes effect from a word index on.
+        var changes: [(index: Int, format: FormatPreset?)] = []
         var resolutions: [FormatSpanResolution] = []
         var spanNumber = 0
         for mark in sorted {
             switch mark {
             case .endTap(let at):
-                changes.append((at, nil))
+                changes.append((firstIndex(atOrAfter: at), nil))
             case .span(_, let e):
-                let spoken = Self.text(of: spanWords[spanNumber])
+                let n = spanNumber
                 spanNumber += 1
-                if spoken.isEmpty {
+                let from = refineByPhrase ? (ownedRange(n).map { $0.upperBound + 1 } ?? firstIndex(atOrAfter: e))
+                                          : firstIndex(atOrAfter: e)
+                switch commands[n] {
+                case .apply(let preset)?:
+                    resolutions.append(.applied(preset))
+                    changes.append((from, preset))
+                case .end?:
                     resolutions.append(.ended)
-                    changes.append((e, nil))
-                } else if let command = match(spoken) {
-                    switch command {
-                    case .apply(let preset):
-                        resolutions.append(.applied(preset))
-                        changes.append((e, preset))
-                    case .end:
+                    changes.append((from, nil))
+                case nil:
+                    if spokenTexts[n].isEmpty {
+                        // Held the key and said nothing → end the format.
                         resolutions.append(.ended)
-                        changes.append((e, nil))
+                        changes.append((from, nil))
+                    } else {
+                        // Words that match nothing change nothing (they're still dropped:
+                        // they were spoken as a command).
+                        resolutions.append(.notRecognised(spokenTexts[n]))
                     }
-                } else {
-                    resolutions.append(.notRecognised(spoken))
                 }
             }
         }
+        changes.sort { $0.index < $1.index }   // stable: same index keeps time order
 
-        // Walk content words, applying every change whose time has passed. A new
-        // format command always opens a new region (a second "bullet list" starts a
-        // second list); normal text either side of an ended mode merges back.
+        // Walk the content words in order. A new format command always opens a new
+        // region (a second "bullet list" starts a second list); normal text either
+        // side of an ended mode merges back.
         var regions: [FormatRegion] = []
         var current: FormatPreset? = nil
         var ci = 0
-        for w in content {
+        for (i, w) in words.enumerated() {
             var changed = false
-            while ci < changes.count, changes[ci].time <= w.midpoint {
+            while ci < changes.count, changes[ci].index <= i {
                 current = changes[ci].format
                 changed = true
                 ci += 1
             }
+            guard owner[i] == nil else { continue }
             if let last = regions.last, last.format == current, !(changed && current != nil) {
                 regions[regions.count - 1].words.append(w)
             } else {
@@ -155,6 +199,67 @@ enum FormatTimeline {
             }
         }
         return Layout(regions: regions, resolutions: resolutions)
+    }
+
+    /// How far (in words) `refineByPhrase` may move a span's edges.
+    static let refineReach = 3
+
+    /// The word range near `estimate` that is EXACTLY `expected`'s phrase (a whole-
+    /// utterance match, not a word run inside it), closest to the estimate, preferring
+    /// the longer range so carrier words ("in", "als") go too. Never takes words that
+    /// belong to another span. Nil when no nearby range is the phrase.
+    static func bestPhraseRange(in words: [FormatWord], around estimate: ClosedRange<Int>, owner: [Int?],
+                                span n: Int, expected: FormatCommand) -> ClosedRange<Int>? {
+        guard !words.isEmpty else { return nil }
+        let lo = max(0, estimate.lowerBound - refineReach)
+        let hi = min(words.count - 1, max(estimate.lowerBound, estimate.upperBound) + refineReach)
+        guard lo <= hi else { return nil }
+        var best: (range: ClosedRange<Int>, cost: Int)?
+        for a in lo...hi {
+            for b in a...min(hi, a + 5) {
+                guard (a...b).allSatisfy({ owner[$0] == nil || owner[$0] == n }) else { continue }
+                guard FormatPhraseMatcher.matchWhole(text(of: Array(words[a...b]))) == expected else { continue }
+                let cost = abs(a - estimate.lowerBound) + abs(b - estimate.upperBound)
+                if best == nil || cost < best!.cost
+                    || (cost == best!.cost && b - a > best!.range.count - 1) {
+                    best = (a...b, cost)
+                }
+            }
+        }
+        return best?.range
+    }
+
+    /// Per span (time order): the command its words match, or nil. Used to read the
+    /// command from the ORIGINAL transcript as the fallback after a re-transcription.
+    static func spanCommands(words: [FormatWord], marks: [FormatMark],
+                             match: (String) -> FormatCommand? = FormatPhraseMatcher.match) -> [FormatCommand?] {
+        let spans: [(start: Double, end: Double)] = marks.sorted { $0.effectiveTime < $1.effectiveTime }.compactMap {
+            if case .span(let s, let e) = $0 { return (s, e) } else { return nil }
+        }
+        return spans.map { span in
+            let inside = words.filter { $0.midpoint >= span.start - spanLeadPadding && $0.midpoint <= span.end + spanTrailPadding }
+            let spoken = text(of: inside)
+            return spoken.isEmpty ? nil : match(spoken)
+        }
+    }
+
+    /// Words for a transcript that has NO recognizer word timings (e.g. a
+    /// re-transcription whose timings couldn't be read): each token gets the time of
+    /// the reference word at the same relative position (so pauses in the original
+    /// recording are kept), or an even spread over `duration` without a reference.
+    static func proportionalWords(text: String, reference: [FormatWord], duration: Double) -> [FormatWord] {
+        let tokens = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !tokens.isEmpty else { return [] }
+        return tokens.enumerated().map { k, token in
+            let piece = (k == 0 ? "" : " ") + token
+            if reference.isEmpty {
+                let step = max(0, duration) / Double(tokens.count)
+                return FormatWord(text: piece, start: step * Double(k), end: step * Double(k + 1), segment: 0)
+            }
+            let position = (Double(k) + 0.5) / Double(tokens.count) * Double(reference.count)
+            let ref = reference[min(reference.count - 1, Int(position))]
+            return FormatWord(text: piece, start: ref.start, end: ref.end, segment: 0)
+        }
     }
 
     /// The segment-wise texts of a region's words, for the usual de-seaming.

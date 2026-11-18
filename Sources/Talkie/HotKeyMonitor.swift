@@ -263,6 +263,18 @@ final class HotKeyMonitor: @unchecked Sendable {
         lock.unlock()
         if isSuspended { return }
 
+        // Left/right clicks are observed for one thing only: a click during a held
+        // format key cancels that command. Unless a dictation is active AND a hold is
+        // in progress they return here untouched — no field of the click is read,
+        // nothing is stored or logged. During a hold the only effect is that hold's
+        // "spoiled" flag.
+        if type == .leftMouseDown || type == .rightMouseDown {
+            lock.lock()
+            if gesture.isActive, formatGesture.isHeld { formatGesture.otherInput() }
+            lock.unlock()
+            return
+        }
+
         // A global ⌘+(Control|Option)+V chord re-pastes the last transcript. The
         // second modifier is whichever one the activation key does NOT use, so the
         // chord can never also arm dictation. Detected here on the shared listen-only
@@ -296,8 +308,6 @@ final class HotKeyMonitor: @unchecked Sendable {
             observed = .mouseDown(button: Int(event.getIntegerValueField(.mouseEventButtonNumber)))
         case .otherMouseUp:
             observed = .mouseUp(button: Int(event.getIntegerValueField(.mouseEventButtonNumber)))
-        case .leftMouseDown: observed = .mouseDown(button: 0)
-        case .rightMouseDown: observed = .mouseDown(button: 1)
         default: return
         }
 

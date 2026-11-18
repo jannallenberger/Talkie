@@ -144,6 +144,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var audioStartUptime: TimeInterval?
     /// The live transcript at the last clean command-key press, for the pill preview.
     private var formatPressSnapshot: Task<String, Never>?
+    /// Per command span (in order): what the live preview matched at release — the
+    /// last fallback when a re-transcribed span is empty or unmatched.
+    private var sessionLiveCommands: [FormatCommand?] = []
     /// True from key-release until the transcript has been polished + inserted.
     /// Blocks a new session from overlapping the in-flight one (which shares the
     /// engine + audio); a re-press during this window just nudges the pill.
@@ -874,6 +877,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hud.setFormatChip(nil)
         case .span(let start, let end):
             sessionFormatMarks.append(.span(start: audioTime(forUptime: start), end: audioTime(forUptime: end)))
+            let spanNumber = sessionLiveCommands.count
+            sessionLiveCommands.append(nil)
             let before = formatPressSnapshot
             formatPressSnapshot = nil
             Task { @MainActor [weak self] in
@@ -883,7 +888,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let earlier = await before?.value ?? ""
                 let now = await self.engine.liveTranscript()
                 guard self.isDictating, self.sessionID == myID else { return }
-                switch FormatLivePreview.resolve(FormatLivePreview.addedWords(before: earlier, after: now)) {
+                let resolution = FormatLivePreview.resolve(FormatLivePreview.addedWords(before: earlier, after: now))
+                if spanNumber < self.sessionLiveCommands.count {
+                    switch resolution {
+                    case .applied(let preset): self.sessionLiveCommands[spanNumber] = .apply(preset)
+                    case .ended: self.sessionLiveCommands[spanNumber] = .end
+                    case .notRecognised: break
+                    }
+                }
+                switch resolution {
                 case .applied(let preset): self.hud.setFormatChip(preset.displayName)
                 case .ended: self.hud.setFormatChip(nil)
                 case .notRecognised: self.hud.flashFormatNotRecognised()
@@ -896,7 +909,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `FormatDictationAssembler`). `style` nil = cleanup off. Formatted text gets the
     /// deterministic number + dictionary pass; normal text gets the full chain later.
     nonisolated private static func formatPlan(
-        segments: [TimedSegment], marks: [FormatMark], cleanup: CleanupEngine,
+        segments: [TimedSegment], marks: [FormatMark], words: [FormatWord]?,
+        fallbackCommands: [FormatCommand?], refineByPhrase: Bool, cleanup: CleanupEngine,
         style: CleanupStyle?, languageCode: String?, replacements: [Replacement],
         stripEnglishFillers: Bool, userName: String
     ) async -> FormatDictationAssembler.Plan {
@@ -909,7 +923,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 autoCapitalize: false, to: NumberNormalizer.normalize(text)).text
         }
         return await FormatDictationAssembler.assemble(
-            segments: segments, marks: marks, clean: clean, postProcessFormatted: post,
+            segments: segments, marks: marks, words: words, fallbackCommands: fallbackCommands,
+            refineByPhrase: refineByPhrase, clean: clean, postProcessFormatted: post,
             languageCode: languageCode, userName: userName)
     }
 
@@ -1245,6 +1260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         handsFreeLocked = false
         sessionLive = false
         sessionFormatMarks = []
+        sessionLiveCommands = []
         audioStartUptime = nil
         formatPressSnapshot = nil
         sessionID += 1
@@ -1968,7 +1984,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // "Format while you dictate": the command-key marks of this session. Without a
         // command span (`needsAssembly` false) every branch below is exactly as before.
         let formatMarks = settings.formatCommandsEnabled ? sessionFormatMarks : []
+        let formatLiveCommands = sessionLiveCommands
         sessionFormatMarks = []
+        sessionLiveCommands = []
         formatPressSnapshot = nil
         let hasFormatSpans = FormatAssembly.needsAssembly(formatMarks)
         let formatUserName = settings.userName
@@ -2003,10 +2021,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // recognition confidence). This beats language-ID of the text, which
             // leaks because wrong-model gibberish still contains real words of the
             // wrong (current) language. Short utterances are skipped — nothing to gain.
-            // With command spans the stop-time re-decode is skipped: its text carries no
-            // word timings, so the spans couldn't be placed (the live language switch
-            // during recording still applies).
-            if spokenLanguages.count > 1, !raw.isEmpty, LanguageDetector.canScore(raw), !hasFormatSpans {
+            // "Format while you dictate": the words a re-decode produced, laid out for the
+            // command spans (which are in audio time and so survive re-transcription).
+            var formatWords: [FormatWord]?
+            var formatWordsEstimated = false
+            if spokenLanguages.count > 1, !raw.isEmpty, LanguageDetector.canScore(raw) {
                 talkieDebugLog("--- dictation: raw(\(self.currentLocaleID))='\(raw)'")
                 // Re-decoding a window that lost its opening would REPLACE the whole
                 // transcript with only its tail — keep the live text instead.
@@ -2044,6 +2063,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         : wordConfidences.map { Double($0.confidence) }.reduce(0, +) / Double(wordConfidences.count)) {
                     finalRaw = best.text
                     languageSwitched = true
+                    if hasFormatSpans {
+                        let reSegments = await self.engine.takeReTranscribedSegments(localeID: best.localeID)
+                        let laid = FormatRetranscription.words(
+                            retranscribed: reSegments, text: best.text,
+                            original: FormatTimeline.words(from: timedSegments), duration: totalSeconds)
+                        formatWords = laid.words
+                        formatWordsEstimated = laid.proportional
+                        talkieDebugLog("format: re-transcribed → \(laid.words.count) words, estimated=\(laid.proportional)")
+                    }
                     self.currentLocaleID = best.localeID
                     await self.engine.setLocaleIdentifier(best.localeID) // stick to it next time
                     talkieDebugLog("switched → \(best.localeID)")
@@ -2157,7 +2185,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if hasFormatSpans {
                 streaming?.cancel()
                 let plan = await Self.formatPlan(
-                    segments: timedSegments, marks: formatMarks, cleanup: cleanupEngine,
+                    segments: timedSegments, marks: formatMarks, words: formatWords,
+                    fallbackCommands: FormatRetranscription.fallbackCommands(
+                        original: FormatTimeline.words(from: timedSegments), marks: formatMarks,
+                        live: formatLiveCommands),
+                    refineByPhrase: formatWordsEstimated, cleanup: cleanupEngine,
                     style: cleanupEnabled ? style : nil, languageCode: cleanupLangCode,
                     replacements: replacements, stripEnglishFillers: stripEnglishFillers,
                     userName: formatUserName)
@@ -2348,6 +2380,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 finalText = FormatAssembly.substitute(processed: finalText, parts: formatPlan.parts)
                 Self.pipelineTrace("format", finalText)
             }
+            // Whole-utterance voice commands ("note this …", "scratch that", "replace X
+            // with Y", macros, "make this a list" …) still run when nothing ended up
+            // formatted (e.g. the only command span was unrecognised or empty): then
+            // `finalText` is plain normal text, exactly like any dictation. They are
+            // skipped only when formatted text is present, because each of them matches
+            // the WHOLE utterance and would replace or discard the formatted part.
+            let hasFormattedText = formatPlan?.parts.contains {
+                if case .formatted = $0 { return true } else { return false }
+            } ?? false
 
             guard !finalText.isEmpty else {
                 // H5: an empty try-it (nothing intelligible said) still ends cleanly —
@@ -2400,7 +2441,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // is unchanged. A bare "note this" files the PREVIOUS dictation:
             // `history.add` for THIS utterance runs further below, so
             // `history.entries.first` here is still the prior entry.
-            if optimistic == nil, !hasFormatSpans, let match = NoteComposers.triggerMatch(for: finalText) {
+            if optimistic == nil, !hasFormattedText, let match = NoteComposers.triggerMatch(for: finalText) {
                 let noteBody: String?
                 switch match {
                 case .body(let body):
@@ -2460,7 +2501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // (`replace X with Y` is an edit only if X literally occurs, word-bounded,
             // in that text); anything that isn't a byte-exact edit command falls through
             // and dictates literally.
-            if optimistic == nil, !hasFormatSpans,
+            if optimistic == nil, !hasFormattedText,
                let editTarget = ImplicitSelectionGate.eligible(
                    lastEntry: self.history.entries.first, now: Date(), currentTarget: target
                ),
@@ -2483,7 +2524,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // off by default — a cross-surface request over your meetings, runs
             // the command INSTEAD of inserting as dictation. Conservative: normal
             // speech falls straight through to the dictation path below.
-            if optimistic == nil, !hasFormatSpans, let intent = self.commandRouter.intent(
+            if optimistic == nil, !hasFormattedText, let intent = self.commandRouter.intent(
                 for: finalText,
                 meetings: MeetingSnapshot(meetings: self.meetingStore.meetings),
                 crossSurfaceEnabled: self.settings.crossSurfaceCommandsEnabled

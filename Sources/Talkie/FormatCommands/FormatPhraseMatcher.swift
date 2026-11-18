@@ -40,6 +40,15 @@ enum FormatPhraseMatcher {
         return nil
     }
 
+    /// Strict variant: only when the WHOLE utterance is a phrase (exact or within the
+    /// edit tolerance) — no word-run search. Used to find exactly where a command
+    /// phrase sits in a transcript.
+    static func matchWhole(_ spoken: String) -> FormatCommand? {
+        let tokens = normalizedTokens(spoken)
+        guard !tokens.isEmpty else { return nil }
+        return bestMatch(for: tokens.joined())?.command
+    }
+
     // MARK: - Normalisation
 
     /// Carrier and filler words that never decide a format (folded spellings).
