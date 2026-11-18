@@ -237,7 +237,7 @@ actor MeetingSummarizer {
         let started = Date()
         let result = await pipeline.run(transcript: trimmed, segments: segments)
         let secs = Int(Date().timeIntervalSince(started))
-        Self.log.notice("summary: lang=\(result.language.code, privacy: .public) chunks=\(result.chunks) failed=\(result.failedChunks) ok=\(result.markdown != nil) \(secs)s")
+        Self.log.notice("summary: lang=\(result.language.code, privacy: .public) chunks=\(result.chunks) failed=\(result.failedChunks) ok=\(result.markdown != nil) \(secs)s errors=\(Set(result.errors).sorted().joined(separator: ","), privacy: .public)")
         return (result.markdown, result.condensed)
     }
 

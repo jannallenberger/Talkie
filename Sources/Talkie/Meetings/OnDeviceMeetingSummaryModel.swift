@@ -94,7 +94,9 @@ struct OnDeviceMeetingSummaryModel: MeetingSummaryModel {
                 case .guardrailViolation, .refusal:
                     throw SummaryModelError.refused
                 default:
-                    throw SummaryModelError.other(String(describing: error))
+                    // The case name only: an error's context may quote model output.
+                    let name = String(describing: error).prefix { $0 != "(" }
+                    throw SummaryModelError.other(String(name))
                 }
             }
         }

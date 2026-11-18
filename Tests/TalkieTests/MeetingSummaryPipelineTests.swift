@@ -244,11 +244,23 @@ final class MeetingSummaryPipelineTests: XCTestCase {
         XCTAssertTrue(SummaryItemFilter.isUsable("Start der Werbung um eine Woche verschoben", kind: .decision, language: de))
         XCTAssertTrue(SummaryItemFilter.isUsable("Wie wird der Wartungsvertrag bezahlt?", kind: .question, language: de))
         XCTAssertTrue(SummaryItemFilter.isUsable("Budget", kind: .topic, language: de))
+        XCTAssertFalse(SummaryItemFilter.isUsable("Später", kind: .decision, language: de), "one word is not a decision")
     }
 
     func testPronounsAreNotOwners() {
         let chunk = SummaryUnits.build(transcript: "", segments: segments(6))
         XCTAssertEqual(Grounding.resolveOwner("Sie", line: 4, in: chunk, speakers: true), "Speaker 1")
+        XCTAssertEqual(Grounding.resolveOwner("Bdy?", line: 4, in: chunk, speakers: true), "Speaker 1")
+        XCTAssertTrue(Grounding.looksLikeName("Anna Schmidt"))
+        XCTAssertFalse(Grounding.looksLikeName("checken noch mal"))
+    }
+
+    func testOverviewRepetitionLoopIsCutToDistinctSentences() {
+        let notes = "- Budget zweites Quartal\n- Kleinerer Stand in Halle drei"
+        let loop = Array(repeating: "Das Budget für das zweite Quartal steht. Gewählt wurde der kleinere Stand in Halle drei.",
+                         count: 6).joined(separator: " ") + " Das Budget für das"
+        XCTAssertEqual(SummaryFailure.groundedSentences(loop, language: de, source: notes, maxSentences: 3),
+                       "Das Budget für das zweite Quartal steht. Gewählt wurde der kleinere Stand in Halle drei.")
     }
 
     func testMergeDropsItemsCitingAnotherChunksLine() {

@@ -344,13 +344,25 @@ enum Grounding {
             .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:"))
         let source = chunk.first(where: { $0.index == line })
         let fallback = speakers ? source?.speaker : nil
-        guard !o.isEmpty, !isPlaceholder(o) else { return fallback }
+        guard !o.isEmpty, !isPlaceholder(o), looksLikeName(o) else { return fallback }
         let labels = Set(chunk.compactMap(\.speaker).map { $0.lowercased() })
         if labels.contains(o.lowercased()) { return o }
         let haystack = chunk.map(\.text).joined(separator: " ").lowercased()
         let nameParts = o.lowercased().split(separator: " ").filter { $0.count >= 2 }
         if !nameParts.isEmpty, nameParts.allSatisfy({ haystack.contains($0) }) { return o }
         return fallback
+    }
+
+    /// A name or label: one to three words, each starting with an upper-case
+    /// letter or a digit ("Anna", "Speaker 2"), and nothing but letters, digits,
+    /// hyphens and apostrophes ("Bdy?" or "checken noch mal" are not names).
+    static func looksLikeName(_ s: String) -> Bool {
+        let words = s.split(separator: " ")
+        guard (1...3).contains(words.count) else { return false }
+        return words.allSatisfy { w in
+            guard let f = w.first, f.isUppercase || f.isNumber else { return false }
+            return w.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "'" }
+        }
     }
 
     private static func isPlaceholder(_ s: String) -> Bool {
@@ -373,8 +385,8 @@ enum Grounding {
             "nicht angegeben", "nicht genannt",
         ]
         return markers.contains(where: { l.hasPrefix($0) || l == $0 })
-            || l.hasPrefix("no ") && l.count < 30
-            || l.hasPrefix("keine ") && l.count < 30
+            || l.hasPrefix("no ") && l.count < 40
+            || l.hasPrefix("keine ") && l.count < 40
     }
 }
 
@@ -411,6 +423,8 @@ enum SummaryItemFilter {
             default: limit = 20
             }
             if tokens.count > limit { return false }
+            // "Später" is not a decision and "Webseite" is not a task.
+            if kind == .decision || kind == .action, tokens.count < 2 { return false }
         }
         let asks = text.contains("?") || text.contains("？")
         if kind == .question { if !asks { return false } } else if asks { return false }
@@ -453,14 +467,40 @@ enum SummaryFailure {
         return Double(novel) / Double(out.count) >= threshold
     }
 
+    /// The first `max` complete, mutually distinct sentences of `text` (nil if none).
+    static func distinctSentences(_ text: String, language: SummaryLanguage, max: Int) -> String? {
+        var kept: [String] = []
+        var seen: [Set<String>] = []
+        text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { sub, _, _, stop in
+            guard kept.count < max else { stop = true; return }
+            guard let sentence = sub?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  let last = sentence.last, ".!?。！？".contains(last) else { return }
+            let set = Set(Grounding.contentWords(sentence, language: language))
+            if seen.contains(where: { Grounding.overlap($0, set) >= 0.8 }) { return }
+            seen.append(set)
+            kept.append(sentence)
+        }
+        return kept.isEmpty ? nil : kept.joined(separator: " ")
+    }
+
     /// Keep only the sentences that share content words with `source` (the merged
     /// notes): the overview call may not add a claim that no note supports.
-    static func groundedSentences(_ text: String, language: SummaryLanguage, source: String) -> String? {
+    /// Also the guard against the small model's repetition loop: a sentence that
+    /// repeats an earlier one is dropped, and at most `maxSentences` are kept.
+    static func groundedSentences(_ text: String, language: SummaryLanguage, source: String,
+                                  maxSentences: Int = 4) -> String? {
         let src = Set(Grounding.contentWords(source, language: language))
         var kept: [String] = []
-        text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { sub, _, _, _ in
+        var seen: [Set<String>] = []
+        text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { sub, _, _, stop in
+            guard kept.count < maxSentences else { stop = true; return }
             guard let sentence = sub?.trimmingCharacters(in: .whitespacesAndNewlines), !sentence.isEmpty else { return }
+            // A sentence cut off by the token cap has no end mark: drop it.
+            guard let last = sentence.last, ".!?。！？".contains(last) else { return }
             let words = Grounding.contentWords(sentence, language: language)
+            let set = Set(words)
+            if seen.contains(where: { Grounding.overlap($0, set) >= 0.8 }) { return }
+            seen.append(set)
             let shared = words.filter { src.contains($0) }.count
             // At least half of a sentence's content words must come from the notes.
             if !words.isEmpty, Double(shared) / Double(words.count) >= 0.5 { kept.append(sentence) }
@@ -669,14 +709,14 @@ enum SummaryPrompts {
         if language.code == "de" {
             return """
             Du schreibst den Überblick einer Besprechungsnotiz auf Deutsch: genau \(sentences) kurze Sätze \
-            als Fließtext, nur aus den folgenden Stichpunkten. Nichts hinzufügen, keine Überschrift, \
-            keine Aufzählung, keine Entschuldigung, keine Rückfragen.
+            als Fließtext, sachlich in der dritten Person berichtet, nur aus den folgenden Stichpunkten. \
+            Nichts hinzufügen, keine Überschrift, keine Aufzählung, keine Entschuldigung, keine Rückfragen.
             """
         }
         return """
         You write the overview of a meeting note in \(language.englishName): exactly \(sentences) short \
-        sentences of prose, using only the following notes. Add nothing, no heading, no list, \
-        no apology, no questions.
+        sentences of prose, reported neutrally in the third person, using only the following notes. \
+        Add nothing, no heading, no list, no apology, no questions.
         """
     }
 
@@ -730,6 +770,8 @@ struct MeetingSummaryResult: Sendable {
     var failedChunks: Int
     /// The merged items as plain text, for the downstream graph extractor.
     var condensed: String
+    /// Why calls failed (error kinds only, never content) — for logs and the eval.
+    var errors: [String] = []
 }
 
 struct MeetingSummaryPipeline: Sendable {
@@ -768,7 +810,8 @@ struct MeetingSummaryPipeline: Sendable {
             }
             if let out, SummaryFailure.acceptsProse(out, language: language, source: text),
                !SummaryFailure.isMostlyInvented(out, language: language, source: text) {
-                result.markdown = out.trimmingCharacters(in: .whitespacesAndNewlines)
+                result.markdown = SummaryFailure.distinctSentences(out, language: language, max: 2)
+                    ?? out.trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
                 result.failedChunks = 1
             }
@@ -785,9 +828,10 @@ struct MeetingSummaryPipeline: Sendable {
         var gathered: [(chunk: [SummaryUnit], notes: ChunkNotes)] = []
         for chunk in chunks {
             guard Date() < deadline else { result.failedChunks += 1; continue }
-            let pieces = await extractAdaptive(chunk, language: language, speakers: speakers, depth: 0)
+            let (pieces, errors) = await extractAdaptive(chunk, language: language, speakers: speakers, depth: 0)
             if pieces.isEmpty { result.failedChunks += 1 }
             gathered += pieces
+            result.errors += errors
         }
         let merged = SummaryMerger.merge(gathered, language: language, speakers: speakers)
         result.merged = merged
@@ -800,10 +844,11 @@ struct MeetingSummaryPipeline: Sendable {
             let sentences = SummaryRenderer.overviewSentences(words: words)
             let out = try? await bounded {
                 try await model.write(instructions: SummaryPrompts.overview(language, sentences: sentences),
-                                      prompt: input, maxTokens: 300)
+                                      prompt: input, maxTokens: 70 * sentences)
             }
             if let out, SummaryFailure.acceptsProse(out, language: language, source: input) {
-                overview = SummaryFailure.groundedSentences(out, language: language, source: input)
+                overview = SummaryFailure.groundedSentences(out, language: language, source: input,
+                                                            maxSentences: sentences)
             }
         }
         result.markdown = SummaryRenderer.render(overview: overview, notes: merged, language: language, words: words)
@@ -814,7 +859,7 @@ struct MeetingSummaryPipeline: Sendable {
     /// model reports a context overflow) split it in half and try each half, at
     /// most twice deep. Returns the successful pieces only.
     func extractAdaptive(_ chunk: [SummaryUnit], language: SummaryLanguage, speakers: Bool,
-                         depth: Int) async -> [(chunk: [SummaryUnit], notes: ChunkNotes)] {
+                         depth: Int) async -> (pieces: [(chunk: [SummaryUnit], notes: ChunkNotes)], errors: [String]) {
         let prompt = SummaryChunker.render(chunk, speakers: speakers)
         let instructions = SummaryPrompts.extraction(language)
         var overflow = false
@@ -822,21 +867,34 @@ struct MeetingSummaryPipeline: Sendable {
         if !overflow {
             do {
                 let notes = try await bounded { try await model.extract(instructions: instructions, prompt: prompt) }
-                return [(chunk, notes)]
+                return ([(chunk, notes)], [])
             } catch SummaryModelError.contextOverflow {
                 overflow = true
             } catch {
-                return []
+                return ([], [Self.kind(of: error)])
             }
         }
-        guard overflow, chunk.count > 1, depth < 2 else { return [] }
+        guard overflow, chunk.count > 1, depth < 2 else { return ([], ["contextOverflow"]) }
         let mid = chunk.count / 2
         let first = await extractAdaptive(Array(chunk[..<mid]), language: language, speakers: speakers, depth: depth + 1)
         let second = await extractAdaptive(Array(chunk[mid...]), language: language, speakers: speakers, depth: depth + 1)
-        return first + second
+        return (first.pieces + second.pieces, first.errors + second.errors)
     }
 
     private struct Timeout: Error {}
+
+    static func kind(of error: Error) -> String {
+        if error is Timeout { return "timeout" }
+        if let e = error as? SummaryModelError {
+            switch e {
+            case .contextOverflow: return "contextOverflow"
+            case .refused: return "refused"
+            case .unavailable: return "unavailable"
+            case .other(let why): return "other:" + String(why.prefix(60))
+            }
+        }
+        return "other"
+    }
 
     /// Run one model call under `perCallSeconds`. A timeout abandons the call (see
     /// `TimeBox`) and throws, so the caller treats it as a failed chunk.
