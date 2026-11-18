@@ -286,6 +286,7 @@ struct MeetingsView: View {
                 // debounce-driven commit reacting to `isRecording` flipping would
                 // always be too late. See `NotesDraftBox`.
                 recorder.notes = notesDraftBox.text
+                recorder.noteLines = notesDraftBox.lines
                 Task { await recorder.stop() }
             }
             .buttonStyle(.talkie(.primary, tint: Theme.featherRed))
@@ -308,8 +309,9 @@ struct MeetingsView: View {
 
     // MARK: Live recording panel
 
-    /// What's being captured plus the live notes editor, as one calm panel under the
-    /// bar. The editor stays its own view so typing never re-diffs this page.
+    /// What's being captured plus the live notes editor and the provisional "So far"
+    /// list, as one calm panel under the bar. Both are their own views: typing never
+    /// re-diffs this page, and a live summary update re-renders only its list.
     private var recordingPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -320,7 +322,10 @@ struct MeetingsView: View {
                     .font(.talkieHeading(14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
             }
-            RecordingNotesEditor(recorder: recorder, draftBox: notesDraftBox)
+            HStack(alignment: .top, spacing: 16) {
+                RecordingNotesEditor(recorder: recorder, draftBox: notesDraftBox)
+                LiveSoFarView(state: recorder.liveSummary)
+            }
         }
         .talkieCard(padding: 16)
     }
@@ -406,7 +411,7 @@ struct MeetingsView: View {
                     onReveal: { reveal(meeting) },
                     onCopy: { copy(meeting) },
                     onDelete: { pendingDelete = meeting },
-                    onRegenerate: { await regenerateSummary(meeting) },
+                    onRegenerate: { recorder.regenerateSummary(id: meeting.id) },
                     onSaveTranscript: { edited in saveTranscript(meeting, edited: edited) },
                     onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
                 )
@@ -452,22 +457,6 @@ struct MeetingsView: View {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(meeting.transcript, forType: .string)
-    }
-
-    /// Re-runs on-device summarization for one past meeting and persists the
-    /// result — the fix for meetings recorded before the map-reduce change (or
-    /// while the on-device model briefly wasn't ready), which are otherwise
-    /// stuck with an empty or generic summary forever. This REPLACES the whole
-    /// `summary` field, which is also where the user's typed meeting notes live
-    /// (fused into the prose, or verbatim under "## Your notes") — `Meeting` has
-    /// no separate notes field to preserve independently, so `MeetingDetail` confirms
-    /// with the user before calling this whenever there's an existing, non-empty
-    /// summary to lose.
-    private func regenerateSummary(_ meeting: Meeting) async {
-        guard let summary = await MeetingSummarizer().summarize(meeting.transcript, segments: meeting.segments) else { return }
-        var updated = meeting
-        updated.summary = summary
-        store.update(updated)
     }
 
     /// Persist a hand-edited transcript back into the meeting (A8). `store.update`
@@ -550,10 +539,14 @@ private struct RecordingElapsedText: View {
 /// to a stop triggered from the in-app button.
 private final class NotesDraftBox {
     var text: String = ""
+    /// Per line, the meeting time it was started (kept in step with `text`).
+    var lines: [MeetingNoteStamper.Line] = []
 }
 
-/// Live notes during a recording — fused with the transcript on stop (the
-/// "Granola magic"). Jot sparse points; Talkie expands them from what was said.
+/// Live notes during a recording. Every line keeps the meeting time at which it was
+/// started; "Mark this moment" adds a time-stamped line to write into later. On stop
+/// the notes go into the summary word for word, with their times, and each one
+/// points the summary at what was said around its moment.
 ///
 /// Used to be a `TextEditor` bound directly to `$recorder.notes` inline in
 /// `MeetingsView.body`; every keystroke published through `recorder` (an
@@ -591,9 +584,17 @@ private struct RecordingNotesEditor: View {
                     .font(.talkieEyebrow)
                     .foregroundStyle(Theme.inkSecondary)
                 Spacer()
-                Text("Fused with the transcript when you stop")
+                Text("Kept word for word in the summary, with times".loc)
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.inkTertiary)
+                Button {
+                    draft = MeetingNoteStamper.appendingMarker(to: draft, at: recorder.elapsed)
+                    isFocused = true
+                } label: {
+                    Label("Mark this moment".loc, systemImage: "bookmark")
+                }
+                .buttonStyle(.talkie(.secondary, size: .small))
+                .help("Adds a time-stamped line to your notes".loc)
             }
             TextEditor(text: $draft)
                 .font(.system(size: 13))
@@ -604,7 +605,7 @@ private struct RecordingNotesEditor: View {
                 .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                 .overlay(alignment: .topLeading) {
                     if draft.isEmpty {
-                        Text("Jot key points — Talkie expands them with the transcript…")
+                        Text("Jot key points — each line keeps the moment you started it…".loc)
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.inkTertiary)
                             .padding(.horizontal, 13)
@@ -621,11 +622,17 @@ private struct RecordingNotesEditor: View {
             // started before this page was opened, or recovered mid-flight —
             // so re-opening the Meetings tab never shows a blank editor over
             // real notes.
+            // Lines first, so seeding the text doesn't re-stamp them as new.
+            draftBox.lines = recorder.noteLines.map(\.text) == recorder.notes.components(separatedBy: "\n")
+                ? recorder.noteLines
+                : MeetingNoteStamper.lines(text: recorder.notes, notes: recorder.noteItems)
             draft = recorder.notes
             draftBox.text = draft
         }
         .onChange(of: draft) { _, newValue in
             draftBox.text = newValue
+            // A line gets the meeting time at which the user started it.
+            draftBox.lines = MeetingNoteStamper.restamp(draftBox.lines, text: newValue, now: recorder.elapsed)
             scheduleCommit(newValue)
         }
         .onChange(of: isFocused) { _, focused in
@@ -639,6 +646,7 @@ private struct RecordingNotesEditor: View {
         commitTask = Task {
             try? await Task.sleep(for: Self.commitDebounce)
             guard !Task.isCancelled else { return }
+            recorder.noteLines = draftBox.lines
             recorder.notes = text
         }
     }
@@ -646,7 +654,88 @@ private struct RecordingNotesEditor: View {
     private func commitNow() {
         commitTask?.cancel()
         commitTask = nil
+        recorder.noteLines = draftBox.lines
         recorder.notes = draft
+    }
+}
+
+/// The provisional "So far" list beside the notes while recording: the topics,
+/// decisions and action items the live summary has extracted from the settled part
+/// of the conversation. Observes only `LiveSummaryState`, which publishes when a pass
+/// lands (about once a minute), so it never re-renders on the 1 Hz tick.
+private struct LiveSoFarView: View {
+    @ObservedObject var state: LiveSummaryState
+
+    var body: some View {
+        if state.phase != .off {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "text.badge.checkmark")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.inkTertiary)
+                    Text("So far".loc)
+                        .font(.talkieEyebrow)
+                        .foregroundStyle(Theme.inkSecondary)
+                    Spacer()
+                    Text("Provisional".loc)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.inkTertiary)
+                }
+                if state.snapshot.isEmpty {
+                    Text(waitingText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 10) {
+                            group("Topics".loc, state.snapshot.topics)
+                            group("Decisions".loc, state.snapshot.decisions)
+                            group("Action items".loc, state.snapshot.actions)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 150)
+                    Text(footerText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(width: 300, alignment: .topLeading)
+        }
+    }
+
+    private var multilingual: Bool { state.multilingual }
+
+    private var waitingText: String {
+        multilingual
+            ? "With several languages, the text settles every 10 minutes — the first items appear then.".loc
+            : "Topics, decisions and tasks appear here after a few minutes of conversation.".loc
+    }
+
+    private var footerText: String {
+        multilingual
+            ? "Updates every 10 minutes, when the languages settle. The final summary is written when you stop.".loc
+            : "Updates every minute. The final summary is written when you stop.".loc
+    }
+
+    @ViewBuilder
+    private func group(_ title: String, _ items: [String]) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title.uppercased())
+                    .font(.talkieEyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(Theme.inkTertiary)
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    Text("• " + item)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 }
 
@@ -748,14 +837,14 @@ private struct MeetingDetail: View, Equatable {
     let onReveal: () -> Void
     let onCopy: () -> Void
     let onDelete: () -> Void
-    let onRegenerate: () async -> Void
+    /// Queues the regeneration on the recorder (it outlives this view).
+    let onRegenerate: () -> Void
     /// Persist a hand-edited transcript (A8). Called on Save with the new text.
     let onSaveTranscript: (String) -> Void
     /// Accept a learn chip: add the dictionary rule + record the niche confirmation.
     /// Returns whether a NEW rule was added (false if it was already known), so the
     /// chip can show the right confirmation.
     let onLearn: (_ from: String, _ to: String) -> Bool
-    @State private var regenerating = false
     /// Gates "Regenerate summary" behind an explicit confirmation whenever there's an
     /// existing summary to lose. `regenerateSummary` replaces the WHOLE `summary`
     /// field with a fresh transcript-only pass — and that field is also where the
@@ -818,11 +907,15 @@ private struct MeetingDetail: View, Equatable {
             titleVisibility: .visible
         ) {
             Button("Regenerate", role: .destructive) {
-                Task { regenerating = true; await onRegenerate(); regenerating = false }
+                onRegenerate()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone.")
+            if meeting.notes?.isEmpty == false {
+                Text("This replaces the summary with a fresh one. Your notes are kept. This can't be undone.".loc)
+            } else {
+                Text("This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone.")
+            }
         }
     }
 
@@ -920,7 +1013,7 @@ private struct MeetingDetail: View, Equatable {
                     // existing summary may hold fused/typed notes that a regenerate
                     // would silently replace, so confirm first.
                     if meeting.summary.isEmpty {
-                        Task { regenerating = true; await onRegenerate(); regenerating = false }
+                        onRegenerate()
                     } else {
                         confirmRegenerate = true
                     }
@@ -928,7 +1021,6 @@ private struct MeetingDetail: View, Equatable {
                     Label("Regenerate".loc, systemImage: "arrow.clockwise")
                 }
                 .help("Regenerate summary")
-                .disabled(regenerating)
             }
             Spacer(minLength: 12)
             Button(role: .destructive, action: onDelete) {
@@ -942,14 +1034,7 @@ private struct MeetingDetail: View, Equatable {
 
     @ViewBuilder
     private var status: some View {
-        if regenerating {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Writing the summary… the transcript is already saved.".loc)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
-        } else if isDiarizing {
+        if isDiarizing {
             // Transient: `isDiarizing` flips off when the pass finishes or fails, so
             // this disappears on its own. Wins over the summary line because the
             // summary waits for the pass.

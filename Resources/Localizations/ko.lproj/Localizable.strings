@@ -960,3 +960,19 @@
 "Left, right and middle click can't be used as the dictation key." = "왼쪽, 오른쪽, 가운데 클릭은 받아쓰기 키로 사용할 수 없습니다.";
 "macOS reserves Fn/Globe, so %@ can't use it." = "macOS가 Fn/Globe 키를 예약하고 있어 %@에서 사용할 수 없습니다.";
 "You press this constantly; %@ would start listening during normal shortcuts." = "이 키는 계속 누르게 되므로 일반 단축키를 쓸 때도 %@가 듣기 시작합니다.";
+
+/* W2 live meeting notes: time-stamped notes, Mark this moment, So far view */
+"Kept word for word in the summary, with times" = "요약에 시간과 함께 그대로 남습니다";
+"Mark this moment" = "이 순간 표시";
+"Adds a time-stamped line to your notes" = "메모에 시간이 표시된 줄을 추가합니다";
+"Jot key points — each line keeps the moment you started it…" = "요점을 적어 두세요 — 각 줄은 쓰기 시작한 순간을 기억합니다…";
+"So far" = "지금까지";
+"Provisional" = "임시";
+"Topics" = "주제";
+"Decisions" = "결정 사항";
+"Action items" = "할 일";
+"With several languages, the text settles every 10 minutes — the first items appear then." = "여러 언어를 쓰면 텍스트가 10분마다 확정되며, 그때 첫 항목이 나타납니다.";
+"Topics, decisions and tasks appear here after a few minutes of conversation." = "몇 분 대화하면 주제, 결정 사항, 할 일이 여기에 나타납니다.";
+"Updates every 10 minutes, when the languages settle. The final summary is written when you stop." = "언어가 확정되는 10분마다 업데이트됩니다. 최종 요약은 중지할 때 작성됩니다.";
+"Updates every minute. The final summary is written when you stop." = "1분마다 업데이트됩니다. 최종 요약은 중지할 때 작성됩니다.";
+"This replaces the summary with a fresh one. Your notes are kept. This can't be undone." = "요약을 새 요약으로 바꿉니다. 메모는 유지됩니다. 되돌릴 수 없습니다.";

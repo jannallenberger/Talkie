@@ -960,3 +960,19 @@
 "Left, right and middle click can't be used as the dictation key." = "鼠标左键、右键和中键不能用作听写键。";
 "macOS reserves Fn/Globe, so %@ can't use it." = "macOS 保留了 Fn/地球仪键，%@ 无法使用。";
 "You press this constantly; %@ would start listening during normal shortcuts." = "你会不断按下此键；%@ 会在正常快捷键操作时开始聆听。";
+
+/* W2 live meeting notes: time-stamped notes, Mark this moment, So far view */
+"Kept word for word in the summary, with times" = "原样保留在摘要中，并附时间";
+"Mark this moment" = "标记此刻";
+"Adds a time-stamped line to your notes" = "在笔记中添加一行带时间的记录";
+"Jot key points — each line keeps the moment you started it…" = "记下要点——每一行都会记住你开始写它的时刻…";
+"So far" = "目前为止";
+"Provisional" = "临时";
+"Topics" = "主题";
+"Decisions" = "决定";
+"Action items" = "待办事项";
+"With several languages, the text settles every 10 minutes — the first items appear then." = "使用多种语言时，文字每 10 分钟确定一次——届时会出现第一批条目。";
+"Topics, decisions and tasks appear here after a few minutes of conversation." = "对话几分钟后，主题、决定和任务会显示在这里。";
+"Updates every 10 minutes, when the languages settle. The final summary is written when you stop." = "每 10 分钟在语言确定后更新。最终摘要在你停止时生成。";
+"Updates every minute. The final summary is written when you stop." = "每分钟更新一次。最终摘要在你停止时生成。";
+"This replaces the summary with a fresh one. Your notes are kept. This can't be undone." = "这会用新的摘要替换当前摘要。你的笔记会保留。此操作无法撤销。";

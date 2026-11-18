@@ -30,31 +30,44 @@ struct SummaryLanguage: Equatable, Sendable {
 
     struct Titles: Equatable, Sendable {
         let overview, decisions, actionItems, openQuestions, topics: String
+        /// The user's own notes section, a marked moment without text, and the word
+        /// that links an item to the note it belongs to ("note 12:34").
+        var yourNotes = "Your notes", markedMoment = "Marked moment", noteRef = "note"
     }
 
     /// Section titles for the note. These belong to the MEETING's language, not the
     /// UI language, so they are data here rather than `.loc` strings.
     static let titleTable: [String: Titles] = [
         "en": .init(overview: "Overview", decisions: "Decisions", actionItems: "Action items",
-                    openQuestions: "Open questions", topics: "Topics"),
+                    openQuestions: "Open questions", topics: "Topics",
+                    yourNotes: "Your notes", markedMoment: "Marked moment", noteRef: "note"),
         "de": .init(overview: "Überblick", decisions: "Entscheidungen", actionItems: "Aufgaben",
-                    openQuestions: "Offene Fragen", topics: "Themen"),
+                    openQuestions: "Offene Fragen", topics: "Themen",
+                    yourNotes: "Deine Notizen", markedMoment: "Markierter Moment", noteRef: "Notiz"),
         "fr": .init(overview: "Aperçu", decisions: "Décisions", actionItems: "Actions à mener",
-                    openQuestions: "Questions ouvertes", topics: "Sujets"),
+                    openQuestions: "Questions ouvertes", topics: "Sujets",
+                    yourNotes: "Vos notes", markedMoment: "Moment marqué", noteRef: "note"),
         "es": .init(overview: "Resumen", decisions: "Decisiones", actionItems: "Tareas",
-                    openQuestions: "Preguntas abiertas", topics: "Temas"),
+                    openQuestions: "Preguntas abiertas", topics: "Temas",
+                    yourNotes: "Tus notas", markedMoment: "Momento marcado", noteRef: "nota"),
         "it": .init(overview: "Panoramica", decisions: "Decisioni", actionItems: "Azioni",
-                    openQuestions: "Domande aperte", topics: "Argomenti"),
+                    openQuestions: "Domande aperte", topics: "Argomenti",
+                    yourNotes: "Le tue note", markedMoment: "Momento segnato", noteRef: "nota"),
         "nl": .init(overview: "Overzicht", decisions: "Besluiten", actionItems: "Actiepunten",
-                    openQuestions: "Open vragen", topics: "Onderwerpen"),
+                    openQuestions: "Open vragen", topics: "Onderwerpen",
+                    yourNotes: "Je notities", markedMoment: "Gemarkeerd moment", noteRef: "notitie"),
         "pt": .init(overview: "Visão geral", decisions: "Decisões", actionItems: "Ações",
-                    openQuestions: "Perguntas em aberto", topics: "Tópicos"),
+                    openQuestions: "Perguntas em aberto", topics: "Tópicos",
+                    yourNotes: "Suas notas", markedMoment: "Momento marcado", noteRef: "nota"),
         "ja": .init(overview: "概要", decisions: "決定事項", actionItems: "アクションアイテム",
-                    openQuestions: "未解決の質問", topics: "トピック"),
+                    openQuestions: "未解決の質問", topics: "トピック",
+                    yourNotes: "あなたのメモ", markedMoment: "マークした瞬間", noteRef: "メモ"),
         "ko": .init(overview: "개요", decisions: "결정 사항", actionItems: "할 일",
-                    openQuestions: "미해결 질문", topics: "주제"),
+                    openQuestions: "미해결 질문", topics: "주제",
+                    yourNotes: "내 메모", markedMoment: "표시한 순간", noteRef: "메모"),
         "zh": .init(overview: "概述", decisions: "决定", actionItems: "待办事项",
-                    openQuestions: "待解决问题", topics: "主题"),
+                    openQuestions: "待解决问题", topics: "主题",
+                    yourNotes: "你的笔记", markedMoment: "标记的时刻", noteRef: "笔记"),
     ]
 
     var titles: Titles { Self.titleTable[code] ?? Self.titleTable["en"]! }
@@ -283,6 +296,9 @@ struct SummaryItem: Equatable, Sendable {
     var start: Double?
     var owner: String? = nil
     var due: String? = nil
+    /// The user's note this item belongs to (it came from the chunk around the note's
+    /// moment): such items are always kept and listed first.
+    var noteID: UUID? = nil
 }
 
 struct MergedNotes: Equatable, Sendable {
@@ -589,13 +605,17 @@ enum SummaryMerger {
     /// de-duplicating each category in code (the first mention wins; a later
     /// duplicate may fill in a missing owner/due date). Items whose cited line is
     /// not in their own chunk, or that share no content with it, are dropped.
+    /// `link` names the user note a decision or action item belongs to (see
+    /// `NoteLinker`); a duplicate that is linked passes its link to the kept item.
     static func merge(_ results: [(chunk: [SummaryUnit], notes: ChunkNotes)],
-                      language: SummaryLanguage, speakers: Bool) -> MergedNotes {
+                      language: SummaryLanguage, speakers: Bool,
+                      link: ((SummaryItem) -> UUID?)? = nil) -> MergedNotes {
         var merged = MergedNotes()
         func add(_ item: SummaryItem, to list: inout [SummaryItem]) {
             if let i = list.firstIndex(where: { isDuplicate($0.text, item.text, language: language) }) {
                 if list[i].owner == nil { list[i].owner = item.owner }
                 if list[i].due == nil { list[i].due = item.due }
+                if list[i].noteID == nil { list[i].noteID = item.noteID }
                 return
             }
             list.append(item)
@@ -610,7 +630,9 @@ enum SummaryMerger {
                 return SummaryItem(text: text, unit: u.index, segment: u.segment, start: u.start)
             }
             for n in notes.topics { if let i = grounded(n, .topic) { add(i, to: &merged.topics) } }
-            for n in notes.decisions { if let i = grounded(n, .decision) { add(i, to: &merged.decisions) } }
+            for n in notes.decisions {
+                if var i = grounded(n, .decision) { i.noteID = link?(i); add(i, to: &merged.decisions) }
+            }
             for n in notes.openQuestions { if let i = grounded(n, .question) { add(i, to: &merged.openQuestions) } }
             for n in notes.keyFacts { if let i = grounded(n, .fact) { add(i, to: &merged.keyFacts) } }
             for a in notes.actionItems {
@@ -618,6 +640,7 @@ enum SummaryMerger {
                 item.owner = Grounding.resolveOwner(a.owner, line: a.line, in: chunk, speakers: speakers)
                 let due = clean(a.due)
                 item.due = due.isEmpty || Grounding.isFiller(due) ? nil : due
+                item.noteID = link?(item)
                 add(item, to: &merged.actionItems)
             }
         }
@@ -683,21 +706,28 @@ enum SummaryRenderer {
     /// lead and `ActionItemSource.overviewLines` still finds it), then the bold
     /// sections in a fixed order. Empty sections are omitted entirely.
     static func render(overview: String?, notes: MergedNotes, language: SummaryLanguage,
-                       words: Int) -> String? {
+                       words: Int, userNotes: [MeetingNote] = []) -> String? {
         let t = language.titles
         let cap = caps(words: words)
         var blocks: [String] = []
         if let o = overview?.trimmingCharacters(in: .whitespacesAndNewlines), !o.isEmpty { blocks.append(o) }
+        if let n = notesSection(userNotes, language: language) { blocks.append(n) }
         func section(_ title: String, _ lines: [String]) {
             guard !lines.isEmpty else { return }
             blocks.append("**\(title):**\n" + lines.map { "- " + $0 }.joined(separator: "\n"))
         }
-        section(t.decisions, spread(notes.decisions, cap: cap.decisions).map(\.text))
-        section(t.actionItems, spread(notes.actionItems, cap: cap.actions).map { item in
+        let byID = Dictionary(userNotes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func linkSuffix(_ item: SummaryItem) -> String {
+            guard let id = item.noteID, let note = byID[id] else { return "" }
+            if let s = note.secondsIntoMeeting { return " (\(t.noteRef) \(MeetingTranscriptRenderer.timecode(s)))" }
+            return " (\(t.noteRef))"
+        }
+        section(t.decisions, notedFirst(notes.decisions, cap: cap.decisions).map { $0.text + linkSuffix($0) })
+        section(t.actionItems, notedFirst(notes.actionItems, cap: cap.actions).map { item in
             var s = item.text
             if let owner = item.owner, !owner.isEmpty { s = "\(owner): " + s }
             if let due = item.due, !due.isEmpty { s += " (\(due))" }
-            return s
+            return s + linkSuffix(item)
         })
         section(t.openQuestions, spread(notes.openQuestions, cap: cap.questions).map(\.text))
         section(t.topics, spread(notes.topics, cap: cap.topics).map { item in
@@ -706,6 +736,47 @@ enum SummaryRenderer {
         })
         // Only an overview with nothing else is fine; nothing at all is a failure.
         return blocks.isEmpty ? nil : blocks.joined(separator: "\n\n")
+    }
+
+    /// Items linked to a user note first (all of them: they are never capped away),
+    /// then the rest spread over the meeting within what is left of the cap.
+    static func notedFirst(_ items: [SummaryItem], cap: Int) -> [SummaryItem] {
+        let noted = items.filter { $0.noteID != nil }
+        let rest = items.filter { $0.noteID == nil }
+        return noted + spread(rest, cap: max(0, cap - noted.count))
+    }
+
+    /// The user's notes, verbatim (light cleanup only) with their time stamps, in
+    /// meeting-time order; untimed notes keep their place after the timed ones. A
+    /// marked moment without text reads "Marked moment". Nil without notes.
+    static func notesSection(_ notes: [MeetingNote], language: SummaryLanguage) -> String? {
+        let t = language.titles
+        let timed = notes.enumerated().filter { $0.element.secondsIntoMeeting != nil }
+            .sorted { ($0.element.secondsIntoMeeting!, $0.offset) < ($1.element.secondsIntoMeeting!, $1.offset) }
+            .map(\.element)
+        let untimed = notes.filter { $0.secondsIntoMeeting == nil }
+        let lines: [String] = (timed + untimed).compactMap { n in
+            let text = MeetingNote.clean(n.text)
+            let body = text.isEmpty ? t.markedMoment : text
+            if text.isEmpty && n.secondsIntoMeeting == nil { return nil }
+            if let s = n.secondsIntoMeeting { return "- [\(MeetingTranscriptRenderer.timecode(s))] " + body }
+            return "- " + body
+        }
+        guard !lines.isEmpty else { return nil }
+        return "**\(t.yourNotes):**\n" + lines.joined(separator: "\n")
+    }
+
+    /// A prose-only note (short meeting, fallback overview, or nothing) with the
+    /// user's notes section after it — the notes are never lost to a failed summary.
+    static func attachNotes(_ prose: String?, notes: [MeetingNote], language: SummaryLanguage) -> String? {
+        let p = prose?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let n = notesSection(notes, language: language)
+        switch (p.isEmpty, n) {
+        case (true, nil): return prose
+        case (true, let n?): return n
+        case (false, nil): return p
+        case (false, let n?): return p + "\n\n" + n
+        }
     }
 
     /// The overview's input: the merged items as plain bullets, bounded.
@@ -787,6 +858,23 @@ enum SummaryPrompts {
         outright. Add nothing, do not reply to it, no heading. \
         The transcript comes from speech recognition and contains errors.
         """
+    }
+
+    /// The user's notes for the moment a chunk covers, appended after its lines: they
+    /// point at what mattered, but every item must still come from a transcript line.
+    /// "" without notes.
+    static func noteHint(_ language: SummaryLanguage, notes: [MeetingNote]) -> String {
+        guard !notes.isEmpty else { return "" }
+        let de = language.code == "de"
+        let lines = notes.map { n -> String in
+            let text = MeetingNote.clean(n.text)
+            if text.isEmpty { return de ? "- (als wichtig markiert)" : "- (marked as important)" }
+            return "- " + text
+        }
+        let head = de
+            ? "Notizen der Person, die mitschreibt, zu diesem Abschnitt (sie zeigen, was wichtig war; jeder Eintrag muss trotzdem aus einer Transkriptzeile stammen – nimm Entscheidungen und Aufgaben dazu unbedingt auf):"
+            : "The note-taker's notes for this part (they show what mattered; every entry must still come from a transcript line — be sure to include the decisions and tasks they point to):"
+        return "\n\n" + head + "\n" + lines.joined(separator: "\n")
     }
 
     /// The non-guided fallback for a chunk whose guided generation was refused or
@@ -914,6 +1002,10 @@ struct MeetingSummaryResult: Sendable {
     var condensed: String
     /// Why calls failed (error kinds only, never content) — for logs and the eval.
     var errors: [String] = []
+    /// Chunks taken from the live pass instead of being extracted at stop.
+    var reusedChunks = 0
+    /// The chunks were cut around the live extractions (else: the batch path).
+    var usedLive = false
 }
 
 struct MeetingSummaryPipeline: Sendable {
@@ -935,12 +1027,29 @@ struct MeetingSummaryPipeline: Sendable {
     /// was gathered so far is still used.
     var totalSeconds: Double = 25 * 60
 
-    func run(transcript: String, segments: [MeetingSegment]?, localeHint: String? = nil) async -> MeetingSummaryResult {
+    /// What the stop path can hand the pipeline from the live pass.
+    struct LiveReuse: Sendable {
+        var cache: LiveChunkCache
+        /// The lane-labelled (pre-diarization) segments of the final transcript: the
+        /// live chunks were cut from these, so the final chunks are cut from them too
+        /// and only then relabelled with `segments`' diarized speakers by time range.
+        var laneSegments: [MeetingSegment]
+    }
+
+    /// Summarize a meeting. `notes` are the user's notes (always rendered, verbatim,
+    /// in their own section; each also hints the chunk around its moment). `live`
+    /// reuses the extractions made during the recording; when none of them matches
+    /// the final transcript the run is exactly the batch path.
+    func run(transcript: String, segments: [MeetingSegment]?, localeHint: String? = nil,
+             notes: [MeetingNote] = [], live: LiveReuse? = nil) async -> MeetingSummaryResult {
         let language = SummaryLanguage.detect(transcript: transcript, localeHint: localeHint)
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         var result = MeetingSummaryResult(markdown: nil, language: language, merged: MergedNotes(),
                                           chunks: 0, failedChunks: 0, condensed: "")
-        guard model.isAvailable, !trimmed.isEmpty else { return result }
+        guard model.isAvailable, !trimmed.isEmpty else {
+            result.markdown = SummaryRenderer.attachNotes(nil, notes: notes, language: language)
+            return result
+        }
         let words = SummaryRenderer.wordCount(trimmed, language: language)
 
         if SummaryRenderer.isShort(words: words) {
@@ -950,31 +1059,70 @@ struct MeetingSummaryPipeline: Sendable {
                 try await model.write(instructions: SummaryPrompts.shortMeeting(language),
                                       prompt: text, maxTokens: 240)
             }
+            var prose: String?
             if let out, SummaryFailure.acceptsProse(out, language: language, source: text),
                let kept = SummaryFailure.sentencesSharingWords(out, language: language, source: text, max: 3) {
-                result.markdown = kept
+                prose = kept
             } else {
                 result.failedChunks = 1
             }
+            result.markdown = SummaryRenderer.attachNotes(prose, notes: notes, language: language)
             result.condensed = text
             return result
         }
 
-        var units = SummaryUnits.build(transcript: trimmed, segments: segments)
-        units = SummaryUnits.dropEchoes(units, language: language)
-        let speakers = SummaryUnits.showsSpeakers(units)
-        let chunks = SummaryChunker.chunk(units, budgetChars: chunkBudgetChars, speakers: speakers)
-        result.chunks = chunks.count
+        // Cut the chunks: around the live extractions when any of them still matches
+        // the final text, else exactly as the batch path does.
+        var units: [SummaryUnit] = []
+        var speakers = false
+        var plan: [PlannedChunk] = []
+        var cache: [LiveChunkCache.Entry] = []
+        var relabel: SpeakerTimeMap?
+        if let live, !live.cache.isEmpty {
+            let laneUnits = SummaryUnits.dropEchoes(SummaryUnits.build(transcript: "", segments: live.laneSegments),
+                                                    language: language)
+            let laneSpeakers = SummaryUnits.showsSpeakers(laneUnits)
+            let entries = live.cache.entries(language: language.code)
+            let p = SummaryChunkPlanner.plan(laneUnits, cache: entries, budgetChars: chunkBudgetChars,
+                                             speakers: laneSpeakers)
+            if p.contains(where: { $0.cached != nil }) {
+                units = laneUnits; speakers = laneSpeakers; plan = p; cache = entries
+                if SpeakerTimeMap.isDiarized(segments), let segments { relabel = SpeakerTimeMap(segments: segments) }
+                result.usedLive = true
+            }
+        }
+        if plan.isEmpty {
+            units = SummaryUnits.dropEchoes(SummaryUnits.build(transcript: trimmed, segments: segments), language: language)
+            speakers = SummaryUnits.showsSpeakers(units)
+            plan = SummaryChunker.chunk(units, budgetChars: chunkBudgetChars, speakers: speakers)
+                .map { PlannedChunk(units: $0, cached: nil) }
+        }
+        result.chunks = plan.count
+        let hints = NoteHints.assign(notes, chunks: plan.map(\.units))
         let deadline = Date().addingTimeInterval(totalSeconds)
         var gathered: [(chunk: [SummaryUnit], notes: ChunkNotes)] = []
-        for chunk in chunks {
+        for (i, planned) in plan.enumerated() {
+            let hint = SummaryPrompts.noteHint(language, notes: hints[i] ?? [])
+            if let c = planned.cached, cache[c].hint == hint, cache[c].speakers == speakers {
+                gathered += SummaryChunkPlanner.remap(cache[c], onto: planned.units)
+                result.reusedChunks += 1
+                continue
+            }
             guard Date() < deadline else { result.failedChunks += 1; continue }
-            let (pieces, errors) = await extractAdaptive(chunk, language: language, speakers: speakers, depth: 0)
+            let (pieces, errors) = await extractAdaptive(planned.units, language: language, speakers: speakers,
+                                                         hint: hint, depth: 0)
             if pieces.isEmpty { result.failedChunks += 1 }
             gathered += pieces
             result.errors += errors
         }
-        let merged = SummaryMerger.merge(gathered, language: language, speakers: speakers)
+        var mergeSpeakers = speakers
+        if let relabel {
+            gathered = gathered.map(relabel.apply)
+            mergeSpeakers = SummaryUnits.showsSpeakers(gathered.flatMap(\.chunk))
+        }
+        let merged = SummaryMerger.merge(gathered, language: language, speakers: mergeSpeakers,
+                                         link: NoteLinker.resolver(hints: hints, chunks: plan.map(\.units),
+                                                                   language: language))
         result.merged = merged
         result.condensed = SummaryRenderer.overviewInput(merged, maxChars: MeetingSummarizer.singlePassCharBudget)
         guard !merged.isEmpty else {
@@ -986,10 +1134,12 @@ struct MeetingSummaryPipeline: Sendable {
                 try await model.write(instructions: SummaryPrompts.fallbackOverview(language),
                                       prompt: sample, maxTokens: 240)
             }
+            var prose: String?
             if let out, SummaryFailure.acceptsProse(out, language: language, source: sample) {
-                result.markdown = SummaryFailure.sentencesSharingWords(out, language: language, source: sample, max: 3)
+                prose = SummaryFailure.sentencesSharingWords(out, language: language, source: sample, max: 3)
             }
-            if result.markdown != nil { result.errors.append("fallbackOverview") }
+            if prose != nil { result.errors.append("fallbackOverview") }
+            result.markdown = SummaryRenderer.attachNotes(prose, notes: notes, language: language)
             return result
         }
 
@@ -1006,7 +1156,8 @@ struct MeetingSummaryPipeline: Sendable {
                                                             maxSentences: sentences)
             }
         }
-        result.markdown = SummaryRenderer.render(overview: overview, notes: merged, language: language, words: words)
+        result.markdown = SummaryRenderer.render(overview: overview, notes: merged, language: language, words: words,
+                                                 userNotes: notes)
         return result
     }
 
@@ -1014,8 +1165,9 @@ struct MeetingSummaryPipeline: Sendable {
     /// model reports a context overflow) split it in half and try each half, at
     /// most twice deep. Returns the successful pieces only.
     func extractAdaptive(_ chunk: [SummaryUnit], language: SummaryLanguage, speakers: Bool,
-                         depth: Int) async -> (pieces: [(chunk: [SummaryUnit], notes: ChunkNotes)], errors: [String]) {
-        let prompt = SummaryChunker.render(chunk, speakers: speakers)
+                         hint: String = "", depth: Int) async
+        -> (pieces: [(chunk: [SummaryUnit], notes: ChunkNotes)], errors: [String]) {
+        let prompt = SummaryChunker.render(chunk, speakers: speakers) + hint
         let instructions = SummaryPrompts.extraction(language)
         var overflow = false
         if let tokens = await model.tokenCount(prompt), tokens > chunkBudgetTokens { overflow = true }
@@ -1042,8 +1194,10 @@ struct MeetingSummaryPipeline: Sendable {
         }
         guard overflow, chunk.count > 1, depth < 2 else { return ([], ["contextOverflow"]) }
         let mid = chunk.count / 2
-        let first = await extractAdaptive(Array(chunk[..<mid]), language: language, speakers: speakers, depth: depth + 1)
-        let second = await extractAdaptive(Array(chunk[mid...]), language: language, speakers: speakers, depth: depth + 1)
+        let first = await extractAdaptive(Array(chunk[..<mid]), language: language, speakers: speakers,
+                                          hint: hint, depth: depth + 1)
+        let second = await extractAdaptive(Array(chunk[mid...]), language: language, speakers: speakers,
+                                           hint: hint, depth: depth + 1)
         return (first.pieces + second.pieces, first.errors + second.errors)
     }
 

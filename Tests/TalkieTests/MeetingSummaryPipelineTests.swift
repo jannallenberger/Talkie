@@ -566,8 +566,8 @@ final class MeetingSummaryPipelineTests: XCTestCase {
     // MARK: Consumers
 
     func testRecorderComposesAnEmptySummaryOnFailureButKeepsNotes() {
-        XCTAssertEqual(MeetingRecorder.composeSummary(userNotes: "", transcriptSummary: "", fused: nil), "")
-        XCTAssertTrue(MeetingRecorder.composeSummary(userNotes: "meine Notiz", transcriptSummary: "", fused: nil)
+        XCTAssertEqual(MeetingRecorder.notesSummary([], transcript: ""), "")
+        XCTAssertTrue(MeetingRecorder.notesSummary([MeetingNote(text: "meine Notiz", secondsIntoMeeting: nil)], transcript: "")
             .contains("meine Notiz"))
     }
 }

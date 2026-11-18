@@ -971,3 +971,19 @@
 "Left, right and middle click can't be used as the dictation key." = "Left, right and middle click can't be used as the dictation key.";
 "macOS reserves Fn/Globe, so %@ can't use it." = "macOS reserves Fn/Globe, so %@ can't use it.";
 "You press this constantly; %@ would start listening during normal shortcuts." = "You press this constantly; %@ would start listening during normal shortcuts.";
+
+/* W2 live meeting notes: time-stamped notes, Mark this moment, So far view */
+"Kept word for word in the summary, with times" = "Kept word for word in the summary, with times";
+"Mark this moment" = "Mark this moment";
+"Adds a time-stamped line to your notes" = "Adds a time-stamped line to your notes";
+"Jot key points — each line keeps the moment you started it…" = "Jot key points — each line keeps the moment you started it…";
+"So far" = "So far";
+"Provisional" = "Provisional";
+"Topics" = "Topics";
+"Decisions" = "Decisions";
+"Action items" = "Action items";
+"With several languages, the text settles every 10 minutes — the first items appear then." = "With several languages, the text settles every 10 minutes — the first items appear then.";
+"Topics, decisions and tasks appear here after a few minutes of conversation." = "Topics, decisions and tasks appear here after a few minutes of conversation.";
+"Updates every 10 minutes, when the languages settle. The final summary is written when you stop." = "Updates every 10 minutes, when the languages settle. The final summary is written when you stop.";
+"Updates every minute. The final summary is written when you stop." = "Updates every minute. The final summary is written when you stop.";
+"This replaces the summary with a fresh one. Your notes are kept. This can't be undone." = "This replaces the summary with a fresh one. Your notes are kept. This can't be undone.";
