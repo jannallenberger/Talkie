@@ -863,3 +863,7 @@
 "Them" = "Zij";
 "Speaker %d" = "Spreker %d";
 "Identifying speakers…" = "Sprekers herkennen…";
+/* Meetings settings: forget the learned voice profile */
+"Your voice" = "Jouw stem";
+"A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "Op deze Mac wordt een klein stemprofiel bewaard om je in vergaderingen te herkennen. Vergeten verwijdert het; het wordt opnieuw geleerd uit toekomstige vergaderingen.";
+"Forget my voice" = "Mijn stem vergeten";

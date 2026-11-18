@@ -863,3 +863,7 @@
 "Them" = "对方";
 "Speaker %d" = "发言人 %d";
 "Identifying speakers…" = "正在识别发言人…";
+/* Meetings settings: forget the learned voice profile */
+"Your voice" = "你的声音";
+"A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "这台 Mac 上保存着一份小型声音档案，用于在会议中识别你。删除后即被移除，并会在以后的会议中重新学习。";
+"Forget my voice" = "忘记我的声音";

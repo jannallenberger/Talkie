@@ -249,7 +249,7 @@ final class SpeakerDiarizerSyntheticTests: XCTestCase {
         try await check(["Daniel", "Samantha", "Daniel", "Samantha"], models: copy)
     }
 
-    /// The file entry point (FluidAudio decodes/resamples via a temp file).
+    /// The file entry point (in-place read of a 16-bit mono 16 kHz wav).
     func testDiarizeFileURL() async throws {
         let models = try requireModels()
         let (samples, _) = try synth(["Samantha", "Daniel", "Samantha", "Daniel"])
@@ -261,7 +261,12 @@ final class SpeakerDiarizerSyntheticTests: XCTestCase {
         buf.frameLength = AVAudioFrameCount(samples.count)
         samples.withUnsafeBufferPointer { buf.floatChannelData![0].update(from: $0.baseAddress!, count: samples.count) }
         do {
-            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            // 16-bit mono PCM wav: the only layout the vendored loader accepts (it is what
+            // the meeting recorder writes).
+            let file = try AVAudioFile(forWriting: url, settings: [
+                AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+            ], commonFormat: .pcmFormatFloat32, interleaved: false)
             try file.write(from: buf)
         }
         let out = try await SpeakerDiarizer(modelsDirectory: models).diarize(fileURL: url)

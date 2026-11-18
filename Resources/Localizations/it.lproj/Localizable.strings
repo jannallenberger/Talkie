@@ -863,3 +863,7 @@
 "Them" = "Loro";
 "Speaker %d" = "Parlante %d";
 "Identifying speakers…" = "Identificazione dei parlanti…";
+/* Meetings settings: forget the learned voice profile */
+"Your voice" = "La tua voce";
+"A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "Su questo Mac è conservato un piccolo profilo vocale per riconoscerti nelle riunioni. Dimenticarlo lo elimina; verrà imparato di nuovo dalle riunioni future.";
+"Forget my voice" = "Dimentica la mia voce";

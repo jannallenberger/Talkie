@@ -39,6 +39,11 @@ These files were changed; each carries a `MODIFIED FROM UPSTREAM (Talkie)` comme
   (ModelHub download) and `loadPLDAPsi` (Talkie has its own in `TalkieDiarization`).
 - `Diarizer/Offline/Clustering/VBxClustering.swift`: a doc-comment URL reworded
   (the zero-network gate rejects any `http(s)://` text).
+- `Shared/AudioSourceFactory.swift`: removed the conversion fallback that wrote
+  `fluidaudio-streaming-<uuid>.raw` into the system temp directory (and its helpers
+  `makeTemporaryURL`, `streamConvert`). Only a 16-bit mono PCM wav at the target rate,
+  read in place, is accepted; anything else throws, so meeting audio can never be
+  copied outside Talkie's private diarization folder.
 - `Shared/BlasIndex.swift`: NEW. Upstream defines `BlasIndex`/`makeBlasIndex` in
   the ASR tree and throws `ASRError`; here it throws `OfflineDiarizationError`.
 - Build: upstream compiles with `-DDiarizer` (and `-DTTS`); `Package.swift`

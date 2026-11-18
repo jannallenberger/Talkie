@@ -104,9 +104,9 @@ var targets: [Target] = [
     // conversion). An ISOLATED wrapper, same idea as TalkieUpdater/TalkieBridge:
     // the app target never imports FluidAudio, only this module's tiny Sendable
     // API (no FluidAudio types cross the boundary). Runs fully offline from the
-    // CoreML models bundled in Contents/Resources/DiarizationModels — it never
-    // calls FluidAudio's download/ModelHub loaders and forces
-    // ModelHub.offlineMode on before touching anything. Models are fetched at
+    // CoreML models bundled in Contents/Resources/DiarizationModels: it loads
+    // them itself from that folder (MLModel(contentsOf:)); the vendored FluidAudio
+    // contains no download/ModelHub/networking code at all. Models are fetched at
     // BUILD time by scripts/fetch_diarization_models.sh (pinned revision,
     // SHA-256 manifest); see THIRD_PARTY_NOTICES.md for licenses.
     .target(

@@ -126,13 +126,23 @@ final class MeetingRecorder: ObservableObject {
     var laneDiarizerFactory: @Sendable (URL) -> any LaneDiarizing = { SpeakerDiarizer(modelsDirectory: $0) }
     /// The locally persisted own-voice profile (WP-C): learned from single-speaker mic
     /// lanes, consulted when the mic lane has several people. Injected for tests.
-    var ownVoiceStore = OwnVoiceProfileStore()
+    var ownVoiceStore = OwnVoiceProfileStore.shared
     /// "Which mic speaker is Me" override for tests. nil (production) = the profile
     /// matcher: nobody until a profile exists and one voice clears its threshold + margin.
     var ownVoiceResolver: OwnVoiceResolver?
     /// Seconds allowed for one pass, from the total lane audio seconds. Injected for tests.
     var diarizationBudget: (Double) -> Double = { MeetingDiarizationPipeline.budget(audioSeconds: $0) }
     private var cachedDiarizer: (root: URL, instance: any LaneDiarizing)?
+    /// Circuit breaker: after a diarization TIMEOUT (a wedged CoreML), later meetings skip
+    /// the pass until this moment so each summary is not delayed by the full budget again.
+    /// In-memory only: an app restart gets a fresh chance.
+    private(set) var diarizationCooldownUntil: Date?
+    var diarizationCooldown: TimeInterval = 30 * 60
+    var diarizationNow: () -> Date = { Date() }
+    var diarizationInCooldown: Bool {
+        guard let until = diarizationCooldownUntil else { return false }
+        return diarizationNow() < until
+    }
     @Published private(set) var elapsed: TimeInterval = 0
     /// True while a recording is actually capturing the far end (both sides), false
     /// when it fell back to mic-only. Drives the UI's honest status copy.
@@ -281,6 +291,9 @@ final class MeetingRecorder: ObservableObject {
     private var farTee: MeetingDiarizationTee?
     /// Lane audio that survived `stop()` and awaits the diarization pass.
     private var pendingDiarizationInputs: [MeetingDiarizationPipeline.LaneInput] = []
+    /// Lanes ("Me"/"Them") rebuilt by the legacy whole-stream language correction: their
+    /// single segment has no real end time, so the diarization pass leaves them alone.
+    private var untimedLanes: Set<String> = []
     /// The audio filenames decided at start() (so they share the note's basename), used
     /// to record `audioFiles` and to clean up partials on a discarded start. Empty when
     /// keep-audio is off for this recording.
@@ -414,7 +427,8 @@ final class MeetingRecorder: ObservableObject {
         micTee = nil
         farTee = nil
         pendingDiarizationInputs = []
-        let diarizing = diarizationModelsDirectory() != nil
+        untimedLanes = []
+        let diarizing = diarizationModelsDirectory() != nil && !diarizationInCooldown
         let micTeeSink = diarizing ? makeDiarizationTee(meetingID: meetingID, lane: SpeakerLabels.me, assignTo: \.micTee) : nil
         let micTap = Self.chainTaps(
             keepAudio ? makeWriterTap(basename: micAudioName, assignTo: \.micWriter) : nil, micTeeSink)
@@ -917,14 +931,18 @@ final class MeetingRecorder: ObservableObject {
         // single-locale fallback (the live-lanes path already routed per segment).
         if langs.count > 1, let log {
             if !micWasMulti {
-                await correctStreamLanguage(.me, engine: engine, buffers: audio.bufferedAudio(),
-                                            streamLocale: micLocale, langs: langs, log: log)
+                if await correctStreamLanguage(.me, engine: engine, buffers: audio.bufferedAudio(),
+                                               streamLocale: micLocale, langs: langs, log: log) {
+                    untimedLanes.insert(SpeakerLabels.me)
+                }
             }
             // Same `farEverActive` gate as above — a watchdog give-up mid-meeting must
             // not skip the language correction for a far stream that genuinely ran.
             if !farWasMulti, let far, farEverActive {
-                await correctStreamLanguage(.them, engine: far, buffers: systemAudio.bufferedAudio(),
-                                            streamLocale: farLocale, langs: langs, log: log)
+                if await correctStreamLanguage(.them, engine: far, buffers: systemAudio.bufferedAudio(),
+                                               streamLocale: farLocale, langs: langs, log: log) {
+                    untimedLanes.insert(SpeakerLabels.them)
+                }
             }
         }
         farEngine = nil
@@ -1028,7 +1046,7 @@ final class MeetingRecorder: ObservableObject {
             var candidates = eventAttendees.map {
                 ContextGraphExtractor.Candidate(kind: .person, displayName: $0)
             }
-            candidates += ContextGraphExtractor.candidates(from: clean)
+            candidates += ContextGraphExtractor.candidates(from: SpeakerLabels.stripLabels(from: clean))
             graph.ingest(candidates, provenance: provenance)
         }
 
@@ -1045,6 +1063,7 @@ final class MeetingRecorder: ObservableObject {
         let diarizationInputs = pendingDiarizationInputs
         pendingDiarizationInputs = []
         let durationSec = duration
+        let skipLanes = untimedLanes
         summarizingMeetingIDs.insert(id)
         if !diarizationInputs.isEmpty { diarizingMeetingIDs.insert(id) }
         let previous = summaryQueue
@@ -1058,7 +1077,7 @@ final class MeetingRecorder: ObservableObject {
             }
             let step = await self.diarizationStep(
                 id: id, inputs: diarizationInputs, segments: segments,
-                transcript: clean, durationSec: durationSec)
+                transcript: clean, durationSec: durationSec, skipLanes: skipLanes)
             // Relabelled: keep the live digest usable by remapping its lane labels to
             // the diarized speakers (no model calls); only when that is impossible drop
             // it so the summary is rebuilt from the relabelled transcript (slower).
@@ -1112,7 +1131,7 @@ final class MeetingRecorder: ObservableObject {
     /// Always deletes the temp lane audio and clears the "identifying" flag.
     func diarizationStep(
         id: UUID, inputs: [MeetingDiarizationPipeline.LaneInput], segments: [MeetingSegment]?,
-        transcript: String, durationSec: Double
+        transcript: String, durationSec: Double, skipLanes: Set<String> = []
     ) async -> DiarizationStep {
         var step = DiarizationStep(transcript: transcript)
         defer {
@@ -1120,6 +1139,10 @@ final class MeetingRecorder: ObservableObject {
             diarizingMeetingIDs.remove(id)
         }
         guard !inputs.isEmpty, let segments, let root = diarizationModelsDirectory() else { return step }
+        if diarizationInCooldown {
+            talkieDebugLog("MeetingRecorder: diarization skipped — cooling down after a timeout.")
+            return step
+        }
         let diarizer: any LaneDiarizing
         if let cached = cachedDiarizer, cached.root == root {
             diarizer = cached.instance
@@ -1130,12 +1153,14 @@ final class MeetingRecorder: ObservableObject {
         let outcome = await MeetingDiarizationPipeline.run(
             inputs: inputs, segments: segments, diarizer: diarizer,
             budgetSeconds: diarizationBudget(durationSec * Double(inputs.count)),
-            resolveMe: ownVoiceResolver ?? ownVoiceStore.resolver)
+            resolveMe: ownVoiceResolver ?? ownVoiceStore.resolver,
+            skipLanes: skipLanes)
         switch outcome {
         case .unavailable:
             break
         case .timedOut:
             step.state = .timedOut
+            diarizationCooldownUntil = diarizationNow().addingTimeInterval(diarizationCooldown)
             talkieDebugLog("MeetingRecorder: diarization timed out — keeping Me/Them labels.")
         case .failed(let why):
             step.state = .failed
@@ -1437,6 +1462,7 @@ final class MeetingRecorder: ObservableObject {
         log.replace(speaker, withTimedTurns: spans.map { (elapsed: $0.start, text: $0.text, end: $0.end) })
     }
 
+    /// Returns true when the stream's turns were replaced by one untimed block.
     private func correctStreamLanguage(
         _ speaker: MeetingSpeaker,
         engine: TranscriptionEngine,
@@ -1444,16 +1470,16 @@ final class MeetingRecorder: ObservableObject {
         streamLocale: String,
         langs: [String],
         log: TurnLog
-    ) async {
+    ) async -> Bool {
         let streamTurns = log.turns(for: speaker)
-        guard !streamTurns.isEmpty, !buffers.isEmpty else { return }
+        guard !streamTurns.isEmpty, !buffers.isEmpty else { return false }
         let raw = streamTurns.map(\.text).joined(separator: " ")
 
         // Too few words to language-ID → keep the stream as transcribed (avoids
         // re-transcribing every very short stream for no possible gain).
-        guard LanguageDetector.canScore(raw) else { return }
+        guard LanguageDetector.canScore(raw) else { return false }
         let streamConf = LanguageDetector.selfConsistency(raw, expected: streamLocale, among: langs)
-        guard streamConf < LanguageDetector.confidentMatch else { return }
+        guard streamConf < LanguageDetector.confidentMatch else { return false }
 
         let others = langs.filter { Self.languageCode($0) != Self.languageCode(streamLocale) }
         let candidates = await engine.transcribeCandidates(buffers, localeIdentifiers: others, installIfNeeded: true)
@@ -1468,8 +1494,9 @@ final class MeetingRecorder: ObservableObject {
         }
         guard let reText = bestText,
               bestConf >= streamConf + LanguageDetector.switchMargin,
-              bestConf >= LanguageDetector.switchFloor else { return }
+              bestConf >= LanguageDetector.switchFloor else { return false }
         log.replace(speaker, withSingleTurn: reText, at: streamTurns.first!.elapsed)
+        return true
     }
 
     private static func languageCode(_ id: String) -> String {

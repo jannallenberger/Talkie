@@ -852,9 +852,10 @@ private struct MeetingRow: View, Equatable {
                     // so a fix isn't fighting a playhead.
                     MeetingPlaybackView(segments: segments,
                                         audioFiles: meeting.audioFiles,
-                                        folderURL: folderURL)
+                                        folderURL: folderURL,
+                                        showsSpeakerLabels: SpeakerPresentation.showsTurns(for: meeting))
                         .padding(.top, 4)
-                } else if SpeakerPresentation.showsLabels(meeting.segments), let segments = meeting.segments {
+                } else if SpeakerPresentation.showsTurns(for: meeting), let segments = meeting.segments {
                     SpeakerTurnsView(segments: segments)
                         .padding(.top, 4)
                 } else {
@@ -1105,6 +1106,10 @@ private struct MeetingPlaybackView: View {
     let segments: [MeetingSegment]
     let audioFiles: [String: String]?
     let folderURL: URL
+    /// Per-speaker labels only for a meeting diarization actually relabelled and whose
+    /// transcript is unedited (`SpeakerPresentation.showsTurns`); any other meeting
+    /// plays back exactly as it did before speaker labels existed.
+    var showsSpeakerLabels = false
 
     /// The loaded player, or nil before the first tap. Recreated when a tap targets a
     /// different file than the one currently loaded (two-stream Me↔Them switch).
@@ -1131,7 +1136,7 @@ private struct MeetingPlaybackView: View {
             at: currentTime, segments: segments, fileName: currentFile, audioFiles: audioFiles)
     }
 
-    private var showLabels: Bool { SpeakerPresentation.showsLabels(segments) }
+    private var showLabels: Bool { showsSpeakerLabels && SpeakerPresentation.showsLabels(segments) }
     private var colorSlots: [String: Int] { SpeakerPresentation.colorIndices(for: segments.map(\.speaker)) }
     private var turnStarts: [Bool] { SpeakerPresentation.turnStarts(segments) }
 

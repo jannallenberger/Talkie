@@ -144,8 +144,10 @@ final class SpeakerLabellingTests: XCTestCase {
         let mic = out([(0, 11, 15), (1, 16, 20)], [0: eC, 1: eABleed])
         let sys = out([(0, 0, 10), (1, 21, 30)], [0: eA, 1: eB])
         let r = SpeakerLabelling.label(segments: segments, mic: mic, system: sys)
-        XCTAssertEqual(r.segments.map(\.speaker), ["Speaker 1", "Speaker 2", "Speaker 1", "Speaker 3"])
-        XCTAssertEqual(r.speakerCount, 3, "A heard through the mic is still just one person")
+        // F2: after the bleed guard the mic holds ONE own voice (Samantha), so she is Me
+        // even with no profile; A heard through the mic is still just one person.
+        XCTAssertEqual(r.segments.map(\.speaker), ["Speaker 1", "Me", "Speaker 1", "Speaker 2"])
+        XCTAssertEqual(r.speakerCount, 3, "Me + A + B")
 
         // Guard off (threshold above any cosine) -> the bleed becomes a 4th person.
         let off = SpeakerLabelling.label(segments: segments, mic: mic, system: sys, bleedThreshold: 1.5)

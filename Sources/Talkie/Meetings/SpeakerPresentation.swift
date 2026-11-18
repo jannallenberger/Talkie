@@ -46,6 +46,18 @@ enum SpeakerPresentation {
         return Set(segments.map(\.speaker)).count >= 2
     }
 
+    /// Whether the Meetings tab renders `meeting` as per-speaker turns built from its
+    /// segments. Only when diarization rewrote this meeting's labels AND its transcript
+    /// still equals what those segments render to (so a hand-edited transcript, whose
+    /// segments are stale, shows the user's text). Every other meeting — pre-feature,
+    /// unchanged/failed diarization, edited — renders `meeting.transcript` exactly as
+    /// before the feature.
+    static func showsTurns(for meeting: Meeting) -> Bool {
+        guard meeting.diarization == .applied, let segments = meeting.segments,
+              showsLabels(segments) else { return false }
+        return MeetingTranscriptRenderer.render(segments: segments) == meeting.transcript
+    }
+
     /// True for each segment that starts a new turn (its speaker differs from the
     /// previous segment's), so a label shows once per run by the same speaker.
     static func turnStarts(_ segments: [MeetingSegment]) -> [Bool] {

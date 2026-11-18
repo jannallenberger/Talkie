@@ -18,6 +18,18 @@ enum SpeakerLabels {
         let tail = name.dropFirst(prefix.count)
         return !tail.isEmpty && tail.allSatisfy(\.isNumber)
     }
+
+    /// The rendered line prefix `[mm:ss] Me: ` / `Speaker 2: ` (timecode optional).
+    private static let linePrefix = try! NSRegularExpression(
+        pattern: #"^(?:\[\d+(?::\d{2}){1,2}\]\s*)?(?:Me|Them|Speaker \d+):[ \t]*"#,
+        options: [.anchorsMatchLines])
+
+    /// A transcript without its speaker prefixes, for text mining (phrase extraction
+    /// must not see "Speaker" / "Me" as content). Never used for display or storage.
+    static func stripLabels(from transcript: String) -> String {
+        let range = NSRange(transcript.startIndex..., in: transcript)
+        return linePrefix.stringByReplacingMatches(in: transcript, range: range, withTemplate: "")
+    }
 }
 
 /// One mic-lane cluster offered to the "which mic speaker is Me" decision.
@@ -160,8 +172,10 @@ enum SpeakerLabelling {
         // 4. Who is Me. THE plug-in point for own-voice recognition.
         let micOwn = micActive.filter { identity[Cluster(lane: 0, id: $0)] == nil }
         let meCluster: Cluster?
-        if micActive.count == 1, micOwn.count == 1 {
-            meCluster = Cluster(lane: 0, id: micOwn[0])             // lone mic voice is Me
+        if micOwn.count == 1 {
+            // One own voice left AFTER the bleed guard (a call whose mic also hears the
+            // far side through the laptop speakers still has exactly one local person).
+            meCluster = Cluster(lane: 0, id: micOwn[0])
         } else if micOwn.isEmpty {
             meCluster = nil
         } else {
@@ -183,12 +197,32 @@ enum SpeakerLabelling {
             numbers[c] = numbers.count + 1
         }
 
-        // 6. Write labels. A segment with no overlap keeps its lane label.
+        // 6. Write labels. A segment with no overlap takes the label of the nearest-in-time
+        //    segment of the SAME lane that was resolved, so a leftover lane label ("Them",
+        //    or "Me" when nobody was recognised) never sits next to "Speaker N" or inflates
+        //    the speaker count. Only a lane with no resolved segment at all keeps its label.
         var out = segments
+        var resolved: [Int: String] = [:]
         for (i, seg) in segments.enumerated() {
             guard let c = assigned[i].map(person) else { continue }
             out[i].lane = seg.speaker
-            out[i].speaker = (c == meCluster) ? SpeakerLabels.me : SpeakerLabels.numbered(numbers[c] ?? 0)
+            let label = (c == meCluster) ? SpeakerLabels.me : SpeakerLabels.numbered(numbers[c] ?? 0)
+            out[i].speaker = label
+            resolved[i] = label
+        }
+        for (i, seg) in segments.enumerated() where resolved[i] == nil {
+            var best: (gap: Double, label: String)?
+            for (j, label) in resolved.sorted(by: { $0.key < $1.key }) where segments[j].speaker == seg.speaker {
+                let other = segments[j]
+                let gap = max(0, max(seg.start, other.start) - min(seg.end, other.end))
+                if best == nil || gap < best!.gap { // ties keep the earlier segment
+                    best = (gap, label)
+                }
+            }
+            if let best {
+                out[i].lane = seg.speaker
+                out[i].speaker = best.label
+            }
         }
         var participants = distinct(out.map(\.speaker))
         participants.sort { rank($0) < rank($1) }

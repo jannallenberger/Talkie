@@ -100,7 +100,14 @@ final class OwnVoiceProfileStore: @unchecked Sendable {
     private var cache: OwnVoiceProfile?
     private var loaded = false
 
+    /// The one store the app uses (the recorder learns into it, Settings can forget it),
+    /// so a deletion also clears the in-memory copy the labeller reads.
+    static let shared = OwnVoiceProfileStore()
+
     init(url: URL = OwnVoiceProfileStore.defaultURL()) { self.url = url }
+
+    /// Whether a usable profile is stored. Presence only.
+    var exists: Bool { load() != nil }
 
     static func defaultURL() -> URL {
         AppPaths.supportDirectory().appendingPathComponent("own-voice-profile.json")

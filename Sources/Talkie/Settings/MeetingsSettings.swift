@@ -25,6 +25,10 @@ struct MeetingsSettings: View {
     /// sheet toggle.
     @State private var showingAppPicker = false
 
+    /// Whether a locally learned voice profile exists (read once on appear; presence
+    /// only — the profile's contents are never shown or logged).
+    @State private var hasVoiceProfile = false
+
     /// Pops this pushed subpage back to the Settings root, where the "Notes & export"
     /// card lives inline. Used by the destination reference button, alongside a tab
     /// switch, so the deep-link degrades gracefully (see `openNotesAndExport`).
@@ -45,6 +49,24 @@ struct MeetingsSettings: View {
                 CalendarSettings()
 
                 destinationReferenceRow
+                if hasVoiceProfile { voiceProfileCard }
+            }
+        }
+        .onAppear { hasVoiceProfile = OwnVoiceProfileStore.shared.exists }
+    }
+
+    // MARK: Voice profile (privacy control, shown only when one exists)
+
+    private var voiceProfileCard: some View {
+        SettingsCard {
+            SettingsRow(
+                title: "Your voice".loc,
+                subtitle: "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings.".loc
+            ) {
+                Button("Forget my voice".loc) {
+                    OwnVoiceProfileStore.shared.delete()
+                    hasVoiceProfile = false
+                }
             }
         }
     }

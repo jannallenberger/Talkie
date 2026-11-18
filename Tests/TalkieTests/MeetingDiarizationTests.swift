@@ -220,9 +220,13 @@ final class MeetingDiarizationTeeTests: XCTestCase {
         XCTAssertNotEqual(mic, sys)
         XCTAssertTrue(mic.path.hasPrefix(tmp.path))
         try Data([1]).write(to: mic); try Data([2]).write(to: sys)
-        // A "crashed run" left both behind; the next-start sweep clears them.
-        XCTAssertEqual(MeetingDiarizationTemp.sweepStale(in: tmp), 2)
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: tmp.path), [])
+        // A "crashed run" of this process's folder is cleared by the next-start sweep
+        // (per-process folders; see DiarizationReviewFixTests for the multi-instance rules).
+        let crashed = tmp.appendingPathComponent("pid-4242", isDirectory: true)
+        try FileManager.default.createDirectory(at: crashed, withIntermediateDirectories: true)
+        try Data([1]).write(to: crashed.appendingPathComponent("x.wav"))
+        XCTAssertEqual(MeetingDiarizationTemp.sweepStale(in: tmp, pid: 1, isProcessAlive: { _ in false }), 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: crashed.path))
         try Data([1]).write(to: mic)
         MeetingDiarizationTemp.remove([mic, sys])
         XCTAssertFalse(FileManager.default.fileExists(atPath: mic.path))

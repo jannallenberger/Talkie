@@ -155,14 +155,42 @@ enum MeetingDiarizationTemp {
         for u in urls { try? FileManager.default.removeItem(at: u) }
     }
 
-    /// Delete every file in the temp folder — what a crashed run left behind. Called
-    /// once at launch, before any recording or pass can exist.
+    /// Remove this process's scratch folder (app termination). Idempotent.
+    static func removeProcessDirectory(_ dir: URL = AppPaths.diarizationTempDirectory()) {
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    static func processIsAlive(_ pid: Int32) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
+    }
+
+    /// Loose files older than this are leftovers of a pre-per-process-folder build.
+    static let looseFileGrace: TimeInterval = 3600
+
+    /// Delete what crashed runs left behind. Called once at launch. Safe next to a
+    /// second running instance: only `pid-N` folders whose process is gone (or is this
+    /// one, which cannot have live files at launch) are removed; a loose file from the
+    /// older flat layout goes only once it is over an hour old. Returns entries removed.
     @discardableResult
-    static func sweepStale(in dir: URL = AppPaths.diarizationTempDirectory()) -> Int {
+    static func sweepStale(
+        in root: URL = AppPaths.diarizationTempRoot(),
+        pid: Int32 = ProcessInfo.processInfo.processIdentifier,
+        isProcessAlive: (Int32) -> Bool = MeetingDiarizationTemp.processIsAlive,
+        now: Date = Date()
+    ) -> Int {
         let fm = FileManager.default
-        guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else { return 0 }
+        guard let names = try? fm.contentsOfDirectory(atPath: root.path) else { return 0 }
         var n = 0
-        for name in names where (try? fm.removeItem(at: dir.appendingPathComponent(name))) != nil { n += 1 }
+        for name in names {
+            let url = root.appendingPathComponent(name)
+            if name.hasPrefix("pid-"), let owner = Int32(name.dropFirst(4)) {
+                if owner != pid, isProcessAlive(owner) { continue } // another live instance
+            } else {
+                let modified = (try? fm.attributesOfItem(atPath: url.path)[.modificationDate] as? Date) ?? .distantPast
+                if now.timeIntervalSince(modified) < looseFileGrace { continue }
+            }
+            if (try? fm.removeItem(at: url)) != nil { n += 1 }
+        }
         return n
     }
 }
@@ -249,9 +277,14 @@ enum MeetingDiarizationPipeline {
         budgetSeconds: Double,
         bleedThreshold: Double = SpeakerLabelling.defaultBleedThreshold,
         resolveMe: OwnVoiceResolver = SpeakerLabelling.noOwnVoice,
-        concurrent: Bool = false
+        concurrent: Bool = false,
+        skipLanes: Set<String> = []
     ) async -> Outcome {
+        // `skipLanes`: lanes whose transcript was rebuilt untimed (legacy whole-stream
+        // language correction: one segment with no real end), so overlap with a
+        // diarization is meaningless. They are neither diarized nor relabelled.
         let lanesWithSpeech = Set(segments.map(\.speaker)).intersection([SpeakerLabels.me, SpeakerLabels.them])
+            .subtracting(skipLanes)
         guard !lanesWithSpeech.isEmpty else { return .unavailable }
         // Both lanes are always analysed. If a lane has speech but no audio, labelling
         // half the meeting would mislabel it — keep Me/Them instead.

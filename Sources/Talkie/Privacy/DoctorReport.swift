@@ -270,6 +270,11 @@ enum DoctorReport {
         }
         // niche vocabulary store (nested)
         lines.append(fileLine(paths.support.appendingPathComponent("niche/vocab.json"), detail: nil))
+        // Voice profile (learned on-device to recognise you in meetings): existence and
+        // size only — its contents are never read into the report.
+        let voiceURL = paths.support.appendingPathComponent("own-voice-profile.json")
+        lines.append(fileLine(voiceURL, detail: FileManager.default.fileExists(atPath: voiceURL.path)
+            ? "your voice profile, kept to recognise you in meetings (Settings → Meeting settings → Forget my voice)" : nil))
 
         lines.append("")
         lines.append("**`\(tildeAbbreviated(paths.meetings.path))`** — your recordings and transcripts, in plain folders you own:")

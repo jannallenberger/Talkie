@@ -863,3 +863,7 @@
 "Them" = "相手";
 "Speaker %d" = "話者 %d";
 "Identifying speakers…" = "話者を識別中…";
+/* Meetings settings: forget the learned voice profile */
+"Your voice" = "あなたの声";
+"A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "ミーティングであなたを識別するための小さな音声プロファイルがこの Mac に保存されています。削除すると消去され、今後のミーティングから再び学習されます。";
+"Forget my voice" = "自分の声を削除";

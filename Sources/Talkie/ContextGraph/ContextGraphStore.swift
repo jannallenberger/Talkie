@@ -157,7 +157,7 @@ final class ContextGraphStore: ObservableObject {
             for name in meeting.participants where !SpeakerLabels.isGeneric(name) {
                 upsert(.person, name, prov)
             }
-            for candidate in ContextGraphExtractor.candidates(from: meeting.transcript) {
+            for candidate in ContextGraphExtractor.candidates(from: SpeakerLabels.stripLabels(from: meeting.transcript)) {
                 upsert(candidate.kind, candidate.displayName, prov)
             }
             maxMeeting = max(maxMeeting, meeting.startUnix)
