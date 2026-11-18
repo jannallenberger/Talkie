@@ -66,7 +66,7 @@ struct MeetingsView: View {
                     .padding(.horizontal, Self.pagePadding)
             }
             if recorder.isRecording {
-                recordingPanel
+                MeetingRecordingPanel(recorder: recorder, draftBox: notesDraftBox)
                     .padding(.horizontal, Self.pagePadding)
                     .padding(.bottom, 14)
             }
@@ -208,37 +208,17 @@ struct MeetingsView: View {
                 .help("Meeting settings")
                 .accessibilityLabel("Meeting settings")
                 .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
-                    quickSettings(router: router)
+                    MeetingQuickSettingsPopover(settings: settings) {
+                        showQuickSettings = false
+                        router.selectedTab = .general
+                        router.pendingPage = .meetings
+                    }
                 }
             }
         }
         .padding(.top, Theme.Space.pageTop)
         .padding(.horizontal, Self.pagePadding)
         .padding(.bottom, 18)
-    }
-
-    /// The gear's popover: the one meeting preference worth flipping from here (keep
-    /// audio — the same `AppSettings.keepMeetingAudio` the Settings page binds, so
-    /// there is one source of truth) and the deep link to the full Meeting settings.
-    private func quickSettings(router: SettingsRouter) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsToggleRow(
-                title: "Keep audio with meeting notes".loc,
-                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
-                isOn: $settings.keepMeetingAudio)
-            HStack {
-                Spacer()
-                Button("All meeting settings…") {
-                    showQuickSettings = false
-                    router.selectedTab = .general
-                    router.pendingPage = .meetings
-                }
-                .buttonStyle(.talkie(.secondary, size: .small))
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
-        }
-        .frame(width: 340)
     }
 
     /// Auto (multilingual) or pin transcription to one of the user's languages. Read
@@ -308,27 +288,6 @@ struct MeetingsView: View {
     }
 
     // MARK: Live recording panel
-
-    /// What's being captured plus the live notes editor and the provisional "So far"
-    /// list, as one calm panel under the bar. Both are their own views: typing never
-    /// re-diffs this page, and a live summary update re-renders only its list.
-    private var recordingPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: recorder.capturingFarEnd ? "person.2.wave.2" : "mic")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.featherRed)
-                Text(recorder.capturingFarEnd ? "Recording you + the call…" : "Recording (mic only)…")
-                    .font(.talkieHeading(14, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-            }
-            HStack(alignment: .top, spacing: 16) {
-                RecordingNotesEditor(recorder: recorder, draftBox: notesDraftBox)
-                LiveSoFarView(state: recorder.liveSummary)
-            }
-        }
-        .talkieCard(padding: 16)
-    }
 
     // MARK: List pane
 
@@ -500,6 +459,57 @@ struct MeetingsView: View {
     }
 }
 
+/// The gear's popover: the one meeting preference worth flipping from here (keep
+/// audio — the same `AppSettings.keepMeetingAudio` the Settings page binds, so
+/// there is one source of truth) and the deep link to the full Meeting settings.
+struct MeetingQuickSettingsPopover: View {
+    @ObservedObject var settings: AppSettings
+    let onOpenAll: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsToggleRow(
+                title: "Keep audio with meeting notes".loc,
+                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
+                isOn: $settings.keepMeetingAudio)
+            HStack {
+                Spacer()
+                Button("All meeting settings…") { onOpenAll() }
+                .buttonStyle(.talkie(.secondary, size: .small))
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+        .frame(width: 340)
+    }
+}
+
+/// What's being captured plus the live notes editor and the provisional "So far"
+/// list, as one calm panel under the bar. Both are their own views: typing never
+/// re-diffs this page, and a live summary update re-renders only its list.
+struct MeetingRecordingPanel: View {
+    @ObservedObject var recorder: MeetingRecorder
+    let draftBox: NotesDraftBox
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: recorder.capturingFarEnd ? "person.2.wave.2" : "mic")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.featherRed)
+                Text(recorder.capturingFarEnd ? "Recording you + the call…" : "Recording (mic only)…")
+                    .font(.talkieHeading(14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+            }
+            HStack(alignment: .top, spacing: 16) {
+                RecordingNotesEditor(recorder: recorder, draftBox: draftBox)
+                LiveSoFarView(state: recorder.liveSummary)
+            }
+        }
+        .talkieCard(padding: 16)
+    }
+}
+
 private struct RecordingDot: View {
     @State private var on = false
     var body: some View {
@@ -540,7 +550,7 @@ private struct RecordingElapsedText: View {
 /// synchronously right before calling `recorder.stop()`, so the very last
 /// keystroke — which may still be sitting in the debounce below — is never lost
 /// to a stop triggered from the in-app button.
-private final class NotesDraftBox {
+final class NotesDraftBox {
     var text: String = ""
     /// Per line, the meeting time it was started (kept in step with `text`).
     var lines: [MeetingNoteStamper.Line] = []
@@ -561,7 +571,7 @@ private final class NotesDraftBox {
 /// crash-recovery flush stays reasonably fresh), on blur, and when this view
 /// disappears (recording stopped via a path other than the in-app button, or the
 /// user switches tabs mid-recording) — never silently dropped.
-private struct RecordingNotesEditor: View {
+struct RecordingNotesEditor: View {
     @ObservedObject var recorder: MeetingRecorder
     let draftBox: NotesDraftBox
 
@@ -666,7 +676,7 @@ private struct RecordingNotesEditor: View {
 /// decisions and action items the live summary has extracted from the settled part
 /// of the conversation. Observes only `LiveSummaryState`, which publishes when a pass
 /// lands (about once a minute), so it never re-renders on the 1 Hz tick.
-private struct LiveSoFarView: View {
+struct LiveSoFarView: View {
     @ObservedObject var state: LiveSummaryState
 
     var body: some View {

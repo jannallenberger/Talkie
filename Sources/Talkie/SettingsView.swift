@@ -706,7 +706,7 @@ struct SettingsSectionHeader: View {
 
 /// Public "Replay introduction" row on the Settings root. Restarts the first-run
 /// onboarding; name, settings, history, and dictionary are untouched.
-private struct ReplayIntroductionCard: View {
+struct ReplayIntroductionCard: View {
     @ObservedObject var settings: AppSettings
     @State private var replaying = false
 
@@ -1695,7 +1695,7 @@ private struct MicrophoneSettings: View {
     }
 }
 
-private struct ActivationSettings: View {
+struct ActivationSettings: View {
     @ObservedObject var settings: AppSettings
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -1892,7 +1892,7 @@ private struct BehaviorSettings: View {
 
 // MARK: - Dictionary
 
-private struct DictionarySettings: View {
+struct DictionarySettings: View {
     /// For the header's "Learn from my edits" switch — the same
     /// `AppSettings.learnFromEdits` as Settings > Context & learning.
     @ObservedObject var settings: AppSettings

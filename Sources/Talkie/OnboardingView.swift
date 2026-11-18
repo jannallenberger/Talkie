@@ -19,6 +19,8 @@ struct OnboardingView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
     let onRetryHotKey: () -> Bool
+    /// The step to open on (snapshot tests); 0 = the welcome.
+    var initialStep = 0
     // One-time speech-model download state (macOS performs it; Talkie only reports it).
     @ObservedObject private var modelTracker = SpeechModelInstallTracker.shared
 
@@ -31,6 +33,9 @@ struct OnboardingView: View {
     private enum Step: CaseIterable { case welcome, tryIt, privacy, gesture, permissions, ready }
     private let steps = Step.allCases
     @State private var step = 0
+    /// Index of the final "You're ready" step (snapshot tests).
+    static var readyStepIndex: Int { Step.allCases.count - 1 }
+    static var permissionsStepIndex: Int { Step.allCases.firstIndex(of: .permissions) ?? 4 }
     // The final-step (`ready`) hotkey-driven try-it field (needs all permissions).
     @State private var tryText = ""
     // The speak-first (`tryIt`) step: a read-only results field + record button,
@@ -76,6 +81,7 @@ struct OnboardingView: View {
         // final-step hint and button label, and the hotkey-tap retry all stay live
         // while System Settings changes land. Idempotent; stopped when the view goes.
         .onAppear {
+            if step == 0, initialStep > 0 { step = min(initialStep, steps.count - 1) }
             permissions.refresh()
             permissions.startPolling()
         }
@@ -739,7 +745,7 @@ private struct TryItRecordButton: View {
     }
 }
 
-private struct OnboardPermissionRow: View {
+struct OnboardPermissionRow: View {
     let icon: String
     /// Localisation keys, looked up with `.loc` (a `String` would bypass the catalog).
     let title: String
