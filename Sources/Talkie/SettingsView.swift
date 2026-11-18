@@ -98,6 +98,48 @@ final class SettingsRouter: ObservableObject {
     /// sets it yet, and the Settings root drains it on appear, so a `nil` here is
     /// the normal "just show the index" case.
     @Published var pendingPage: SettingsPage?
+
+    /// Extra top inset for the sidebar column, set from `MainWindowChrome` (non-zero
+    /// only in native fullscreen, where the revealed titlebar's traffic lights would
+    /// otherwise sit on the first sidebar row).
+    @Published var sidebarTopInset: CGFloat = 0
+}
+
+/// The main window's chrome, windowed vs native fullscreen. One pure function so
+/// both directions are unit-tested and exit restores the windowed values exactly.
+///
+/// Windowed (owner-approved): the tall unified toolbar (its background is hidden
+/// in SwiftUI) over a transparent titlebar, native glass sidebar, no extra inset.
+/// Fullscreen: the revealed slide-down bar becomes the thin compact titlebar with
+/// an opaque backdrop, and the sidebar gets a top inset equal to that bar's height
+/// so the traffic lights no longer cover its first row. The toolbar itself is
+/// kept (never hidden): removing it changes how NavigationSplitView presents the
+/// sidebar (see 84abc4f -> d9c913f).
+struct MainWindowChrome: Equatable {
+    let toolbarStyle: NSWindow.ToolbarStyle
+    let titlebarAppearsTransparent: Bool
+    let sidebarTopInset: CGFloat
+
+    /// Titlebar height of a `.unifiedCompact` window (measured: 40pt).
+    static let compactTitlebarHeight: CGFloat = 40
+
+    static let windowed = MainWindowChrome(toolbarStyle: .unified,
+                                           titlebarAppearsTransparent: true,
+                                           sidebarTopInset: 0)
+
+    static func settings(fullScreen: Bool) -> MainWindowChrome {
+        fullScreen
+            ? MainWindowChrome(toolbarStyle: .unifiedCompact,
+                               titlebarAppearsTransparent: false,
+                               sidebarTopInset: compactTitlebarHeight)
+            : windowed
+    }
+
+    @MainActor func apply(to window: NSWindow, router: SettingsRouter) {
+        window.toolbarStyle = toolbarStyle
+        window.titlebarAppearsTransparent = titlebarAppearsTransparent
+        router.sidebarTopInset = sidebarTopInset
+    }
 }
 
 /// The app's main window (Dock app). A Claude-style sidebar shell hosting the
@@ -184,7 +226,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         )
         window.title = Brand.displayName
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
+        window.titlebarAppearsTransparent = MainWindowChrome.windowed.titlebarAppearsTransparent
         // Kills the gray titlebar hairline that otherwise survives the transparent
         // titlebar in both windowed and full-screen.
         window.titlebarSeparatorStyle = .none
@@ -199,7 +241,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         // the system scroll-edge gradient as content passes under it.
         let hostingController = NSHostingController(rootView: root)
         window.contentViewController = hostingController
-        window.toolbarStyle = .unified
+        window.toolbarStyle = MainWindowChrome.windowed.toolbarStyle
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("TalkieMainWindow")
         window.center()
@@ -223,6 +265,16 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     /// sheet is presented shouldn't strip the Dock icon. A miniaturize never routes
     /// here (it isn't a close), so no extra guard is needed for that. `AppDelegate`
     /// does the actual `.accessory` flip via `onGenuineClose`.
+    /// Native fullscreen: thin compact titlebar with the traffic lights on an opaque
+    /// backdrop, sidebar inset below it. Exit restores the windowed chrome exactly.
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        MainWindowChrome.settings(fullScreen: true).apply(to: window, router: router)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        MainWindowChrome.settings(fullScreen: false).apply(to: window, router: router)
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard window.attachedSheet == nil else { return }
         onGenuineClose?()
@@ -374,6 +426,9 @@ private struct SidebarList: View {
                 .badge(tab == .general && !permissions.allGranted ? 1 : 0)
         }
         .listStyle(.sidebar)
+        // 0 when windowed (unchanged native sidebar); the compact titlebar's height
+        // in native fullscreen, so the revealed traffic lights clear the first row.
+        .safeAreaPadding(.top, router.sidebarTopInset)
         .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 3) {
