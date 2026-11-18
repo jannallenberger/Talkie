@@ -1690,16 +1690,7 @@ private struct ActivationSettings: View {
                 footer: activationFooter
             ) {
                 SettingsRow(title: "Dictation key".loc) {
-                    Picker("", selection: $settings.activationKey) {
-                        ForEach(ActivationKey.allCases) { key in
-                            if let symbol = key.symbolName {
-                                Label(key.displayName, systemImage: symbol).tag(key)
-                            } else {
-                                Text(key.displayName).tag(key)
-                            }
-                        }
-                    }
-                    .labelsHidden().fixedSize()
+                    ActivationKeyRecorder(key: $settings.activationKey)
                 }
             }
             SettingsCard(

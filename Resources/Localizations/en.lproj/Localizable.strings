@@ -955,3 +955,19 @@
 "Version %@ (build %@), built on %@" = "Version %@ (build %@), built on %@";
 "Version %@ (build %@)" = "Version %@ (build %@)";
 "Talkie never goes online, so it cannot check for updates." = "Talkie never goes online, so it cannot check for updates.";
+/* Feature: assignable activation key */
+"Mouse Button %d" = "Mouse Button %d";
+"Left ⇧ Shift" = "Left ⇧ Shift";
+"Right ⇧ Shift" = "Right ⇧ Shift";
+"Left ⌃ Control" = "Left ⌃ Control";
+"Left ⌘ Command" = "Left ⌘ Command";
+"Right ⌘ Command" = "Right ⌘ Command";
+"Modifier key" = "Modifier key";
+"Change…" = "Change…";
+"Press the key you want" = "Press the key you want";
+"Press Esc to cancel" = "Press Esc to cancel";
+"That key would still be typed into the app you're in. Use a modifier key, F1–F20 or a mouse button." = "That key would still be typed into the app you're in. Use a modifier key, F1–F20 or a mouse button.";
+"Caps Lock can't be used as the dictation key." = "Caps Lock can't be used as the dictation key.";
+"Left, right and middle click can't be used as the dictation key." = "Left, right and middle click can't be used as the dictation key.";
+"macOS reserves Fn/Globe, so %@ can't use it." = "macOS reserves Fn/Globe, so %@ can't use it.";
+"You press this constantly; %@ would start listening during normal shortcuts." = "You press this constantly; %@ would start listening during normal shortcuts.";

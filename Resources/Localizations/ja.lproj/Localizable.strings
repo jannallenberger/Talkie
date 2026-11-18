@@ -944,3 +944,19 @@
 "Version %@ (build %@), built on %@" = "バージョン %@（ビルド %@）、%@ にビルド";
 "Version %@ (build %@)" = "バージョン %@（ビルド %@）";
 "Talkie never goes online, so it cannot check for updates." = "Talkieはオンラインに接続しないため、アップデートを確認できません。";
+/* Feature: assignable activation key */
+"Mouse Button %d" = "マウスボタン %d";
+"Left ⇧ Shift" = "左 ⇧ Shift";
+"Right ⇧ Shift" = "右 ⇧ Shift";
+"Left ⌃ Control" = "左 ⌃ Control";
+"Left ⌘ Command" = "左 ⌘ Command";
+"Right ⌘ Command" = "右 ⌘ Command";
+"Modifier key" = "修飾キー";
+"Change…" = "変更…";
+"Press the key you want" = "使いたいキーを押してください";
+"Press Esc to cancel" = "Esc でキャンセル";
+"That key would still be typed into the app you're in. Use a modifier key, F1–F20 or a mouse button." = "そのキーは使用中のアプリにそのまま入力されてしまいます。修飾キー、F1〜F20、またはマウスボタンを使ってください。";
+"Caps Lock can't be used as the dictation key." = "Caps Lock は音声入力キーに使えません。";
+"Left, right and middle click can't be used as the dictation key." = "左・右・中央クリックは音声入力キーに使えません。";
+"macOS reserves Fn/Globe, so %@ can't use it." = "Fn/地球儀キーは macOS が予約しているため、%@ では使えません。";
+"You press this constantly; %@ would start listening during normal shortcuts." = "このキーは常に押すため、通常のショートカット中に %@ が聞き取りを始めてしまいます。";

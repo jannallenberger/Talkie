@@ -944,3 +944,19 @@
 "Version %@ (build %@), built on %@" = "버전 %@ (빌드 %@), %@에 빌드됨";
 "Version %@ (build %@)" = "버전 %@ (빌드 %@)";
 "Talkie never goes online, so it cannot check for updates." = "Talkie는 온라인에 연결되지 않아 업데이트를 확인할 수 없습니다.";
+/* Feature: assignable activation key */
+"Mouse Button %d" = "마우스 버튼 %d";
+"Left ⇧ Shift" = "왼쪽 ⇧ Shift";
+"Right ⇧ Shift" = "오른쪽 ⇧ Shift";
+"Left ⌃ Control" = "왼쪽 ⌃ Control";
+"Left ⌘ Command" = "왼쪽 ⌘ Command";
+"Right ⌘ Command" = "오른쪽 ⌘ Command";
+"Modifier key" = "보조 키";
+"Change…" = "변경…";
+"Press the key you want" = "사용할 키를 누르세요";
+"Press Esc to cancel" = "취소하려면 Esc를 누르세요";
+"That key would still be typed into the app you're in. Use a modifier key, F1–F20 or a mouse button." = "이 키는 사용 중인 앱에 그대로 입력됩니다. 보조 키, F1–F20 또는 마우스 버튼을 사용하세요.";
+"Caps Lock can't be used as the dictation key." = "Caps Lock은 받아쓰기 키로 사용할 수 없습니다.";
+"Left, right and middle click can't be used as the dictation key." = "왼쪽, 오른쪽, 가운데 클릭은 받아쓰기 키로 사용할 수 없습니다.";
+"macOS reserves Fn/Globe, so %@ can't use it." = "macOS가 Fn/Globe 키를 예약하고 있어 %@에서 사용할 수 없습니다.";
+"You press this constantly; %@ would start listening during normal shortcuts." = "이 키는 계속 누르게 되므로 일반 단축키를 쓸 때도 %@가 듣기 시작합니다.";

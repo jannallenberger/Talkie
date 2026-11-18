@@ -826,6 +826,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Let the permissions poll install the tap the moment it sees the Input
         // Monitoring grant (start() is idempotent once the tap is running).
         permissions.hotKeyRetry = { [weak self] in self?.hotKey?.start() ?? false }
+        // The key recorder in Settings suspends this tap while it listens.
+        ActivationRecordingGate.shared.setHandler { [weak monitor] suspend in
+            monitor?.setSuspended(suspend)
+        }
     }
 
     // MARK: Hands-free auto-stop (B5)

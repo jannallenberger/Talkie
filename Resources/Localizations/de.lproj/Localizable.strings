@@ -944,3 +944,19 @@
 "Version %@ (build %@), built on %@" = "Version %@ (Build %@), erstellt am %@";
 "Version %@ (build %@)" = "Version %@ (Build %@)";
 "Talkie never goes online, so it cannot check for updates." = "Talkie geht nie online und kann daher nicht nach Updates suchen.";
+/* Feature: assignable activation key */
+"Mouse Button %d" = "Maustaste %d";
+"Left ⇧ Shift" = "Linke ⇧ Umschalttaste";
+"Right ⇧ Shift" = "Rechte ⇧ Umschalttaste";
+"Left ⌃ Control" = "Linke ⌃ Control-Taste";
+"Left ⌘ Command" = "Linke ⌘ Befehlstaste";
+"Right ⌘ Command" = "Rechte ⌘ Befehlstaste";
+"Modifier key" = "Sondertaste";
+"Change…" = "Ändern…";
+"Press the key you want" = "Drücken Sie die gewünschte Taste";
+"Press Esc to cancel" = "Esc zum Abbrechen";
+"That key would still be typed into the app you're in. Use a modifier key, F1–F20 or a mouse button." = "Diese Taste würde weiterhin in die aktive App getippt. Verwenden Sie eine Sondertaste, F1–F20 oder eine Maustaste.";
+"Caps Lock can't be used as the dictation key." = "Die Feststelltaste kann nicht als Diktiertaste verwendet werden.";
+"Left, right and middle click can't be used as the dictation key." = "Linke, rechte und mittlere Maustaste können nicht als Diktiertaste verwendet werden.";
+"macOS reserves Fn/Globe, so %@ can't use it." = "macOS reserviert Fn/Globus, deshalb kann %@ sie nicht verwenden.";
+"You press this constantly; %@ would start listening during normal shortcuts." = "Diese Taste drücken Sie ständig; %@ würde bei normalen Tastenkürzeln zu hören beginnen.";

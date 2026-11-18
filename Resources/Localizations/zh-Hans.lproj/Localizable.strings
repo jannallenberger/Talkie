@@ -944,3 +944,19 @@
 "Version %@ (build %@), built on %@" = "版本 %@（构建 %@），构建于 %@";
 "Version %@ (build %@)" = "版本 %@（构建 %@）";
 "Talkie never goes online, so it cannot check for updates." = "Talkie 从不联网，因此无法检查更新。";
+/* Feature: assignable activation key */
+"Mouse Button %d" = "鼠标按键 %d";
+"Left ⇧ Shift" = "左 ⇧ Shift";
+"Right ⇧ Shift" = "右 ⇧ Shift";
+"Left ⌃ Control" = "左 ⌃ Control";
+"Left ⌘ Command" = "左 ⌘ Command";
+"Right ⌘ Command" = "右 ⌘ Command";
+"Modifier key" = "修饰键";
+"Change…" = "更改…";
+"Press the key you want" = "请按下你想用的键";
+"Press Esc to cancel" = "按 Esc 取消";
+"That key would still be typed into the app you're in. Use a modifier key, F1–F20 or a mouse button." = "该按键仍会被输入到当前使用的应用中。请使用修饰键、F1–F20 或鼠标按键。";
+"Caps Lock can't be used as the dictation key." = "大写锁定键不能用作听写键。";
+"Left, right and middle click can't be used as the dictation key." = "鼠标左键、右键和中键不能用作听写键。";
+"macOS reserves Fn/Globe, so %@ can't use it." = "macOS 保留了 Fn/地球仪键，%@ 无法使用。";
+"You press this constantly; %@ would start listening during normal shortcuts." = "你会不断按下此键；%@ 会在正常快捷键操作时开始聆听。";

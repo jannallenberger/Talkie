@@ -944,3 +944,19 @@
 "Version %@ (build %@), built on %@" = "Versie %@ (build %@), gebouwd op %@";
 "Version %@ (build %@)" = "Versie %@ (build %@)";
 "Talkie never goes online, so it cannot check for updates." = "Talkie gaat nooit online en kan dus niet op updates controleren.";
+/* Feature: assignable activation key */
+"Mouse Button %d" = "Muisknop %d";
+"Left ⇧ Shift" = "Linker ⇧ Shift";
+"Right ⇧ Shift" = "Rechter ⇧ Shift";
+"Left ⌃ Control" = "Linker ⌃ Control";
+"Left ⌘ Command" = "Linker ⌘ Command";
+"Right ⌘ Command" = "Rechter ⌘ Command";
+"Modifier key" = "Aanpassingstoets";
+"Change…" = "Wijzig…";
+"Press the key you want" = "Druk op de gewenste toets";
+"Press Esc to cancel" = "Druk op Esc om te annuleren";
+"That key would still be typed into the app you're in. Use a modifier key, F1–F20 or a mouse button." = "Die toets zou nog steeds in de actieve app worden getypt. Gebruik een aanpassingstoets, F1–F20 of een muisknop.";
+"Caps Lock can't be used as the dictation key." = "Caps Lock kan niet als dicteertoets worden gebruikt.";
+"Left, right and middle click can't be used as the dictation key." = "Links-, rechts- en middenklik kunnen niet als dicteertoets worden gebruikt.";
+"macOS reserves Fn/Globe, so %@ can't use it." = "macOS reserveert Fn/Globe, dus %@ kan die niet gebruiken.";
+"You press this constantly; %@ would start listening during normal shortcuts." = "Je drukt hier constant op; %@ zou gaan luisteren tijdens normale sneltoetsen.";
