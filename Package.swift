@@ -1,4 +1,4 @@
-// swift-tools-version:6.0
+// swift-tools-version:6.1
 import PackageDescription
 import Foundation
 
@@ -44,7 +44,7 @@ let talkieSwiftSettings: [SwiftSetting] =
         + (connected ? [.define("TALKIE_CONNECTED")] : [])
 
 let talkieDependencies: [Target.Dependency] =
-    ["TalkieFileKit"] + (devTools ? ["TalkieUpdater"] : []) + (connected ? ["TalkieBridge"] : [])
+    ["TalkieFileKit", "TalkieDiarization"] + (devTools ? ["TalkieUpdater"] : []) + (connected ? ["TalkieBridge"] : [])
 
 var targets: [Target] = [
     .executableTarget(
@@ -96,6 +96,33 @@ var targets: [Target] = [
         name: "talkie-cli",
         dependencies: ["TalkieFileKit"],
         path: "Sources/TalkieCLI",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+        ]
+    ),
+    // Speaker diarization (pyannote community-1 via FluidAudio's CoreML
+    // conversion). An ISOLATED wrapper, same idea as TalkieUpdater/TalkieBridge:
+    // the app target never imports FluidAudio, only this module's tiny Sendable
+    // API (no FluidAudio types cross the boundary). Runs fully offline from the
+    // CoreML models bundled in Contents/Resources/DiarizationModels — it never
+    // calls FluidAudio's download/ModelHub loaders and forces
+    // ModelHub.offlineMode on before touching anything. Models are fetched at
+    // BUILD time by scripts/fetch_diarization_models.sh (pinned revision,
+    // SHA-256 manifest); see THIRD_PARTY_NOTICES.md for licenses.
+    .target(
+        name: "TalkieDiarization",
+        dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
+        path: "Sources/TalkieDiarization",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+        ]
+    ),
+    // Model-dependent tests SKIP (not fail) when Vendor/DiarizationModels is
+    // absent, so CI without the fetched models stays green.
+    .testTarget(
+        name: "TalkieDiarizationTests",
+        dependencies: ["TalkieDiarization", .product(name: "FluidAudio", package: "FluidAudio")],
+        path: "Tests/TalkieDiarizationTests",
         swiftSettings: [
             .swiftLanguageMode(.v6),
         ]
@@ -167,6 +194,19 @@ let package = Package(
     name: "Talkie",
     platforms: [
         .macOS("26.0"),
+    ],
+    // FluidAudio with ONLY the `Diarizer` trait: drops the TTS subsystem (and its
+    // bundled G2P resources) and the prebuilt NemoTextProcessing binary
+    // xcframework, so the app links no extra binary/dylib. Trait-conditioned
+    // dependencies need a 6.1+ manifest (hence swift-tools-version:6.1) and a
+    // 6.2+ toolchain to actually drop the binary target (FluidAudio's
+    // Package@swift-6.2.swift); Xcode 26 satisfies both.
+    dependencies: [
+        .package(
+            url: "https://github.com/FluidInference/FluidAudio.git",
+            from: "0.18.3",
+            traits: ["Diarizer"]
+        ),
     ],
     targets: targets
 )

@@ -85,9 +85,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # network-allowed, non-default-flavor modules) are intentionally NOT listed.
 # TalkieFileKit (shared file-transcription kit) and TalkieCLI (the `talkie` CLI)
 # are on-device, network-free, and ship inside the app bundle, so they are held to
-# the same zero-network bar and scanned here too.
+# the same zero-network bar and scanned here too. TalkieDiarization (the speaker-
+# diarization wrapper, linked into the default build) is scanned too: its own
+# code must never download — models are bundled, loaded read-only. (Its FluidAudio
+# dependency is third-party code outside this source grep; the wrapper forces
+# ModelHub.offlineMode on and never calls FluidAudio's download/ModelHub loaders.)
 SCAN_DIRS=()
-for d in "Sources/Talkie" "Sources/TalkieMCP" "Sources/TalkieFileKit" "Sources/TalkieCLI"; do
+for d in "Sources/Talkie" "Sources/TalkieMCP" "Sources/TalkieFileKit" "Sources/TalkieCLI" "Sources/TalkieDiarization"; do
   [ -d "$ROOT/$d" ] && SCAN_DIRS+=("$ROOT/$d")
 done
 
@@ -261,7 +265,7 @@ if [ -n "$VIOLATIONS" ]; then
 fi
 
 echo "PASS — no unaudited network symbols in the on-device targets"
-echo "  (Sources/Talkie, Sources/TalkieMCP, Sources/TalkieFileKit, Sources/TalkieCLI)."
+echo "  (Sources/Talkie, Sources/TalkieMCP, Sources/TalkieFileKit, Sources/TalkieCLI, Sources/TalkieDiarization)."
 
 if [ -n "$EXCEPTIONS" ]; then
   # The non-negotiable part: every honoured exception is surfaced, verbatim, in the

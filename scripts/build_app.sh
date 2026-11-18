@@ -196,6 +196,29 @@ if [[ -d "$ROOT/Resources/Packs" ]]; then
   cp "$ROOT/Resources/Packs/"*.talkiepack "$APP/Contents/Resources/" 2>/dev/null || true
 fi
 
+# Speaker-diarization CoreML models (TalkieDiarization) — bundled READ-ONLY in
+# Contents/Resources/DiarizationModels/speaker-diarization/, the only place
+# the app loads them from (it never downloads). The fetch script is idempotent:
+# with the models already in Vendor/ it only re-verifies every SHA-256 against
+# scripts/diarization-models.sha256 (and the revision marker); otherwise it
+# fetches the pinned revision at BUILD time. We copy exactly the manifest's files
+# + the marker (never stray *.partial leftovers). These are plain resources (no
+# Mach-O), so the outer app signature below seals them — no nested signing.
+echo "▶ Bundling diarization models…"
+DIAR_SRC_ROOT="$ROOT/Vendor/DiarizationModels"
+"$ROOT/scripts/fetch_diarization_models.sh" "$DIAR_SRC_ROOT"
+DIAR_SRC="$DIAR_SRC_ROOT/speaker-diarization"
+DIAR_DST="$APP/Contents/Resources/DiarizationModels/speaker-diarization"
+mkdir -p "$DIAR_DST"
+while read -r _sha rel; do
+  [[ -z "${_sha:-}" || "$_sha" == \#* ]] && continue
+  mkdir -p "$(dirname "$DIAR_DST/$rel")"
+  cp "$DIAR_SRC/$rel" "$DIAR_DST/$rel"
+done < "$ROOT/scripts/diarization-models.sha256"
+cp "$DIAR_SRC/.fluidaudio-revision" "$DIAR_DST/.fluidaudio-revision"
+# Attribution (CC-BY-4.0 models, Apache-2.0 FluidAudio) ships in the app.
+cp "$ROOT/THIRD_PARTY_NOTICES.md" "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
+
 # App icon from the Icon Composer .icon bundle (macOS 26 Liquid Glass).
 # actool emits AppIcon.icns (Finder/Dock fallback) + Assets.car (glass icon).
 if [[ -d "$ROOT/Resources/AppIcon.icon" ]]; then

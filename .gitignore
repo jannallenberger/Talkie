@@ -17,3 +17,6 @@ DerivedData/
 # Release artifacts (make_dmg.sh / notarize.sh)
 /Talkie.zip
 /Talkie*.dmg
+
+# Build-time diarization models (scripts/fetch_diarization_models.sh)
+/Vendor/DiarizationModels/
