@@ -365,7 +365,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return await recorder.importDiarizationStep(
                     id: id, inputs: inputs, segments: segments, words: words,
                     transcript: transcript, durationSec: duration)
-            }
+            },
+            markSummarizing: { [weak self] id, on in self?.meetingRecorder?.setSummarizing(id, on) }
         )
 
         // Watched-inbox folder (D6): auto-transcribe audio/video that lands in a folder the

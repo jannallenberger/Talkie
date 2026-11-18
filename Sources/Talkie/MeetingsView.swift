@@ -462,7 +462,7 @@ struct MeetingsView: View {
     /// with the user before calling this whenever there's an existing, non-empty
     /// summary to lose.
     private func regenerateSummary(_ meeting: Meeting) async {
-        guard let summary = await MeetingSummarizer().summarize(meeting.transcript) else { return }
+        guard let summary = await MeetingSummarizer().summarize(meeting.transcript, segments: meeting.segments) else { return }
         var updated = meeting
         updated.summary = summary
         store.update(updated)
