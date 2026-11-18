@@ -369,6 +369,7 @@ struct MeetingsView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 12)
             }
+            .scrollEdgeEffectHidden(true, for: .top)
             .focusable()
             .focusEffectDisabled()
             .focused($listFocused)
@@ -422,6 +423,7 @@ struct MeetingsView: View {
                 .padding(.bottom, Self.pagePadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .scrollEdgeEffectHidden(true, for: .top)
         }
     }
 
