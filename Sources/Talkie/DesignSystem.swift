@@ -120,6 +120,14 @@ enum Theme {
         static let card: CGFloat = 20
         static let gridGap: CGFloat = 14
         static let section: CGFloat = 24
+        /// Window top edge → page title. The window has no toolbar strip, so this
+        /// is the whole top area (it still clears the traffic lights, which sit
+        /// over the sidebar).
+        static let pageTop: CGFloat = 36
+        /// Leading/trailing page inset.
+        static let pageSide: CGFloat = 28
+        /// Bottom inset under the last card of a scrolling page.
+        static let pageBottom: CGFloat = 28
     }
 
     // MARK: Dynamic color helper
@@ -206,6 +214,356 @@ struct Eyebrow: View {
             .font(.talkieEyebrow)
             .tracking(0.8)
             .foregroundStyle(Theme.inkSecondary)
+    }
+}
+
+// MARK: - Section label
+
+/// A section label above a group of cards: the eyebrow caps, optionally with
+/// one line of sentence-case help under it. The one section-label style on every
+/// main-window page (Settings groups included).
+struct TalkieSectionLabel: View {
+    let title: String
+    var subtitle: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Eyebrow(text: title)
+            if let subtitle {
+                Text(LocalizedStringKey(subtitle))
+                    .font(.talkieHeading(12, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+    }
+}
+
+// MARK: - Buttons
+
+/// The four button roles of the main window.
+///   • primary     — filled accent capsule; one per area, the main action.
+///   • secondary   — soft surface capsule (ink label); every other action.
+///   • quiet       — icon-only, no fill until hovered; toolbar-like affordances.
+///   • destructive — the secondary shape with a feather-red label.
+enum TalkieButtonKind {
+    case primary, secondary, quiet, destructive
+}
+
+/// Regular for page-level actions, small for inline rows. When a site doesn't
+/// say, the size follows the environment's `controlSize` (`.small`/`.mini` →
+/// small), so existing `.controlSize(.small)` rows keep reading as inline.
+enum TalkieButtonSize {
+    case regular, small
+}
+
+struct TalkieButtonStyle: ButtonStyle {
+    var kind: TalkieButtonKind
+    var size: TalkieButtonSize? = nil
+    /// Overrides the accent for `.primary` (the fill) and `.quiet` (the glyph).
+    /// Only for recording (featherRed); everything else stays on the brand accent.
+    var tint: Color? = nil
+
+    func makeBody(configuration: Configuration) -> some View {
+        TalkieButtonBody(configuration: configuration, kind: kind, size: size, tint: tint)
+    }
+}
+
+extension ButtonStyle where Self == TalkieButtonStyle {
+    /// `.buttonStyle(.talkie(.primary))`, `.buttonStyle(.talkie(.secondary, size: .small))`.
+    static func talkie(_ kind: TalkieButtonKind, size: TalkieButtonSize? = nil,
+                       tint: Color? = nil) -> TalkieButtonStyle {
+        TalkieButtonStyle(kind: kind, size: size, tint: tint)
+    }
+}
+
+private struct TalkieButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let kind: TalkieButtonKind
+    let size: TalkieButtonSize?
+    let tint: Color?
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.controlSize) private var controlSize
+    @State private var hovering = false
+
+    private var small: Bool {
+        if let size { return size == .small }
+        return controlSize == .small || controlSize == .mini
+    }
+
+    private var height: CGFloat { small ? 24 : 30 }
+
+    var body: some View {
+        configuration.label
+            .font(.system(size: small ? 12 : 13, weight: kind == .primary ? .semibold : .medium))
+            .lineLimit(1)
+            .foregroundStyle(foreground)
+            .padding(.horizontal, kind == .quiet ? 0 : (small ? 9 : 14))
+            .frame(minWidth: kind == .quiet ? height : nil, minHeight: height)
+            .background(Capsule(style: .continuous).fill(fill))
+            .contentShape(Capsule(style: .continuous))
+            .opacity(isEnabled ? 1 : 0.45)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: hovering)
+            .onHover { hovering = $0 && isEnabled }
+    }
+
+    private var foreground: Color {
+        switch kind {
+        case .primary:     return .white
+        case .secondary:   return Theme.ink
+        case .destructive: return Theme.featherRed
+        case .quiet:       return tint ?? (hovering ? Theme.ink : Theme.inkSecondary)
+        }
+    }
+
+    private var fill: Color {
+        let pressed = configuration.isPressed && isEnabled
+        switch kind {
+        case .primary:
+            let base = tint ?? Theme.coral
+            if pressed { return tint == nil ? Theme.coralDeep : base.opacity(0.8) }
+            return hovering ? base.opacity(0.9) : base
+        case .secondary, .destructive:
+            if pressed { return Theme.surfaceSunken.mix(with: Theme.ink, by: 0.12) }
+            return hovering ? Theme.surfaceSunken.mix(with: Theme.ink, by: 0.06) : Theme.surfaceSunken
+        case .quiet:
+            if pressed { return Theme.surfaceSunken.mix(with: Theme.ink, by: 0.06) }
+            return hovering ? Theme.surfaceSunken : .clear
+        }
+    }
+}
+
+/// An on/off chip (a button-shaped toggle): accent wash + accent label when on,
+/// the soft surface when off. Replaces `.toggleStyle(.button)`, whose look would
+/// otherwise come from the page's button style and lose the on/off state.
+struct TalkieChipToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            configuration.label
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(configuration.isOn ? Theme.coral : Theme.inkSecondary)
+                .padding(.horizontal, 8)
+                .frame(minWidth: 26, minHeight: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .fill(configuration.isOn ? Theme.coralWash : Theme.surfaceSunken)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(configuration.isOn ? .isSelected : [])
+    }
+}
+
+extension ToggleStyle where Self == TalkieChipToggleStyle {
+    static var talkieChip: TalkieChipToggleStyle { TalkieChipToggleStyle() }
+}
+
+// MARK: - Menu picker
+
+/// A picker that looks like the secondary button: a capsule whose label the
+/// caller supplies (usually the current choice), opening a menu with the
+/// options checkmarked like a native pop-up. Selection writes go through the
+/// binding unchanged, so confirmations wired into it keep working.
+struct TalkieMenuPicker<Value: Hashable, Options: View, MenuLabel: View>: View {
+    @Binding var selection: Value
+    @ViewBuilder var options: Options
+    @ViewBuilder var label: MenuLabel
+
+    var body: some View {
+        Menu {
+            Picker(selection: $selection) { options } label: { EmptyView() }
+                .pickerStyle(.inline)
+                .labelsHidden()
+        } label: {
+            HStack(spacing: 6) {
+                label
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.talkie(.secondary))
+        .fixedSize()
+    }
+}
+
+// MARK: - Page scaffold
+
+extension Font {
+    /// The page title: serif 26 on every main-window page.
+    static var talkiePageTitle: Font { .talkieDisplay(26) }
+}
+
+private struct TalkiePushedPageKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True inside a page pushed onto a `NavigationStack` (set by the
+    /// `navigationDestination`s via `.talkiePushedPage()`).
+    var talkiePushedPage: Bool {
+        get { self[TalkiePushedPageKey.self] }
+        set { self[TalkiePushedPageKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Marks a navigation destination as a pushed page, so its header shows the
+    /// back chevron.
+    /// Also re-applies the page default button style: navigation destinations
+    /// don't inherit the environment set around the hosting `NavigationStack`.
+    func talkiePushedPage() -> some View {
+        environment(\.talkiePushedPage, true)
+            .buttonStyle(.talkie(.secondary))
+    }
+}
+
+/// A back chevron shown only on pushed pages (the window has no toolbar, so the
+/// system back button is gone). Pops via `dismiss`; ⌘[ works too.
+struct TalkieBackButton: View {
+    @Environment(\.talkiePushedPage) private var pushed
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        if pushed {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .buttonStyle(.talkie(.quiet))
+            .help("Back".loc)
+            .accessibilityLabel(Text("Back".loc))
+            .keyboardShortcut("[", modifiers: .command)
+        }
+    }
+}
+
+/// The one page header: (back chevron when pushed) · serif-26 title + optional
+/// 13pt subtitle · optional trailing actions, top-aligned with the title.
+struct TalkiePageHeader<Actions: View>: View {
+    let title: String
+    var subtitle: String? = nil
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        // Actions sit beside the title while the title column keeps a readable
+        // width; on a narrower window they drop to their own row under it.
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                TalkieBackButton()
+                titleBlock
+                    .frame(minWidth: 300, idealWidth: 300, maxWidth: .infinity, alignment: .leading)
+                actionRow
+            }
+            HStack(alignment: .top, spacing: 12) {
+                TalkieBackButton()
+                VStack(alignment: .leading, spacing: 12) {
+                    titleBlock
+                    actionRow
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(LocalizedStringKey(title))
+                .font(.talkiePageTitle)
+                .foregroundStyle(Theme.ink)
+            if let subtitle {
+                Text(LocalizedStringKey(subtitle))
+                    .font(.talkieHeading(13, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 8) { actions }
+            .fixedSize()
+    }
+}
+
+extension TalkiePageHeader where Actions == EmptyView {
+    init(title: String, subtitle: String? = nil) {
+        self.init(title: title, subtitle: subtitle) { EmptyView() }
+    }
+}
+
+/// What paints behind a page: the flat canvas, the Dashboard's ambient ember,
+/// or nothing (the caller paints, e.g. a drop-target wash over the canvas).
+enum TalkiePageBackground {
+    case canvas, ambient, none
+}
+
+extension View {
+    /// The fixed page insets (top / sides / bottom) from `Theme.Space`.
+    func talkiePagePadding(bottom: Bool = true) -> some View {
+        self
+            .padding(.top, Theme.Space.pageTop)
+            .padding(.horizontal, Theme.Space.pageSide)
+            .padding(.bottom, bottom ? Theme.Space.pageBottom : 0)
+    }
+}
+
+/// The scrolling page container every main-window page sits in: one ScrollView,
+/// the fixed page insets, a left-aligned column, and the page background.
+struct TalkieScrollPage<Content: View>: View {
+    var spacing: CGFloat = 18
+    var background: TalkiePageBackground = .canvas
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: spacing) { content }
+                .talkiePagePadding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollContentBackground(.hidden)
+        .background { backgroundView }
+    }
+
+    @ViewBuilder private var backgroundView: some View {
+        switch background {
+        case .canvas:  Theme.canvas
+        case .ambient: LiveBackground(mood: .ambient)
+        case .none:    Color.clear
+        }
+    }
+}
+
+/// The standard page: header (title, subtitle, actions) over scrolling content.
+struct TalkiePage<Actions: View, Content: View>: View {
+    let title: String
+    var subtitle: String? = nil
+    var spacing: CGFloat = 18
+    var background: TalkiePageBackground = .canvas
+    @ViewBuilder var actions: Actions
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        TalkieScrollPage(spacing: spacing, background: background) {
+            TalkiePageHeader(title: title, subtitle: subtitle) { actions }
+            content
+        }
+    }
+}
+
+extension TalkiePage where Actions == EmptyView {
+    init(title: String, subtitle: String? = nil, spacing: CGFloat = 18,
+         background: TalkiePageBackground = .canvas, @ViewBuilder content: () -> Content) {
+        self.init(title: title, subtitle: subtitle, spacing: spacing, background: background,
+                  actions: { EmptyView() }, content: content)
     }
 }
 
