@@ -41,9 +41,10 @@ enum ImportWindowing {
     /// (and memory with it), large enough that a window cut rarely lands mid-sentence.
     static let windowSeconds: Double = 600
     /// Longest a window's finalize + drain may take before it is hard-cancelled. A healthy
-    /// window needs seconds to a couple of minutes (it is a backlog of `windowSeconds`
-    /// of audio); this only bounds Apple's finalize silently never returning.
-    static let finalizeTimeout: Double = 900
+    /// window finishes in seconds (measured: about 3.5 s per 600 s window), so this allows
+    /// a recognizer running at only twice real time; it exists to bound Apple's finalize
+    /// silently never returning (seen on audio with no speech), per window.
+    static let finalizeTimeout: Double = 300
 }
 
 /// Feeds consecutive buffers through consecutive `ImportSession`s, rolling to a fresh one
