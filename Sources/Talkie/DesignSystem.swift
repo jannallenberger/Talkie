@@ -414,6 +414,20 @@ extension EnvironmentValues {
     }
 }
 
+/// Which back control a page shows. Exactly one per pushed page: the in-page
+/// chevron next to the title; the system navigation back button is hidden.
+/// Root pages show neither.
+enum TalkieBackPolicy {
+    struct Controls: Equatable {
+        let inPageChevron: Bool
+        let systemBackButton: Bool
+    }
+
+    static func controls(pushed: Bool) -> Controls {
+        Controls(inPageChevron: pushed, systemBackButton: false)
+    }
+}
+
 extension View {
     /// Marks a navigation destination as a pushed page, so its header shows the
     /// back chevron.
@@ -424,7 +438,7 @@ extension View {
             .buttonStyle(.talkie(.secondary))
             // The in-page chevron replaces the toolbar's back button, which
             // would otherwise sit over the page title.
-            .navigationBarBackButtonHidden(true)
+            .navigationBarBackButtonHidden(!TalkieBackPolicy.controls(pushed: true).systemBackButton)
     }
 }
 
@@ -435,7 +449,7 @@ struct TalkieBackButton: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        if pushed {
+        if TalkieBackPolicy.controls(pushed: pushed).inPageChevron {
             Button { dismiss() } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
