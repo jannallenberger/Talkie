@@ -139,6 +139,15 @@ final class MeetingRecorder: ObservableObject {
     /// "Which mic speaker is Me" override for tests. nil (production) = the profile
     /// matcher: nobody until a profile exists and one voice clears its threshold + margin.
     var ownVoiceResolver: OwnVoiceResolver?
+    /// Voices the user explicitly asked to recognise (W2). Injected for tests.
+    var knownVoiceStore = KnownVoiceStore.shared
+    /// The on-device name tagger used by conversation naming. Injected for tests.
+    var nameTagger: any PersonNameTagging = NLPersonNameTagger()
+    /// This app session's diarized voices per meeting (label -> embedding + speech), in
+    /// memory ONLY, so "Recognise this voice" works right after a meeting without kept
+    /// audio. Never written anywhere; bounded to the most recent meetings.
+    private var sessionVoices: [(id: UUID, voices: [String: MicSpeakerCandidate])] = []
+    static let sessionVoiceMeetings = 20
     /// Seconds allowed for one pass, from the total lane audio seconds. Injected for tests.
     var diarizationBudget: (Double) -> Double = { MeetingDiarizationPipeline.budget(audioSeconds: $0) }
     private var cachedDiarizer: (root: URL, instance: any LaneDiarizing)?
@@ -1181,6 +1190,7 @@ final class MeetingRecorder: ObservableObject {
         notes = ""
         noteLines = []
         eventTitle = nil
+        let attendees = eventAttendees
         eventAttendees = []
 
         // Background pass, one at a time: first speaker diarization (time-boxed; the note is
@@ -1204,7 +1214,7 @@ final class MeetingRecorder: ObservableObject {
             }
             let step = await self.diarizationStep(
                 id: id, inputs: diarizationInputs, segments: segments, words: segmentWords,
-                transcript: clean, durationSec: durationSec, skipLanes: skipLanes)
+                transcript: clean, durationSec: durationSec, skipLanes: skipLanes, attendees: attendees)
             // Relabelled: keep the live digest usable by remapping its lane labels to
             // the diarized speakers (no model calls); only when that is impossible drop
             // it so the summary is rebuilt from the relabelled transcript (slower).
@@ -1340,7 +1350,8 @@ final class MeetingRecorder: ObservableObject {
     /// Always deletes the temp lane audio and clears the "identifying" flag.
     func diarizationStep(
         id: UUID, inputs: [MeetingDiarizationPipeline.LaneInput], segments: [MeetingSegment]?,
-        words: [[SegmentWord]?]? = nil, transcript: String, durationSec: Double, skipLanes: Set<String> = []
+        words: [[SegmentWord]?]? = nil, transcript: String, durationSec: Double, skipLanes: Set<String> = [],
+        attendees: [String] = []
     ) async -> DiarizationStep {
         var step = DiarizationStep(transcript: transcript)
         defer {
@@ -1385,8 +1396,10 @@ final class MeetingRecorder: ObservableObject {
             // multi-speaker one — the labeller only sets the sample in that case).
             // Not for a note the user deleted or edited meanwhile (guard above).
             if let sample = result.ownVoiceSample { ownVoiceStore.learn(sample, ifEpoch: voiceEpoch) }
+            rememberSessionVoices(result.voices, for: id)
             if result.changed {
-                let updated = MeetingDiarizationPipeline.apply(result, to: current)
+                var updated = MeetingDiarizationPipeline.apply(result, to: current)
+                updated.speakerNames = automaticSpeakerNames(for: updated, voices: result.voices, attendees: attendees)
                 store.update(updated)
                 step.transcript = updated.transcript
                 step.segments = updated.segments
@@ -1395,9 +1408,103 @@ final class MeetingRecorder: ObservableObject {
                 step.state = .applied
             } else {
                 step.state = .unchanged
+                let names = automaticSpeakerNames(for: current, voices: result.voices, attendees: attendees)
+                if names != current.speakerNames {
+                    var named = current
+                    named.speakerNames = names
+                    store.update(named)
+                }
             }
         }
         return step
+    }
+
+    // MARK: Speaker names (W2)
+
+    /// Names for a freshly diarized meeting: strict conversation evidence and strict
+    /// matches against voices the user chose to recognise, merged under whatever the
+    /// meeting already has (manual > voice > conversation). Only labels the diarizer
+    /// resolved to ONE person (those with a voice) can get an automatic name, so a
+    /// "Them" lane that was never told apart is never named.
+    func automaticSpeakerNames(for meeting: Meeting, voices: [String: MicSpeakerCandidate],
+                               attendees: [String]) -> [String: SpeakerName]? {
+        let eligible = Set(voices.keys).filter(SpeakerNames.isNameable)
+        guard !eligible.isEmpty else { return meeting.speakerNames }
+        let conversation = ConversationNaming.run(segments: meeting.segments ?? [], attendees: attendees,
+                                                  tagger: nameTagger).names.filter { eligible.contains($0.key) }
+        let voice = knownVoiceStore.match(voices.filter { eligible.contains($0.key) })
+        let merged = SpeakerNames.merge(existing: meeting.speakerNames, voice: voice, conversation: conversation)
+        return merged.isEmpty ? nil : merged
+    }
+
+    private func rememberSessionVoices(_ voices: [String: MicSpeakerCandidate], for id: UUID) {
+        sessionVoices.removeAll { $0.id == id }
+        guard !voices.isEmpty else { return }
+        sessionVoices.append((id, voices))
+        if sessionVoices.count > Self.sessionVoiceMeetings { sessionVoices.removeFirst(sessionVoices.count - Self.sessionVoiceMeetings) }
+    }
+
+    /// Whether "Recognise this voice in future meetings" can be offered for a speaker.
+    enum VoiceRememberAvailability: Equatable {
+        /// The voice from this app session is still in memory.
+        case inMemory
+        /// It can be recomputed from the meeting's kept audio.
+        case fromKeptAudio
+        case unavailable(Reason)
+        enum Reason: Equatable { case notEnoughSpeech, noVoice, modelsMissing }
+        var isAvailable: Bool { if case .unavailable = self { return false } else { return true } }
+    }
+
+    func voiceRememberAvailability(meetingID: UUID, label: String) -> VoiceRememberAvailability {
+        guard SpeakerNames.isNameable(label) else { return .unavailable(.noVoice) }
+        if let v = sessionVoices.last(where: { $0.id == meetingID })?.voices[label] {
+            return v.speechSeconds >= KnownVoiceMatcher.minSpeechSeconds ? .inMemory : .unavailable(.notEnoughSpeech)
+        }
+        guard let meeting = store.meetings.first(where: { $0.id == meetingID }),
+              KeptAudioVoice.audioFile(for: label, in: meeting) != nil else { return .unavailable(.noVoice) }
+        return diarizationModelsDirectory() == nil ? .unavailable(.modelsMissing) : .fromKeptAudio
+    }
+
+    enum RememberVoiceOutcome: Equatable { case remembered, notEnoughSpeech, unavailable, failed }
+
+    /// Store this speaker's voice with `name`, ONLY on the user's explicit request.
+    /// Uses the in-memory voice, else re-diarizes the kept audio for that lane.
+    func rememberVoice(meetingID: UUID, label: String, name: String) async -> RememberVoiceOutcome {
+        guard SpeakerNames.isNameable(label), !SpeakerNames.clean(name).isEmpty else { return .unavailable }
+        let epoch = knownVoiceStore.currentEpoch
+        var sample = sessionVoices.last(where: { $0.id == meetingID })?.voices[label]
+        if sample == nil {
+            guard let meeting = store.meetings.first(where: { $0.id == meetingID }),
+                  let (lane, file) = KeptAudioVoice.audioFile(for: label, in: meeting),
+                  let root = diarizationModelsDirectory() else { return .unavailable }
+            let url = store.folderURL.appendingPathComponent(file)
+            let diarizer: any LaneDiarizing
+            if let cached = cachedDiarizer, cached.root == root { diarizer = cached.instance } else {
+                diarizer = laneDiarizerFactory(root)
+                cachedDiarizer = (root, diarizer)
+            }
+            let budget = diarizationBudget(meeting.durationSec)
+            let output = await TimeBox.run(seconds: budget) { try? await diarizer.diarize(fileURL: url) }
+            guard let output = output ?? nil else { return .failed }
+            sample = KeptAudioVoice.pick(output: output, segments: meeting.segments ?? [], label: label, lane: lane)
+            guard sample != nil else { return .notEnoughSpeech }
+        }
+        guard let sample, sample.speechSeconds >= KnownVoiceMatcher.minSpeechSeconds else { return .notEnoughSpeech }
+        return knownVoiceStore.add(name: name, sample: sample, meetingID: meetingID, label: label, ifEpoch: epoch)
+            ? .remembered : .failed
+    }
+
+    func forgetVoice(meetingID: UUID, label: String) {
+        knownVoiceStore.remove(meetingID: meetingID, label: label)
+    }
+
+    /// Manual naming from the speaker popover; keeps a remembered voice's name in step.
+    func setSpeakerName(_ name: String?, label: String, meetingID: UUID) {
+        store.setSpeakerName(name, label: label, meetingID: meetingID)
+        let n = SpeakerNames.clean(name ?? "")
+        // A remembered voice always carries the speaker's name; clearing the name forgets it too.
+        if n.isEmpty { forgetVoice(meetingID: meetingID, label: label) }
+        else { knownVoiceStore.rename(meetingID: meetingID, label: label, to: n) }
     }
 
     /// Feed one lane window (both speakers, merged per language) to the live digest
