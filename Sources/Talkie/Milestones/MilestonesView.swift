@@ -33,8 +33,7 @@ struct MilestonesView: View {
     private var currentTier: Int? { MilestoneLadder.tier(for: stats.totalWords) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.section) {
+        TalkieScrollPage(spacing: Theme.Space.section, background: .ambient) {
                 header
 
                 InventedTitleCard(jobTitle: jobTitle, regenerate: regenerateTitle)
@@ -47,12 +46,7 @@ struct MilestonesView: View {
                 ladder
 
                 MostSaidCard(wordFreq: wordFreq)
-            }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(LiveBackground(mood: .ambient))
-        .scrollContentBackground(.hidden)
         .navigationTitle("Plumage")
         // Generate on appear if needed — async, so the page paints immediately and
         // the card fills in a moment later. Never blocks.
@@ -78,16 +72,19 @@ struct MilestonesView: View {
     // MARK: Header — current tier, total words, real time spoken
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Plumage")
-                .font(.talkieDisplay(28))
-                .foregroundStyle(Theme.ink)
-            Text(currentTierName)
-                .font(.talkieHeading(15, weight: .medium))
-                .foregroundStyle(Theme.featherCoral)
-            Text(subtitle)
-                .font(.talkieHeading(13, weight: .regular))
-                .foregroundStyle(Theme.inkSecondary)
+        HStack(alignment: .top, spacing: 12) {
+            TalkieBackButton()
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Plumage")
+                    .font(.talkiePageTitle)
+                    .foregroundStyle(Theme.ink)
+                Text(currentTierName)
+                    .font(.talkieHeading(15, weight: .medium))
+                    .foregroundStyle(Theme.featherCoral)
+                Text(subtitle)
+                    .font(.talkieHeading(13, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
         }
     }
 

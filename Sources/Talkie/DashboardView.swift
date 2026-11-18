@@ -78,8 +78,7 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.section) {
+            TalkieScrollPage(spacing: Theme.Space.section, background: .ambient) {
                     header
 
                     if case .show(let days) = updateDecision {
@@ -133,13 +132,7 @@ struct DashboardView: View {
                             .accessibilityElement(children: .combine)
                         MilestoneEntryCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                     }
-                }
-                .padding(28)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(LiveBackground(mood: .ambient))
-            .scrollContentBackground(.hidden)
-            .scrollEdgeEffectStyle(.soft, for: .top)
             .onAppear {
                 updateDecision = UpdateReminder.decide(
                     buildDate: UpdateReminder.bundleBuildDate, now: Date(),
@@ -150,12 +143,14 @@ struct DashboardView: View {
                 case .plumage:
                     MilestonesView(stats: stats, activity: activity, wordFreq: wordFreq,
                                    appUsage: appUsage, jobTitle: jobTitle)
+                        .talkiePushedPage()
                 }
             }
             .navigationDestination(for: SpeedRoute.self) { route in
                 switch route {
                 case .detail:
                     SpeedDetailView(latency: latency, pressure: pressure)
+                        .talkiePushedPage()
                 }
             }
         }
@@ -279,7 +274,7 @@ private struct EditableNameTitle: View {
             if editing {
                 TextField("Your name".loc, text: $draft)
                     .textFieldStyle(.plain)
-                    .font(.talkieDisplay(28))
+                    .font(.talkiePageTitle)
                     .foregroundStyle(Theme.ink)
                     .focused($focused)
                     .onSubmit(commit)
@@ -291,7 +286,7 @@ private struct EditableNameTitle: View {
             } else {
                 Button(action: beginEditing) {
                     Text(displayText)
-                        .font(.talkieDisplay(28))
+                        .font(.talkiePageTitle)
                         .foregroundStyle(name.trimmingCharacters(in: .whitespaces).isEmpty
                                          ? Theme.inkTertiary : Theme.ink)
                 }

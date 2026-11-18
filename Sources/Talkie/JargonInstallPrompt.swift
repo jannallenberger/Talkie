@@ -102,8 +102,7 @@ struct InstallMyJargonCard: View {
                     Label(copied ? "Copied".loc : "Copy prompt".loc,
                           systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
-                .buttonStyle(.bordered)
-                .tint(Theme.coral)
+                .buttonStyle(.talkie(.secondary))
                 Spacer()
             }
             Text("Needs the Talkie connector — set it up under Settings ▸ AI agent.".loc)

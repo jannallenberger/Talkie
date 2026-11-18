@@ -64,13 +64,10 @@ struct MemoryView: View {
     }
 
     var body: some View {
-        ScrollView {
+        TalkieScrollPage(spacing: 16) {
             pageContent
-                .padding(28)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.canvas)
         // Debounced off-render search: `.task(id:)` re-runs `runSearch` only when
         // `trimmedQuery` actually changes, and automatically cancels the previous
         // run first — a fast typer's intermediate queries never reach a scan.
@@ -101,25 +98,23 @@ struct MemoryView: View {
 
     /// The header (title + Copy all), the search bar, and the history / search
     /// results feed — the whole Memory page.
+    @ViewBuilder
     private var pageContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top) {
-                PageHeader(title: "Memory",
-                           subtitle: "Everything you've dictated and recorded, and everyone and everything Talkie has picked up from it.")
-                Spacer()
-                retentionPicker
-                Button {
-                    copyToClipboard(history.allAsText())
-                } label: {
-                    Label("Copy all", systemImage: "doc.on.doc")
-                }
-                .disabled(history.entries.isEmpty)
+        TalkiePageHeader(title: "Memory",
+                         subtitle: "Everything you've dictated and recorded, and everyone and everything Talkie has picked up from it.") {
+            retentionPicker
+            Button {
+                copyToClipboard(history.allAsText())
+            } label: {
+                Label("Copy all", systemImage: "doc.on.doc")
             }
-
-            searchField
-
-            content
+            .buttonStyle(.talkie(.secondary))
+            .disabled(history.entries.isEmpty)
         }
+
+        searchField
+
+        content
     }
 
     // MARK: Keep history (inline retention)
@@ -145,16 +140,18 @@ struct MemoryView: View {
     /// "Keep history: 7 days ▾" — the dictation feed below is exactly what this
     /// window prunes (`HistoryStore.entries`).
     private var retentionPicker: some View {
-        Picker(selection: retentionSelection) {
+        TalkieMenuPicker(selection: retentionSelection) {
             ForEach(RetentionChange.quickOptions(
                 current: HistoryRetention.from(days: settings.historyRetentionDays))) {
                 Text($0.displayName).tag($0)
             }
         } label: {
-            Text("Keep history")
+            HStack(spacing: 5) {
+                Text("Keep history")
+                    .foregroundStyle(Theme.inkSecondary)
+                Text(HistoryRetention.from(days: settings.historyRetentionDays).displayName)
+            }
         }
-        .pickerStyle(.menu)
-        .fixedSize()
         .help("Older dictations are deleted from this Mac after this long.".loc)
         .alert(
             String(format: "Keep history for %@?".loc, pendingRetention?.displayName ?? ""),
@@ -375,14 +372,14 @@ private struct MemoryDictationRow: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(copied ? Theme.positive : Theme.inkSecondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.talkie(.quiet, size: .small))
                 .help("Copy this dictation")
                 Button(action: onDelete) {
                     Image(systemName: "trash")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(hovering ? Theme.danger : Theme.inkTertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.talkie(.quiet, size: .small))
                 .help("Delete this dictation")
             }
             Text(entry.text)

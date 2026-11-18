@@ -363,6 +363,7 @@ struct VoiceProfileCard: View {
                 subtitle: "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings.".loc
             ) {
                 Button("Forget my voice".loc, action: onForget)
+                    .buttonStyle(.talkie(.destructive))
             }
         }
     }

@@ -168,8 +168,7 @@ struct PrivacySection: View {
                             Label(copiedProof ? "Copied".loc : "Copy proof card".loc,
                                   systemImage: copiedProof ? "checkmark" : "doc.on.doc")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.coral)
+                        .buttonStyle(.talkie(.primary))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16)
@@ -198,8 +197,7 @@ struct PrivacySection: View {
                             Label(copiedReport ? "Copied".loc : "Copy diagnostic report".loc,
                                   systemImage: copiedReport ? "checkmark" : "doc.on.doc")
                         }
-                        .buttonStyle(.bordered)
-                        .tint(Theme.coral)
+                        .buttonStyle(.talkie(.secondary))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16)

@@ -67,8 +67,7 @@ struct CalendarSettings: View {
             Button("Open Settings") { openCalendarSettings() }
         } else {
             Button(requesting ? "Requesting…" : "Enable") { requestAccess() }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.coral)
+                .buttonStyle(.talkie(.primary))
                 .disabled(requesting)
         }
     }

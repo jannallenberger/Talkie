@@ -63,8 +63,7 @@ struct UpdateReminderLine: View {
             Spacer(minLength: 8)
             if Brand.repoURL != nil {
                 Button("See the latest version".loc) { UpdateReminder.openLatestRelease() }
-                    .buttonStyle(.bordered)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.secondary))
                     .controlSize(.small)
             }
             Button(action: onDismiss) {
@@ -72,7 +71,7 @@ struct UpdateReminderLine: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.inkSecondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.talkie(.quiet, size: .small))
             .help("Dismiss".loc)
             .accessibilityLabel("Dismiss".loc)
         }
@@ -96,8 +95,7 @@ struct VersionRow: View {
             SettingsRow(title: info, subtitle: "Talkie never goes online, so it cannot check for updates.".loc) {
                 if Brand.repoURL != nil {
                     Button("See the latest version".loc) { UpdateReminder.openLatestRelease() }
-                        .buttonStyle(.bordered)
-                        .tint(Theme.coral)
+                        .buttonStyle(.talkie(.secondary))
                 }
             }
         }

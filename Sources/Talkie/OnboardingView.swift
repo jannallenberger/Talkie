@@ -328,9 +328,8 @@ struct OnboardingView: View {
                     Label("Try it offline", systemImage: "wifi.slash")
                         .font(.talkieHeading(13, weight: .semibold))
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.talkie(.secondary))
                 .controlSize(.small)
-                .tint(Theme.coral)
             }
             }
         }
@@ -531,8 +530,7 @@ struct OnboardingView: View {
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Relaunch now") { permissions.relaunch() }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.coral)
+                .buttonStyle(.talkie(.primary))
                 .controlSize(.large)
         }
         .padding(.top, 2)
@@ -571,7 +569,7 @@ struct OnboardingView: View {
                             .foregroundStyle(Theme.inkTertiary)
                             .fixedSize(horizontal: false, vertical: true)
                         Button("Review permissions") { jumpToPermissions() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.talkie(.secondary))
                             .controlSize(.small)
                     }
                 }
@@ -621,8 +619,7 @@ struct OnboardingView: View {
                 // A `LocalizedStringKey` (not a plain `String`) so the label localizes
                 // — `Button(_: String)` would bypass the .strings lookup.
                 Button(primaryTitle, action: advance)
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
             }
@@ -774,13 +771,13 @@ private struct OnboardPermissionRow: View {
                     .accessibilityHidden(true)
             case .request:
                 Button("Grant", action: onTap)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.talkie(.secondary))
                     .controlSize(.small)
             case .openSettings:
                 // The system dialog can no longer appear, so a "Grant" tap would do
                 // nothing: send the user to the matching System Settings pane.
                 Button("Open System Settings", action: onTap)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.talkie(.secondary))
                     .controlSize(.small)
             }
         }

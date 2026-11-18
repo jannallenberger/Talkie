@@ -55,8 +55,7 @@ struct CommandsView: View {
                 HStack {
                     Spacer()
                     Button("Add macro", action: addMacro)
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.coral)
+                        .buttonStyle(.talkie(.primary))
                         .disabled(!canAdd)
                 }
                 .padding(.horizontal, 16)
@@ -115,8 +114,7 @@ struct CommandsView: View {
             HStack {
                 Spacer()
                 Button("Run") { run(tryText) }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
                     .disabled(tryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(.horizontal, 16)
@@ -249,7 +247,7 @@ private struct CommandMacroRow: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(hovering ? Theme.danger : Theme.inkTertiary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.talkie(.quiet, size: .small))
             .help("Delete this macro")
         }
         .frame(maxWidth: .infinity)
