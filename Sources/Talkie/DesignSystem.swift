@@ -124,11 +124,6 @@ enum Theme {
         /// is the whole top area (it still clears the traffic lights, which sit
         /// over the sidebar).
         static let pageTop: CGFloat = 36
-        /// Pushed pages: the system back button (a ~32pt glass capsule) sits in
-        /// the 52pt window toolbar at the detail column's top-left, where the
-        /// title would be. Its exact x isn't knowable offscreen, so the title
-        /// starts just below the toolbar instead of beside the button.
-        static let pageTopPushed: CGFloat = 60
         /// Leading/trailing page inset.
         static let pageSide: CGFloat = 28
         /// Bottom inset under the last card of a scrolling page.
@@ -419,50 +414,70 @@ extension EnvironmentValues {
     }
 }
 
-/// Which back control a page shows. Exactly one per pushed page: the system
-/// navigation back button (the Liquid Glass capsule in the transparent window
-/// toolbar). There is no in-page chevron. Root pages show neither.
+/// Which back control a page shows. Exactly one per pushed page: an in-page
+/// Liquid Glass back button at the leading edge of the title row (visible in
+/// windowed AND fullscreen mode — the toolbar auto-hides in fullscreen, so a
+/// toolbar back button would be hidden in the slide-down bar). The system
+/// navigation back button is hidden, so the toolbar carries no page items.
+/// Root pages show neither.
 enum TalkieBackPolicy {
     struct Controls: Equatable {
-        let inPageChevron: Bool
+        let inPageGlassButton: Bool
         let systemBackButton: Bool
     }
 
     static func controls(pushed: Bool) -> Controls {
-        Controls(inPageChevron: false, systemBackButton: pushed)
+        Controls(inPageGlassButton: pushed, systemBackButton: false)
     }
 }
 
 extension View {
-    /// Marks a navigation destination as a pushed page: the system back button
-    /// shows in the toolbar, ⌘[ pops, and the page starts below the toolbar.
+    /// Marks a navigation destination as a pushed page: its header shows the
+    /// in-page glass back button and the system back button is hidden.
     /// Also re-applies the page default button style: navigation destinations
     /// don't inherit the environment set around the hosting `NavigationStack`.
     func talkiePushedPage() -> some View {
-        modifier(TalkiePushedPageModifier())
-    }
-}
-
-private struct TalkiePushedPageModifier: ViewModifier {
-    @Environment(\.dismiss) private var dismiss
-
-    func body(content: Content) -> some View {
-        content
-            .environment(\.talkiePushedPage, true)
+        environment(\.talkiePushedPage, true)
             .buttonStyle(.talkie(.secondary))
             .navigationBarBackButtonHidden(!TalkieBackPolicy.controls(pushed: true).systemBackButton)
-            // ⌘[ pops one level, whether or not the system button binds it too
-            // (only one key-equivalent handler consumes the event).
-            .background {
-                Button("Back".loc) { dismiss() }
-                    .keyboardShortcut("[", modifiers: .command)
-                    .hidden()
-                    .accessibilityHidden(true)
-            }
     }
 }
 
-/// The one page header: serif-26 title + optional
+extension VerticalAlignment {
+    private enum TalkieTitleCenter: AlignmentID {
+        static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] }
+    }
+    /// The vertical centre of a page title's first line, so the back button
+    /// centres on the title rather than on title + subtitle.
+    static let talkieTitleCenter = VerticalAlignment(TalkieTitleCenter.self)
+}
+
+/// The back control of a pushed page: a circular Liquid Glass button (the
+/// system glass style, interactive) with a chevron, at the leading edge of the
+/// title row. Renders nothing on root pages. Pops via `dismiss`; ⌘[ works too.
+struct TalkieBackButton: View {
+    @Environment(\.talkiePushedPage) private var pushed
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        if TalkieBackPolicy.controls(pushed: pushed).inPageGlassButton {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .help("Back".loc)
+            .accessibilityLabel(Text("Back".loc))
+            .keyboardShortcut("[", modifiers: .command)
+            .alignmentGuide(.talkieTitleCenter) { $0[VerticalAlignment.center] }
+        }
+    }
+}
+
+/// The one page header: (glass back button when pushed) · serif-26 title + optional
 /// 13pt subtitle · optional trailing actions, top-aligned with the title.
 struct TalkiePageHeader<Actions: View>: View {
     let title: String
@@ -474,12 +489,12 @@ struct TalkiePageHeader<Actions: View>: View {
         // width; on a narrower window they drop to their own row under it.
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 12) {
-                titleBlock
+                titledRow
                     .frame(minWidth: 300, idealWidth: 300, maxWidth: .infinity, alignment: .leading)
                 actionRow
             }
             VStack(alignment: .leading, spacing: 12) {
-                titleBlock
+                titledRow
                 actionRow
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -487,11 +502,21 @@ struct TalkiePageHeader<Actions: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Back button (pushed pages only) centred on the title's line, title block
+    /// to its right.
+    private var titledRow: some View {
+        HStack(alignment: .talkieTitleCenter, spacing: 12) {
+            TalkieBackButton()
+            titleBlock
+        }
+    }
+
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(LocalizedStringKey(title))
                 .font(.talkiePageTitle)
                 .foregroundStyle(Theme.ink)
+                .alignmentGuide(.talkieTitleCenter) { $0[VerticalAlignment.center] }
             if let subtitle {
                 Text(LocalizedStringKey(subtitle))
                     .font(.talkieHeading(13, weight: .regular))
@@ -528,11 +553,10 @@ extension View {
 
 private struct TalkiePagePadding: ViewModifier {
     let bottom: Bool
-    @Environment(\.talkiePushedPage) private var pushed
 
     func body(content: Content) -> some View {
         content
-            .padding(.top, pushed ? Theme.Space.pageTopPushed : Theme.Space.pageTop)
+            .padding(.top, Theme.Space.pageTop)
             .padding(.horizontal, Theme.Space.pageSide)
             .padding(.bottom, bottom ? Theme.Space.pageBottom : 0)
     }

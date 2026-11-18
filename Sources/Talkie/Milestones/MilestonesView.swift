@@ -72,10 +72,18 @@ struct MilestonesView: View {
     // MARK: Header — current tier, total words, real time spoken
 
     private var header: some View {
+        HStack(alignment: .talkieTitleCenter, spacing: 12) {
+            TalkieBackButton()
+            plumageTitleBlock
+        }
+    }
+
+    private var plumageTitleBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Plumage")
                 .font(.talkiePageTitle)
                 .foregroundStyle(Theme.ink)
+                .alignmentGuide(.talkieTitleCenter) { $0[VerticalAlignment.center] }
             Text(currentTierName)
                 .font(.talkieHeading(15, weight: .medium))
                 .foregroundStyle(Theme.featherCoral)
