@@ -823,6 +823,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         _ = monitor.start()
         hotKey = monitor
+        // The key recorder in Settings suspends this tap while it listens.
+        ActivationRecordingGate.shared.setHandler { [weak monitor] suspend in
+            monitor?.setSuspended(suspend)
+        }
     }
 
     // MARK: Hands-free auto-stop (B5)

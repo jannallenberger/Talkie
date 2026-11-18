@@ -44,7 +44,7 @@ struct ActivationKey: Hashable, Sendable, Codable, RawRepresentable {
         .init(keyCode: 58, deviceBit: 0x20,   name: "Left ⌥ Option",   warns: false),
         .init(keyCode: 61, deviceBit: 0x40,   name: "Right ⌥ Option",  warns: false),
         .init(keyCode: 55, deviceBit: 0x8,    name: "Left ⌘ Command",  warns: true),
-        .init(keyCode: 54, deviceBit: 0x10,   name: "Right ⌘ Command", warns: false),
+        .init(keyCode: 54, deviceBit: 0x10,   name: "Right ⌘ Command", warns: true),
     ]
 
     /// F1-F20 hardware key codes.
@@ -229,25 +229,71 @@ struct ActivationKey: Hashable, Sendable, Codable, RawRepresentable {
     }
 }
 
-/// The "paste last transcript" chord, derived so it can NEVER collide with the
-/// dictation activation key — holding it must not arm dictation. Command is always
-/// part of it; the second modifier is whichever of Control/Option the activation
-/// key does *not* use. The letter key is always V.
+/// The "paste last transcript" chord, derived so it can NEVER contain the dictation
+/// trigger's modifier family (either side) — pressing the chord must not arm
+/// dictation. Normally ⌘ + one of Control/Option + V; a Command trigger instead
+/// gets the Command-free ⌃⌥V. The letter key is always V.
 struct PasteShortcut: Sendable, Equatable {
-    enum Secondary: Sendable, Equatable { case control, option }
+    enum Secondary: Sendable, Equatable { case control, option, controlOption }
     var secondary: Secondary
     /// Human-readable label in canonical modifier order, e.g. "⌃⌘V" or "⌥⌘V".
     var display: String
+
+    /// Modifier families the chord requires held (for collision tests).
+    var requiresCommand: Bool { secondary != .controlOption }
+    var requiresControl: Bool { secondary != .option }
+    var requiresOption: Bool { secondary != .control }
+
+    /// Whether pressed modifiers complete this chord (Shift must be up).
+    func matches(command: Bool, control: Bool, option: Bool, shift: Bool) -> Bool {
+        !shift && command == requiresCommand && control == requiresControl && option == requiresOption
+    }
 }
 
 extension ActivationKey {
+    /// Modifier family of a modifier trigger.
+    enum Family: Sendable { case shift, control, option, command }
+    var modifierFamily: Family? {
+        guard kind == .modifier else { return nil }
+        switch code {
+        case 56, 60: return .shift
+        case 59, 62: return .control
+        case 58, 61: return .option
+        default: return .command
+        }
+    }
+
     var pasteShortcut: PasteShortcut {
-        if kind == .modifier, [61, 58].contains(code) {
-            return PasteShortcut(secondary: .control, display: "⌃⌘V")
+        switch modifierFamily {
+        case .option?: return PasteShortcut(secondary: .control, display: "⌃⌘V")
+        case .control?: return PasteShortcut(secondary: .option, display: "⌥⌘V")
+        case .command?: return PasteShortcut(secondary: .controlOption, display: "⌃⌥V")
+        default: return PasteShortcut(secondary: .control, display: "⌃⌘V")
         }
-        if kind == .modifier, [62, 59].contains(code) {
-            return PasteShortcut(secondary: .option, display: "⌥⌘V")
-        }
-        return PasteShortcut(secondary: .control, display: "⌃⌘V")
+    }
+}
+
+/// Tracks whether the key recorder is listening so the live hotkey tap can be
+/// suspended meanwhile. Idempotent begin/end; `onChange(true/false)` fires only
+/// on real transitions.
+final class ActivationRecordingGate: @unchecked Sendable {
+    static let shared = ActivationRecordingGate()
+    private let lock = NSLock()
+    private var recording = false
+    private var handler: (@Sendable (Bool) -> Void)?
+
+    func setHandler(_ h: (@Sendable (Bool) -> Void)?) {
+        lock.lock(); handler = h; lock.unlock()
+    }
+    var isRecording: Bool { lock.lock(); defer { lock.unlock() }; return recording }
+    func begin() { transition(to: true) }
+    func end() { transition(to: false) }
+    private func transition(to value: Bool) {
+        lock.lock()
+        guard recording != value else { lock.unlock(); return }
+        recording = value
+        let h = handler
+        lock.unlock()
+        h?(value)
     }
 }

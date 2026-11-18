@@ -41,6 +41,8 @@ final class HotKeyMonitor: @unchecked Sendable {
     private var runLoopSource: CFRunLoopSource?
     private var threadRunLoop: CFRunLoop?
     private var isStarted = false
+    /// True while the settings key recorder is listening; `handle()` ignores all input.
+    private var suspended = false
     /// The one activation gesture family (hold / hold-to-latch / tap-stop), driven
     /// entirely by the timestamped edges `handle()` feeds it. All access is under
     /// `lock` because `handle()` runs on the tap thread while the latch timer
@@ -188,6 +190,21 @@ final class HotKeyMonitor: @unchecked Sendable {
         }
     }
 
+    /// Suspend/resume all trigger and paste-last handling (key recorder is listening).
+    /// Suspending force-ends any in-flight hold/lock exactly like a rebind does.
+    func setSuspended(_ value: Bool) {
+        lock.lock()
+        suspended = value
+        var wasActive = false
+        if value {
+            deferTimer?.cancel()
+            deferTimer = nil
+            wasActive = gesture.reset()
+        }
+        lock.unlock()
+        if wasActive { onDeactivate() }
+    }
+
     private func startHealthTimer() {
         let timer = DispatchSource.makeTimerSource(queue: .global())
         timer.schedule(deadline: .now() + 3, repeating: 3)
@@ -219,6 +236,12 @@ final class HotKeyMonitor: @unchecked Sendable {
             return
         }
 
+        // Suspended while the key recorder listens: no dictation, latch or paste-last.
+        lock.lock()
+        let isSuspended = suspended
+        lock.unlock()
+        if isSuspended { return }
+
         // A global ⌘+(Control|Option)+V chord re-pastes the last transcript. The
         // second modifier is whichever one the activation key does NOT use, so the
         // chord can never also arm dictation. Detected here on the shared listen-only
@@ -228,18 +251,14 @@ final class HotKeyMonitor: @unchecked Sendable {
         if type == .keyDown, !autorepeat,
            event.getIntegerValueField(.keyboardEventKeycode) == Self.pasteLastKeyCode {
             lock.lock()
-            let secondary = config.key.pasteShortcut.secondary
+            let secondary = config.key.pasteShortcut
             lock.unlock()
             let f = event.flags
             let cmd = f.contains(.maskCommand)
             let opt = f.contains(.maskAlternate)
             let ctrl = f.contains(.maskControl)
             let shift = f.contains(.maskShift)
-            let match: Bool
-            switch secondary {
-            case .control: match = cmd && ctrl && !opt && !shift
-            case .option:  match = cmd && opt && !ctrl && !shift
-            }
+            let match = secondary.matches(command: cmd, control: ctrl, option: opt, shift: shift)
             if match { onPasteLast() }
         }
 

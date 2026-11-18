@@ -41,11 +41,15 @@ struct ActivationKeyRecorder: View {
         }
         .onAppear { message = key.warning; messageIsRefusal = false }
         .onDisappear { stop() }
+        // Closing the settings window or leaving the app mid-recording must resume the hotkey.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in stop() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in stop() }
     }
 
     private func start() {
         message = nil
         recording = true
+        ActivationRecordingGate.shared.begin()
         monitor.install { input in
             MainActor.assumeIsolated { handle(input) }
         }
@@ -54,6 +58,7 @@ struct ActivationKeyRecorder: View {
     private func stop() {
         recording = false
         monitor.remove()
+        ActivationRecordingGate.shared.end()
     }
 
     private func handle(_ input: ActivationKey.RecorderInput) {

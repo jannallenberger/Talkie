@@ -81,7 +81,7 @@ final class ActivationKeyTests: XCTestCase {
         for m in ActivationKey.modifiers {
             let (k, w) = accepted(.flagsChanged(keyCode: m.keyCode, rawFlags: m.deviceBit))!
             XCTAssertEqual(k.code, m.keyCode)
-            XCTAssertEqual(w != nil, [56, 60, 55].contains(m.keyCode), m.name)
+            XCTAssertEqual(w != nil, [56, 60, 55, 54].contains(m.keyCode), m.name)
             // the release of the same key is ignored
             XCTAssertEqual(ActivationKey.evaluate(.flagsChanged(keyCode: m.keyCode, rawFlags: 0)), .ignored)
         }
@@ -148,10 +148,54 @@ final class ActivationKeyTests: XCTestCase {
 
     // MARK: Paste-last chord never collides
 
-    func testPasteShortcutAvoidsActivationModifier() {
-        XCTAssertEqual(ActivationKey.rightOption.pasteShortcut.secondary, .control)
-        XCTAssertEqual(ActivationKey(kind: .modifier, code: 59).pasteShortcut.secondary, .option)
-        XCTAssertEqual(ActivationKey.rightControl.pasteShortcut.secondary, .option)
+    func testPasteChordNeverContainsTriggerFamilyForEveryModifier() {
+        for m in ActivationKey.modifiers {
+            let key = ActivationKey(kind: .modifier, code: m.keyCode)
+            let chord = key.pasteShortcut
+            switch key.modifierFamily! {
+            case .command: XCTAssertFalse(chord.requiresCommand, m.name)
+            case .control: XCTAssertFalse(chord.requiresControl, m.name)
+            case .option: XCTAssertFalse(chord.requiresOption, m.name)
+            case .shift: break   // chord requires Shift up
+            }
+            // the trigger's own press alone never completes the chord
+            XCTAssertTrue(chord.requiresCommand || chord.requiresControl || chord.requiresOption)
+        }
+        XCTAssertEqual(ActivationKey(kind: .modifier, code: 55).pasteShortcut.display, "⌃⌥V")
+        XCTAssertEqual(ActivationKey(kind: .modifier, code: 54).pasteShortcut.display, "⌃⌥V")
+        XCTAssertEqual(ActivationKey(kind: .modifier, code: 59).pasteShortcut.display, "⌥⌘V")
+        XCTAssertEqual(ActivationKey.rightOption.pasteShortcut.display, "⌃⌘V")
         XCTAssertEqual(ActivationKey(kind: .function, code: 122).pasteShortcut.display, "⌃⌘V")
     }
+
+    func testChordMatching() {
+        let cmdChord = ActivationKey.rightOption.pasteShortcut   // ⌃⌘V
+        XCTAssertTrue(cmdChord.matches(command: true, control: true, option: false, shift: false))
+        XCTAssertFalse(cmdChord.matches(command: true, control: true, option: true, shift: false))
+        XCTAssertFalse(cmdChord.matches(command: true, control: true, option: false, shift: true))
+        let coChord = ActivationKey(kind: .modifier, code: 55).pasteShortcut   // ⌃⌥V
+        XCTAssertTrue(coChord.matches(command: false, control: true, option: true, shift: false))
+        XCTAssertFalse(coChord.matches(command: true, control: true, option: true, shift: false))
+    }
+
+    // MARK: Recorder suspends the live tap
+
+    func testRecordingGateTransitionsAreIdempotent() {
+        let gate = ActivationRecordingGate()
+        let log = LockedLog()
+        gate.setHandler { log.append($0) }
+        gate.end()                      // not recording: no-op
+        gate.begin(); gate.begin()      // one suspend
+        XCTAssertTrue(gate.isRecording)
+        gate.end(); gate.end()          // one resume (cancel, finish, window close all call end)
+        XCTAssertFalse(gate.isRecording)
+        XCTAssertEqual(log.values, [true, false])
+    }
+}
+
+private final class LockedLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [Bool] = []
+    func append(_ v: Bool) { lock.lock(); items.append(v); lock.unlock() }
+    var values: [Bool] { lock.lock(); defer { lock.unlock() }; return items }
 }
