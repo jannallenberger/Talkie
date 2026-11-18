@@ -583,3 +583,22 @@ final class FormatKeyStepTests: XCTestCase {
         XCTAssertEqual(s(.keyUp(keyCode: 96), 2), .span(start: 1, end: 2))
     }
 }
+
+final class FormatLivePreviewTests: XCTestCase {
+    func testAddedWordsAfterTheCommonPrefix() {
+        XCTAssertEqual(FormatLivePreview.addedWords(before: "Ich brauche", after: "Ich brauche in Stichpunkten"),
+                       "in Stichpunkten")
+        // Re-punctuation of the earlier words doesn't count as new words.
+        XCTAssertEqual(FormatLivePreview.addedWords(before: "ich brauche", after: "Ich brauche. Alles groß"),
+                       "Alles groß")
+        XCTAssertEqual(FormatLivePreview.addedWords(before: "", after: "bullet points"), "bullet points")
+        XCTAssertEqual(FormatLivePreview.addedWords(before: "same", after: "same"), "")
+    }
+
+    func testResolve() {
+        XCTAssertEqual(FormatLivePreview.resolve(""), .ended)
+        XCTAssertEqual(FormatLivePreview.resolve("in Stichpunkten Milch"), .applied(.bulletList))
+        XCTAssertEqual(FormatLivePreview.resolve("Ende"), .ended)
+        XCTAssertEqual(FormatLivePreview.resolve("banana"), .notRecognised("banana"))
+    }
+}

@@ -135,6 +135,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// HotKeyMonitor owns the real lock state; this mirrors it so begin/end can
     /// reset the pill's lock glyph. Reset on every begin and end.
     private var handsFreeLocked = false
+    /// "Format while you dictate": this session's command-key marks (audio time),
+    /// collected while recording and consumed by `endDictation`. Empty unless the
+    /// command key was used — then the normal pipeline runs unchanged.
+    private var sessionFormatMarks: [FormatMark] = []
+    /// System uptime when this session's audio went live — maps key times (uptime) to
+    /// the recognizer's audio clock. Nil until live.
+    private var audioStartUptime: TimeInterval?
+    /// The live transcript at the last clean command-key press, for the pill preview.
+    private var formatPressSnapshot: Task<String, Never>?
     /// True from key-release until the transcript has been polished + inserted.
     /// Blocks a new session from overlapping the in-flight one (which shares the
     /// engine + audio); a re-press during this window just nudges the pill.
@@ -784,7 +793,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Hotkey
 
-    private enum DictationEvent: Sendable { case begin, end, lock }
+    private enum DictationEvent: Sendable { case begin, end, lock, format(FormatKeyGesture.Output) }
     private var eventTask: Task<Void, Never>?
     /// The dictation event stream's continuation. Hoisted from a `setupHotKey` local
     /// to a property (B5) so the silence auto-stop watchdog can yield `.end` into the
@@ -808,11 +817,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .begin: self.beginDictation()
                 case .end: self.endDictation()
                 case .lock: self.lockDictation()
+                case .format(let output): self.handleFormatKey(output)
                 }
             }
         }
 
-        let config = HotKeyMonitor.Config(key: settings.activationKey)
+        let config = hotKeyConfig
         let monitor = HotKeyMonitor(
             config: config,
             onActivate: { continuation.yield(.begin) },
@@ -820,7 +830,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onLock: { continuation.yield(.lock) },
             onPasteLast: { [weak self] in
                 Task { @MainActor in self?.pasteLastTranscript() }
-            }
+            },
+            // Through the same ordered stream, so a command span always lands before
+            // the `.end` of the session it belongs to.
+            onFormatKey: { continuation.yield(.format($0)) }
         )
         _ = monitor.start()
         hotKey = monitor
@@ -831,6 +844,78 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ActivationRecordingGate.shared.setHandler { [weak monitor] suspend in
             monitor?.setSuspended(suspend)
         }
+    }
+
+    /// The tap's binding: the dictation key, plus the command key when "format while
+    /// you dictate" is on.
+    private var hotKeyConfig: HotKeyMonitor.Config {
+        HotKeyMonitor.Config(key: settings.activationKey,
+                             commandKey: settings.formatCommandsEnabled ? settings.effectiveFormatCommandKey : nil)
+    }
+
+    // MARK: Format while you dictate
+
+    /// A command-key event from the tap (only sent while a dictation is active).
+    /// Records the mark in audio time and updates the pill: chip + blue waveform for a
+    /// recognised format, "format not recognised" otherwise. The pasted text is
+    /// decided later from real word timings; this is the live preview.
+    private func handleFormatKey(_ output: FormatKeyGesture.Output) {
+        guard isDictating, settings.formatCommandsEnabled else { return }
+        let myID = sessionID
+        switch output {
+        case .pressed:
+            let engine = self.engine!
+            formatPressSnapshot = Task { await engine.liveTranscript() }
+        case .cancelled:
+            formatPressSnapshot = nil
+        case .tap(let at):
+            formatPressSnapshot = nil
+            sessionFormatMarks.append(.endTap(at: audioTime(forUptime: at)))
+            hud.setFormatChip(nil)
+        case .span(let start, let end):
+            sessionFormatMarks.append(.span(start: audioTime(forUptime: start), end: audioTime(forUptime: end)))
+            let before = formatPressSnapshot
+            formatPressSnapshot = nil
+            Task { @MainActor [weak self] in
+                // Give the recognizer a moment to emit the words said just before release.
+                try? await Task.sleep(for: .milliseconds(600))
+                guard let self, self.isDictating, self.sessionID == myID else { return }
+                let earlier = await before?.value ?? ""
+                let now = await self.engine.liveTranscript()
+                guard self.isDictating, self.sessionID == myID else { return }
+                switch FormatLivePreview.resolve(FormatLivePreview.addedWords(before: earlier, after: now)) {
+                case .applied(let preset): self.hud.setFormatChip(preset.displayName)
+                case .ended: self.hud.setFormatChip(nil)
+                case .notRecognised: self.hud.flashFormatNotRecognised()
+                }
+            }
+        }
+    }
+
+    /// Run the format assembly for a dictation with command spans (see
+    /// `FormatDictationAssembler`). `style` nil = cleanup off. Formatted text gets the
+    /// deterministic number + dictionary pass; normal text gets the full chain later.
+    nonisolated private static func formatPlan(
+        segments: [TimedSegment], marks: [FormatMark], cleanup: CleanupEngine,
+        style: CleanupStyle?, languageCode: String?, replacements: [Replacement],
+        stripEnglishFillers: Bool, userName: String
+    ) async -> FormatDictationAssembler.Plan {
+        var clean: FormatDictationAssembler.Cleaner?
+        if let style, CleanupEngine.isAvailable {
+            clean = { text in await cleanup.clean(text, style: style, languageCode: languageCode) }
+        }
+        let post: @Sendable (String) -> String = { text in
+            TextProcessor.apply(replacements: replacements, removeFillers: stripEnglishFillers,
+                                autoCapitalize: false, to: NumberNormalizer.normalize(text)).text
+        }
+        return await FormatDictationAssembler.assemble(
+            segments: segments, marks: marks, clean: clean, postProcessFormatted: post,
+            languageCode: languageCode, userName: userName)
+    }
+
+    private func audioTime(forUptime t: TimeInterval) -> Double {
+        guard let start = audioStartUptime else { return 0 }
+        return max(0, t - start)
     }
 
     // MARK: Hands-free auto-stop (B5)
@@ -919,7 +1004,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for await _ in NotificationCenter.default.notifications(named: .talkieSettingsChanged) {
                 guard let self else { return }
                 Feedback.enabled = self.settings.playSounds
-                self.hotKey?.update(config: .init(key: self.settings.activationKey))
+                self.hotKey?.update(config: self.hotKeyConfig)
                 self.updateStatusUI()
 
                 // Show/hide the floating bird live when its toggle flips.
@@ -1159,6 +1244,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isDictating = true
         handsFreeLocked = false
         sessionLive = false
+        sessionFormatMarks = []
+        audioStartUptime = nil
+        formatPressSnapshot = nil
         sessionID += 1
         let myID = sessionID
         updateStatusUI()
@@ -1458,6 +1546,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 )
                 self.sessionLive = true
+                self.audioStartUptime = ProcessInfo.processInfo.systemUptime
                 self.recordingStartedAt = Date()
                 talkieDebugLog("dictationStart: session ready \(sessionReadyMs) ms, mic live \(Int(Date().timeIntervalSince(keyDown) * 1000)) ms after key-down")
                 if multiLang {
@@ -1876,6 +1965,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // whole transcript.
         let streaming = currentStreaming
         currentStreaming = nil
+        // "Format while you dictate": the command-key marks of this session. Without a
+        // command span (`needsAssembly` false) every branch below is exactly as before.
+        let formatMarks = settings.formatCommandsEnabled ? sessionFormatMarks : []
+        sessionFormatMarks = []
+        formatPressSnapshot = nil
+        let hasFormatSpans = FormatAssembly.needsAssembly(formatMarks)
+        let formatUserName = settings.userName
 
         Task {
             // Always release the processing latch when this task finishes — even
@@ -1893,7 +1989,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.sessionLiveSwitched = false
             let liveVerdict = self.liveAcousticVerdict
             self.liveAcousticVerdict = nil
-            let (raw, segments, _, wordConfidences) = await engine.finishSessionDetailed()
+            let (raw, segments, timedSegments, wordConfidences) = await engine.finishSessionDetailed()
             trace.stage("finalize")
             Self.pipelineTrace("raw", raw, detail: "segments=\(segments.count) locale=\(self.currentLocaleID)")
 
@@ -1907,7 +2003,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // recognition confidence). This beats language-ID of the text, which
             // leaks because wrong-model gibberish still contains real words of the
             // wrong (current) language. Short utterances are skipped — nothing to gain.
-            if spokenLanguages.count > 1, !raw.isEmpty, LanguageDetector.canScore(raw) {
+            // With command spans the stop-time re-decode is skipped: its text carries no
+            // word timings, so the spans couldn't be placed (the live language switch
+            // during recording still applies).
+            if spokenLanguages.count > 1, !raw.isEmpty, LanguageDetector.canScore(raw), !hasFormatSpans {
                 talkieDebugLog("--- dictation: raw(\(self.currentLocaleID))='\(raw)'")
                 // Re-decoding a window that lost its opening would REPLACE the whole
                 // transcript with only its tail — keep the live text instead.
@@ -2002,6 +2101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                // watch e.g. German swap to English. The translated final is inserted
                // once, cleanly, below.
                outputLanguageCode == nil, !outputLanguageAdaptive,
+               // A dictation with a format command pastes once, at the end.
+               !hasFormatSpans,
                !finalRaw.isEmpty, CleanupEngine.isAvailable {
                 // The instant preview must not carry Apple's pause-induced periods
                 // (a thinking pause finalizes a segment ending in "."), or the user
@@ -2048,7 +2149,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.pipelineTrace("deseam", deseamed)
             var cleaned = finalRaw
             var usedStreaming = false
-            if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
+            // "Format while you dictate": split by audio time into regions, clean each
+            // the usual way, format the formatted ones after cleaning. The normal text
+            // (with placeholders for the formatted pieces) runs the chain below; the
+            // pieces are put back just before insertion.
+            var formatPlan: FormatDictationAssembler.Plan?
+            if hasFormatSpans {
+                streaming?.cancel()
+                let plan = await Self.formatPlan(
+                    segments: timedSegments, marks: formatMarks, cleanup: cleanupEngine,
+                    style: cleanupEnabled ? style : nil, languageCode: cleanupLangCode,
+                    replacements: replacements, stripEnglishFillers: stripEnglishFillers,
+                    userName: formatUserName)
+                formatPlan = plan
+                finalRaw = plan.plainRaw
+                cleaned = plan.normalStream
+                talkieDebugLog("format: \(plan.resolutions.count) command(s), \(plan.parts.count) part(s), modelFallback=\(plan.modelFallback)")
+            } else if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
                 // Single-segment (no pause): the streamed result equals a whole
                 // pass, so use it — it's already done. Multi-segment (you paused):
                 // fall through to the whole-transcript pass so the model punctuates
@@ -2137,7 +2254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Vocabulary snap: only words the recognizer itself was unsure about may
             // become one of the user's terms. Skipped after a language switch — the
             // confidences then belong to the discarded first decode.
-            if !snapTerms.isEmpty, !languageSwitched {
+            if !snapTerms.isEmpty, !languageSwitched, !hasFormatSpans {
                 let snapped = VocabularySnap.apply(to: cleaned, confidences: wordConfidences, terms: snapTerms,
                                                    isOrdinaryWord: DictionaryStore.isOrdinaryDictionaryWord)
                 if !snapped.fixes.isEmpty {
@@ -2226,6 +2343,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Self.pipelineTrace("vibe", finalText, detail: "fileFixes=\(hits)")
             }
 
+            // "Format while you dictate": put the formatted pieces back in.
+            if let formatPlan {
+                finalText = FormatAssembly.substitute(processed: finalText, parts: formatPlan.parts)
+                Self.pipelineTrace("format", finalText)
+            }
+
             guard !finalText.isEmpty else {
                 // H5: an empty try-it (nothing intelligible said) still ends cleanly —
                 // deliver the empty result and reset the onboarding button. Nothing is
@@ -2277,7 +2400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // is unchanged. A bare "note this" files the PREVIOUS dictation:
             // `history.add` for THIS utterance runs further below, so
             // `history.entries.first` here is still the prior entry.
-            if optimistic == nil, let match = NoteComposers.triggerMatch(for: finalText) {
+            if optimistic == nil, !hasFormatSpans, let match = NoteComposers.triggerMatch(for: finalText) {
                 let noteBody: String?
                 switch match {
                 case .body(let body):
@@ -2337,7 +2460,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // (`replace X with Y` is an edit only if X literally occurs, word-bounded,
             // in that text); anything that isn't a byte-exact edit command falls through
             // and dictates literally.
-            if optimistic == nil,
+            if optimistic == nil, !hasFormatSpans,
                let editTarget = ImplicitSelectionGate.eligible(
                    lastEntry: self.history.entries.first, now: Date(), currentTarget: target
                ),
@@ -2360,7 +2483,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // off by default — a cross-surface request over your meetings, runs
             // the command INSTEAD of inserting as dictation. Conservative: normal
             // speech falls straight through to the dictation path below.
-            if optimistic == nil, let intent = self.commandRouter.intent(
+            if optimistic == nil, !hasFormatSpans, let intent = self.commandRouter.intent(
                 for: finalText,
                 meetings: MeetingSnapshot(meetings: self.meetingStore.meetings),
                 crossSurfaceEnabled: self.settings.crossSurfaceCommandsEnabled
@@ -2750,6 +2873,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // `.inserted`). Detection already happened in the stores above; this
                 // just picks the single highest-priority record and displays it.
                 self.maybeShowRecordChip(brokenRecords)
+                // A model format (e-mail, formal …) couldn't run: the plain cleaned text
+                // was pasted instead — say so once the insert pill has been seen.
+                if formatPlan?.modelFallback == true {
+                    Task { @MainActor [weak self] in
+                        try? await Task.sleep(for: .milliseconds(1400))
+                        guard let self, !self.isDictating else { return }
+                        self.hud.showSaved("Pasted as plain text — the on-device model couldn't format it.".loc)
+                    }
+                }
                 // FIX 2 (bugs-dictation-2): release the processing latch NOW — the
                 // insert outcome is fully handled above. The self-heal verify below
                 // polls up to ~1s (4×250ms) with no early exit in AX-unreadable apps
