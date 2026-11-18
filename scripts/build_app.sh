@@ -196,6 +196,38 @@ if [[ -d "$ROOT/Resources/Packs" ]]; then
   cp "$ROOT/Resources/Packs/"*.talkiepack "$APP/Contents/Resources/" 2>/dev/null || true
 fi
 
+# Speaker-diarization CoreML models (TalkieDiarization) — bundled READ-ONLY in
+# Contents/Resources/DiarizationModels/speaker-diarization/, the only place
+# the app loads them from (it never downloads). The fetch script is idempotent:
+# with the models already in Vendor/ it only re-verifies every SHA-256 against
+# scripts/diarization-models.sha256 (and the revision marker); otherwise it
+# fetches the pinned revision at BUILD time. We copy exactly the manifest's files
+# + the marker (never stray *.partial leftovers). These are plain resources (no
+# Mach-O), so the outer app signature below seals them — no nested signing.
+# Missing models + failed fetch: a RELEASE build aborts loudly (never ship an app that
+# silently lacks speaker separation); a debug build warns and continues without them
+# (the app treats absent models as "diarization unavailable" and keeps Me/Them).
+echo "▶ Bundling diarization models…"
+DIAR_SRC_ROOT="$ROOT/Vendor/DiarizationModels"
+DIAR_SRC="$DIAR_SRC_ROOT/speaker-diarization"
+DIAR_DST="$APP/Contents/Resources/DiarizationModels/speaker-diarization"
+if "$ROOT/scripts/fetch_diarization_models.sh" "$DIAR_SRC_ROOT"; then
+  mkdir -p "$DIAR_DST"
+  while read -r _sha rel; do
+    [[ -z "${_sha:-}" || "$_sha" == \#* ]] && continue
+    mkdir -p "$(dirname "$DIAR_DST/$rel")"
+    cp "$DIAR_SRC/$rel" "$DIAR_DST/$rel"
+  done < "$ROOT/scripts/diarization-models.sha256"
+  cp "$DIAR_SRC/.fluidaudio-revision" "$DIAR_DST/.fluidaudio-revision"
+elif [[ "$CONFIG" == "release" ]]; then
+  echo "✗ diarization models are missing and could not be fetched/verified — refusing to build a release without them." >&2
+  exit 1
+else
+  echo "⚠ diarization models unavailable — building $CONFIG WITHOUT speaker diarization (meetings keep Me/Them)." >&2
+fi
+# Attribution (CC-BY-4.0 models, Apache-2.0 FluidAudio) ships in the app.
+cp "$ROOT/THIRD_PARTY_NOTICES.md" "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
+
 # App icon from the Icon Composer .icon bundle (macOS 26 Liquid Glass).
 # actool emits AppIcon.icns (Finder/Dock fallback) + Assets.car (glass icon).
 if [[ -d "$ROOT/Resources/AppIcon.icon" ]]; then

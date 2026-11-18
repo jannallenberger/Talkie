@@ -572,6 +572,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    /// Call audio awaiting a speaker-diarization pass must not outlive the process.
+    func applicationWillTerminate(_ notification: Notification) {
+        MeetingDiarizationTemp.removeProcessDirectory()
+    }
+
     /// Closing the window keeps Talkie running in the background for dictation.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false

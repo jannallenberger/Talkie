@@ -65,10 +65,13 @@ private enum TalkieDebugLogSink {
 /// the bare-text segment so callers that persist timings (meetings, imports) have a
 /// real start/end to stand on, while the dictation path — which only needs the text
 /// — ignores it. `start`/`end` are pre-guarded finite by the producer.
-struct TimedSegment: Sendable, Codable {
+struct TimedSegment: Sendable {
     var text: String
     var start: Double
     var end: Double
+    /// The recognizer's per-token audio time ranges (same clock as `start`/`end`), kept in
+    /// memory for speaker labelling. Nil when the result carried none. Not persisted.
+    var words: [SegmentWord]? = nil
 }
 
 /// A single in-flight transcript update, pushed to the UI as recognition progresses.
@@ -171,6 +174,8 @@ struct RecognizedChunk: Sendable {
     var isFinal: Bool
     var start: Double
     var end: Double
+    /// Per-token audio time ranges of a FINAL result (nil for volatile ones / none).
+    var words: [SegmentWord]? = nil
 }
 
 /// The two Speech result types share `range`/`isFinal` via `SpeechModuleResult`
@@ -433,7 +438,8 @@ actor TranscriptionEngine {
                             text: result.text,
                             isFinal: result.isFinal,
                             start: result.range.start.seconds,
-                            end: (result.range.start + result.range.duration).seconds
+                            end: (result.range.start + result.range.duration).seconds,
+                            words: result.isFinal ? SegmentWord.words(from: result.text) : nil
                         ))
                     }
                     continuation.finish()
@@ -863,6 +869,7 @@ actor TranscriptionEngine {
                     // (word, confidence) pairs. Behavior-neutral: it neither alters
                     // `text` nor gates anything the live path does with it.
                     var words: [WordConfidence] = []
+                    let isFinalWords = result.isFinal ? result.words : nil
                     if result.isFinal {
                         for run in result.text.runs {
                             guard let c = run.transcriptionConfidence else { continue }
@@ -874,7 +881,8 @@ actor TranscriptionEngine {
                         }
                     }
                     await self.ingest(epoch: epoch, text: text, isFinal: result.isFinal,
-                                      start: start, end: end, wordConfidences: words)
+                                      start: start, end: end, wordConfidences: words,
+                                      words: isFinalWords)
                 }
             } catch is CancellationError {
                 // Expected on teardown.
@@ -974,14 +982,14 @@ actor TranscriptionEngine {
     /// When a segment finalizes, also emit it on its own so the caller can clean
     /// each batch incrementally (instead of one huge pass at the end).
     private func ingest(epoch: Int, text: String, isFinal: Bool, start: Double = 0, end: Double = 0,
-                        wordConfidences: [WordConfidence] = []) {
+                        wordConfidences: [WordConfidence] = [], words: [SegmentWord]? = nil) {
         guard epoch == liveEpoch else { return } // a replaced analyzer's straggler
         if isFinal {
             if !text.isEmpty {
                 finalizedText = appendCommitted(finalizedText, text)
                 finalizedSegments.append(text)
                 onSegment?(text)
-                let timed = TimedSegment(text: text, start: start, end: end)
+                let timed = TimedSegment(text: text, start: start, end: end, words: words)
                 finalizedTimedSegments.append(timed)
                 onTimedSegment?(timed)
                 // Accumulate the finalized segment's per-word confidences (A12),

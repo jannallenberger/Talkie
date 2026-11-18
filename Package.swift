@@ -44,7 +44,7 @@ let talkieSwiftSettings: [SwiftSetting] =
         + (connected ? [.define("TALKIE_CONNECTED")] : [])
 
 let talkieDependencies: [Target.Dependency] =
-    ["TalkieFileKit"] + (devTools ? ["TalkieUpdater"] : []) + (connected ? ["TalkieBridge"] : [])
+    ["TalkieFileKit", "TalkieDiarization"] + (devTools ? ["TalkieUpdater"] : []) + (connected ? ["TalkieBridge"] : [])
 
 var targets: [Target] = [
     .executableTarget(
@@ -100,6 +100,53 @@ var targets: [Target] = [
             .swiftLanguageMode(.v6),
         ]
     ),
+    // Speaker diarization (pyannote community-1 via FluidAudio's CoreML
+    // conversion). An ISOLATED wrapper, same idea as TalkieUpdater/TalkieBridge:
+    // the app target never imports FluidAudio, only this module's tiny Sendable
+    // API (no FluidAudio types cross the boundary). Runs fully offline from the
+    // CoreML models bundled in Contents/Resources/DiarizationModels: it loads
+    // them itself from that folder (MLModel(contentsOf:)); the vendored FluidAudio
+    // contains no download/ModelHub/networking code at all. Models are fetched at
+    // BUILD time by scripts/fetch_diarization_models.sh (pinned revision,
+    // SHA-256 manifest); see THIRD_PARTY_NOTICES.md for licenses.
+    .target(
+        name: "TalkieDiarization",
+        dependencies: ["FluidAudio"],
+        path: "Sources/TalkieDiarization",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+        ]
+    ),
+    // Vendored subset of FluidAudio v0.18.3 (Apache-2.0): ONLY the offline
+    // community-1 diarizer. All model-download / Hugging Face / URLSession code
+    // is removed, so this module contains no networking. See
+    // Sources/FluidAudio/VENDORED.md for provenance and the re-sync procedure.
+    .target(
+        name: "FluidAudio",
+        dependencies: ["FastClusterWrapper"],
+        path: "Sources/FluidAudio",
+        exclude: ["VENDORED.md", "LICENSE", "fastcluster-LICENSE.md", "vbx-LICENSE.md"],
+        swiftSettings: [
+            .define("Diarizer"),
+        ]
+    ),
+    // Vendored C++ hierarchical clustering (fastcluster, BSD-2-Clause) used by
+    // the diarizer's AHC step. Pure computation, no I/O.
+    .target(
+        name: "FastClusterWrapper",
+        path: "Sources/FastClusterWrapper",
+        publicHeadersPath: "include"
+    ),
+    // Model-dependent tests SKIP (not fail) when Vendor/DiarizationModels is
+    // absent, so CI without the fetched models stays green.
+    .testTarget(
+        name: "TalkieDiarizationTests",
+        dependencies: ["TalkieDiarization", "FluidAudio"],
+        path: "Tests/TalkieDiarizationTests",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+        ]
+    ),
     // Pure-logic unit tests (no Core Audio, no model): the meeting-detection
     // state machine and the live-subtopic confidence gating. Bootstraps the
     // repo's first test target.
@@ -111,9 +158,19 @@ var targets: [Target] = [
             .swiftLanguageMode(.v6),
         ]
     ),
+    // Opt-in end-to-end file harness (skips unless TALKIE_FILETEST_INPUT is set).
+    // Separate target so it builds in release (the main test target uses DEBUG-only hooks).
+    .testTarget(
+        name: "FileDiarizationHarnessTests",
+        dependencies: ["Talkie", "TalkieDiarization", "TalkieFileKit"],
+        path: "Tests/FileDiarizationHarnessTests",
+        swiftSettings: [
+            .swiftLanguageMode(.v6),
+        ]
+    ),
     .testTarget(
         name: "TalkieTests",
-        dependencies: ["Talkie"],
+        dependencies: ["Talkie", "TalkieDiarization"],
         path: "Tests/TalkieTests",
         swiftSettings: [
             .swiftLanguageMode(.v6),

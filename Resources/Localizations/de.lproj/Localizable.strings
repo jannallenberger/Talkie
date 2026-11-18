@@ -12,7 +12,7 @@
 "Auto (multilingual)" = "Automatisch (mehrsprachig)";
 "Back" = "Zurück";
 "Cancel" = "Abbrechen";
-"Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them." = "Erfasst Sie und die anderen Teilnehmer im Anruf (Zoom, Meet, Teams) — gekennzeichnet als Ich / Andere.";
+"Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically." = "Erfasst Sie und die anderen Teilnehmer im Anruf (Zoom, Meet, Teams) — und unterscheidet die Personen automatisch.";
 "Case sensitive" = "Groß-/Kleinschreibung beachten";
 "Choose project folders…" = "Projektordner auswählen…";
 "Cleanup style — tap to change how Talkie polishes this dictation" = "Aufbereitungsstil — tippen, um zu ändern, wie Talkie dieses Diktat verfeinert";
@@ -857,3 +857,13 @@
 
 /* Meeting summary in background */
 "Writing the summary… the transcript is already saved." = "Die Zusammenfassung wird geschrieben … das Transkript ist schon gespeichert.";
+
+/* Meeting speaker labels (display only; stored labels stay English) */
+"Me" = "Ich";
+"Them" = "Andere";
+"Speaker %d" = "Sprecher %d";
+"Identifying speakers…" = "Sprecher werden erkannt …";
+/* Meetings settings: forget the learned voice profile */
+"Your voice" = "Deine Stimme";
+"A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "Auf diesem Mac wird ein kleines Stimmprofil gespeichert, um dich in Meetings zu erkennen. Wenn du es vergisst, wird es entfernt und aus künftigen Meetings neu gelernt.";
+"Forget my voice" = "Meine Stimme vergessen";

@@ -12,7 +12,7 @@
 "Auto (multilingual)" = "Auto (multilingual)";
 "Back" = "Back";
 "Cancel" = "Cancel";
-"Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them." = "Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them.";
+"Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically." = "Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically.";
 "Case sensitive" = "Case sensitive";
 "Choose project folders…" = "Choose project folders…";
 "Cleanup style — tap to change how Talkie polishes this dictation" = "Cleanup style — tap to change how Talkie polishes this dictation";
@@ -868,3 +868,13 @@
 
 /* Meeting summary in background */
 "Writing the summary… the transcript is already saved." = "Writing the summary… the transcript is already saved.";
+
+/* Meeting speaker labels (display only; stored labels stay English) */
+"Me" = "Me";
+"Them" = "Them";
+"Speaker %d" = "Speaker %d";
+"Identifying speakers…" = "Identifying speakers…";
+/* Meetings settings: forget the learned voice profile */
+"Your voice" = "Your voice";
+"A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings.";
+"Forget my voice" = "Forget my voice";

@@ -66,11 +66,52 @@ public struct TimedSegment: Sendable {
     public let text: String
     public let startSeconds: Double
     public let endSeconds: Double
+    /// Per-token audio time ranges, only when `transcribeTimed(wordTimings: true)` asked
+    /// for them; empty otherwise. The tokens' `text` concatenates to the segment text.
+    public let words: [TimedToken]
+
+    public init(text: String, startSeconds: Double, endSeconds: Double, words: [TimedToken] = []) {
+        self.text = text
+        self.startSeconds = startSeconds
+        self.endSeconds = endSeconds
+        self.words = words
+    }
+}
+
+/// One recognizer token (usually a word) with its audio time range in the recognizer's
+/// clock (the same clock as the owning `TimedSegment`). `text` keeps the recognizer's own
+/// whitespace, so the tokens of a segment concatenate to the segment text exactly.
+public struct TimedToken: Sendable, Equatable {
+    public var text: String
+    public var startSeconds: Double
+    public var endSeconds: Double
 
     public init(text: String, startSeconds: Double, endSeconds: Double) {
         self.text = text
         self.startSeconds = startSeconds
         self.endSeconds = endSeconds
+    }
+
+    /// The tokens of a finalized result. A run with no time range is folded into the
+    /// neighbouring token's text. Empty when no run is timed (the transcriber was not
+    /// built with `.audioTimeRange`).
+    static func tokens(from text: AttributedString) -> [TimedToken] {
+        var out: [TimedToken] = []
+        var pendingPrefix = ""
+        for run in text.runs {
+            let chunk = String(text[run.range].characters)
+            if let range = run.audioTimeRange {
+                let s = range.start.seconds
+                let e = (range.start + range.duration).seconds
+                if s.isFinite, e.isFinite {
+                    out.append(TimedToken(text: pendingPrefix + chunk, startSeconds: s, endSeconds: max(s, e)))
+                    pendingPrefix = ""
+                    continue
+                }
+            }
+            if out.isEmpty { pendingPrefix += chunk } else { out[out.count - 1].text += chunk }
+        }
+        return out
     }
 }
 
@@ -175,15 +216,19 @@ public actor FileTranscriber {
     /// in emission order. `SpeechTranscriber.Result.range` (a `CMTimeRange`) is a
     /// stored property present on every result, so no extra reporting option is
     /// needed to get timestamps — they are exactly what the recognizer reported.
+    ///
+    /// `wordTimings: true` additionally requests `.audioTimeRange` (the same attribute the
+    /// app's live meeting recognizers request) and fills `TimedSegment.words`.
     public func transcribeTimed(
         buffers: [AVAudioPCMBuffer],
-        contextualStrings: [String] = []
+        contextualStrings: [String] = [],
+        wordTimings: Bool = false
     ) async throws -> (text: String, segments: [TimedSegment]) {
         guard SpeechTranscriber.isAvailable else { throw FileTranscriberError.unavailable }
         guard !buffers.isEmpty else { return ("", []) }
 
         let loc = try await locale()
-        let transcriber = makeTranscriber(locale: loc)
+        let transcriber = makeTranscriber(locale: loc, wordTimes: wordTimings)
         try await ensureModelInstalled(for: transcriber)
 
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
@@ -213,7 +258,8 @@ public actor FileTranscriber {
                     let safeEnd = duration.isFinite ? safeStart + max(0, duration) : safeStart
                     segments.append(TimedSegment(text: piece,
                                                  startSeconds: safeStart,
-                                                 endSeconds: safeEnd))
+                                                 endSeconds: safeEnd,
+                                                 words: wordTimings ? TimedToken.tokens(from: result.text) : []))
                 }
             } catch {
                 // Partial segments are still useful; the empty case is handled by
@@ -336,21 +382,25 @@ public actor FileTranscriber {
     }
 
     /// Same configuration as live dictation: volatile results on, no attributes.
-    private func makeTranscriber(locale loc: Locale, confidence: Bool = false) -> any SpeechModule {
+    private func makeTranscriber(locale loc: Locale, confidence: Bool = false,
+                                 wordTimes: Bool = false) -> any SpeechModule {
+        var attributes: Set<SpeechTranscriber.ResultAttributeOption> = confidence ? [.transcriptionConfidence] : []
+        var dictationAttributes: Set<DictationTranscriber.ResultAttributeOption> = confidence ? [.transcriptionConfidence] : []
+        if wordTimes { attributes.insert(.audioTimeRange); dictationAttributes.insert(.audioTimeRange) }
         if useDictationModel {
             return DictationTranscriber(
                 locale: loc,
                 contentHints: [],
                 transcriptionOptions: [.punctuation],
                 reportingOptions: [.volatileResults],
-                attributeOptions: confidence ? [.transcriptionConfidence] : []
+                attributeOptions: dictationAttributes
             )
         }
         return SpeechTranscriber(
             locale: loc,
             transcriptionOptions: [],
             reportingOptions: [.volatileResults],
-            attributeOptions: confidence ? [.transcriptionConfidence] : []
+            attributeOptions: attributes
         )
     }
 

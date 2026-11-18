@@ -30,7 +30,20 @@ final class MeetingDigestBuilder: @unchecked Sendable {
     /// order even when the two streams' segments arrive out of order (their recognizer
     /// sessions finalize independently, so wall-clock arrival order isn't guaranteed to
     /// match the audio clock). Guarded by `lock`.
-    private var pendingBuffer: [(elapsed: TimeInterval, text: String)] = []
+    private struct Entry {
+        let elapsed: TimeInterval
+        let lane: MeetingSpeaker
+        let text: String
+        /// The diarized speaker label, set by `remapSpeakers`; nil = the lane label.
+        var label: String?
+    }
+    private var pendingBuffer: [Entry] = []
+    /// Set by `remapSpeakers`: tag every line (a diarized meeting has >= 2 people).
+    private var tagAll = false
+    /// Sealed excerpts were mapped under the lane labels; when their extracted facts
+    /// name a lane that diarization turned into exactly one person, `finish()` swaps
+    /// the name. Empty = leave the facts untouched.
+    private var factSubstitutions: [String: String] = [:]
     private var pendingChars = 0
     private var excerptIndex = 0
     private var mapTasks: [Task<String, Never>] = []
@@ -65,16 +78,13 @@ final class MeetingDigestBuilder: @unchecked Sendable {
         guard !t.isEmpty else { return }
         lock.withLock {
             seenSpeakers.insert(speaker)
-            // Bare text until a second speaker has actually been heard: a mic-only
-            // meeting never sees `.them`, so this stays bare for the whole recording,
-            // matching the renderer exactly. A genuine two-party call typically hears
-            // the far end within the first couple of turns, so at most a few opening
-            // lines go untagged before this switches on for the rest -- cosmetic, and
-            // harmless either way for the map prompt's own bullet extraction.
-            let tagged = seenSpeakers.count > 1
-                ? ((speaker == .me ? "Me" : "Them") + ": " + t)
-                : t
-            pendingBuffer.append((elapsed, tagged))
+            // Tags are applied when a chunk is sealed (`render`), not here, so the
+            // diarization remap can still relabel everything that is buffered. Bare
+            // text until a second speaker has actually been heard: a mic-only meeting
+            // never sees `.them`, so it stays bare for the whole recording, matching
+            // the renderer's solo branch.
+            pendingBuffer.append(Entry(elapsed: elapsed, lane: speaker, text: t, label: nil))
+            let tagged = (speaker == .me ? "Me" : "Them") + ": " + t // length estimate only
             pendingChars += tagged.count + 1
             if pendingChars >= MeetingSummarizer.chunkChars, mapTasks.count < Self.maxSealedChunks {
                 sealChunkLocked()
@@ -89,8 +99,7 @@ final class MeetingDigestBuilder: @unchecked Sendable {
         // Sort by audio-clock elapsed (not arrival order) before joining, so a sealed
         // excerpt interleaves the two speakers the same way the final persisted
         // transcript does (`MeetingTranscriptRenderer.render` also sorts by `elapsed`).
-        let excerpt = pendingBuffer.sorted { $0.elapsed < $1.elapsed }
-            .map(\.text).joined(separator: " ")
+        let excerpt = renderPendingLocked()
         pendingBuffer.removeAll()
         pendingChars = 0
         excerptIndex += 1
@@ -124,9 +133,7 @@ final class MeetingDigestBuilder: @unchecked Sendable {
         let (isShort, rawTail) = lock.withLock { () -> (Bool, String) in
             let short = excerptIndex == 0 && !pendingBuffer.isEmpty
                 && pendingChars <= MeetingSummarizer.chunkChars
-            let raw = pendingBuffer.sorted { $0.elapsed < $1.elapsed }
-                .map(\.text).joined(separator: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let raw = renderPendingLocked().trimmingCharacters(in: .whitespacesAndNewlines)
             if short { pendingBuffer.removeAll(); pendingChars = 0 }
             return (short, raw)
         }
@@ -148,7 +155,8 @@ final class MeetingDigestBuilder: @unchecked Sendable {
             return (mapTasks, graphTasks)
         }
         var partials: [String] = []
-        for t in snapshot.0 { partials.append(await t.value) }
+        let subs = lock.withLock { factSubstitutions }
+        for t in snapshot.0 { partials.append(Self.substituteLabels(in: await t.value, with: subs)) }
         var combined = partials.joined(separator: "\n\n")
 
         var compressionPasses = 0
@@ -170,6 +178,76 @@ final class MeetingDigestBuilder: @unchecked Sendable {
             }
         }
         return (summary, combined, candidates)
+    }
+
+    /// The pending lines, in audio-clock order, tagged per `tagAll` / speakers heard.
+    /// Caller must hold `lock`.
+    private func renderPendingLocked() -> String {
+        let tag = tagAll || seenSpeakers.count > 1
+        return pendingBuffer.sorted { $0.elapsed < $1.elapsed }
+            .map { tag ? ($0.label ?? $0.lane.rawValue) + ": " + $0.text : $0.text }
+            .joined(separator: " ")
+    }
+
+    /// The tagged, ordered unsealed text (tests).
+    func pendingTextForTesting() -> String { lock.withLock { renderPendingLocked() } }
+
+    // MARK: Speaker remap (after diarization)
+
+    /// Make the digest speak the diarized labels instead of the lane labels, without
+    /// redoing any model work. Returns false when that is impossible, in which case
+    /// the caller drops the digest and summarizes from the relabelled transcript.
+    ///
+    /// What the digest holds: (a) the unsealed tail of raw, speaker-tagged lines, whose
+    /// tags are rewritten exactly from the lane + time mapping (every buffered line
+    /// must match a segment's start, else false); (b) sealed excerpts, already reduced
+    /// by the model to terse decision/action bullets, which carry no per-line labels
+    /// and usually name no lane at all. Those are kept untouched, unless a bullet does
+    /// name "Me"/"Them": that is swapped only when the lane became exactly one person
+    /// (so the name is unambiguous), otherwise remapping is impossible.
+    func remapSpeakers(_ map: DigestSpeakerRemap) async -> Bool {
+        let tasks: [Task<String, Never>]? = lock.withLock {
+            var updated = pendingBuffer
+            for i in updated.indices {
+                guard let label = map.label(lane: updated[i].lane, at: updated[i].elapsed) else { return nil }
+                updated[i].label = label
+            }
+            pendingBuffer = updated
+            tagAll = true
+            return mapTasks
+        }
+        guard let tasks else { return false }
+        var named: Set<MeetingSpeaker> = []
+        for t in tasks {
+            let facts = await t.value
+            for lane in [MeetingSpeaker.me, .them] where Self.mentions(lane.rawValue, in: facts) { named.insert(lane) }
+        }
+        var subs: [String: String] = [:]
+        for lane in named {
+            guard let label = map.laneWideLabel(lane) else { return false }
+            if label != lane.rawValue { subs[lane.rawValue] = label }
+        }
+        lock.withLock { factSubstitutions = subs }
+        return true
+    }
+
+    private static func tokenRegex() -> NSRegularExpression? {
+        try? NSRegularExpression(pattern: "\\b(Me|Them)\\b")
+    }
+
+    static func mentions(_ name: String, in text: String) -> Bool {
+        guard let re = try? NSRegularExpression(pattern: "\\b\(name)\\b") else { return false }
+        return re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+    }
+
+    static func substituteLabels(in text: String, with subs: [String: String]) -> String {
+        guard !subs.isEmpty, let re = tokenRegex() else { return text }
+        var out = text
+        for m in re.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
+            guard let r = Range(m.range, in: out), let new = subs[String(out[r])] else { continue }
+            out.replaceSubrange(r, with: new)
+        }
+        return out
     }
 
     /// Drop all in-flight work without awaiting it -- used when a recording is

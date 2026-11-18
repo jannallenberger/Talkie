@@ -154,10 +154,10 @@ final class ContextGraphStore: ObservableObject {
         for meeting in meetings where meeting.startUnix > meetingMark {
             let prov = Provenance(source: .meeting, sourceID: meeting.id.uuidString,
                                   dateUnix: meeting.startUnix, snippet: nil)
-            for name in meeting.participants where name != "Me" && name != "Them" {
+            for name in meeting.participants where !SpeakerLabels.isGeneric(name) {
                 upsert(.person, name, prov)
             }
-            for candidate in ContextGraphExtractor.candidates(from: meeting.transcript) {
+            for candidate in ContextGraphExtractor.candidates(from: SpeakerLabels.stripLabels(from: meeting.transcript)) {
                 upsert(candidate.kind, candidate.displayName, prov)
             }
             maxMeeting = max(maxMeeting, meeting.startUnix)

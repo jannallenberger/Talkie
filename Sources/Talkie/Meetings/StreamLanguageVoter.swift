@@ -30,6 +30,9 @@ enum StreamLanguageVoter {
         var text: String
         var start: Double
         var end: Double
+        /// The span's words with their audio times (meeting clock), concatenating to
+        /// `text`. In memory only, for speaker labelling; empty when not tracked.
+        var words: [SegmentWord] = []
     }
 
     /// Time-grid resolution (seconds) for the per-slice language vote.
@@ -121,12 +124,19 @@ enum StreamLanguageVoter {
         //    span's `end` to its last word so the persisted segment covers the run.
         var spans: [Span] = []
         for w in kept {
+            let token = w.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if var last = spans.last, code(last.localeID) == code(w.localeID) {
                 last.text = joined(last.text, w.text)
                 last.end = max(last.end, w.end)
+                if !token.isEmpty {
+                    last.words.append(SegmentWord(text: (last.words.isEmpty ? "" : " ") + token,
+                                                  start: w.start, end: w.end))
+                }
                 spans[spans.count - 1] = last
             } else {
-                spans.append(Span(localeID: w.localeID, text: w.text, start: w.start, end: w.end))
+                var span = Span(localeID: w.localeID, text: w.text, start: w.start, end: w.end)
+                if !token.isEmpty { span.words = [SegmentWord(text: token, start: w.start, end: w.end)] }
+                spans.append(span)
             }
         }
         return spans

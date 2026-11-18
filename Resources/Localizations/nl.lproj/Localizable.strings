@@ -12,7 +12,7 @@
 "Auto (multilingual)" = "Automatisch (meertalig)";
 "Back" = "Terug";
 "Cancel" = "Annuleer";
-"Captures you and the other participants on the call (Zoom, Meet, Teams) — labeled Me / Them." = "Legt u en de andere deelnemers aan het gesprek vast (Zoom, Meet, Teams) — gelabeld als Ik / Zij.";
+"Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically." = "Legt u en de andere deelnemers aan het gesprek vast (Zoom, Meet, Teams) — en onderscheidt elke persoon automatisch.";
 "Case sensitive" = "Hoofdlettergevoelig";
 "Choose project folders…" = "Kies projectmappen…";
 "Cleanup style — tap to change how Talkie polishes this dictation" = "Opmaakstijl — tik om aan te passen hoe Talkie dit dictaat bijwerkt";
@@ -857,3 +857,13 @@
 
 /* Meeting summary in background */
 "Writing the summary… the transcript is already saved." = "Samenvatting wordt geschreven… het transcript is al opgeslagen.";
+
+/* Meeting speaker labels (display only; stored labels stay English) */
+"Me" = "Ik";
+"Them" = "Zij";
+"Speaker %d" = "Spreker %d";
+"Identifying speakers…" = "Sprekers herkennen…";
+/* Meetings settings: forget the learned voice profile */
+"Your voice" = "Jouw stem";
+"A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "Op deze Mac wordt een klein stemprofiel bewaard om je in vergaderingen te herkennen. Vergeten verwijdert het; het wordt opnieuw geleerd uit toekomstige vergaderingen.";
+"Forget my voice" = "Mijn stem vergeten";

@@ -37,6 +37,42 @@ enum AppPaths {
         return dir
     }
 
+    /// Scratch space for the per-lane 16 kHz recordings the speaker-diarization pass
+    /// reads (Application Support, NOT the user-visible Meetings folder). Holds call
+    /// audio only while a pass is pending: files are deleted after the pass, on discard
+    /// and on failure, and anything a crash left behind is swept at the next launch.
+    ///
+    /// Each running process owns ONE subdirectory (`pid-<pid>`) of `diarizationTempRoot()`,
+    /// so a second running instance never sees (or sweeps) another's files; the folder is
+    /// removed on termination, and both levels are excluded from backups.
+    static func diarizationTempDirectory() -> URL {
+        let dir = diarizationTempRoot()
+            .appendingPathComponent("pid-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+        makePrivateDirectory(dir)
+        return dir
+    }
+
+    /// Parent of every process's diarization scratch folder.
+    static func diarizationTempRoot() -> URL {
+        let dir = supportDirectory().appendingPathComponent("diarization-tmp", isDirectory: true)
+        makePrivateDirectory(dir)
+        return dir
+    }
+
+    /// Owner-only directory that Time Machine / iCloud backups skip (call audio must
+    /// never be copied into a backup).
+    static func makePrivateDirectory(_ dir: URL) {
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(
+                at: dir, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+        }
+        var url = dir
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
+    }
+
     private static func ensure(_ dir: URL) {
         if !FileManager.default.fileExists(atPath: dir.path) {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
