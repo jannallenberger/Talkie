@@ -23,3 +23,19 @@ enum LaunchAtLogin {
         SMAppService.mainApp.status == .enabled
     }
 }
+
+/// Whether a launch should put the main window on screen. A normal launch (Dock,
+/// Finder, `open`, Spotlight) always shows it; the only quiet start is the
+/// "Open at login" launch of an already-onboarded user, who lands in the menu bar.
+enum LaunchPresentation {
+    static func shouldShowWindow(hasOnboarded: Bool, launchedAsLoginItem: Bool) -> Bool {
+        !(hasOnboarded && launchedAsLoginItem)
+    }
+
+    /// True when the OS started this process as a login item (the open-application
+    /// Apple event carries `keyAELaunchedAsLogInItem`).
+    static func isLoginItemLaunch(_ event: NSAppleEventDescriptor? = NSAppleEventManager.shared().currentAppleEvent) -> Bool {
+        event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+            == OSType(keyAELaunchedAsLogInItem)
+    }
+}

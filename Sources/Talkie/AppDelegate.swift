@@ -519,14 +519,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .dropFirst()
             .sink { [weak self] count in self?.history.updateMaxCount(count) }
 
-        // H1: only auto-open the window on a genuine first run — a user who hasn't
-        // finished onboarding needs the welcome flow (it lives inside the window).
-        // Existing users launch quietly into the menu bar instead of having the window
-        // thrown at them every relaunch, consistent with H7 ("vanish into the menu
-        // bar"); they reopen it from the status item, Dock, or Spotlight whenever they
-        // want it. This also means the first-run onboarding never auto-triggers for
-        // someone who already completed it.
-        if !settings.hasOnboarded {
+        // A normal launch (Dock, Finder, `open`) shows and focuses the main window.
+        // The one intentional quiet start is the login-item launch of an onboarded
+        // user, who lands in the menu bar. (This used to skip the window for every
+        // onboarded user, so a plain launch showed nothing until a second click.)
+        if LaunchPresentation.shouldShowWindow(
+            hasOnboarded: settings.hasOnboarded,
+            launchedAsLoginItem: LaunchPresentation.isLoginItemLaunch()
+        ) {
             openSettings(tab: .dashboard)
         }
 
