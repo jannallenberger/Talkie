@@ -72,12 +72,21 @@ final class SpeakerNamingTests: XCTestCase {
 
     /// The real on-device tagger: compound German role nouns (not in the fixed list) are
     /// not personal names; a plain first name is.
-    func testRealTaggerRejectsCompoundRoleNouns() {
+    func testRealTaggerRejectsCompoundRoleNouns() throws {
         let gate = NameGate(attendees: [])
         for s in ["Ich bin Abteilungsleiter.", "Ich bin Bauingenieur.", "Ich bin Softwareentwickler.",
                   "Ich bin Vertriebsleiterin.", "This is Accounting."] {
             let m = Cue.selfIntroductions(in: s)[0]
             XCTAssertEqual(gate.check(m.name, range: m.range, in: s), .failure(.init(.notAName)), s)
+        }
+        // The positive case needs the system's name-recognition model, which is not
+        // installed on every machine (CI runners tag nothing). Probe with a different,
+        // unambiguous first name; when even that is not tagged, the model is absent and
+        // the positive assertion would only test the machine, not the gate.
+        let probe = "Ich bin Michael."
+        let pm = Cue.selfIntroductions(in: probe)[0]
+        guard case .success = gate.check(pm.name, range: pm.range, in: probe) else {
+            throw XCTSkip("on-device name tagger recognises no names on this machine")
         }
         let s = "Ich bin Kai."
         let m = Cue.selfIntroductions(in: s)[0]
