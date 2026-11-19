@@ -1154,10 +1154,7 @@
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ kon de spraakherkenning van macOS niet bereiken. Druk de toets nog een keer in – blijft het gebeuren, sluit %@ dan af en open het opnieuw.";
 
 // MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
-"Commands are on · hold %@ while dictating" = "Commando’s staan aan · houd %@ ingedrukt tijdens het dicteren";
 "Commands are off" = "Commando’s staan uit";
-"Say a format while you hold the key, then let go and keep talking." = "Zeg een formaat terwijl je de toets ingedrukt houdt, laat dan los en praat gewoon verder.";
-"Turn on to format as you dictate. Normal dictation keeps working either way." = "Zet aan om tijdens het dicteren op te maken. Gewoon dicteren werkt in beide gevallen.";
 "Turn %@ on or off" = "%@ aan- of uitzetten";
 "Use %@" = "%@ gebruiken";
 "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "Commando’s staan uit, dus deze formaten doen niets totdat je ze hierboven aanzet. Je dictaat blijft ongewijzigd.";
@@ -1168,8 +1165,13 @@
 "Hide other languages" = "Andere talen verbergen";
 "Add your own wording" = "Voeg je eigen formulering toe";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "Werkt net als de ingebouwde. Je eigen woorden kun je weer verwijderen met de ×.";
-"For example, a word you often say" = "Bijvoorbeeld een woord dat je vaak zegt";
 "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Zolang je de formaattoets ingedrukt houdt, wordt wat je zegt als formaat gelezen, in elk van je talen. Wordt er geen formaat herkend, dan blijven je woorden gewoon als tekst staan.";
 "%@ is on" = "%@ staat aan";
 "No format heard · kept as text" = "Geen formaat gehoord · als tekst bewaard";
 "No format heard. Your words were kept as text." = "Geen formaat gehoord. Je woorden zijn als tekst bewaard.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "Commando’s staan aan";
+"Dictation keeps working normally." = "Dicteren werkt gewoon door.";
+"Your own wording" = "Je eigen formulering";
+"+%d more" = "+%d meer";

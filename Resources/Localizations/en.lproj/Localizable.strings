@@ -1165,10 +1165,7 @@
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@.";
 
 // MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
-"Commands are on · hold %@ while dictating" = "Commands are on · hold %@ while dictating";
 "Commands are off" = "Commands are off";
-"Say a format while you hold the key, then let go and keep talking." = "Say a format while you hold the key, then let go and keep talking.";
-"Turn on to format as you dictate. Normal dictation keeps working either way." = "Turn on to format as you dictate. Normal dictation keeps working either way.";
 "Turn %@ on or off" = "Turn %@ on or off";
 "Use %@" = "Use %@";
 "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected.";
@@ -1179,8 +1176,13 @@
 "Hide other languages" = "Hide other languages";
 "Add your own wording" = "Add your own wording";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "It works like the built-in ones. Your own words can be removed again with the ×.";
-"For example, a word you often say" = "For example, a word you often say";
 "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text.";
 "%@ is on" = "%@ is on";
 "No format heard · kept as text" = "No format heard · kept as text";
 "No format heard. Your words were kept as text." = "No format heard. Your words were kept as text.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "Commands are on";
+"Dictation keeps working normally." = "Dictation keeps working normally.";
+"Your own wording" = "Your own wording";
+"+%d more" = "+%d more";

@@ -1154,10 +1154,7 @@
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ non è riuscito a raggiungere il riconoscimento vocale di macOS. Premi di nuovo il tasto: se succede ancora, chiudi %@ e riaprilo.";
 
 // MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
-"Commands are on · hold %@ while dictating" = "I comandi sono attivi · tieni premuto %@ mentre detti";
 "Commands are off" = "I comandi sono disattivati";
-"Say a format while you hold the key, then let go and keep talking." = "Di’ un formato mentre tieni premuto il tasto, poi rilascia e continua a parlare.";
-"Turn on to format as you dictate. Normal dictation keeps working either way." = "Attiva per formattare mentre detti. La dettatura normale funziona in entrambi i casi.";
 "Turn %@ on or off" = "Attiva o disattiva %@";
 "Use %@" = "Usa %@";
 "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "I comandi sono disattivati, quindi questi formati non fanno nulla finché non li attivi qui sopra. La tua dettatura non è influenzata.";
@@ -1168,8 +1165,13 @@
 "Hide other languages" = "Nascondi altre lingue";
 "Add your own wording" = "Aggiungi la tua espressione";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "Funziona come quelle integrate. Le tue si possono rimuovere con la ×.";
-"For example, a word you often say" = "Ad esempio, una parola che dici spesso";
 "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Finché tieni premuto il tasto formato, ciò che dici viene letto come un formato, in una qualsiasi delle tue lingue. Se nessun formato viene riconosciuto, le tue parole vengono semplicemente mantenute come testo.";
 "%@ is on" = "%@ è attivo";
 "No format heard · kept as text" = "Nessun formato rilevato · mantenuto come testo";
 "No format heard. Your words were kept as text." = "Nessun formato rilevato. Le tue parole sono state mantenute come testo.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "I comandi sono attivi";
+"Dictation keeps working normally." = "La dettatura continua a funzionare normalmente.";
+"Your own wording" = "La tua espressione";
+"+%d more" = "+%d altre";

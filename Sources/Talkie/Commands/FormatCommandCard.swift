@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// One command card on the Commands page. The whole card opens its details (a button
@@ -60,7 +61,8 @@ struct FormatCommandCardLabel: View {
     let isOff: Bool
     var caption: String? = nil
 
-    private var summary: FormatPhraseCatalog.Summary? { FormatPhraseCatalog.summary(phrases) }
+    /// Width kept free at the footer's trailing edge for the card's switch.
+    static let switchSlot: CGFloat = 44
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -75,30 +77,24 @@ struct FormatCommandCardLabel: View {
                         .font(.talkieHeading(12, weight: .regular))
                         .foregroundStyle(Theme.inkSecondary)
                         .lineLimit(1)
-                } else if let summary {
-                    Text(verbatim: "\u{201C}\(summary.main)\u{201D}")
-                        .font(.talkieHeading(12, weight: .regular))
-                        .foregroundStyle(Theme.inkSecondary)
-                        .lineLimit(1)
-                    if !summary.more.isEmpty {
-                        Text(verbatim: summary.more.map { "\u{201C}\($0)\u{201D}" }.joined(separator: " \u{00B7} "))
-                            .font(.talkieHeading(11.5, weight: .regular))
-                            .foregroundStyle(Theme.inkTertiary)
-                            .lineLimit(1)
+                } else {
+                    GeometryReader { geo in
+                        Text(phraseLines(width: geo.size.width))
+                            .font(.talkieHeading(12, weight: .regular))
+                            .lineSpacing(1)
+                            .frame(width: geo.size.width, alignment: .topLeading)
                     }
+                    .frame(height: 34)
                 }
             }
             Spacer(minLength: 0)
+            // Tags take the width left of the switch's own slot, so they never collide.
             HStack(spacing: 6) {
                 if isOff { TalkieTag(text: "Off".loc) }
                 if slower { TalkieTag(text: "slower".loc) }
-                if let summary, summary.hidden > 0 {
-                    Text(verbatim: "+\(summary.hidden)")
-                        .font(.talkieHeading(11.5, weight: .medium))
-                        .foregroundStyle(Theme.inkTertiary)
-                }
                 Spacer(minLength: 0)
             }
+            .padding(.trailing, Self.switchSlot)
             .frame(height: 22)
         }
         .padding(16)
@@ -109,6 +105,47 @@ struct FormatCommandCardLabel: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isOff ? String(format: "%@, off".loc, name) : name)
         .accessibilityValue(spokenSummary)
+    }
+
+    private static let measureFont = NSFont.systemFont(ofSize: 12)
+
+    private static func textWidth(_ s: String) -> Double {
+        // 4 % safety margin: layout and measurement differ slightly.
+        Double((s as NSString).size(withAttributes: [.font: measureFont]).width) * 1.04
+    }
+
+    static func moreLabel(_ n: Int) -> String { String(format: "+%d more".loc, n) }
+
+    /// Whole phrases as many as fit on two lines (never cut), the main one in
+    /// secondary ink, the rest and "+N more" quieter, "+N more" attached at the end.
+    private func phraseLines(width: CGFloat) -> AttributedString {
+        let quoted = phrases.map { "\u{201C}\($0)\u{201D}" }
+        let sep = Self.textWidth(" \u{00B7} ")
+        let fitted = FormatPhraseCatalog.fit(quoted, maxLines: 2, width: Double(width),
+                                             measure: Self.textWidth, separator: sep,
+                                             moreWidth: { Self.textWidth(Self.moreLabel($0)) })
+        var out = AttributedString()
+        var first = true
+        for (li, line) in fitted.lines.enumerated() {
+            if li > 0 { out.append(AttributedString("\n")) }
+            for (i, phrase) in line.enumerated() {
+                if i > 0 {
+                    var dot = AttributedString(" \u{00B7} ")
+                    dot.foregroundColor = Theme.inkTertiary
+                    out.append(dot)
+                }
+                var part = AttributedString(phrase)
+                part.foregroundColor = first ? Theme.inkSecondary : Theme.inkTertiary
+                first = false
+                out.append(part)
+            }
+        }
+        if fitted.hidden > 0 {
+            var more = AttributedString(" \u{00B7} " + Self.moreLabel(fitted.hidden))
+            more.foregroundColor = Theme.inkTertiary
+            out.append(more)
+        }
+        return out
     }
 
     private var spokenSummary: String {

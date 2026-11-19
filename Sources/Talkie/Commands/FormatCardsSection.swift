@@ -182,7 +182,7 @@ struct FormatCommandDetail: View {
             TalkiePopoverDivider()
             TalkieField(label: "Add your own wording".loc,
                         help: "It works like the built-in ones. Your own words can be removed again with the ×.".loc) {
-                PhraseListEditor(phrases: synonyms, placeholder: "For example, a word you often say".loc,
+                PhraseListEditor(phrases: synonyms, placeholder: "Your own wording".loc,
                                  draft: $draft, problem: $problem, addIsPrimary: true) { phrase in
                     UserCommandLibrary.book(settings: settings, macros: macros)
                         .refusal(for: phrase, owner: .preset(preset))

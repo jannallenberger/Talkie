@@ -1034,7 +1034,7 @@
 "Swaps a word in what you just dictated — only if that word is in it." = "Ersetzt ein Wort in dem, was Sie gerade diktiert haben – nur wenn das Wort darin vorkommt.";
 "Types k8s — for codes and names that are hard to dictate." = "Tippt k8s – für Codes und Namen, die sich schwer diktieren lassen.";
 "Runs the Shortcut with exactly that name." = "Führt den Kurzbefehl mit genau diesem Namen aus.";
-"Ask about your meetings" = "Fragen zu Ihren Besprechungen";
+"Ask about your meetings" = "Fragen zu deinen Besprechungen";
 "Uses only meetings and notes already on this Mac and never sends anything. Off by default." = "Nutzt nur Besprechungen und Notizen, die schon auf diesem Mac sind, und sendet nie etwas. Standardmäßig aus.";
 "Let requests about my meetings run as commands" = "Anfragen zu meinen Besprechungen als Befehle ausführen";
 "A spoken request like “email Sarah the action items from my last meeting” runs as a command instead of being typed, and shows a preview before anything is inserted." = "Eine gesprochene Anfrage wie „email Sarah the action items from my last meeting“ wird als Befehl ausgeführt, statt getippt zu werden, und zeigt eine Vorschau, bevor etwas eingefügt wird.";
@@ -1154,10 +1154,7 @@
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ konnte die Spracherkennung von macOS nicht erreichen. Drück die Taste noch einmal – falls das so bleibt, beende %@ und öffne es neu.";
 
 // MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
-"Commands are on · hold %@ while dictating" = "Befehle sind an · halte beim Diktieren %@ gedrückt";
 "Commands are off" = "Befehle sind aus";
-"Say a format while you hold the key, then let go and keep talking." = "Sag ein Format, während du die Taste hältst, lass dann los und sprich einfach weiter.";
-"Turn on to format as you dictate. Normal dictation keeps working either way." = "Einschalten, um beim Diktieren zu formatieren. Normales Diktieren funktioniert in beiden Fällen.";
 "Turn %@ on or off" = "%@ ein- oder ausschalten";
 "Use %@" = "%@ verwenden";
 "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "Befehle sind aus, deshalb bewirken diese Formate nichts, bis du oben die Befehle einschaltest. Dein Diktat bleibt davon unberührt.";
@@ -1168,8 +1165,13 @@
 "Hide other languages" = "Andere Sprachen ausblenden";
 "Add your own wording" = "Eigene Formulierung hinzufügen";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "Sie funktioniert wie die eingebauten. Eigene Formulierungen lassen sich mit dem × wieder entfernen.";
-"For example, a word you often say" = "Zum Beispiel ein Wort, das du oft sagst";
 "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Solange du die Formattaste hältst, wird das Gesagte als Format gelesen – in jeder deiner Sprachen. Wird kein Format erkannt, bleiben deine Worte einfach als Text erhalten.";
 "%@ is on" = "%@ ist an";
 "No format heard · kept as text" = "Kein Format erkannt · als Text behalten";
 "No format heard. Your words were kept as text." = "Kein Format erkannt. Deine Worte wurden als Text behalten.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "Befehle sind an";
+"Dictation keeps working normally." = "Das Diktieren funktioniert ganz normal weiter.";
+"Your own wording" = "Eigene Formulierung";
+"+%d more" = "+%d weitere";

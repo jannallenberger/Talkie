@@ -1154,10 +1154,7 @@
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ 无法连接到 macOS 语音识别。请再按一次按键；如果问题持续，请退出并重新打开 %@。";
 
 // MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
-"Commands are on · hold %@ while dictating" = "命令已开启 · 听写时请按住%@";
 "Commands are off" = "命令已关闭";
-"Say a format while you hold the key, then let go and keep talking." = "按住按键时说出格式，然后松开并继续说话。";
-"Turn on to format as you dictate. Normal dictation keeps working either way." = "开启后可在听写时设置格式。无论开关，普通听写都照常工作。";
 "Turn %@ on or off" = "开启或关闭%@";
 "Use %@" = "使用%@";
 "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "命令已关闭，因此这些格式不会起作用，直到你在上方开启命令。你的听写不受影响。";
@@ -1168,8 +1165,13 @@
 "Hide other languages" = "隐藏其他语言";
 "Add your own wording" = "添加你自己的说法";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "它和内置说法的作用一样。你自己添加的说法可以用 × 删除。";
-"For example, a word you often say" = "例如，你常说的一个词";
 "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "按住格式键时，你说的话会被当作格式来识别，可使用你的任何语言。如果没有识别到格式，你的话会原样保留为文本。";
 "%@ is on" = "%@已开启";
 "No format heard · kept as text" = "未听到格式 · 已保留为文本";
 "No format heard. Your words were kept as text." = "未听到格式。你的话已保留为文本。";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "命令已开启";
+"Dictation keeps working normally." = "听写照常工作。";
+"Your own wording" = "你自己的说法";
+"+%d more" = "另有%d个";

@@ -8,28 +8,26 @@ import SwiftUI
 struct CommandsMasterCard: View {
     @ObservedObject var settings: AppSettings
 
-    private var formatKey: ActivationKey { settings.effectiveFormatCommandKey }
-
     private var commandKeyBinding: Binding<ActivationKey> {
         Binding(get: { settings.effectiveFormatCommandKey },
                 set: { settings.formatCommandKey = $0 })
     }
 
-    /// The state line. Pure so it is tested.
-    static func stateTitle(isOn: Bool, keyName: String) -> String {
-        isOn ? String(format: "Commands are on · hold %@ while dictating".loc, keyName)
-             : "Commands are off".loc
+    /// The state line: only the state (the key has its own row, the rule is explained
+    /// once, in the strip below). Pure so it is tested.
+    static func stateTitle(isOn: Bool) -> String {
+        isOn ? "Commands are on".loc : "Commands are off".loc
     }
 
-    static func stateSubtitle(isOn: Bool) -> String {
-        isOn ? "Say a format while you hold the key, then let go and keep talking.".loc
-             : "Turn on to format as you dictate. Normal dictation keeps working either way.".loc
+    /// One short line, only when off; it does not repeat the rule.
+    static func stateSubtitle(isOn: Bool) -> String? {
+        isOn ? nil : "Dictation keeps working normally.".loc
     }
 
     var body: some View {
         SettingsCard {
             SettingsToggleRow(
-                title: Self.stateTitle(isOn: settings.formatCommandsEnabled, keyName: formatKey.displayName),
+                title: Self.stateTitle(isOn: settings.formatCommandsEnabled),
                 subtitle: Self.stateSubtitle(isOn: settings.formatCommandsEnabled),
                 isOn: $settings.formatCommandsEnabled)
             SettingsDivider()

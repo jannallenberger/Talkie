@@ -1154,10 +1154,7 @@
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@이(가) macOS 음성 인식에 연결하지 못했습니다. 키를 다시 눌러 보세요. 계속 그러면 %@을(를) 종료한 뒤 다시 여세요.";
 
 // MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
-"Commands are on · hold %@ while dictating" = "명령이 켜져 있습니다 · 받아쓰기 중 %@ 키를 누르고 계세요";
 "Commands are off" = "명령이 꺼져 있습니다";
-"Say a format while you hold the key, then let go and keep talking." = "키를 누른 채 서식을 말한 다음 키를 놓고 계속 말하세요.";
-"Turn on to format as you dictate. Normal dictation keeps working either way." = "켜면 받아쓰는 동안 서식을 적용합니다. 일반 받아쓰기는 켜든 끄든 그대로 작동합니다.";
 "Turn %@ on or off" = "%@ 켜기/끄기";
 "Use %@" = "%@ 사용";
 "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "명령이 꺼져 있어서 위에서 켜기 전에는 이 서식들이 작동하지 않습니다. 받아쓰기에는 영향이 없습니다.";
@@ -1168,8 +1165,13 @@
 "Hide other languages" = "다른 언어 숨기기";
 "Add your own wording" = "나만의 표현 추가";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "기본 표현과 똑같이 작동합니다. 직접 추가한 표현은 ×로 다시 지울 수 있습니다.";
-"For example, a word you often say" = "예: 자주 쓰는 말";
 "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "서식 키를 누르고 있는 동안 말한 내용은 어떤 언어든 서식으로 인식됩니다. 서식이 인식되지 않으면 말한 내용은 그냥 텍스트로 유지됩니다.";
 "%@ is on" = "%@ 켜짐";
 "No format heard · kept as text" = "서식을 듣지 못함 · 텍스트로 유지";
 "No format heard. Your words were kept as text." = "서식을 듣지 못했습니다. 말한 내용은 텍스트로 유지되었습니다.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "명령이 켜져 있습니다";
+"Dictation keeps working normally." = "받아쓰기는 평소처럼 작동합니다.";
+"Your own wording" = "나만의 표현";
+"+%d more" = "+%d개 더";

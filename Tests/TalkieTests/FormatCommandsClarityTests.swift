@@ -314,11 +314,46 @@ final class FormatPhraseCatalogTests: XCTestCase {
 
 @MainActor
 final class CommandsMasterCardTests: XCTestCase {
-    func testStateLineSaysOnOffAndTheKey() {
-        let on = CommandsMasterCard.stateTitle(isOn: true, keyName: "Left Control")
-        XCTAssertTrue(on.contains("Left Control"))
-        XCTAssertNotEqual(on, CommandsMasterCard.stateTitle(isOn: false, keyName: "Left Control"))
-        XCTAssertFalse(CommandsMasterCard.stateTitle(isOn: false, keyName: "Left Control").contains("Left Control"))
-        XCTAssertNotEqual(CommandsMasterCard.stateSubtitle(isOn: true), CommandsMasterCard.stateSubtitle(isOn: false))
+    func testStateLineIsOnlyTheState() {
+        XCTAssertNotEqual(CommandsMasterCard.stateTitle(isOn: true), CommandsMasterCard.stateTitle(isOn: false))
+        XCTAssertNil(CommandsMasterCard.stateSubtitle(isOn: true))
+        XCTAssertNotNil(CommandsMasterCard.stateSubtitle(isOn: false))
+    }
+}
+
+final class FormatPhraseFitTests: XCTestCase {
+    /// 1 unit per character; " · " = 3; "+N more" = 7 for one digit, 8 for two.
+    private func fit(_ p: [String], lines: Int = 2, width: Double) -> FormatPhraseCatalog.Fitted {
+        FormatPhraseCatalog.fit(p, maxLines: lines, width: width, measure: { Double($0.count) }, separator: 3,
+                                moreWidth: { Double("+\($0) more".count) })
+    }
+
+    func testEverythingFitsWithoutAMoreLabel() {
+        let r = fit(["aaaa", "bbbb", "cccc"], width: 30)
+        XCTAssertEqual(r, .init(lines: [["aaaa", "bbbb", "cccc"]], hidden: 0))
+    }
+
+    func testWrapsToASecondLineAndNeverCutsAPhrase() {
+        let r = fit(["aaaaaa", "bbbbbb", "cccccc", "dddddd"], width: 16)
+        XCTAssertEqual(r.lines, [["aaaaaa", "bbbbbb"], ["cccccc", "dddddd"]])
+        XCTAssertEqual(r.hidden, 0)
+    }
+
+    func testHiddenPhrasesAreCountedAndTheLabelGetsRoom() {
+        let phrases = (0..<8).map { _ in "xxxxxx" }
+        let r = fit(phrases, width: 20)
+        XCTAssertGreaterThan(r.hidden, 0)
+        XCTAssertEqual(r.lines.flatMap { $0 }.count + r.hidden, 8)
+        let last = r.lines.last!
+        let used = Double(last.count * 6 + (last.count - 1) * 3)
+        XCTAssertLessThanOrEqual(used + 3 + Double("+\(r.hidden) more".count), 20)
+        for line in r.lines {
+            XCTAssertLessThanOrEqual(Double(line.count * 6 + (line.count - 1) * 3), 20)
+        }
+    }
+
+    func testTheFirstPhraseIsAlwaysShown() {
+        let r = fit(["a-very-long-main-phrase", "b"], width: 10)
+        XCTAssertEqual(r.lines.first?.first, "a-very-long-main-phrase")
     }
 }

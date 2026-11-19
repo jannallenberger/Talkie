@@ -14,8 +14,7 @@ struct CommandsView: View {
     private let editColumns = [GridItem(.adaptive(minimum: 150), spacing: Theme.Space.gridGap, alignment: .top)]
 
     var body: some View {
-        SubPage(title: "Commands",
-                subtitle: "Hold a second key while you dictate and say how the next words should look.".loc) {
+        SubPage(title: "Commands") {
             CommandsMasterCard(settings: settings)
             HowItWorksStrip(dictationKey: settings.activationKey, formatKey: settings.effectiveFormatCommandKey)
             FormatCardsSection(settings: settings, macros: macros)
@@ -29,8 +28,8 @@ struct CommandsView: View {
     private var editGroup: some View {
         VStack(alignment: .leading, spacing: 9) {
             TalkieSectionLabel(
-                title: "Edit selected text",
-                subtitle: "Say one of these as its own dictation. With nothing selected, it changes what you just dictated.")
+                title: "Edit selected text".loc,
+                subtitle: "Say one of these as its own dictation. With nothing selected, it changes what you just dictated.".loc)
             LazyVGrid(columns: editColumns, alignment: .leading, spacing: Theme.Space.gridGap) {
                 ForEach(EditCommandKind.allCases, id: \.self) { kind in
                     EditCommandCard(kind: kind)

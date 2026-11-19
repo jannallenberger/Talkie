@@ -1154,10 +1154,7 @@
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ は macOS の音声認識に接続できませんでした。もう一度キーを押してください。それでも直らない場合は、%@ を終了して開き直してください。";
 
 // MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
-"Commands are on · hold %@ while dictating" = "コマンドはオンです・ディクテーション中は%@を押し続けてください";
 "Commands are off" = "コマンドはオフです";
-"Say a format while you hold the key, then let go and keep talking." = "キーを押したままフォーマットを言い、キーを離してそのまま話し続けます。";
-"Turn on to format as you dictate. Normal dictation keeps working either way." = "オンにすると、ディクテーション中に書式を整えます。通常のディクテーションはどちらでも使えます。";
 "Turn %@ on or off" = "%@のオン/オフを切り替える";
 "Use %@" = "%@を使う";
 "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "コマンドがオフのため、上でオンにするまでこれらのフォーマットは働きません。ディクテーションには影響しません。";
@@ -1168,8 +1165,13 @@
 "Hide other languages" = "他の言語を隠す";
 "Add your own wording" = "自分の言い方を追加";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "内蔵の言い方と同じように働きます。追加した言い方は×で削除できます。";
-"For example, a word you often say" = "例：よく使う言葉";
 "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "フォーマットキーを押している間に言ったことは、どの言語でもフォーマットとして読み取られます。フォーマットが認識されなかった場合、言葉はそのままテキストとして残ります。";
 "%@ is on" = "%@はオンです";
 "No format heard · kept as text" = "フォーマットは聞き取れませんでした・テキストとして保持";
 "No format heard. Your words were kept as text." = "フォーマットは聞き取れませんでした。言葉はテキストとして保持されました。";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "コマンドはオンです";
+"Dictation keeps working normally." = "ディクテーションは通常どおり使えます。";
+"Your own wording" = "自分の言い方";
+"+%d more" = "他%d件";

@@ -232,6 +232,8 @@ final class CommandsSnapshotTests: XCTestCase {
                         card(.verbatim, on: false)
                     }
                 }
+                // Worst case: off + slower + many wordings, narrowest column.
+                try shot("card-worst-\(lang)", width: 232) { card(.shorter, on: false).frame(width: 200) }
                 try shot("card-detail-\(lang)", width: 392, background: pop, padding: 0) {
                     FormatCommandDetail(preset: .bulletList, settings: settings, macros: macros,
                                         uiLanguageCode: lang)
