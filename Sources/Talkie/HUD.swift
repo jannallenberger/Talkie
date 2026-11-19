@@ -117,12 +117,10 @@ final class HUDModel: ObservableObject {
     /// let go of the key and it keeps recording until you tap once to stop. Only
     /// meaningful during the capture phases; reset when a session ends.
     @Published var handsFreeLocked: Bool = false
-    /// "Format while you dictate": the active format's name, shown as a chip in the
-    /// capture pill while the following speech will be pasted in that format. Non-nil
-    /// also turns the waveform blue. Reset when a session ends.
-    @Published var formatChip: String?
-    /// A brief line in the capture pill ("format not recognised"); nil = none.
-    @Published var formatNotice: String?
+    /// "Format while you dictate": what the capture pill shows for the format key
+    /// (blue while it's held, the active format's chip, "Not recognised"). The pure
+    /// `PillFormatState`; reset when a session ends.
+    @Published var formatState = PillFormatState()
     /// The live transcript's *finalized* portion — segments the recognizer has
     /// committed and won't revise — rendered firmly (higher opacity) as the head of
     /// the capture-pill's one-line tail (C1). Empty renders nothing, i.e. today's
@@ -406,8 +404,7 @@ final class HUDController {
         cancelHide()
         resetLevels()
         model.handsFreeLocked = false   // fresh session starts un-locked
-        model.formatChip = nil          // and in normal text, with no format notice
-        model.formatNotice = nil
+        resetFormatState()              // and in normal text, with no format feedback
         model.isHoveringPill = false    // nor a stale hover carried in from a prior pill
         model.silenceCountingDown = false   // and never inherits a stale auto-stop countdown
         model.latchArmedTick &+= 1      // (re)start the hold-to-lock progress fill from empty
@@ -820,26 +817,37 @@ final class HUDController {
     /// Flip the listening pill's hands-free lock glyph on/off. Called when a tap-tap
     /// locks (on) and when the session ends (off). Purely presentational — the pill
     /// must already be in a capture phase for the glyph to be visible.
-    /// "Format while you dictate": show the active format (nil = back to normal text).
-    func setFormatChip(_ title: String?) {
-        formatNoticeTask?.cancel()
-        model.formatNotice = nil
-        model.formatChip = title
-    }
-
-    /// A command span matched no format: say so briefly; the active format (if any)
-    /// stays as it was.
-    func flashFormatNotRecognised() {
-        formatNoticeTask?.cancel()
-        model.formatNotice = "format not recognised".loc
-        announce("Format not recognised.".loc)
-        formatNoticeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1.6))
+    /// "Format while you dictate": feed the pill's format state one event (key down,
+    /// released, resolved …). A confirming / "not recognised" flash clears itself.
+    func formatEvent(_ event: PillFormatState.Event) {
+        let before = model.formatState
+        model.formatState.handle(event)
+        let after = model.formatState
+        guard after.flash != before.flash || event == .keyDown else { return }
+        formatFlashTask?.cancel()
+        let seconds: Double
+        switch after.flash {
+        case .none:
+            return
+        case .confirmed(let name):
+            announce(String(format: "Format: %@".loc, name))
+            seconds = PillFormatState.confirmSeconds
+        case .notRecognised:
+            announce("Format not recognised.".loc)
+            seconds = PillFormatState.notRecognisedSeconds
+        }
+        formatFlashTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled else { return }
-            self?.model.formatNotice = nil
+            self?.model.formatState.handle(.flashExpired)
         }
     }
-    private var formatNoticeTask: Task<Void, Never>?
+
+    private func resetFormatState() {
+        formatFlashTask?.cancel()
+        model.formatState = PillFormatState()
+    }
+    private var formatFlashTask: Task<Void, Never>?
 
     func setHandsFreeLocked(_ locked: Bool) {
         model.handsFreeLocked = locked
@@ -1027,8 +1035,7 @@ final class HUDController {
     private func finishHide() {
         panel?.ignoresMouseEvents = true
         model.handsFreeLocked = false     // never carry a lock glyph into the next session
-        model.formatChip = nil            // nor a format chip / notice
-        model.formatNotice = nil
+        resetFormatState()                // nor a format chip / notice
         model.silenceCountingDown = false // nor a stale auto-stop countdown
         model.isHoveringPill = false      // nor a stale hover (which would freeze the next timer)
         model.countdownProgress = 1
@@ -1141,7 +1148,7 @@ enum GestureHint {
 /// and the learned-correction ring so they all trace the exact same rounded rect.
 private let hudPillRadius: CGFloat = 17
 
-private struct HUDView: View {
+struct HUDView: View {
     @ObservedObject var model: HUDModel
     let pillFrame: PillFrameBox
     /// Whether the live transcript renders as flowing text below the waveform (growing
@@ -1211,30 +1218,67 @@ private struct HUDView: View {
         }
     }
 
-    /// "Format while you dictate": the active format as a small blue chip, or a brief
-    /// "format not recognised" line. Nothing at all in normal dictation.
+    /// "Format while you dictate", in the capture pill: "Listening for a format…" in
+    /// blue while the format key is held (and while its words are checked); the
+    /// active format as a blue chip — with a tick for a moment right after it is
+    /// recognised; "Not recognised" as its own brief state. Nothing in normal dictation.
     @ViewBuilder
     private var formatChipView: some View {
-        if let chip = model.formatChip {
-            Text(chip)
-                .font(.system(size: model.highContrast ? 12 : 11, weight: .semibold))
-                .foregroundStyle(Theme.featherBlue)
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.horizontal, 7)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(chipFill(0.13)))
-                .transition(.scale.combined(with: .opacity))
-                .accessibilityLabel(String(format: "Format: %@".loc, chip))
-        } else if let notice = model.formatNotice {
-            Text(notice)
-                .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
-                .foregroundStyle(ink(0.72))
-                .lineLimit(1)
-                .fixedSize()
-                .transition(.opacity)
+        let state = model.formatState
+        let size: CGFloat = model.highContrast ? 12 : 11
+        if state.showsListeningHint {
+            HStack(spacing: 4) {
+                Image(systemName: "keyboard")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("Listening for a format…".loc)
+                    .font(.system(size: size, weight: .semibold))
+            }
+            .foregroundStyle(Self.formatBlue)
+            .lineLimit(1)
+            .fixedSize()
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+        } else if let chip = state.chip {
+            HStack(spacing: 4) {
+                if chip.confirming {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: size - 1, weight: .bold))
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityHidden(true)
+                }
+                Text(chip.name)
+                    .font(.system(size: size, weight: .semibold))
+            }
+            .foregroundStyle(chip.confirming ? Color.white : Self.formatBlue)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(chip.confirming ? Self.formatBlue : Self.formatBlue.opacity(0.2)))
+            .transition(.scale.combined(with: .opacity))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(format: "Format: %@".loc, chip.name))
+        }
+        if state.showsNotRecognised {
+            HStack(spacing: 4) {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("Not recognised".loc)
+                    .font(.system(size: size, weight: .medium))
+            }
+            .foregroundStyle(ink(0.78))
+            .lineLimit(1)
+            .fixedSize()
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
         }
     }
+
+    /// The pill's format blue: the brand blue as it reads on the always-black pill
+    /// (the dark-appearance value of `Theme.brand`, which `featherBlue` shares).
+    private static let formatBlue = Theme.featherBlue
 
     /// C1 — the live tail as a WRAPPING block below the waveform. `PillColumnLayout`
     /// offers it at most `liveTailWidth`, and it takes only the width its words need
@@ -1257,12 +1301,14 @@ private struct HUDView: View {
     /// word spacing. Colors flow through `ink(_:)` so high-contrast lifts them too.
     private var liveTailString: AttributedString {
         var attributed = AttributedString(model.text)
-        attributed.foregroundColor = ink(model.highContrast ? 0.95 : 0.85)
+        // While the format key is held the words turn the format blue with the waveform.
+        let blue = model.formatState.textIsBlue
+        attributed.foregroundColor = blue ? Self.formatBlue : ink(model.highContrast ? 0.95 : 0.85)
         let volatile = model.volatileText
         if !volatile.isEmpty {
             let joiner = model.text.isEmpty ? "" : " "
             var tail = AttributedString(joiner + volatile)
-            tail.foregroundColor = ink(model.highContrast ? 0.7 : 0.5)
+            tail.foregroundColor = blue ? Self.formatBlue.opacity(0.75) : ink(model.highContrast ? 0.7 : 0.5)
             attributed.append(tail)
         }
         return attributed
@@ -1390,7 +1436,7 @@ private struct HUDView: View {
             // saturated feather color, left as-is.
             let tint = recording ? Theme.featherRed : ink(model.highContrast ? 0.9 : 0.55)
             // "Format while you dictate": the waves turn blue while a format is active.
-            let waveTint = (recording && model.formatChip != nil) ? Theme.featherBlue : tint
+            let waveTint = (recording && model.formatState.waveformIsBlue) ? Self.formatBlue : tint
             Group {
                 if model.silenceCountingDown {
                     // B5: the auto-stop countdown owns the row (and hides the live tail).
@@ -1451,8 +1497,7 @@ private struct HUDView: View {
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.handsFreeLocked)
-            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.formatChip)
-            .animation(.easeInOut(duration: 0.2), value: model.formatNotice)
+            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.formatState)
             .animation(.easeInOut(duration: 0.2), value: model.silenceCountingDown)
             .transition(.blurReplace)
             // The dot + waveform are one status glyph to VoiceOver: state it plainly
@@ -2387,7 +2432,7 @@ struct CenteredRowLayout: Layout {
 /// top-left coordinates within the panel) so the hosting view knows where the only
 /// clickable region is. Only ever touched on the main thread (SwiftUI layout +
 /// AppKit hit-testing both run there), so `@unchecked Sendable` is accurate.
-private final class PillFrameBox: @unchecked Sendable {
+final class PillFrameBox: @unchecked Sendable {
     /// `.null` until the pill has laid out — until then nothing is claimed, which
     /// is the safe default (clicks pass straight through).
     var rect: CGRect = .null

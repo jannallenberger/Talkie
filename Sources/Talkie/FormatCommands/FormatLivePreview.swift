@@ -22,13 +22,23 @@ enum FormatLivePreview {
     }
 
     /// What the pill should show for the words heard in a span.
-    static func resolve(_ spoken: String) -> FormatSpanResolution {
+    static func resolve(_ spoken: String, alternatives: [String] = [],
+                        book: FormatPhraseBook = .current) -> FormatSpanResolution {
         let trimmed = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return .ended }
-        switch FormatPhraseMatcher.match(trimmed) {
+        let others = alternatives.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !trimmed.isEmpty || !others.isEmpty else { return .ended }
+        let command = others.isEmpty
+            ? FormatPhraseMatcher.match(trimmed, book: book)
+            : FormatPhraseMatcher.bestAcross([trimmed] + others, book: book)
+        return resolution(command, heard: trimmed.isEmpty ? (others.first ?? "") : trimmed)
+    }
+
+    static func resolution(_ command: FormatCommand?, heard: String) -> FormatSpanResolution {
+        switch command {
         case .apply(let preset)?: return .applied(preset)
+        case .user(let c)?: return c.isInsertion ? .inserted(c) : .appliedUser(c)
         case .end?: return .ended
-        case nil: return .notRecognised(trimmed)
+        case nil: return .notRecognised(heard)
         }
     }
 }

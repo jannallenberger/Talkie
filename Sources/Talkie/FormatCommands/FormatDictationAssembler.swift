@@ -26,6 +26,8 @@ enum FormatDictationAssembler {
 
     typealias Cleaner = @Sendable (String) async -> String?
     typealias ModelRunner = @Sendable (FormatPreset, String, String?) async -> String?
+    /// Runs a user-made "rewrite it like this" instruction on the model.
+    typealias RewriteRunner = @Sendable (String, String, String?) async -> String?
 
     /// - Parameters:
     ///   - clean: the usual cleanup pass for one piece of text, or nil when cleanup is
@@ -42,26 +44,40 @@ enum FormatDictationAssembler {
         marks: [FormatMark],
         words wordsOverride: [FormatWord]? = nil,
         fallbackCommands: [FormatCommand?] = [],
+        alternatives: [[String]] = [],
+        book: FormatPhraseBook = .current,
         refineByPhrase: Bool = false,
         clean: Cleaner?,
         postProcessFormatted: @Sendable (String) -> String,
         languageCode: String?,
         userName: String,
-        model: ModelRunner = { await FormatModelPass.run($0, text: $1, languageCode: $2) }
+        model: ModelRunner = { await FormatModelPass.run($0, text: $1, languageCode: $2) },
+        rewrite: RewriteRunner = { await FormatModelPass.rewrite(instruction: $0, text: $1, languageCode: $2) },
+        now: Date = Date()
     ) async -> Plan {
         let words = wordsOverride ?? FormatTimeline.words(from: segments)
         let layout = FormatTimeline.layout(
             words: words, marks: marks,
+            book: book,
             fallback: { n in n < fallbackCommands.count ? fallbackCommands[n] : nil },
+            alternatives: { n in n < alternatives.count ? alternatives[n] : [] },
             refineByPhrase: refineByPhrase)
         var parts: [FormatAssembly.Part] = []
         var modelFallback = false
 
         for region in layout.regions {
-            guard let preset = region.format else {
+            guard let style = region.style else {
                 parts.append(.normal(await cleanedRegionText(region.words, clean: clean)))
                 continue
             }
+            if case .user(let command) = style {
+                parts.append(.formatted(await renderUser(command, words: region.words, clean: clean,
+                                                         postProcess: postProcessFormatted,
+                                                         languageCode: languageCode, rewrite: rewrite,
+                                                         now: now, fellBack: &modelFallback)))
+                continue
+            }
+            guard case .preset(let preset) = style else { continue }
             let piece: FormatRenderer.Piece
             switch preset {
             case .verbatim:
@@ -110,6 +126,31 @@ enum FormatDictationAssembler {
             return .init(text: out, isBlock: false)
         case .bulletList, .numberedList, .todoList, .verbatim:
             return .init(text: text, isBlock: preset.isBlock)   // handled by the caller
+        }
+    }
+
+    /// Render a user-made command's region (or its fixed text, for an insertion).
+    static func renderUser(_ command: UserCommand, words: [FormatWord], clean: Cleaner?,
+                           postProcess: @Sendable (String) -> String, languageCode: String?,
+                           rewrite: RewriteRunner, now: Date, fellBack: inout Bool) async -> FormatRenderer.Piece {
+        switch command.action {
+        case .insert:
+            return UserCommandRenderer.render(command.action, text: "", languageCode: languageCode, now: now)
+                ?? .init(text: "", isBlock: false)
+        case .linePrefix(let prefix):
+            let chunks = FormatTimeline.pauseChunks(of: words)
+            let cleaned = await cleanAll(chunks, clean: clean).map(postProcess)
+            return .init(text: UserCommandRenderer.linePrefixed(prefix, items: cleaned), isBlock: true)
+        case .rewrite(let instruction):
+            let text = postProcess(await cleanedRegionText(words, clean: clean))
+            guard !text.isEmpty else { return .init(text: "", isBlock: false) }
+            if let out = await rewrite(instruction, text, languageCode) { return .init(text: out, isBlock: false) }
+            fellBack = true
+            return .init(text: text, isBlock: false)
+        case .wrap, .textCase:
+            let text = postProcess(await cleanedRegionText(words, clean: clean))
+            return UserCommandRenderer.render(command.action, text: text, languageCode: languageCode, now: now)
+                ?? .init(text: text, isBlock: false)
         }
     }
 
