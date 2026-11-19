@@ -421,16 +421,63 @@ final class SpokenPunctuationTests: XCTestCase {
         XCTAssertEqual(FormatRenderer.allCaps(SpokenPunctuation.apply("a, colon, b", languageCode: "en"), languageCode: "en"), "A: B")
     }
 
+    /// Listed = works: every word the Commands page shows (full list and the collapsed
+    /// examples) was replaced in at least one real recognizer recording.
+    func testEveryListedWordWorkedInARecording() {
+        // How the recognizer writes some spoken words (measured).
+        let heardAs = ["semikolon": "semi", "em dash": "m dash", "ampersand": "amper sand", "paragraf fünf": "paragraf",
+                       "pluszeichen": "plus zeichen"]
+        func spokenForms(_ word: String) -> [String] {
+            let w = word.lowercased()
+            if w.contains(" … ") {   // "Klammer auf … zu", "open … close quote"
+                let parts = w.components(separatedBy: " … ")
+                let head = parts[0].split(separator: " ")
+                let tail = parts[1].split(separator: " ")
+                if head.count == 2, tail.count == 1 {      // "klammer auf … zu"
+                    return ["\(head[0]) \(head[1])", "\(head[0]) \(tail[0])"]
+                }
+                return ["\(head[0]) \(tail.dropFirst().joined(separator: " "))", tail.joined(separator: " ")]
+            }
+            return [heardAs[w] ?? w.replacingOccurrences(of: "-", with: " ")]
+        }
+        func occurrences(_ needle: String, in text: String) -> Int {
+            text.lowercased().components(separatedBy: needle).count - 1
+        }
+        let commandClips = SpokenPunctuationFixtures.recognized.filter { !$0.id.hasSuffix("_S") }
+        func worked(_ form: String) -> Bool {
+            commandClips.contains { f in
+                let out = SpokenPunctuation.beforeModel(f.input, languageCode: f.lang, structural: true)
+                return occurrences(form, in: out) < occurrences(form, in: f.input)
+            }
+        }
+        var checked = 0
+        for lang in T.verifiedLanguages {
+            for item in T.reference(language: lang) + T.examples(language: lang) {
+                for form in spokenForms(item.word) {
+                    XCTAssertTrue(worked(form), "listed but never replaced in a recording: \(item.word) (\(form))")
+                    checked += 1
+                }
+            }
+        }
+        XCTAssertGreaterThan(checked, 45)
+        // Unverified languages list nothing; matched-but-never-heard words are not listed.
+        for lang in T.others.keys { XCTAssertTrue(T.reference(language: lang).isEmpty, lang) }
+        let shown = Set(T.verifiedLanguages.flatMap { T.reference(language: $0).map { $0.word.lowercased() } })
+        for hidden in ["dash", "hashtag", "en dash", "eckige klammer zu", "bindestrich", "ausrufezeichen"] {
+            XCTAssertFalse(shown.contains(hidden), hidden)
+        }
+    }
+
+    /// Every listed word is also a word the matcher knows (the page and the tables agree).
     func testReferenceListMatchesTheTables() {
         let all = Set((T.german + T.english).map(phrase))
-        let skip: Set<String> = ["neue zeile", "neuer absatz", "paragraph fünf", "new line", "new paragraph"]
-        for lang in ["de", "en"] {
+        let skip: Set<String> = ["neue zeile", "neuer absatz", "paragraf fünf", "new line", "new paragraph"]
+        for lang in T.verifiedLanguages {
             for item in T.reference(language: lang) where !skip.contains(item.word.lowercased()) {
                 let w = item.word.lowercased().replacingOccurrences(of: "-", with: " ")
                 XCTAssertTrue(all.contains(w), "shown but not matched: \(item.word)")
             }
         }
-        for lang in T.others.keys { XCTAssertFalse(T.reference(language: lang).isEmpty, lang) }
     }
 
     // MARK: Real recognizer output (Step 0 fixtures)

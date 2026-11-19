@@ -1153,4 +1153,6 @@
 /* Spoken punctuation (Commands page) */
 "Punctuation you can say" = "Leestekens die je kunt zeggen";
 "Say punctuation" = "Leestekens uitspreken";
-"Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word." = "Zeg het woord apart, met een korte pauze: “dubbele punt” wordt het teken. Midden in een gewone zin blijft het een woord.";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Zeg een leesteken-woord los en het wordt het teken. Midden in een gewone zin blijft het een woord. “New line” en “new paragraph” hebben een korte pauze ervoor en erna nodig.";
+"Show all" = "Alles tonen";
+"Show fewer" = "Minder tonen";

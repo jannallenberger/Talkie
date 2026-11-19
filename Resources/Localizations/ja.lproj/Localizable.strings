@@ -1153,4 +1153,6 @@
 /* Spoken punctuation (Commands page) */
 "Punctuation you can say" = "声に出して言える句読点・記号";
 "Say punctuation" = "記号を声で入力";
-"Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word." = "その単語だけを、短い間をあけて言います。「コロン」は記号になります。通常の文の途中では、ただの単語のままです。";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "記号の名前だけを単独で言うと、記号になります。通常の文の途中では、ただの単語のままです。「new line」と「new paragraph」は、前後に短い間をあけてください。";
+"Show all" = "すべて表示";
+"Show fewer" = "表示を減らす";

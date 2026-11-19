@@ -574,6 +574,29 @@ struct TalkieWordMark: View {
     }
 }
 
+/// "Show all" / "Show fewer" under a shortened list: a small secondary button (so it
+/// has the shared hover and press feedback) with a chevron that turns when open.
+struct TalkieDisclosureButton: View {
+    @Binding var isExpanded: Bool
+    var collapsedTitle: String = "Show all".loc
+    var expandedTitle: String = "Show fewer".loc
+
+    var body: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.18)) { isExpanded.toggle() }
+        } label: {
+            HStack(spacing: 5) {
+                Text(isExpanded ? expandedTitle : collapsedTitle)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+        }
+        .buttonStyle(.talkie(.secondary, size: .small))
+        .accessibilityValue(Text(isExpanded ? "Expanded".loc : "Collapsed".loc))
+    }
+}
+
 /// One of the user's real keys drawn as a key cap (dictation key, format key).
 /// Never clickable; pair it with a separate "Change…" button.
 struct TalkieKeycap: View {

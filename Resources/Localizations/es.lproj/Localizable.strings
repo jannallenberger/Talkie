@@ -1153,4 +1153,6 @@
 /* Spoken punctuation (Commands page) */
 "Punctuation you can say" = "Puntuación que puedes decir";
 "Say punctuation" = "Decir la puntuación";
-"Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word." = "Di la palabra sola, con una pausa corta: «dos puntos» se convierte en el signo. Dentro de una frase normal sigue siendo una palabra.";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Di una palabra de puntuación sola y se convierte en el signo. Dentro de una frase normal sigue siendo una palabra. «New line» y «new paragraph» necesitan una pausa corta antes y después.";
+"Show all" = "Mostrar todo";
+"Show fewer" = "Mostrar menos";

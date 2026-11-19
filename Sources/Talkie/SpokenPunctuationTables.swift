@@ -162,7 +162,8 @@ enum SpokenPunctuationTables {
         e("underscore", .underscore),
         e("at sign", .at, ignorePrev: ["at"]), e("at symbol", .at, ignorePrev: ["at"]),
         e("percent sign", .percent), e("percent symbol", .percent),
-        e("ampersand", .ampersand),
+        // The recognizer splits a spoken "ampersand" into "amper sand" (measured).
+        e("ampersand", .ampersand), e("amper sand", .ampersand),
         e("hash sign", .hash), e("hash symbol", .hash),
         e("hashtag", .hash, boundary: true),
         e("asterisk", .asterisk),
@@ -350,40 +351,52 @@ enum SpokenPunctuationTables {
 // MARK: - Reference list for the Commands page
 
 extension SpokenPunctuationTables {
-    /// What the page shows: the spoken citation form and the character it becomes, per
-    /// language. Words are spoken-language data, so they are not localized. The wording
-    /// matches the tables above; a test keeps the two in step.
+    /// The languages whose words are verified against the real recognizer. Only these
+    /// are shown on the Commands page (listed = works); the other tables stay unlisted.
+    static let verifiedLanguages = ["de", "en"]
+
+    /// The full list the page shows when expanded: only words the recognizer actually
+    /// delivered in a form this pass replaced (the Step 0 and second-pass recordings in
+    /// SpokenPunctuationFixtures; a test keeps the two in step). Words are spoken-language
+    /// data, so they are not localized. "dash", "hashtag", "en dash" and the eckige-Klammer
+    /// words are matched but never came through the recognizer, so they are not listed.
     static func reference(language: String) -> [(word: String, mark: String)] {
         switch language {
         case "de":
-            return [("Doppelpunkt", ":"), ("Semikolon", ";"), ("Fragezeichen", "?"), ("Ausrufezeichen", "!"),
-                    ("Schrägstrich", "/"), ("Backslash", "\\"), ("Klammer auf", "("), ("Klammer zu", ")"),
-                    ("eckige Klammer auf", "["), ("eckige Klammer zu", "]"),
-                    ("geschweifte Klammer auf", "{"), ("geschweifte Klammer zu", "}"),
+            return [("Doppelpunkt", ":"), ("Semikolon", ";"), ("Fragezeichen", "?"), ("Slash", "/"),
+                    ("Klammer auf", "("), ("Klammer zu", ")"), ("eckige Klammer auf", "["),
+                    ("geschweifte Klammer auf", "{"),
                     ("Anführungszeichen auf", "\u{201E}"), ("Anführungszeichen zu", "\u{201C}"),
-                    ("Gedankenstrich", "–"), ("Bindestrich", "-"), ("Unterstrich", "_"),
-                    ("At-Zeichen", "@"), ("Prozentzeichen", "%"), ("Et-Zeichen", "&"),
+                    ("Gedankenstrich", "–"), ("Unterstrich", "_"), ("Prozentzeichen", "%"),
                     ("Raute", "#"), ("Sternchen", "*"), ("Gleichheitszeichen", "="), ("Pluszeichen", "+"),
-                    ("Paragraphzeichen", "§"), ("Paragraph fünf", "§ 5"), ("Auslassungspunkte", "…"),
-                    ("neue Zeile", "↵"), ("neuer Absatz", "¶")]
+                    ("Paragraf fünf", "§ 5"), ("Auslassungspunkte", "…"), ("neue Zeile", "↵"),
+                    ("neuer Absatz", "¶")]
         case "en":
-            return [("colon", ":"), ("semicolon", ";"), ("question mark", "?"), ("exclamation mark", "!"),
+            return [("colon", ":"), ("question mark", "?"), ("exclamation mark", "!"),
                     ("slash", "/"), ("backslash", "\\"), ("open parenthesis", "("), ("close parenthesis", ")"),
-                    ("open bracket", "["), ("close bracket", "]"), ("open brace", "{"), ("close brace", "}"),
+                    ("open square bracket", "["), ("open brace", "{"),
                     ("open quote", "\u{201C}"), ("close quote", "\u{201D}"),
-                    ("dash", "—"), ("hyphen", "-"), ("underscore", "_"), ("at sign", "@"),
+                    ("em dash", "—"), ("hyphen", "-"), ("underscore", "_"), ("at sign", "@"),
                     ("percent sign", "%"), ("ampersand", "&"), ("hash sign", "#"), ("asterisk", "*"),
-                    ("equals sign", "="), ("plus sign", "+"), ("section sign", "§"), ("ellipsis", "…"),
-                    ("new line", "↵"), ("new paragraph", "¶")]
+                    ("plus sign", "+"), ("section sign", "§"),
+                    ("ellipsis", "…"), ("new line", "↵"), ("new paragraph", "¶")]
         default:
-            let glyph: [Kind: String] = [
-                .colon: ":", .semicolon: ";", .question: "?", .exclaim: "!", .slash: "/",
-                .openParen: "(", .closeParen: ")", .quoteOpen: "\u{201C}", .quoteClose: "\u{201D}",
-                .at: "@", .underscore: "_", .ampersand: "&", .hyphen: "-",
-            ]
-            return (others[language] ?? []).compactMap { entry in
-                glyph[entry.kind].map { (entry.words.joined(separator: " "), $0) }
-            }
+            return []
+        }
+    }
+
+    /// The one collapsed row: six everyday marks in the UI language (English when the UI
+    /// language has no verified table).
+    static func examples(language: String) -> [(word: String, mark: String)] {
+        switch language {
+        case "de":
+            return [("Doppelpunkt", ":"), ("Fragezeichen", "?"), ("Slash", "/"),
+                    ("Klammer auf … zu", "( )"), ("Anführungszeichen auf … zu", "\u{201E} \u{201C}"),
+                    ("neue Zeile", "↵")]
+        default:
+            return [("colon", ":"), ("question mark", "?"), ("slash", "/"),
+                    ("open … close parenthesis", "( )"), ("open … close quote", "\u{201C} \u{201D}"),
+                    ("new line", "↵")]
         }
     }
 }

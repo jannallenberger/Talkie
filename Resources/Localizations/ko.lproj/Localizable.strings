@@ -1153,4 +1153,6 @@
 /* Spoken punctuation (Commands page) */
 "Punctuation you can say" = "말로 입력할 수 있는 문장 부호";
 "Say punctuation" = "문장 부호 말하기";
-"Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word." = "단어만 짧게 쉬었다가 말하세요. “콜론”은 기호로 바뀝니다. 일반 문장 안에서는 그대로 단어로 남습니다.";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "문장 부호 이름만 따로 말하면 기호로 바뀝니다. 일반 문장 안에서는 그대로 단어로 남습니다. “new line”과 “new paragraph”는 앞뒤로 잠깐 쉬어 주세요.";
+"Show all" = "모두 보기";
+"Show fewer" = "간단히 보기";
