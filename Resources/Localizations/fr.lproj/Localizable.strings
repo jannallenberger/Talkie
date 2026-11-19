@@ -1158,3 +1158,26 @@
 "Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Dis un mot de ponctuation seul et il devient le signe. Au milieu d’une phrase normale, il reste un mot. « New line » et « new paragraph » demandent une courte pause avant et après.";
 "Show all" = "Tout afficher";
 "Show fewer" = "Afficher moins";
+
+// MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
+"Commands are off" = "Les commandes sont désactivées";
+"Turn %@ on or off" = "Activer ou désactiver %@";
+"Use %@" = "Utiliser %@";
+"Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "Les commandes sont désactivées : ces formats ne font rien tant que tu ne les réactives pas ci-dessus. Ta dictée n’est pas affectée.";
+"Each format has its own switch. Open a card to see every way to say it and to add your own wording." = "Chaque format a son propre interrupteur. Ouvre une carte pour voir toutes les façons de le dire et ajouter ta propre formulation.";
+"You can say" = "Tu peux dire";
+"Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine." = "Chacune fonctionne, dans toutes les langues que tu parles – tu peux les mélanger. Des mots autour, comme « s’il te plaît » ou « en », ne gênent pas.";
+"Show other languages" = "Afficher les autres langues";
+"Hide other languages" = "Masquer les autres langues";
+"Add your own wording" = "Ajouter ta propre formulation";
+"It works like the built-in ones. Your own words can be removed again with the ×." = "Elle fonctionne comme les formulations intégrées. Tu peux retirer les tiennes avec la ×.";
+"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Tant que tu maintiens la touche de format, ce que tu dis est lu comme un format, dans n’importe laquelle de tes langues. Si aucun format n’est reconnu, tes mots sont simplement conservés comme texte.";
+"%@ is on" = "%@ est activé";
+"No format heard · kept as text" = "Aucun format entendu · conservé comme texte";
+"No format heard. Your words were kept as text." = "Aucun format entendu. Tes mots ont été conservés comme texte.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "Les commandes sont activées";
+"Dictation keeps working normally." = "La dictée fonctionne normalement.";
+"Your own wording" = "Ta formulation";
+"+%d more" = "+%d de plus";

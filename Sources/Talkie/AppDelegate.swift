@@ -913,6 +913,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 guard let self, self.isDictating, self.sessionID == myID else { return }
                 var resolution = FormatLivePreview.resolve(heard)
+                var saidAnything = !heard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 // The live recognizer may be in another language than the command:
                 // when it didn't read as one, ask the other languages' readings.
                 let unresolved: Bool = {
@@ -923,7 +924,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let others = await FormatCrossLanguage.value(
                         of: alternatives, within: FormatCrossLanguage.spanBudgetSeconds + 0.5) ?? []
                     guard self.isDictating, self.sessionID == myID else { return }
-                    if !others.isEmpty { resolution = FormatLivePreview.resolve(heard, alternatives: others) }
+                    if !others.isEmpty {
+                        resolution = FormatLivePreview.resolve(heard, alternatives: others)
+                        saidAnything = saidAnything || others.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    }
                 }
                 if spanNumber < self.sessionLiveCommands.count {
                     switch resolution {
@@ -933,7 +937,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     case .notRecognised: break
                     }
                 }
-                self.hud.formatEvent(.resolved(PillFormatState.resolution(resolution)))
+                // Held the key and said nothing: no flash, nothing to report.
+                self.hud.formatEvent(.resolved(!saidAnything ? .emptyHold : PillFormatState.resolution(resolution)))
             }
         }
     }

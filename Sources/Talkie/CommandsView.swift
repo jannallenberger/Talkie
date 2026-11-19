@@ -11,92 +11,17 @@ struct CommandsView: View {
     let hud: HUDController
     let meetingStore: MeetingStore
 
-    /// The card whose popover is open.
-    @State private var selected: CommandCardID?
-
+    private let editColumns = [GridItem(.adaptive(minimum: 150), spacing: Theme.Space.gridGap, alignment: .top)]
     private var uiLanguageCode: String? { Bundle.main.preferredLocalizations.first }
 
-    private let columns = [GridItem(.adaptive(minimum: 176), spacing: Theme.Space.gridGap, alignment: .top)]
-    private let editColumns = [GridItem(.adaptive(minimum: 150), spacing: Theme.Space.gridGap, alignment: .top)]
-
     var body: some View {
-        SubPage(title: "Commands",
-                subtitle: "Hold a second key while you dictate and say how the next words should look.".loc) {
+        SubPage(title: "Commands") {
+            CommandsMasterCard(settings: settings)
             HowItWorksStrip(dictationKey: settings.activationKey, formatKey: settings.effectiveFormatCommandKey)
-            formatGrid
+            FormatCardsSection(settings: settings, macros: macros)
             editGroup
             SpokenPunctuationCard(settings: settings, uiLanguageCode: uiLanguageCode)
             optionsCard
-        }
-    }
-
-    // MARK: Formats
-
-    private var userCommands: [UserCommand] { UserCommandLibrary.all(settings: settings, macros: macros) }
-
-    @ViewBuilder
-    private var formatGrid: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            TalkieSectionLabel(title: "Formats")
-            if !settings.formatCommandsEnabled {
-                TalkieStatusLine(text: "Formatting while you dictate is off. Turn it on in Options below.".loc)
-                    .padding(.horizontal, 4)
-            }
-            LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Space.gridGap) {
-                ForEach(FormatPreset.allCases) { preset in
-                    presetCard(preset)
-                }
-                ForEach(userCommands) { command in
-                    userCard(command)
-                }
-                newCommandCard
-            }
-        }
-    }
-
-    private func isOpen(_ id: CommandCardID) -> Binding<Bool> {
-        Binding(get: { selected == id }, set: { if !$0, selected == id { selected = nil } })
-    }
-
-    private func presetCard(_ preset: FormatPreset) -> some View {
-        let id = CommandCardID.preset(preset)
-        return Button { selected = id } label: {
-            CommandCardLabel(illustration: .preset(preset), name: preset.displayName,
-                             phrase: preset.shownPhrase(uiLanguageCode: uiLanguageCode),
-                             slower: preset.usesModel,
-                             isOff: settings.disabledPresetSet.contains(preset))
-        }
-        .buttonStyle(.talkieCard(selected: selected == id))
-        .help(String(format: "Show %@".loc, preset.displayName))
-        .popover(isPresented: isOpen(id), arrowEdge: .bottom) {
-            FormatCommandDetail(preset: preset, settings: settings, macros: macros,
-                                uiLanguageCode: uiLanguageCode)
-        }
-    }
-
-    private func userCard(_ command: UserCommand) -> some View {
-        let id = CommandCardID.user(command.id)
-        return Button { selected = id } label: {
-            CommandCardLabel(illustration: .user(command.action), name: command.name,
-                             phrase: command.shownPhrase, slower: command.usesModel, isOff: !command.enabled)
-        }
-        .buttonStyle(.talkieCard(selected: selected == id))
-        .help(String(format: "Edit %@".loc, command.name))
-        .popover(isPresented: isOpen(id), arrowEdge: .bottom) {
-            UserCommandEditor(settings: settings, macros: macros, existing: command) { selected = nil }
-        }
-    }
-
-    private var newCommandCard: some View {
-        Button { selected = .new } label: {
-            CommandCardLabel(illustration: .newCommand, name: "New command".loc,
-                             phrase: "Make your own".loc, slower: false, isOff: false)
-        }
-        .buttonStyle(.talkieCard(selected: selected == .new))
-        .help("Make your own command".loc)
-        .accessibilityLabel("New command".loc)
-        .popover(isPresented: isOpen(.new), arrowEdge: .bottom) {
-            UserCommandEditor(settings: settings, macros: macros, existing: nil) { selected = nil }
         }
     }
 
@@ -105,8 +30,8 @@ struct CommandsView: View {
     private var editGroup: some View {
         VStack(alignment: .leading, spacing: 9) {
             TalkieSectionLabel(
-                title: "Edit selected text",
-                subtitle: "Say one of these as its own dictation. With nothing selected, it changes what you just dictated.")
+                title: "Edit selected text".loc,
+                subtitle: "Say one of these as its own dictation. With nothing selected, it changes what you just dictated.".loc)
             LazyVGrid(columns: editColumns, alignment: .leading, spacing: Theme.Space.gridGap) {
                 ForEach(EditCommandKind.allCases, id: \.self) { kind in
                     EditCommandCard(kind: kind)
@@ -117,25 +42,8 @@ struct CommandsView: View {
 
     // MARK: Options
 
-    private var commandKeyBinding: Binding<ActivationKey> {
-        Binding(get: { settings.effectiveFormatCommandKey },
-                set: { settings.formatCommandKey = $0 })
-    }
-
     private var optionsCard: some View {
         SettingsCard(header: "Options") {
-            SettingsToggleRow(
-                title: "Format while you dictate".loc,
-                subtitle: "Listen for the format key during a dictation.".loc,
-                isOn: $settings.formatCommandsEnabled)
-            SettingsDivider()
-            SettingsRow(title: "Format key".loc,
-                        subtitle: "Pressed together with another key or a click, it does nothing.".loc) {
-                ActivationKeyRecorder(key: commandKeyBinding) { candidate in
-                    FormatCommandKey.refusal(for: candidate, dictationKey: settings.activationKey)
-                }
-            }
-            SettingsDivider()
             SettingsToggleRow(
                 title: "Ask about your meetings".loc,
                 subtitle: "Requests like \u{201C}email Sarah the action items from my last meeting\u{201D} run as a command, with a preview first. Uses only what is on this Mac.".loc,
@@ -155,51 +63,6 @@ extension FormatCommand {
     /// The "back to normal" phrase to show in the UI language.
     static func shownEndPhrase(uiLanguageCode: String?) -> String {
         FormatPhrases.endPhrases(language: FormatPhrases.language(of: uiLanguageCode) ?? "en").first ?? "normal"
-    }
-}
-
-// MARK: - Card
-
-/// One card's content: the illustration (with "Off" / "slower" tags on it), the
-/// command's name and the main phrase to say. All cards are the same size.
-struct CommandCardLabel: View {
-    let illustration: CommandIllustration.Kind
-    let name: String
-    let phrase: String
-    let slower: Bool
-    let isOff: Bool
-
-    static let height: CGFloat = 144
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            CommandIllustration(kind: illustration)
-                .opacity(isOff ? 0.45 : 1)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(verbatim: name)
-                        .font(.talkieHeading(14, weight: .medium))
-                        .foregroundStyle(isOff ? Theme.inkSecondary : Theme.ink)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    if isOff { TalkieTag(text: "Off") }
-                }
-                HStack(spacing: 6) {
-                    Text(verbatim: "\u{201C}\(phrase)\u{201D}")
-                        .font(.talkieHeading(12, weight: .regular))
-                        .foregroundStyle(Theme.inkSecondary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    if slower { TalkieTag(text: "slower") }
-                }
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .topLeading)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isOff ? String(format: "%@, off".loc, name) : name)
-        .accessibilityValue(phrase)
     }
 }
 
@@ -259,6 +122,18 @@ struct HowItWorksStrip: View {
     let formatKey: ActivationKey
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // The one-sentence rule, before the three steps.
+            Text("While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text.".loc)
+                .font(.talkieHeading(13, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            steps
+        }
+        .talkieCard(padding: 16)
+    }
+
+    private var steps: some View {
         HStack(alignment: .top, spacing: 10) {
             step(String(format: "Hold %@ and talk".loc, dictationKey.displayName)) {
                 TalkieKeycap(text: dictationKey.displayName, symbol: dictationKey.symbolName)
@@ -276,7 +151,6 @@ struct HowItWorksStrip: View {
                     .frame(maxWidth: 150)
             }
         }
-        .talkieCard(padding: 16)
     }
 
     private var arrow: some View {
@@ -327,73 +201,6 @@ private struct PillMock: View {
     }
 }
 
-// MARK: - Built-in command detail
-
-/// A format card's popover: on/off, what to say, the user's own words for it, a
-/// one-line example, and "slower" where the on-device model is used.
-struct FormatCommandDetail: View {
-    let preset: FormatPreset
-    @ObservedObject var settings: AppSettings
-    @ObservedObject var macros: MacroStore
-    let uiLanguageCode: String?
-
-    @State private var draft = ""
-    @State private var problem: FormatPhraseBook.Refusal?
-
-    private var isOn: Binding<Bool> {
-        Binding(get: { !settings.disabledPresetSet.contains(preset) },
-                set: { on in
-                    var set = Set(settings.disabledFormatPresets)
-                    if on { set.remove(preset.rawValue) } else { set.insert(preset.rawValue) }
-                    settings.disabledFormatPresets = set.sorted()
-                })
-    }
-
-    private var synonyms: Binding<[String]> {
-        Binding(get: { settings.formatSynonyms[preset.rawValue] ?? [] },
-                set: { settings.formatSynonyms[preset.rawValue] = $0.isEmpty ? nil : $0 })
-    }
-
-    var body: some View {
-        TalkiePopover(title: preset.displayName, width: Theme.Width.popoverWide) {
-            if preset.usesModel {
-                TalkieTag(text: "slower — uses the on-device model")
-            }
-            TalkieSwitchRow(title: "Use this command".loc,
-                            subtitle: "When it's off, saying it does nothing special.".loc,
-                            isOn: isOn)
-            TalkiePopoverDivider()
-            TalkieField(label: "What to say",
-                        help: "Works in every language you dictate in.") {
-                Text(verbatim: "\u{201C}\(preset.shownPhrase(uiLanguageCode: uiLanguageCode))\u{201D}")
-                    .font(.talkieHeading(13, weight: .medium))
-                    .foregroundStyle(Theme.ink)
-            }
-            TalkieField(label: "For example") {
-                Text(verbatim: "\(Self.oneLine(preset.example.before))  \u{2192}  \(Self.oneLine(preset.example.after))")
-                    .font(.talkieHeading(12, weight: .regular))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            TalkiePopoverDivider()
-            TalkieField(label: "Your own words",
-                        help: "Other ways you say it. They work like the built-in words.") {
-                PhraseListEditor(phrases: synonyms, placeholder: "Add a phrase".loc,
-                                 draft: $draft, problem: $problem) { phrase in
-                    UserCommandLibrary.book(settings: settings, macros: macros)
-                        .refusal(for: phrase, owner: .preset(preset))
-                }
-            }
-        }
-    }
-
-    static func oneLine(_ s: String) -> String {
-        s.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
-    }
-}
-
 // MARK: - Phrase list
 
 /// A list of phrases as removable chips, a field to add one, and the one-line reason
@@ -406,6 +213,9 @@ struct PhraseListEditor: View {
     /// Why the typed phrase can't be added; shown under the field.
     @Binding var problem: FormatPhraseBook.Refusal?
     /// Why a phrase can't be added (nil = it can). Checked against every other command.
+    /// Add is the primary action when this is the popover's only action (the format
+    /// details); inside a form with its own Save it stays secondary.
+    var addIsPrimary = false
     let refusal: (String) -> FormatPhraseBook.Refusal?
 
     var body: some View {
@@ -433,7 +243,7 @@ struct PhraseListEditor: View {
                     .onSubmit { add() }
                     .onChange(of: draft) { problem = nil }
                 Button("Add".loc) { add() }
-                    .buttonStyle(.talkie(.secondary, size: .small))
+                    .buttonStyle(.talkie(addIsPrimary ? .primary : .secondary, size: .small))
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if let problem {

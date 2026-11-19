@@ -70,10 +70,10 @@ final class FormatPhraseTableTests: XCTestCase {
 final class FormatPhraseBookTests: XCTestCase {
 
     func testSynonymsMatchLikeBuiltInPhrases() {
-        let book = FormatPhraseBook(synonyms: ["bulletList": ["dot points"]])
-        XCTAssertEqual(FormatPhraseMatcher.match("dot points", book: book), .apply(.bulletList))
-        XCTAssertEqual(FormatPhraseMatcher.match("okay dot points please", book: book), .apply(.bulletList))
-        XCTAssertNil(FormatPhraseMatcher.match("dot points", book: .builtIn))
+        let book = FormatPhraseBook(synonyms: ["bulletList": ["tick marks"]])
+        XCTAssertEqual(FormatPhraseMatcher.match("tick marks", book: book), .apply(.bulletList))
+        XCTAssertEqual(FormatPhraseMatcher.match("okay tick marks please", book: book), .apply(.bulletList))
+        XCTAssertNil(FormatPhraseMatcher.match("tick marks", book: .builtIn))
     }
 
     func testSwitchedOffCommandIsNotMatched() {
@@ -93,7 +93,7 @@ final class FormatPhraseBookTests: XCTestCase {
 
     func testDuplicatesAcrossCommandsAreRefusedWithAReason() {
         let shout = UserCommand(name: "Shout", phrases: ["yell please"], action: .textCase(.upper))
-        let book = FormatPhraseBook(synonyms: ["bulletList": ["dot points"]], userCommands: [shout])
+        let book = FormatPhraseBook(synonyms: ["bulletList": ["tick marks"]], userCommands: [shout])
         XCTAssertEqual(book.refusal(for: "in quotes", owner: .preset(.bulletList)),
                        .usedBy(FormatPreset.quotes.displayName))
         XCTAssertEqual(book.refusal(for: "Anführungszeichen!", owner: .user(shout.id)),
@@ -106,7 +106,7 @@ final class FormatPhraseBookTests: XCTestCase {
         XCTAssertEqual(book.refusal(for: "shout it", owner: .user(shout.id)), .usedBy(FormatPreset.shorter.displayName))
         XCTAssertEqual(book.refusal(for: "Schluss", owner: .preset(.allCaps)), .usedBy(FormatCommand.end.displayName))
         XCTAssertEqual(book.refusal(for: "please", owner: .preset(.allCaps)), .onlyFillerWords)
-        XCTAssertEqual(book.refusal(for: "Dot points.", owner: .preset(.bulletList)), .alreadyListed)
+        XCTAssertEqual(book.refusal(for: "Tick marks.", owner: .preset(.bulletList)), .alreadyListed)
         XCTAssertNil(book.refusal(for: "make it loud", owner: .preset(.allCaps)))
         XCTAssertFalse(FormatPhraseBook.Refusal.usedBy("Shout").message.isEmpty)
     }

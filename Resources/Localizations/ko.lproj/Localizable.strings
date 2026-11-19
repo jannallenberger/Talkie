@@ -1158,3 +1158,26 @@
 "Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "문장 부호 이름만 따로 말하면 기호로 바뀝니다. 일반 문장 안에서는 그대로 단어로 남습니다. “new line”과 “new paragraph”는 앞뒤로 잠깐 쉬어 주세요.";
 "Show all" = "모두 보기";
 "Show fewer" = "간단히 보기";
+
+// MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
+"Commands are off" = "명령이 꺼져 있습니다";
+"Turn %@ on or off" = "%@ 켜기/끄기";
+"Use %@" = "%@ 사용";
+"Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "명령이 꺼져 있어서 위에서 켜기 전에는 이 서식들이 작동하지 않습니다. 받아쓰기에는 영향이 없습니다.";
+"Each format has its own switch. Open a card to see every way to say it and to add your own wording." = "각 서식에는 자체 스위치가 있습니다. 카드를 열면 말하는 방법을 모두 보고 나만의 표현을 추가할 수 있습니다.";
+"You can say" = "이렇게 말할 수 있어요";
+"Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine." = "어느 것이든 말하는 모든 언어로 작동하며 섞어서 말해도 됩니다. “please”나 “as a” 같은 앞뒤 말은 괜찮습니다.";
+"Show other languages" = "다른 언어 보기";
+"Hide other languages" = "다른 언어 숨기기";
+"Add your own wording" = "나만의 표현 추가";
+"It works like the built-in ones. Your own words can be removed again with the ×." = "기본 표현과 똑같이 작동합니다. 직접 추가한 표현은 ×로 다시 지울 수 있습니다.";
+"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "서식 키를 누르고 있는 동안 말한 내용은 어떤 언어든 서식으로 인식됩니다. 서식이 인식되지 않으면 말한 내용은 그냥 텍스트로 유지됩니다.";
+"%@ is on" = "%@ 켜짐";
+"No format heard · kept as text" = "서식을 듣지 못함 · 텍스트로 유지";
+"No format heard. Your words were kept as text." = "서식을 듣지 못했습니다. 말한 내용은 텍스트로 유지되었습니다.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "명령이 켜져 있습니다";
+"Dictation keeps working normally." = "받아쓰기는 평소처럼 작동합니다.";
+"Your own wording" = "나만의 표현";
+"+%d more" = "+%d개 더";

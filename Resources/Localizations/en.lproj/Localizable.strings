@@ -1169,3 +1169,26 @@
 "Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after.";
 "Show all" = "Show all";
 "Show fewer" = "Show fewer";
+
+// MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
+"Commands are off" = "Commands are off";
+"Turn %@ on or off" = "Turn %@ on or off";
+"Use %@" = "Use %@";
+"Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected.";
+"Each format has its own switch. Open a card to see every way to say it and to add your own wording." = "Each format has its own switch. Open a card to see every way to say it and to add your own wording.";
+"You can say" = "You can say";
+"Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine." = "Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine.";
+"Show other languages" = "Show other languages";
+"Hide other languages" = "Hide other languages";
+"Add your own wording" = "Add your own wording";
+"It works like the built-in ones. Your own words can be removed again with the ×." = "It works like the built-in ones. Your own words can be removed again with the ×.";
+"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text.";
+"%@ is on" = "%@ is on";
+"No format heard · kept as text" = "No format heard · kept as text";
+"No format heard. Your words were kept as text." = "No format heard. Your words were kept as text.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "Commands are on";
+"Dictation keeps working normally." = "Dictation keeps working normally.";
+"Your own wording" = "Your own wording";
+"+%d more" = "+%d more";

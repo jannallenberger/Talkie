@@ -4,21 +4,45 @@ import Foundation
 /// no I/O): the app feeds it the format-key edges and the span's resolution, and a
 /// timer feeds `flashExpired`. Every transition is unit-tested.
 ///
-///   key down          → content turns blue, "Listening for a format…"
-///   key up (span)     → still blue while the words are checked
-///   resolved: format  → chip with the format's name + a brief confirming tick;
-///                       the chip stays while the format is active
+/// The pill answers "what is happening now" at every step, on one status line below
+/// the waveform (`statusLine`, highest priority first):
+///   key held / words being checked → "Listening for a format…"
+///   no format heard                → "No format heard · kept as text" (~2 s; the words
+///                                    stay in the dictation, dictation carries on)
+///   format ended                   → "Back to normal text" (brief)
+///   format recognised              → its name with a tick (brief), then
+///   format active                  → "<name> is on" for as long as it applies
+///   normal dictation               → nothing
+///
+///   key down          → listening
+///   key up (span)     → still listening while the words are checked
+///   resolved: format  → confirming name + tick; then the active indicator
 ///   resolved: insert  → brief confirming tick with the command's name; format unchanged
-///   resolved: end     → chip removed
-///   resolved: unknown → brief "Not recognised"; the active format (if any) stays
-///   tap / say "normal"→ chip removed
+///   resolved: end     → the active indicator goes, "Back to normal text" for a moment
+///   resolved: unknown → "No format heard · kept as text"; the active format (if any) stays
+///   resolved: empty   → nothing was said: no flash, nothing else changes
+///                       (the held key with no words still ends an active format, as
+///                       the pasted text does)
+///   tap               → like "end"
 ///   key cancelled     → back to what it was (another key or a click spoiled the hold)
 struct PillFormatState: Equatable, Sendable {
     enum Flash: Equatable, Sendable {
         case none
         /// Just recognised (the name shown with a tick).
         case confirmed(String)
+        /// Words were said but are no format: they stay in the text.
         case notRecognised
+        /// The active format stopped.
+        case ended
+    }
+
+    /// The single line under the waveform.
+    enum StatusLine: Equatable, Sendable {
+        case listening
+        case confirmed(String)
+        case active(String)
+        case notRecognised
+        case ended
     }
 
     /// The format key is held right now.
@@ -44,6 +68,8 @@ struct PillFormatState: Equatable, Sendable {
         case inserted(String)
         case ended
         case notRecognised
+        /// The key was held and nothing was said.
+        case emptyHold
     }
 
     mutating func handle(_ event: Event) {
@@ -61,8 +87,8 @@ struct PillFormatState: Equatable, Sendable {
         case .tapped:
             listening = false
             checking = false
+            flash = activeFormat == nil ? .none : .ended
             activeFormat = nil
-            flash = .none
         case .resolved(let r):
             listening = false
             checking = false
@@ -73,10 +99,13 @@ struct PillFormatState: Equatable, Sendable {
             case .inserted(let name):
                 flash = .confirmed(name)
             case .ended:
+                flash = activeFormat == nil ? .none : .ended
                 activeFormat = nil
-                flash = .none
             case .notRecognised:
                 flash = .notRecognised
+            case .emptyHold:
+                activeFormat = nil
+                flash = .none
             }
         case .flashExpired:
             flash = .none
@@ -90,8 +119,21 @@ struct PillFormatState: Equatable, Sendable {
     var textIsBlue: Bool { listening || checking }
     var waveformIsBlue: Bool { listening || checking || activeFormat != nil }
 
-    /// The short hint next to the waveform while the key is held or being checked.
+    /// The short hint under the waveform while the key is held or being checked.
     var showsListeningHint: Bool { (listening || checking) && flash == .none }
+
+    /// What the status line says right now, nil = nothing (normal dictation).
+    var statusLine: StatusLine? {
+        if showsListeningHint { return .listening }
+        switch flash {
+        case .notRecognised: return .notRecognised
+        case .ended: return .ended
+        case .confirmed(let name): return .confirmed(name)
+        case .none: break
+        }
+        if let activeFormat { return .active(activeFormat) }
+        return nil
+    }
 
     /// The chip to show: the confirming flash wins, then the active format.
     var chip: (name: String, confirming: Bool)? {
@@ -101,10 +143,22 @@ struct PillFormatState: Equatable, Sendable {
     }
 
     var showsNotRecognised: Bool { flash == .notRecognised }
+    var showsEnded: Bool { flash == .ended }
 
     /// How long a flash stays before `flashExpired`.
     static let confirmSeconds: Double = 1.4
-    static let notRecognisedSeconds: Double = 1.8
+    static let notRecognisedSeconds: Double = 2.0
+    static let endedSeconds: Double = 1.4
+
+    /// How long `flash` stays (nil = it doesn't expire).
+    var flashSeconds: Double? {
+        switch flash {
+        case .none: return nil
+        case .confirmed: return Self.confirmSeconds
+        case .notRecognised: return Self.notRecognisedSeconds
+        case .ended: return Self.endedSeconds
+        }
+    }
 
     /// Map a span resolution to the pill's event.
     static func resolution(_ r: FormatSpanResolution) -> Resolution {
@@ -134,6 +188,10 @@ enum PillPalette {
     /// Format state: waveform bars, hint text, chip text. `Theme.coral` dark value.
     static let formatBlueHex: UInt32 = 0x4AA0E6
     static var formatBlue: RGB { RGB(hex: formatBlueHex) }
+    /// The "no format heard" warning tone: `Theme.warning` (featherGold) dark value —
+    /// neutral, not red; it is not an error.
+    static let warningHex: UInt32 = 0xF4B33E
+    static var warning: RGB { RGB(hex: warningHex) }
     /// The normal recording waveform (`Theme.featherRed`, light and dark values).
     static let recordingRed = [RGB(hex: 0xE0342B), RGB(hex: 0xF0473B)]
     /// The pill background.
