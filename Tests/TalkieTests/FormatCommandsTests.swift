@@ -236,12 +236,13 @@ final class FormatTimelineTests: XCTestCase {
         XCTAssertEqual(layout.regions.map(\.format), [.bulletList, .bulletList])
     }
 
-    func testUnrecognisedSpanChangesNothingButItsWordsAreDropped() {
+    func testUnrecognisedSpanChangesNothingAndItsWordsStayAsText() {
         let words = [w("one", 0, 0.3), w(" banana", 1.0, 1.4), w(" two", 2.0, 2.3)]
         let layout = FormatTimeline.layout(words: words, marks: [.span(start: 0.9, end: 1.5)])
         XCTAssertEqual(layout.resolutions, [.notRecognised("banana")])
         XCTAssertEqual(layout.regions.count, 1)
-        XCTAssertEqual(FormatTimeline.text(of: layout.regions[0].words), "one two")
+        // Nothing the user said is lost: the words stay in the text.
+        XCTAssertEqual(FormatTimeline.text(of: layout.regions[0].words), "one banana two")
     }
 
     func testSpanWithNoWordsEndsTheMode() {

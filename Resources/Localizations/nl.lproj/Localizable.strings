@@ -1156,3 +1156,32 @@
 // MARK: - Skeleton loading (accessibility labels)
 "Loading…" = "Laden…";
 "Searching…" = "Zoeken…";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "Leestekens die je kunt zeggen";
+"Say punctuation" = "Leestekens uitspreken";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Zeg een leesteken-woord los en het wordt het teken. Midden in een gewone zin blijft het een woord. “New line” en “new paragraph” hebben een korte pauze ervoor en erna nodig.";
+"Show all" = "Alles tonen";
+"Show fewer" = "Minder tonen";
+
+// MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
+"Commands are off" = "Commando’s staan uit";
+"Turn %@ on or off" = "%@ aan- of uitzetten";
+"Use %@" = "%@ gebruiken";
+"Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "Commando’s staan uit, dus deze formaten doen niets totdat je ze hierboven aanzet. Je dictaat blijft ongewijzigd.";
+"Each format has its own switch. Open a card to see every way to say it and to add your own wording." = "Elk formaat heeft zijn eigen schakelaar. Open een kaart om alle manieren om het te zeggen te zien en je eigen formulering toe te voegen.";
+"You can say" = "Dit kun je zeggen";
+"Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine." = "Elk hiervan werkt, in elke taal die je spreekt – je kunt ze mengen. Woorden eromheen, zoals “alsjeblieft” of “als”, zijn prima.";
+"Show other languages" = "Andere talen tonen";
+"Hide other languages" = "Andere talen verbergen";
+"Add your own wording" = "Voeg je eigen formulering toe";
+"It works like the built-in ones. Your own words can be removed again with the ×." = "Werkt net als de ingebouwde. Je eigen woorden kun je weer verwijderen met de ×.";
+"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Zolang je de formaattoets ingedrukt houdt, wordt wat je zegt als formaat gelezen, in elk van je talen. Wordt er geen formaat herkend, dan blijven je woorden gewoon als tekst staan.";
+"%@ is on" = "%@ staat aan";
+"No format heard · kept as text" = "Geen formaat gehoord · als tekst bewaard";
+"No format heard. Your words were kept as text." = "Geen formaat gehoord. Je woorden zijn als tekst bewaard.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "Commando’s staan aan";
+"Dictation keeps working normally." = "Dicteren werkt gewoon door.";
+"Your own wording" = "Je eigen formulering";
+"+%d more" = "+%d meer";

@@ -6,8 +6,34 @@ import XCTest
 /// Opt-in evidence for the Commands page and the pill's format states, in light and
 /// dark. Skipped unless TALKIE_COMMANDS_SNAPSHOT_DIR is set. Uses only throwaway
 /// stores (AppPaths' test sandbox).
+/// Test-only: makes `Bundle.main` answer string lookups from one language's
+/// `Localizable.strings` (the test host has no .lproj of its own), so snapshots can
+/// show the German chrome. Restored by `CommandsSnapshotTests.useUILanguage(nil)`.
+private final class LocalizedMainBundle: Bundle, @unchecked Sendable {
+    nonisolated(unsafe) static var table: [String: String] = [:]
+    nonisolated(unsafe) static var language = "en"
+    override func localizedString(forKey key: String, value: String?, table tableName: String?) -> String {
+        Self.table[key] ?? ((value?.isEmpty ?? true) ? key : value!)
+    }
+    override var preferredLocalizations: [String] { [Self.language] }
+}
+
 @MainActor
 final class CommandsSnapshotTests: XCTestCase {
+
+    /// "de" → German chrome for the following snapshots; nil/"en" → the English source.
+    private func useUILanguage(_ code: String?) {
+        if object_getClass(Bundle.main) !== LocalizedMainBundle.self {
+            object_setClass(Bundle.main, LocalizedMainBundle.self)
+        }
+        LocalizedMainBundle.language = code ?? "en"
+        guard let code, code != "en" else { LocalizedMainBundle.table = [:]; return }
+        var root = URL(fileURLWithPath: #filePath)
+        for _ in 0..<3 { root.deleteLastPathComponent() }
+        let url = root.appendingPathComponent("Resources/Localizations/\(code).lproj/Localizable.strings")
+        LocalizedMainBundle.table = (NSDictionary(contentsOf: url) as? [String: String]) ?? [:]
+    }
+
     private var dir: URL!
 
     override func setUp() async throws {
@@ -85,7 +111,7 @@ final class CommandsSnapshotTests: XCTestCase {
         let shout = UserCommand(name: "Bold", phrases: ["make it bold", "in bold"], action: .wrap(before: "**", after: "**"))
         let quote = UserCommand(name: "Reply quote", phrases: ["quote reply"], action: .linePrefix("> "))
         settings.userFormatCommands = [shout, quote]
-        settings.formatSynonyms = ["bulletList": ["dot points", "Liste machen"]]
+        settings.formatSynonyms = ["bulletList": ["tick marks", "Liste machen"]]
         settings.disabledFormatPresets = [FormatPreset.verbatim.rawValue]
         settings.formatCommandsEnabled = true
         let meetings = try store()
@@ -96,22 +122,6 @@ final class CommandsSnapshotTests: XCTestCase {
         }
         try shot("commands-how-it-works", width: 760) {
             HowItWorksStrip(dictationKey: settings.activationKey, formatKey: settings.effectiveFormatCommandKey)
-        }
-        try shot("commands-cards", width: 640) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 176), spacing: 14)], spacing: 14) {
-                Button {} label: {
-                    CommandCardLabel(illustration: .preset(.bulletList), name: FormatPreset.bulletList.displayName,
-                                     phrase: "bullet points", slower: false, isOff: false)
-                }.buttonStyle(.talkieCard(selected: true))
-                Button {} label: {
-                    CommandCardLabel(illustration: .preset(.email), name: FormatPreset.email.displayName,
-                                     phrase: "as an email", slower: true, isOff: false)
-                }.buttonStyle(.talkieCard(selected: false))
-                Button {} label: {
-                    CommandCardLabel(illustration: .preset(.verbatim), name: FormatPreset.verbatim.displayName,
-                                     phrase: "verbatim", slower: false, isOff: true)
-                }.buttonStyle(.talkieCard(selected: false))
-            }
         }
         try shot("commands-illustrations", width: 900) {
             let kinds: [CommandIllustration.Kind] = FormatPreset.allCases.map { .preset($0) } + [
@@ -157,6 +167,113 @@ final class CommandsSnapshotTests: XCTestCase {
         }
     }
 
+    func testPunctuationSection() throws {
+        let settings = AppSettings()
+        let saved = settings.spokenPunctuation
+        defer { settings.spokenPunctuation = saved }
+        settings.spokenPunctuation = true
+        for lang in ["en", "de"] {
+            try shot("punctuation-card-\(lang)", width: 760) {
+                SpokenPunctuationCard(settings: settings, uiLanguageCode: lang)
+            }
+            try shot("punctuation-card-\(lang)-expanded", width: 760) {
+                SpokenPunctuationCard(settings: settings, uiLanguageCode: lang, expanded: true)
+            }
+        }
+        settings.spokenPunctuation = false
+        try shot("punctuation-card-off", width: 760) {
+            SpokenPunctuationCard(settings: settings, uiLanguageCode: "en", expanded: true)
+        }
+        settings.spokenPunctuation = true
+        let macros = MacroStore()
+        try shot("commands-page-with-punctuation", width: 900, height: 1500, padding: 0) {
+            CommandsView(settings: settings, macros: macros, commandRouter: CommandRouter(macros: macros),
+                         hud: HUDController(), meetingStore: try! store())
+        }
+    }
+
+    // MARK: Clarity (global state, card switches, details)
+
+    private func withSettings(_ body: (AppSettings, MacroStore, MeetingStore) throws -> Void) throws {
+        let settings = AppSettings()
+        let macros = MacroStore()
+        let saved = (settings.userFormatCommands, settings.formatSynonyms, settings.disabledFormatPresets,
+                     settings.formatCommandsEnabled, settings.spokenLanguages, settings.localeIdentifier)
+        let savedMacros = macros.macros
+        defer {
+            settings.userFormatCommands = saved.0
+            settings.formatSynonyms = saved.1
+            settings.disabledFormatPresets = saved.2
+            settings.formatCommandsEnabled = saved.3
+            settings.spokenLanguages = saved.4
+            settings.localeIdentifier = saved.5
+            for m in macros.macros { macros.delete(m) }
+            for m in savedMacros { macros.upsert(m) }
+            useUILanguage(nil)
+        }
+        for m in macros.macros { macros.delete(m) }
+        settings.userFormatCommands = [UserCommand(name: "Bold", phrases: ["make it bold", "in bold"],
+                                                   action: .wrap(before: "**", after: "**"))]
+        settings.formatSynonyms = ["bulletList": ["tick marks"]]
+        settings.disabledFormatPresets = [FormatPreset.verbatim.rawValue, FormatPreset.shorter.rawValue]
+        try body(settings, macros, try store())
+    }
+
+    func testClarityPage() throws {
+        try withSettings { settings, macros, meetings in
+            for lang in ["en", "de"] {
+                useUILanguage(lang)
+                settings.spokenLanguages = lang == "de" ? ["de-DE", "en-US"] : ["en-US"]
+                for on in [true, false] {
+                    settings.formatCommandsEnabled = on
+                    try shot("page-\(on ? "on" : "off")-\(lang)", width: 900, height: 2300, padding: 0) {
+                        CommandsView(settings: settings, macros: macros, commandRouter: CommandRouter(macros: macros),
+                                     hud: HUDController(), meetingStore: meetings)
+                    }
+                }
+            }
+        }
+    }
+
+    func testClarityCardsAndDetails() throws {
+        try withSettings { settings, macros, _ in
+            let pop = Color(nsColor: .windowBackgroundColor)
+            for lang in ["en", "de"] {
+                useUILanguage(lang)
+                settings.formatCommandsEnabled = true
+                settings.spokenLanguages = lang == "de" ? ["de-DE", "en-US"] : ["en-US"]
+                let langs = settings.commandPhraseLanguages
+                func card(_ preset: FormatPreset, on: Bool) -> some View {
+                    FormatCommandCard(
+                        illustration: .preset(preset), name: preset.displayName,
+                        phrases: FormatPhraseCatalog.phrases(preset, languages: langs),
+                        slower: preset.usesModel, isOn: .constant(on),
+                        helpOpen: "", onOpen: {})
+                }
+                try shot("card-states-\(lang)", width: 680) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14)], spacing: 14) {
+                        card(.bulletList, on: true)
+                        card(.email, on: true)
+                        card(.verbatim, on: false)
+                    }
+                }
+                // Worst case: off + slower + many wordings, narrowest column.
+                try shot("card-worst-\(lang)", width: 232) { card(.shorter, on: false).frame(width: 200) }
+                try shot("card-detail-\(lang)", width: 392, background: pop, padding: 0) {
+                    FormatCommandDetail(preset: .bulletList, settings: settings, macros: macros,
+                                        uiLanguageCode: lang)
+                }
+                try shot("card-detail-off-\(lang)", width: 392, background: pop, padding: 0) {
+                    FormatCommandDetail(preset: .verbatim, settings: settings, macros: macros,
+                                        uiLanguageCode: lang)
+                }
+            }
+            try shot("master-card", width: 760) { CommandsMasterCard(settings: settings) }
+            settings.formatCommandsEnabled = false
+            try shot("master-card-off", width: 760) { CommandsMasterCard(settings: settings) }
+        }
+    }
+
     // MARK: Pill
 
     private func pill(_ name: String, _ events: [PillFormatState.Event]) throws {
@@ -165,21 +282,29 @@ final class CommandsSnapshotTests: XCTestCase {
         model.levels = (0..<HUDModel.barCount).map { i in CGFloat(0.25 + 0.6 * abs(sin(Double(i) * 0.7))) }
         model.text = "Ich brauche"
         for e in events { model.formatState.handle(e) }
-        try shot("pill-\(name)", width: 440, height: 110, background: Color(white: 0.5), padding: 0) {
-            HUDView(model: model, pillFrame: PillFrameBox())
+        for (label, bg) in [("bglight", Color(white: 0.93)), ("bgdark", Color(white: 0.16))] {
+            try shot("pill-\(name)-\(label)", width: 440, height: 110, background: bg, padding: 0) {
+                HUDView(model: model, pillFrame: PillFrameBox())
+            }
         }
     }
 
     func testPillStates() throws {
-        try pill("normal", [])
-        try pill("key-held", [.keyDown])
-        try pill("checking", [.keyDown, .spanReleased])
-        try pill("recognised", [.keyDown, .spanReleased, .resolved(.format("Bullet list"))])
-        try pill("format-active", [.resolved(.format("Bullet list")), .flashExpired])
-        try pill("not-recognised", [.keyDown, .spanReleased, .resolved(.notRecognised)])
-        try pill("not-recognised-while-active",
+        useUILanguage("en")
+        defer { useUILanguage(nil) }
+        try pill("1-normal", [])
+        try pill("2-key-held", [.keyDown])
+        try pill("3-recognised", [.keyDown, .spanReleased, .resolved(.format("Bullet list"))])
+        try pill("4-active-format", [.resolved(.format("Bullet list")), .flashExpired])
+        try pill("5-not-recognised", [.keyDown, .spanReleased, .resolved(.notRecognised)])
+        try pill("6-not-recognised-while-active",
                  [.resolved(.format("ALL CAPS")), .flashExpired, .keyDown, .spanReleased, .resolved(.notRecognised)])
-        try pill("inserted", [.keyDown, .spanReleased, .resolved(.inserted("my address"))])
-        try pill("ended", [.resolved(.format("Bullet list")), .flashExpired, .tapped])
+        try pill("7-inserted", [.keyDown, .spanReleased, .resolved(.inserted("my address"))])
+        try pill("8-ended", [.resolved(.format("Bullet list")), .flashExpired, .tapped])
+        useUILanguage("de")
+        try pill("de-2-key-held", [.keyDown])
+        try pill("de-4-active-format", [.resolved(.format("Aufzählung")), .flashExpired])
+        try pill("de-5-not-recognised", [.keyDown, .spanReleased, .resolved(.notRecognised)])
+        try pill("de-8-ended", [.resolved(.format("Aufzählung")), .flashExpired, .tapped])
     }
 }

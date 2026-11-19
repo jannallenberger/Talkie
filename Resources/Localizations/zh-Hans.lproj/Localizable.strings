@@ -1156,3 +1156,32 @@
 // MARK: - Skeleton loading (accessibility labels)
 "Loading…" = "正在载入…";
 "Searching…" = "正在搜索…";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "可以说出的标点";
+"Say punctuation" = "说出标点";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "单独说出一个标点词，它就会变成符号。在正常句子中间，它仍然只是一个词。“new line”和“new paragraph”前后需要稍作停顿。";
+"Show all" = "显示全部";
+"Show fewer" = "收起";
+
+// MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
+"Commands are off" = "命令已关闭";
+"Turn %@ on or off" = "开启或关闭%@";
+"Use %@" = "使用%@";
+"Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "命令已关闭，因此这些格式不会起作用，直到你在上方开启命令。你的听写不受影响。";
+"Each format has its own switch. Open a card to see every way to say it and to add your own wording." = "每种格式都有自己的开关。打开卡片可查看所有说法，并添加你自己的说法。";
+"You can say" = "你可以这样说";
+"Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine." = "其中任何一种都有效，用你会说的任何语言都行，也可以混用。前后加上“请”或“作为”之类的词也没问题。";
+"Show other languages" = "显示其他语言";
+"Hide other languages" = "隐藏其他语言";
+"Add your own wording" = "添加你自己的说法";
+"It works like the built-in ones. Your own words can be removed again with the ×." = "它和内置说法的作用一样。你自己添加的说法可以用 × 删除。";
+"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "按住格式键时，你说的话会被当作格式来识别，可使用你的任何语言。如果没有识别到格式，你的话会原样保留为文本。";
+"%@ is on" = "%@已开启";
+"No format heard · kept as text" = "未听到格式 · 已保留为文本";
+"No format heard. Your words were kept as text." = "未听到格式。你的话已保留为文本。";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "命令已开启";
+"Dictation keeps working normally." = "听写照常工作。";
+"Your own wording" = "你自己的说法";
+"+%d more" = "另有%d个";

@@ -284,6 +284,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// is done by the time you release the key. Built per session when cleanup
     /// is enabled; consumed (or discarded) in `endDictation`.
     private var currentStreaming: StreamingCleanup?
+    /// Whether `currentStreaming` converts spoken punctuation before its model call (the
+    /// switch as it was when the session began). See `SpokenPunctuationPipeline`.
+    private var currentStreamingPunctuates = false
     /// The project file index snapshot to apply to the current dictation (vibe coding).
     private var currentVibeSnapshot: ProjectIndexSnapshot = .empty
     /// A discoverable project root behind the editor/terminal being dictated into,
@@ -910,6 +913,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 guard let self, self.isDictating, self.sessionID == myID else { return }
                 var resolution = FormatLivePreview.resolve(heard)
+                var saidAnything = !heard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 // The live recognizer may be in another language than the command:
                 // when it didn't read as one, ask the other languages' readings.
                 let unresolved: Bool = {
@@ -920,7 +924,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let others = await FormatCrossLanguage.value(
                         of: alternatives, within: FormatCrossLanguage.spanBudgetSeconds + 0.5) ?? []
                     guard self.isDictating, self.sessionID == myID else { return }
-                    if !others.isEmpty { resolution = FormatLivePreview.resolve(heard, alternatives: others) }
+                    if !others.isEmpty {
+                        resolution = FormatLivePreview.resolve(heard, alternatives: others)
+                        saidAnything = saidAnything || others.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    }
                 }
                 if spanNumber < self.sessionLiveCommands.count {
                     switch resolution {
@@ -930,7 +937,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     case .notRecognised: break
                     }
                 }
-                self.hud.formatEvent(.resolved(PillFormatState.resolution(resolution)))
+                // Held the key and said nothing: no flash, nothing to report.
+                self.hud.formatEvent(.resolved(!saidAnything ? .emptyHold : PillFormatState.resolution(resolution)))
             }
         }
     }
@@ -969,15 +977,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         segments: [TimedSegment], marks: [FormatMark], words: [FormatWord]?,
         fallbackCommands: [FormatCommand?], alternatives: [[String]], refineByPhrase: Bool,
         cleanup: CleanupEngine, style: CleanupStyle?, languageCode: String?, replacements: [Replacement],
-        stripEnglishFillers: Bool, userName: String
+        stripEnglishFillers: Bool, userName: String, spokenPunctuation: Bool
     ) async -> FormatDictationAssembler.Plan {
         var clean: FormatDictationAssembler.Cleaner?
         if let style, CleanupEngine.isAvailable {
-            clean = { text in await cleanup.clean(text, style: style, languageCode: languageCode) }
+            if spokenPunctuation {
+                // Decide on the region's recognizer text, then clean (SpokenPunctuationPipeline).
+                clean = { text in
+                    await SpokenPunctuation.aroundModel(text, languageCode: languageCode, structural: false) {
+                        await cleanup.clean($0, style: style, languageCode: languageCode)
+                    }
+                }
+            } else {
+                clean = { text in await cleanup.clean(text, style: style, languageCode: languageCode) }
+            }
         }
+        // Without a model the formatted text is converted here, after the dictionary.
+        let punctuateAfter = spokenPunctuation && clean == nil
         let post: @Sendable (String) -> String = { text in
-            TextProcessor.apply(replacements: replacements, removeFillers: stripEnglishFillers,
-                                autoCapitalize: false, to: NumberNormalizer.normalize(text)).text
+            let processed = TextProcessor.apply(replacements: replacements, removeFillers: stripEnglishFillers,
+                                                autoCapitalize: false, to: NumberNormalizer.normalize(text)).text
+            return punctuateAfter ? SpokenPunctuation.apply(processed, languageCode: languageCode) : processed
         }
         return await FormatDictationAssembler.assemble(
             segments: segments, marks: marks, words: words, fallbackCommands: fallbackCommands,
@@ -1593,9 +1613,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // path only survives when no language switch happens, so the baseline is
         // the right language for it) so the model can't translate it.
         let beginLangCode = LanguageDetector.languageCode(of: currentLocaleID)
+        // Spoken punctuation is decided on the recognizer's segment BEFORE the model
+        // rewrites it (SpokenPunctuationPipeline); the model only sees the characters.
+        let punctuateStream = settings.spokenPunctuation
         let cleanOne: @Sendable (String) async -> String? = { text in
-            await cleanupEngine.clean(text, style: style, languageCode: beginLangCode)
+            guard punctuateStream else {
+                return await cleanupEngine.clean(text, style: style, languageCode: beginLangCode)
+            }
+            return await SpokenPunctuation.aroundModel(text, languageCode: beginLangCode, structural: true) {
+                await cleanupEngine.clean($0, style: style, languageCode: beginLangCode)
+            }
         }
+        currentStreamingPunctuates = punctuateStream
         let streaming = (cleanupEnabled && CleanupEngine.isAvailable)
             ? StreamingCleanup(enabled: true, cleanOne: cleanOne)
             : nil
@@ -1977,6 +2006,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showProcessing()
 
         let replacements = dictionary.replacementsSnapshot()
+        let spokenPunctuation = settings.spokenPunctuation
         // The jargon fed to the post-hoc niche corrector below: the hand-curated
         // Dictionary vocabulary UNIONED with the self-learned niche terms that have
         // graduated (confidence-boosted AND guard-safe). Snapshotted here on the main
@@ -2149,6 +2179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // is off). Consumed below, or discarded if a language switch re-wrote the
         // whole transcript.
         let streaming = currentStreaming
+        let streamingPunctuates = currentStreamingPunctuates
         currentStreaming = nil
         // "Format while you dictate": the command-key marks of this session. Without a
         // command span (`needsAssembly` false) every branch below is exactly as before.
@@ -2308,9 +2339,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // sees "I. Want to…" flash in before the swap. De-seam it the same
                 // deterministic way the no-AI final path does, so even the un-polished
                 // preview reads as one flowing thought.
-                let interimBase = (segments.count > 1)
+                var interimBase = (segments.count > 1)
                     ? SentenceFlow.mergeContinuations(segments)
                     : finalRaw
+                if spokenPunctuation {
+                    interimBase = SpokenPunctuation.beforeModel(interimBase, languageCode: cleanupLangCode,
+                                                                structural: true)
+                }
                 let interimProcessed = TextProcessor.apply(
                     replacements: replacements, removeFillers: stripEnglishFillers,
                     autoCapitalize: autoCap, to: interimBase
@@ -2348,6 +2383,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.pipelineTrace("deseam", deseamed)
             var cleaned = finalRaw
             var usedStreaming = false
+            // Spoken punctuation / structural commands already decided on the recognizer's
+            // text before a model ran (SpokenPunctuationPipeline): then they must NOT run
+            // again on the model's text below.
+            var punctuatedBeforeModel = false
+            var structuralBeforeModel = false
             // "Format while you dictate": split by audio time into regions, clean each
             // the usual way, format the formatted ones after cleaning. The normal text
             // (with placeholders for the formatted pieces) runs the chain below; the
@@ -2382,8 +2422,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     refineByPhrase: formatWordsEstimated, cleanup: cleanupEngine,
                     style: cleanupEnabled ? style : nil, languageCode: cleanupLangCode,
                     replacements: replacements, stripEnglishFillers: stripEnglishFillers,
-                    userName: formatUserName)
+                    userName: formatUserName, spokenPunctuation: spokenPunctuation)
                 formatPlan = plan
+                // With a model, `formatPlan` converted each region before cleaning it
+                // (marks only; the new-line commands keep their place below).
+                punctuatedBeforeModel = spokenPunctuation && cleanupEnabled && CleanupEngine.isAvailable
                 finalRaw = plan.plainRaw
                 cleaned = plan.normalStream
                 talkieDebugLog("format: \(plan.resolutions.count) command(s), \(plan.parts.count) part(s), modelFallback=\(plan.modelFallback)")
@@ -2398,18 +2441,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let streaming, !languageSwitched, !liveSwitched, !styleWasOverridden, streaming.segmentCount <= 1 {
                     cleaned = await streaming.finishCleaned()
                     usedStreaming = true
+                    punctuatedBeforeModel = streamingPunctuates
+                    structuralBeforeModel = streamingPunctuates
                     // Never insert empty when we actually have a transcript (e.g.
                     // a degenerate session that emitted no usable segments).
                     if cleaned.isEmpty { cleaned = finalRaw }
                 } else {
                     streaming?.cancel()
+                    // Decide spoken punctuation on the whole de-seamed recognizer text
+                    // first; each model call is then only checked to keep the characters.
+                    let modelInput = spokenPunctuation
+                        ? SpokenPunctuation.beforeModel(deseamed, languageCode: cleanupLangCode, structural: true)
+                        : deseamed
+                    let marks = SpokenPunctuation.inserted(raw: deseamed, converted: modelInput)
+                    punctuatedBeforeModel = spokenPunctuation
+                    structuralBeforeModel = spokenPunctuation
                     let cleanOne: @Sendable (String) async -> String? = { text in
-                        await cleanupEngine.clean(text, style: style, languageCode: cleanupLangCode)
+                        await SpokenPunctuation.guardedModel(text, marks: marks) {
+                            await cleanupEngine.clean($0, style: style, languageCode: cleanupLangCode)
+                        }
                     }
-                    if deseamed.count <= Self.wholeCleanupCharLimit {
-                        cleaned = (await cleanOne(deseamed)) ?? deseamed
+                    if modelInput.count <= Self.wholeCleanupCharLimit {
+                        cleaned = (await cleanOne(modelInput)) ?? modelInput
                     } else {
-                        cleaned = await Self.cleanInBatches(deseamed, cleanOne)
+                        cleaned = await Self.cleanInBatches(modelInput, cleanOne)
                     }
                 }
             } else {
@@ -2549,8 +2604,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ON PURPOSE: a user dictionary rule that targets "new line" runs first
             // and consumes the phrase, so a custom mapping still wins — that's the
             // escape hatch. Running structural ahead of the dictionary would break it.
-            finalText = StructuralCommands.apply(finalText, languageCode: cleanupLangCode)
+            if !structuralBeforeModel {
+                finalText = StructuralCommands.apply(finalText, languageCode: cleanupLangCode,
+                                                     anyLanguage: spokenPunctuation)
+            }
             Self.pipelineTrace("structural", finalText)
+            // Spoken punctuation ("Doppelpunkt", "slash", "Klammer auf" …): German + English
+            // whatever the dictation language. Without a model it runs here: after the
+            // dictionary (your own spellings win) and after structural commands (their
+            // line breaks are already in), before vibe file matching. With a model it ran
+            // BEFORE the model on the recognizer's text and must not re-decide on the
+            // model's rewrite (SpokenPunctuationPipeline). A word that is part of a
+            // sentence stays a word.
+            if spokenPunctuation, !punctuatedBeforeModel {
+                finalText = SpokenPunctuation.apply(finalText, languageCode: cleanupLangCode)
+                Self.pipelineTrace("punctuation", finalText)
+            }
 
             // Vibe coding: snap spoken filenames to the real files in your project
             // ("exercise library dot tsx" → "ExerciseLibrary.tsx").

@@ -1156,3 +1156,32 @@
 // MARK: - Skeleton loading (accessibility labels)
 "Loading…" = "Cargando…";
 "Searching…" = "Buscando…";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "Puntuación que puedes decir";
+"Say punctuation" = "Decir la puntuación";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Di una palabra de puntuación sola y se convierte en el signo. Dentro de una frase normal sigue siendo una palabra. «New line» y «new paragraph» necesitan una pausa corta antes y después.";
+"Show all" = "Mostrar todo";
+"Show fewer" = "Mostrar menos";
+
+// MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
+"Commands are off" = "Los comandos están desactivados";
+"Turn %@ on or off" = "Activar o desactivar %@";
+"Use %@" = "Usar %@";
+"Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "Los comandos están desactivados, así que estos formatos no hacen nada hasta que los actives arriba. Tu dictado no se ve afectado.";
+"Each format has its own switch. Open a card to see every way to say it and to add your own wording." = "Cada formato tiene su propio interruptor. Abre una tarjeta para ver todas las formas de decirlo y añadir tu propia expresión.";
+"You can say" = "Puedes decir";
+"Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine." = "Cualquiera de estas funciona, en cualquier idioma que hables; puedes mezclarlos. Las palabras alrededor, como «por favor» o «como», no importan.";
+"Show other languages" = "Mostrar otros idiomas";
+"Hide other languages" = "Ocultar otros idiomas";
+"Add your own wording" = "Añade tu propia expresión";
+"It works like the built-in ones. Your own words can be removed again with the ×." = "Funciona como las integradas. Las tuyas se pueden quitar de nuevo con la ×.";
+"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Mientras mantienes la tecla de formato, lo que dices se lee como un formato, en cualquiera de tus idiomas. Si no se reconoce ningún formato, tus palabras se conservan simplemente como texto.";
+"%@ is on" = "%@ está activado";
+"No format heard · kept as text" = "No se oyó ningún formato · conservado como texto";
+"No format heard. Your words were kept as text." = "No se oyó ningún formato. Tus palabras se conservaron como texto.";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "Los comandos están activados";
+"Dictation keeps working normally." = "El dictado sigue funcionando con normalidad.";
+"Your own wording" = "Tu propia expresión";
+"+%d more" = "+%d más";

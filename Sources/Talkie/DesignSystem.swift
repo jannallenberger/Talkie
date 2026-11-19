@@ -546,14 +546,76 @@ private struct TalkieCardButtonBody: View {
 /// can never be mistaken for a chip button.
 struct TalkieTag: View {
     let text: String
+    /// Show `text` exactly as given (spoken phrases, names) — never look it up as a
+    /// localisation key.
+    var isVerbatim = false
+
+    init(text: String) { self.text = text }
+
+    init(verbatim text: String) {
+        self.text = text
+        self.isVerbatim = true
+    }
 
     var body: some View {
-        Text(LocalizedStringKey(text))
+        Group {
+            if isVerbatim { Text(verbatim: text) } else { Text(LocalizedStringKey(text)) }
+        }
             .font(.talkieHeading(11, weight: .medium))
             .foregroundStyle(Theme.inkSecondary)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(Capsule(style: .continuous).fill(Theme.surfaceSunken))
+    }
+}
+
+/// A spoken word next to the character it becomes ("colon" -> ":"). Static and never
+/// clickable: sunken chip radius for the character, quiet text for the word, so it reads
+/// as a reference entry and cannot be mistaken for a chip button.
+struct TalkieWordMark: View {
+    let word: String
+    let mark: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text(verbatim: mark)
+                .font(.talkieHeading(12, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(minWidth: 18)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .fill(Theme.surfaceSunken))
+            Text(verbatim: word)
+                .font(.talkieHeading(12, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(word): \(mark)"))
+    }
+}
+
+/// "Show all" / "Show fewer" under a shortened list: a small secondary button (so it
+/// has the shared hover and press feedback) with a chevron that turns when open.
+struct TalkieDisclosureButton: View {
+    @Binding var isExpanded: Bool
+    var collapsedTitle: String = "Show all".loc
+    var expandedTitle: String = "Show fewer".loc
+
+    var body: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.18)) { isExpanded.toggle() }
+        } label: {
+            HStack(spacing: 5) {
+                Text(isExpanded ? expandedTitle : collapsedTitle)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+        }
+        .buttonStyle(.talkie(.secondary, size: .small))
+        .accessibilityValue(Text(isExpanded ? "Expanded".loc : "Collapsed".loc))
     }
 }
 

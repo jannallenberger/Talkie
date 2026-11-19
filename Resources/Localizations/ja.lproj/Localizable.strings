@@ -1156,3 +1156,32 @@
 // MARK: - Skeleton loading (accessibility labels)
 "Loading…" = "読み込み中…";
 "Searching…" = "検索中…";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "声に出して言える句読点・記号";
+"Say punctuation" = "記号を声で入力";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "記号の名前だけを単独で言うと、記号になります。通常の文の途中では、ただの単語のままです。「new line」と「new paragraph」は、前後に短い間をあけてください。";
+"Show all" = "すべて表示";
+"Show fewer" = "表示を減らす";
+
+// MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
+"Commands are off" = "コマンドはオフです";
+"Turn %@ on or off" = "%@のオン/オフを切り替える";
+"Use %@" = "%@を使う";
+"Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "コマンドがオフのため、上でオンにするまでこれらのフォーマットは働きません。ディクテーションには影響しません。";
+"Each format has its own switch. Open a card to see every way to say it and to add your own wording." = "各フォーマットにはそれぞれスイッチがあります。カードを開くと、言い方の一覧が見られ、自分の言い方も追加できます。";
+"You can say" = "言える言い方";
+"Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine." = "どれでも使えます。話す言語ならどれでも、混ぜても大丈夫です。「お願いします」などの前後の言葉があっても問題ありません。";
+"Show other languages" = "他の言語を表示";
+"Hide other languages" = "他の言語を隠す";
+"Add your own wording" = "自分の言い方を追加";
+"It works like the built-in ones. Your own words can be removed again with the ×." = "内蔵の言い方と同じように働きます。追加した言い方は×で削除できます。";
+"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "フォーマットキーを押している間に言ったことは、どの言語でもフォーマットとして読み取られます。フォーマットが認識されなかった場合、言葉はそのままテキストとして残ります。";
+"%@ is on" = "%@はオンです";
+"No format heard · kept as text" = "フォーマットは聞き取れませんでした・テキストとして保持";
+"No format heard. Your words were kept as text." = "フォーマットは聞き取れませんでした。言葉はテキストとして保持されました。";
+
+// MARK: - Commands clarity, pass 2 (calmer header, whole phrases, +N more)
+"Commands are on" = "コマンドはオンです";
+"Dictation keeps working normally." = "ディクテーションは通常どおり使えます。";
+"Your own wording" = "自分の言い方";
+"+%d more" = "他%d件";
