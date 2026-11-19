@@ -22,71 +22,123 @@ enum SpeakerNamingCopy {
         }
     }
 
-    static func unavailableReason(_ a: MeetingRecorder.VoiceRememberAvailability) -> String? {
-        switch a {
-        case .inMemory, .fromKeptAudio: return nil
-        case .unavailable(.notEnoughSpeech):
+    static func reasonText(_ r: MeetingRecorder.VoiceRememberAvailability.Reason) -> String {
+        switch r {
+        case .notEnoughSpeech:
             return "Not enough speech from this person to recognise their voice. At least 20 seconds are needed.".loc
-        case .unavailable(.noVoice):
-            return "This person’s voice is no longer available for this meeting. Keep audio with meeting notes to use this later.".loc
-        case .unavailable(.modelsMissing):
+        case .noVoice:
+            return "Only speakers told apart in this meeting can be recognised by voice.".loc
+        case .audioNotKept:
+            return "This meeting was analysed before voices were kept, and its audio was not kept, so this voice can’t be saved. Meetings from now on keep it.".loc
+        case .reimport:
+            return "This file was analysed before voices were kept. Import it again to save this voice.".loc
+        case .modelsMissing:
             return "Speaker recognition isn’t available on this Mac.".loc
         }
+    }
+
+    static func unavailableReason(_ a: MeetingRecorder.VoiceRememberAvailability) -> String? {
+        if case .unavailable(let r) = a { return reasonText(r) }
+        return nil
     }
 
     static func outcomeMessage(_ o: MeetingRecorder.RememberVoiceOutcome) -> String? {
         switch o {
         case .remembered: return nil
-        case .notEnoughSpeech:
-            return "Not enough speech from this person to recognise their voice. At least 20 seconds are needed.".loc
-        case .unavailable, .failed: return "Couldn’t read this person’s voice.".loc
+        case .notEnoughSpeech: return reasonText(.notEnoughSpeech)
+        case .unavailable(let r): return reasonText(r)
+        case .audioUnreadable:
+            return "The kept audio of this meeting couldn’t be read, so this voice can’t be saved.".loc
+        case .notSaved:
+            return "The voice couldn’t be saved to your voice library. Try again.".loc
         }
+    }
+
+    /// Known people whose name contains what is typed (all of them when empty), minus
+    /// an exact match, most recently built first; at most `limit`.
+    static func suggestions(_ people: [KnownVoice], typed: String, limit: Int = 6) -> [KnownVoice] {
+        let t = SpeakerNames.key(typed)
+        return people
+            .filter { t.isEmpty || (SpeakerNames.key($0.name).contains(t) && SpeakerNames.key($0.name) != t) }
+            .sorted { ($0.samples.map(\.createdUnix).max() ?? 0) > ($1.samples.map(\.createdUnix).max() ?? 0) }
+            .prefix(limit).map { $0 }
+    }
+
+    /// What saving with the switch on will do to the library, for the switch subtitle.
+    static func mergeNote(_ people: [KnownVoice], typed: String) -> String? {
+        let t = SpeakerNames.key(typed)
+        guard !t.isEmpty, let p = people.first(where: { SpeakerNames.key($0.name) == t }) else { return nil }
+        return String(format: "Adds this meeting to %@’s voice profile (built from %d meetings).".loc, p.name, p.meetingCount)
     }
 }
 
 /// Click a speaker label -> type or clear a name for every turn of that speaker in this
-/// meeting; optionally (off by default, per person) remember the voice for future meetings.
+/// meeting, pick a person already in Known voices, and (on by default whenever the voice
+/// is available) save this speaker's voice to that person's profile on Save.
 struct SpeakerNamePopover: View {
     let label: String
     let context: SpeakerNamingContext
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
-    @State private var remembered = false
+    @State private var recognise = false
     @State private var working = false
     @State private var message: String?
     @State private var vocabularyNote: String?
+    @State private var people: [KnownVoice] = []
 
     private var current: SpeakerName? { context.names[label] }
     private var availability: MeetingRecorder.VoiceRememberAvailability {
         context.recorder.voiceRememberAvailability(meetingID: context.meetingID, label: label)
     }
     private var trimmed: String { SpeakerNames.clean(draft) }
-
-    /// The voice switch can be turned on (a name, a usable voice) or is already on.
-    private var voiceSwitchEnabled: Bool {
-        !working && (remembered || (!trimmed.isEmpty && availability.isAvailable))
+    private var alreadySaved: Bool {
+        context.recorder.knownVoiceStore.entry(meetingID: context.meetingID, label: label) != nil
     }
 
-    /// Why the voice switch is off-limits right now, or what happened when it was tried.
+    /// The switch can be used when a voice is available (or one is already saved).
+    private var voiceSwitchEnabled: Bool { !working && (alreadySaved || availability.isAvailable) }
+
     private var voiceStatus: (String, TalkieStatusTone)? {
-        if working { return ("Reading this person’s voice…".loc, .progress) }
-        if remembered { return nil }
+        if working { return ("Saving this person’s voice…".loc, .progress) }
         if let message { return (message, .warning) }
-        if trimmed.isEmpty { return ("Give this speaker a name first.".loc, .info) }
-        return SpeakerNamingCopy.unavailableReason(availability).map { ($0, .info) }
+        if !alreadySaved, let why = SpeakerNamingCopy.unavailableReason(availability) { return (why, .info) }
+        if recognise, let note = SpeakerNamingCopy.mergeNote(people, typed: trimmed) { return (note, .info) }
+        return nil
     }
 
     private var saveDisabled: Bool {
-        trimmed.isEmpty || trimmed == current?.name && current?.source == .manual
+        guard !trimmed.isEmpty, !working else { return true }
+        let unchangedName = trimmed == current?.name && current?.source == .manual
+        return unchangedName && recognise == alreadySaved
     }
 
     var body: some View {
+        let suggestions = SpeakerNamingCopy.suggestions(people, typed: trimmed)
         TalkiePopover(title: "Name this speaker",
                       subtitle: SpeakerPresentation.displayName(for: label)) {
             TalkieField(label: "Name", help: SpeakerNamingCopy.sourceNote(current?.source)) {
-                TextField("Name".loc, text: $draft)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(save)
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Name".loc, text: $draft)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(save)
+                    if !suggestions.isEmpty {
+                        FlowLayout(spacing: 6) {
+                            ForEach(suggestions) { p in
+                                Button { draft = p.name; message = nil } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "waveform").font(.system(size: 9, weight: .semibold))
+                                            .foregroundStyle(Theme.inkTertiary).accessibilityHidden(true)
+                                        Text(verbatim: p.name)
+                                        Image(systemName: "arrow.turn.down.left").font(.system(size: 9, weight: .semibold))
+                                            .foregroundStyle(Theme.inkTertiary).accessibilityHidden(true)
+                                    }
+                                }
+                                .buttonStyle(.talkieChip)
+                                .help("Use this known voice".loc)
+                            }
+                        }
+                    }
+                }
             }
             if let note = vocabularyNote {
                 TalkieStatusLine(text: note, tone: .info)
@@ -96,7 +148,7 @@ struct SpeakerNamePopover: View {
                 TalkieSwitchRow(
                     title: "Recognise this voice in future meetings".loc,
                     subtitle: "A voice print of this person is stored on this Mac only and can be deleted here or in Meeting settings.".loc,
-                    isOn: Binding(get: { remembered }, set: { setRemembered($0) }))
+                    isOn: $recognise)
                     .disabled(!voiceSwitchEnabled)
                 if let (text, tone) = voiceStatus {
                     TalkieStatusLine(text: text, tone: tone)
@@ -124,39 +176,24 @@ struct SpeakerNamePopover: View {
         }
         .onAppear {
             draft = current?.name ?? ""
-            remembered = context.recorder.knownVoiceStore.entry(meetingID: context.meetingID, label: label) != nil
+            people = context.recorder.knownVoiceStore.all()
+            recognise = context.recorder.defaultRecognise(meetingID: context.meetingID, label: label)
         }
     }
 
     private func save() {
-        guard !trimmed.isEmpty else { return }
-        // A name not added to the dictionary keeps the popover open with the reason.
-        if let why = context.recorder.saveManualSpeakerName(trimmed, label: label, meetingID: context.meetingID) {
-            vocabularyNote = why
-        } else {
-            dismiss()
-        }
-    }
-
-    private func setRemembered(_ on: Bool) {
+        guard !saveDisabled else { return }
         message = nil
-        guard on else {
-            context.recorder.forgetVoice(meetingID: context.meetingID, label: label)
-            remembered = false
-            return
-        }
-        guard !trimmed.isEmpty else { return }
-        // The voice is stored under the name shown here, so make that the speaker's name.
-        if trimmed != current?.name {
-            vocabularyNote = context.recorder.saveManualSpeakerName(trimmed, label: label, meetingID: context.meetingID)
-        }
         working = true
-        let name = trimmed
+        let name = trimmed, on = recognise && voiceSwitchEnabled
         Task { @MainActor in
-            let outcome = await context.recorder.rememberVoice(meetingID: context.meetingID, label: label, name: name)
+            let r = await context.recorder.saveSpeaker(name: name, label: label, meetingID: context.meetingID, recognise: on)
             working = false
-            remembered = outcome == .remembered
-            message = SpeakerNamingCopy.outcomeMessage(outcome)
+            vocabularyNote = r.vocabularyNote
+            message = r.voice.flatMap(SpeakerNamingCopy.outcomeMessage)
+            people = context.recorder.knownVoiceStore.all()
+            // Anything worth reading (dictionary skip, voice not saved) keeps the popover open.
+            if r.vocabularyNote == nil && message == nil { dismiss() }
         }
     }
 }

@@ -89,7 +89,7 @@ final class KnownVoicesTests: XCTestCase {
         let reread = KnownVoiceStore(url: url).all()
         XCTAssertEqual(reread.count, 1)
         XCTAssertEqual(reread[0].name, "Anna Berg")
-        XCTAssertEqual(reread[0].embedding, [1, 0, 0, 0], "stored normalised")
+        XCTAssertEqual(reread[0].samples.map(\.embedding), [[1, 0, 0, 0]], "stored normalised")
         XCTAssertEqual(store.entry(meetingID: m, label: "Speaker 1")?.name, "Anna Berg")
 
         // Same meeting speaker again replaces, a rename follows the manual name.
@@ -239,19 +239,29 @@ final class KnownVoicesTests: XCTestCase {
                                             "Speaker 2": SpeakerName(name: "Tom", source: .voice)])
         XCTAssertTrue(saved.transcript.contains("Speaker 1:"), "the stored transcript keeps raw labels")
         XCTAssertTrue(saved.namedTranscript.contains("Anna:"))
-        XCTAssertEqual(voices.all().count, 1, "no voice is stored without the user's opt-in")
+        XCTAssertEqual(voices.all().count, 1, "no voice is put in the library without the user's save")
+        // But every diarized speaker's voice is kept with the meeting (owner-only sidecar).
+        XCTAssertEqual(store.voiceSidecar.voice(meetingID: meeting.id, label: "Speaker 1")?.embedding, eA)
+        XCTAssertNil(store.voiceSidecar.voice(meetingID: meeting.id, label: "Me"), "never the owner's own voice")
+        let perms = try FileManager.default.attributesOfItem(atPath: store.voiceSidecar.url(for: meeting.id).path)[.posixPermissions] as? Int
+        XCTAssertEqual(perms, 0o600)
 
         // Manual beats everything and survives a later automatic pass.
         recorder.setSpeakerName("Annie", label: "Speaker 1", meetingID: meeting.id)
         let again = recorder.automaticSpeakerNames(for: store.meetings[0], voices: ["Speaker 1": cand(eA)], attendees: ["Anna Berg"])
         XCTAssertEqual(again?["Speaker 1"], SpeakerName(name: "Annie", source: .manual))
 
-        // Opt in for Speaker 1: the in-memory voice from this session is stored.
-        XCTAssertEqual(recorder.voiceRememberAvailability(meetingID: meeting.id, label: "Speaker 1"), .inMemory)
+        // Opt in for Speaker 1, even from a fresh recorder (app relaunch): the voice kept
+        // with the meeting is used.
+        let relaunched = makeRecorder(store, voices: voices)
+        XCTAssertEqual(relaunched.voiceRememberAvailability(meetingID: meeting.id, label: "Speaker 1"), .stored)
+        XCTAssertTrue(relaunched.defaultRecognise(meetingID: meeting.id, label: "Speaker 1"), "on by default when available")
+        XCTAssertFalse(relaunched.defaultRecognise(meetingID: meeting.id, label: "Speaker 2"),
+                       "a voice-recognised name never defaults to adding another sample")
         XCTAssertEqual(recorder.voiceRememberAvailability(meetingID: meeting.id, label: "Me"), .unavailable(.noVoice))
-        let outcome = await recorder.rememberVoice(meetingID: meeting.id, label: "Speaker 1", name: "Annie")
+        let outcome = await relaunched.rememberVoice(meetingID: meeting.id, label: "Speaker 1", name: "Annie")
         XCTAssertEqual(outcome, .remembered)
-        XCTAssertEqual(voices.entry(meetingID: meeting.id, label: "Speaker 1")?.embedding, eA)
+        XCTAssertEqual(voices.entry(meetingID: meeting.id, label: "Speaker 1")?.samples.map(\.embedding), [eA])
         // Clearing the name forgets that voice too.
         recorder.setSpeakerName(nil, label: "Speaker 1", meetingID: meeting.id)
         XCTAssertNil(voices.entry(meetingID: meeting.id, label: "Speaker 1"))
@@ -269,10 +279,18 @@ final class KnownVoicesTests: XCTestCase {
         meeting.audioFiles = ["Me": "t-me.m4a", "Them": "t-them.m4a"]
         store.add(meeting)
         try Data([0]).write(to: tmp.appendingPathComponent("t-them.m4a"))
+        // Stand-in transcoder: a scratch copy whose name the fake diarizer keys on.
+        recorder.keptAudioTranscoder = { src in
+            let out = src.deletingLastPathComponent().appendingPathComponent("scratch-\(UUID().uuidString)-them.m4a")
+            try FileManager.default.copyItem(at: src, to: out)
+            return out
+        }
         XCTAssertEqual(recorder.voiceRememberAvailability(meetingID: meeting.id, label: "Speaker 2"), .fromKeptAudio)
         let outcome = await recorder.rememberVoice(meetingID: meeting.id, label: "Speaker 2", name: "Tom")
         XCTAssertEqual(outcome, .remembered)
-        XCTAssertEqual(voices.all().map(\.embedding), [eB])
+        XCTAssertEqual(voices.all().flatMap(\.samples).map(\.embedding), [eB])
+        XCTAssertEqual(store.voiceSidecar.voice(meetingID: meeting.id, label: "Speaker 2")?.embedding, eB,
+                       "the recomputed voice is kept with the meeting from then on")
         recorder.diarizationModelsDirectory = { nil }
         XCTAssertEqual(recorder.voiceRememberAvailability(meetingID: meeting.id, label: "Speaker 1"), .unavailable(.modelsMissing))
     }
@@ -294,15 +312,16 @@ final class KnownVoicesTests: XCTestCase {
     }
 
     func testPopoverCopyForEveryAvailabilityAndSource() {
-        XCTAssertNil(SpeakerNamingCopy.unavailableReason(.inMemory))
+        XCTAssertNil(SpeakerNamingCopy.unavailableReason(.stored))
         XCTAssertNil(SpeakerNamingCopy.unavailableReason(.fromKeptAudio))
-        for r in [MeetingRecorder.VoiceRememberAvailability.Reason.notEnoughSpeech, .noVoice, .modelsMissing] {
+        for r in [MeetingRecorder.VoiceRememberAvailability.Reason.notEnoughSpeech, .noVoice, .audioNotKept, .reimport, .modelsMissing] {
             XCTAssertNotNil(SpeakerNamingCopy.unavailableReason(.unavailable(r)))
         }
         XCTAssertNotNil(SpeakerNamingCopy.sourceNote(.voice))
         XCTAssertNotNil(SpeakerNamingCopy.sourceNote(.conversation))
         XCTAssertNil(SpeakerNamingCopy.sourceNote(.manual))
         XCTAssertNil(SpeakerNamingCopy.outcomeMessage(.remembered))
-        XCTAssertNotNil(SpeakerNamingCopy.outcomeMessage(.failed))
+        XCTAssertNotNil(SpeakerNamingCopy.outcomeMessage(.audioUnreadable))
+        XCTAssertNotNil(SpeakerNamingCopy.outcomeMessage(.notSaved))
     }
 }

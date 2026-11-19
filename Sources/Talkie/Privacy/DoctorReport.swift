@@ -281,6 +281,12 @@ enum DoctorReport {
         let knownCount = FileManager.default.fileExists(atPath: knownURL.path) ? KnownVoiceStore(url: knownURL).all().count : 0
         lines.append(fileLine(knownURL, detail: knownCount > 0
             ? "\(knownCount) voice print\(knownCount == 1 ? "" : "s") of people you chose to recognise in meetings (Settings → Meeting settings → Known voices)" : nil))
+        // Diarized speakers' voices kept with each meeting (deleted with the meeting):
+        // how many meetings only.
+        let sidecar = MeetingVoiceSidecar(directory: paths.support.appendingPathComponent("meeting-voices", isDirectory: true))
+        let sidecarCount = sidecar.storedIDs().count
+        lines.append(fileLine(sidecar.directory, detail: sidecarCount > 0
+            ? "speaker voices of \(sidecarCount) meeting\(sidecarCount == 1 ? "" : "s"), kept so you can choose to recognise someone later; deleted with each meeting" : nil))
 
         lines.append("")
         lines.append("**`\(tildeAbbreviated(paths.meetings.path))`** — your recordings and transcripts, in plain folders you own:")

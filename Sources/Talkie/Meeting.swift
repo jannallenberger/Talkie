@@ -398,8 +398,13 @@ final class MeetingStore: ObservableObject {
     /// Monotonic save token; the writer drops any write older than the newest.
     private var saveGeneration = 0
 
+    /// Per-meeting diarized voices (owner-only sidecar files beside the index). Deleted
+    /// with the meeting, by the retention cap, and swept for meetings no longer indexed.
+    let voiceSidecar: MeetingVoiceSidecar
+
     init(supportDirectory: URL = AppPaths.supportDirectory(),
          meetingsDirectory: URL = AppPaths.meetingsDirectory()) {
+        voiceSidecar = MeetingVoiceSidecar(directory: supportDirectory.appendingPathComponent("meeting-voices", isDirectory: true))
         let url = supportDirectory.appendingPathComponent("meetings.json")
         indexURL = url
         meetingsDirectoryURL = meetingsDirectory
@@ -424,6 +429,8 @@ final class MeetingStore: ObservableObject {
         // the caller (MeetingsView) so this store stays single-purpose.
         let url = meetingsDirectoryURL.appendingPathComponent(meeting.fileName)
         FileShredder.shred(url)
+        // Its diarized voices go with it.
+        voiceSidecar.remove(meeting.id)
         // Delete honesty (D9): a meeting that kept its audio beside the note must not
         // leave that audio behind when the note is deleted — the whole point of the
         // feature is user-owned files, so removing the meeting removes ALL of them.
@@ -497,6 +504,8 @@ final class MeetingStore: ObservableObject {
     private func enforceRetentionCap() {
         meetings.sort { $0.startUnix > $1.startUnix } // newest first
         if meetings.count > Self.maxRetainedMeetings {
+            // Evicted meetings keep their .md, but never their voices.
+            for m in meetings.suffix(meetings.count - Self.maxRetainedMeetings) { voiceSidecar.remove(m.id) }
             meetings.removeLast(meetings.count - Self.maxRetainedMeetings)
         }
     }
@@ -586,6 +595,8 @@ final class MeetingStore: ObservableObject {
         }
         meetings = decoded
         enforceRetentionCap()
+        // Voices of meetings removed while the app was not running (or by an older build).
+        voiceSidecar.sweep(keeping: Set(meetings.map(\.id)))
     }
 
     /// Best-effort self-heal: scan `directory` for `*.md` meeting notes and rebuild
