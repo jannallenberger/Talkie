@@ -1149,3 +1149,6 @@
 "“%@” stops working, also when said as its own dictation." = "‘%@’ 이(가) 더 이상 작동하지 않습니다. 따로 받아쓰기로 말해도 마찬가지입니다.";
 "lower case" = "소문자";
 "slower — uses the on-device model" = "더 느림 — 기기 내 모델 사용";
+
+// MARK: - Speech service recovery (wake / stale connection)
+"%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@이(가) macOS 음성 인식에 연결하지 못했습니다. 키를 다시 눌러 보세요. 계속 그러면 %@을(를) 종료한 뒤 다시 여세요.";

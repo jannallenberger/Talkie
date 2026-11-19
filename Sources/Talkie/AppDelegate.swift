@@ -437,6 +437,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         permissions.refresh()
         observeSettings()
+        observePowerEvents()
 
         // The always-on floating bird, if the user keeps it on.
         if settings.showBirdBuddy { birdBuddy.show() }
@@ -1281,6 +1282,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await cleanup.prewarm(style: style) }
     }
 
+    // MARK: Sleep / wake
+
+    private var powerObservers: [NSObjectProtocol] = []
+    private var wakeRecoveryTask: Task<Void, Never>?
+
+    /// After the Mac sleeps for hours the system speech service connection is dead and
+    /// idle audio/engine state is stale (see `SpeechStartRecovery`). On sleep release
+    /// the prewarmed mic; on wake rebuild idle speech state — only when nothing is in
+    /// use, so an active dictation or meeting is never disturbed.
+    private func observePowerEvents() {
+        guard powerObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        let pairs: [(Notification.Name, PowerEvent)] = [
+            (NSWorkspace.willSleepNotification, .willSleep),
+            (NSWorkspace.didWakeNotification, .didWake),
+            (NSWorkspace.screensDidWakeNotification, .screensDidWake),
+        ]
+        for (name, event) in pairs {
+            let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.handlePowerEvent(event) }
+            }
+            powerObservers.append(token)
+        }
+    }
+
+    private var currentActivity: WakeRecovery.Activity {
+        WakeRecovery.Activity(dictating: isDictating, processing: isProcessing,
+                              meetingBusy: meetingRecorder?.blocksDictation == true)
+    }
+
+    private func handlePowerEvent(_ event: PowerEvent) {
+        talkieDebugLog("power: \(event)")
+        if event == .willSleep {
+            perform(WakeRecovery.actions(for: event, activity: currentActivity))
+            return
+        }
+        // Let audio devices reappear first, then decide against the state AT THAT TIME
+        // (the user may have started dictating in between).
+        wakeRecoveryTask?.cancel()
+        wakeRecoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(WakeRecovery.wakeSettleSeconds))
+            guard let self, !Task.isCancelled else { return }
+            self.perform(WakeRecovery.actions(for: event, activity: self.currentActivity))
+        }
+    }
+
+    private func perform(_ actions: [WakeAction]) {
+        for action in actions {
+            switch action {
+            case .releasePrewarmedMic:
+                audio.discardIdleEngine()
+            case .resetSpeechService:
+                let engine = self.engine!
+                Task { await engine.resetSpeechService() }
+            case .rewarmSpeechModels:
+                for lang in settings.spokenLanguages {
+                    Task { try? await engine.warmUp(localeIdentifier: lang) }
+                    if settings.dictationModel == .dictation {
+                        Task { try? await engine.warmUp(localeIdentifier: lang, model: .dictation) }
+                    }
+                }
+            case .reprewarmMic:
+                audio.prewarm(preferredDeviceUID: settings.preferredInputDeviceUID)
+            }
+        }
+    }
+
     func beginDictation() {
         guard !isDictating else { return }
         // A previous dictation is still being polished/inserted. Starting now
@@ -1581,49 +1649,82 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // pins it to the primary) or a prior dictation's language switch,
                 // and `currentLocaleID` is the self-consistency baseline below — so
                 // they must agree at the start of every session.
-                await engine.setLocaleIdentifier(self.currentLocaleID)
-                await engine.setContextualStrings(phrases)
-                let session = try await engine.beginSessionTracked(segmentHandler: segmentHandler,
-                                                                   model: settings.dictationModel)
-                capturedGeneration = session.generation
-                self.currentSessionGeneration = session.generation
-                let sessionReadyMs = Int(Date().timeIntervalSince(keyDown) * 1000)
-                // Re-check after the (async) model load / session setup.
-                guard self.isDictating, self.sessionID == myID else {
-                    streaming?.cancel()
-                    await engine.cancelSession(ifGeneration: session.generation)
-                    self.clearTryItSinks() // H5: abandoned try-it — reset its sink/UI.
-                    return
-                }
-                try audio.start(
-                    targetFormat: session.format,
-                    continuation: session.continuation,
-                    preferredDeviceUID: self.settings.preferredInputDeviceUID,
-                    bufferAudio: multiLang,
-                    // The whole dictation must fit: a language re-decode of a window
-                    // that rolled over loses the opening (~38 MB at the 10 min cap).
-                    bufferSeconds: 600,
-                    onLevel: { [weak self] level in
-                        Task { @MainActor in
-                            AppDelegate.sharedHUD?.updateLevel(level)
-                            self?.birdBuddy.updateLevel(level)
-                            // B5: feed the same normalized level to the hands-free
-                            // auto-stop watchdog. Non-nil only for a locked session, so
-                            // a held session is never watched. A level above the floor
-                            // (speech) cancels a running countdown; sustained sub-floor
-                            // level is the silence that arms + eventually stops.
-                            self?.silenceWatchdog?.observe(level: level)
+                //
+                // The whole setup (session + mic) runs under `SpeechStartRecovery.run`:
+                // a stale speech-service connection (or a dead audio unit) after a long
+                // sleep/idle gets ONE automatic rebuild-and-retry within this key press,
+                // and each wait on Apple's speech objects is bounded so the pill can
+                // never sit in "arming" forever. The mic opens only after the session
+                // is ready, so speech before that point (the setup time, plus the retry)
+                // is not captured — the same trade-off a normal start already makes.
+                let localeID = self.currentLocaleID
+                let engine = self.engine!
+                let dictationModel = self.settings.dictationModel
+                let timeout = SpeechStartRecovery.attemptTimeout(
+                    modelKnownInstalled: SpeechModelInstallTracker.shared.phase == .installed)
+                let started: StartedDictation? = try await SpeechStartRecovery.run(
+                    attempt: { _ in
+                        capturedGeneration = nil
+                        let beginResult = try await SpeechStartRecovery.bounded(seconds: timeout) {
+                                if Dev.consumeSimulatedStaleStart() { throw Dev.simulatedStaleError }
+                                await engine.setLocaleIdentifier(localeID)
+                                await engine.setContextualStrings(phrases)
+                                return UncheckedSendableBox(try await engine.beginSessionTracked(
+                                    segmentHandler: segmentHandler, model: dictationModel))
+                            }
+                        let session = beginResult.value
+                        capturedGeneration = session.generation
+                        self.currentSessionGeneration = session.generation
+                        // Re-check after the (async) model load / session setup.
+                        guard self.isDictating, self.sessionID == myID else {
+                            streaming?.cancel()
+                            await engine.cancelSession(ifGeneration: session.generation)
+                            self.clearTryItSinks() // H5: abandoned try-it — reset its sink/UI.
+                            return nil
                         }
+                        try audio.start(
+                            targetFormat: session.format,
+                            continuation: session.continuation,
+                            preferredDeviceUID: self.settings.preferredInputDeviceUID,
+                            bufferAudio: multiLang,
+                            // The whole dictation must fit: a language re-decode of a window
+                            // that rolled over loses the opening (~38 MB at the 10 min cap).
+                            bufferSeconds: 600,
+                            onLevel: { [weak self] level in
+                                Task { @MainActor in
+                                    AppDelegate.sharedHUD?.updateLevel(level)
+                                    self?.birdBuddy.updateLevel(level)
+                                    // B5: feed the same normalized level to the hands-free
+                                    // auto-stop watchdog. Non-nil only for a locked session, so
+                                    // a held session is never watched. A level above the floor
+                                    // (speech) cancels a running countdown; sustained sub-floor
+                                    // level is the silence that arms + eventually stops.
+                                    self?.silenceWatchdog?.observe(level: level)
+                                }
+                            },
+                            onCaptureFailed: { error in
+                                // The active mic vanished mid-session and none remains. Route
+                                // to the same error/HUD path as a start-time failure, ending
+                                // the dictation cleanly instead of capturing silence.
+                                Task { @MainActor [weak self] in
+                                    self?.handleCaptureFailure(error, sessionID: myID)
+                                }
+                            }
+                        )
+                        return StartedDictation(generation: session.generation)
                     },
-                    onCaptureFailed: { error in
-                        // The active mic vanished mid-session and none remains. Route
-                        // to the same error/HUD path as a start-time failure, ending
-                        // the dictation cleanly instead of capturing silence.
-                        Task { @MainActor [weak self] in
-                            self?.handleCaptureFailure(error, sessionID: myID)
-                        }
+                    rebuild: { error in
+                        // Fresh objects for the retry: drop the dead session/analyzer (and
+                        // invalidate a start that may still be hung), and the mic engine
+                        // if the audio unit is what failed.
+                        let plan = SpeechStartRecovery.rebuildPlan(for: error)
+                        if plan.speech { await engine.resetSpeechService() }
+                        if plan.mic { self.audio.discardIdleEngine() }
+                        capturedGeneration = nil
                     }
                 )
+                guard let session = started else { return }
+                let sessionReadyMs = Int(Date().timeIntervalSince(keyDown) * 1000)
                 self.sessionLive = true
                 self.audioStartUptime = ProcessInfo.processInfo.systemUptime
                 self.recordingStartedAt = Date()
@@ -1664,6 +1765,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.birdBuddy.setActive(false)
                 self.hud.showError(error.localizedDescription)
                 streaming?.cancel()
+                if let engineError = error as? TalkieEngineError, case .speechServiceUnavailable = engineError {
+                    // Gave up after the retry: leave the engine clean so the NEXT key
+                    // press starts from scratch (and a still-hung start is invalidated).
+                    await engine.resetSpeechService()
+                }
                 if let capturedGeneration {
                     await engine.cancelSession(ifGeneration: capturedGeneration)
                 } else {

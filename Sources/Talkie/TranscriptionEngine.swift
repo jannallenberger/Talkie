@@ -96,6 +96,10 @@ enum TalkieEngineError: LocalizedError {
     case modelInstallFailed(String)
     case noCompatibleAudioFormat
     case noInputDevice
+    /// Session setup did not come back within its bound (see `SpeechStartRecovery`).
+    case startTimedOut
+    /// macOS speech recognition could not be reached, even after one rebuild.
+    case speechServiceUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -109,6 +113,8 @@ enum TalkieEngineError: LocalizedError {
             return String(format: "%@ couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again.".loc, Brand.displayName)
         case .noInputDevice:
             return String(format: "%@ couldn't find a microphone. Check your input device in System Settings → Sound, then try again.".loc, Brand.displayName)
+        case .startTimedOut, .speechServiceUnavailable:
+            return String(format: "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@.".loc, Brand.displayName, Brand.displayName)
         }
     }
 }
@@ -397,6 +403,10 @@ actor TranscriptionEngine {
             await SpeechModelInstallTracker.shared.markInstalled()
         } catch {
             await SpeechModelInstallTracker.shared.markFailed()
+            // A dead speech-service connection is not a download problem: keep its
+            // identity so the start path can rebuild and retry (and so the user is not
+            // told to check their internet connection).
+            if SpeechStartRecovery.isStaleConnection(error) { throw error }
             throw TalkieEngineError.modelInstallFailed(error.localizedDescription)
         }
     }
@@ -880,7 +890,15 @@ actor TranscriptionEngine {
         isFinishing = false
         liveEpoch += 1
 
+        // Each await below is Apple's; a start that was abandoned by its timeout (and
+        // superseded by a retry) may wake up late. It must not install state over the
+        // newer session, so it re-checks its generation after every suspension.
+        func stillCurrent() throws {
+            if generation != sessionGeneration { throw CancellationError() }
+        }
+
         var (effectiveModel, loc) = try await resolvedModelAndLocale(preferring: model)
+        try stillCurrent()
         var transcriber = makeModule(effectiveModel, locale: loc)
         do {
             try await ensureModelInstalled(for: transcriber)
@@ -893,12 +911,14 @@ actor TranscriptionEngine {
             transcriber = makeModule(.speech, locale: loc)
             try await ensureModelInstalled(for: transcriber)
         }
+        try stillCurrent()
         self.transcriber = transcriber
         self.sessionModel = effectiveModel
 
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
             throw TalkieEngineError.noCompatibleAudioFormat
         }
+        try stillCurrent()
 
         // Build the analyzer and its input stream.
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
@@ -912,6 +932,11 @@ actor TranscriptionEngine {
             let ctx = AnalysisContext()
             ctx.contextualStrings = [.general: contextualStrings]
             try await analyzer.setContext(ctx)
+        }
+        if generation != sessionGeneration {
+            // Superseded while suspended: release OUR analyzer only, never `self`'s.
+            await analyzer.cancelAndFinishNow()
+            throw CancellationError()
         }
 
         // Consume results as they stream in.
@@ -1278,6 +1303,24 @@ actor TranscriptionEngine {
     func cancelSession(ifGeneration generation: Int) async {
         guard generation == sessionGeneration else { return }
         await cancelSession()
+    }
+
+    /// Throw away everything bound to the system speech service and invalidate any
+    /// in-flight `beginSessionTracked` (its generation no longer matches, so it aborts
+    /// instead of installing state). Used by the start-failure retry and after wake.
+    /// Then re-reserve the locale's assets (best effort, bounded): a restarted speech
+    /// daemon forgets this process's reservations, which the log shows as "Cannot use
+    /// modules with unallocated locales". Callers must only use this when no live
+    /// session may be disturbed (idle after wake) or the session is already dead.
+    func resetSpeechService() async {
+        sessionGeneration += 1
+        await cancelSession()
+        let target = locale
+        _ = try? await SpeechStartRecovery.bounded(seconds: 3) {
+            let supported = await SpeechTranscriber.supportedLocale(equivalentTo: target)
+            guard let loc = supported else { return false }
+            return (try? await AssetInventory.reserve(locale: loc)) ?? false
+        }
     }
 
     // MARK: Buffer re-sampling (for cross-locale re-transcription)
