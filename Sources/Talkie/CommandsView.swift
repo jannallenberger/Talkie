@@ -25,6 +25,7 @@ struct CommandsView: View {
             HowItWorksStrip(dictationKey: settings.activationKey, formatKey: settings.effectiveFormatCommandKey)
             formatGrid
             editGroup
+            SpokenPunctuationCard(settings: settings, uiLanguageCode: uiLanguageCode)
             optionsCard
         }
     }

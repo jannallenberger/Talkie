@@ -1152,3 +1152,9 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "O %@ não conseguiu acessar o reconhecimento de voz do macOS. Pressione a tecla de novo; se continuar, feche e abra o %@ outra vez.";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "Pontuação que você pode falar";
+"Say punctuation" = "Falar a pontuação";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Diga uma palavra de pontuação sozinha e ela vira o sinal. No meio de uma frase normal, continua sendo uma palavra. “New line” e “new paragraph” precisam de uma pausa curta antes e depois.";
+"Show all" = "Mostrar tudo";
+"Show fewer" = "Mostrar menos";

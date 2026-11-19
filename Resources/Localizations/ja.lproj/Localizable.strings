@@ -1152,3 +1152,9 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ は macOS の音声認識に接続できませんでした。もう一度キーを押してください。それでも直らない場合は、%@ を終了して開き直してください。";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "声に出して言える句読点・記号";
+"Say punctuation" = "記号を声で入力";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "記号の名前だけを単独で言うと、記号になります。通常の文の途中では、ただの単語のままです。「new line」と「new paragraph」は、前後に短い間をあけてください。";
+"Show all" = "すべて表示";
+"Show fewer" = "表示を減らす";

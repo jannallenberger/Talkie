@@ -547,6 +547,56 @@ struct TalkieTag: View {
     }
 }
 
+/// A spoken word next to the character it becomes ("colon" -> ":"). Static and never
+/// clickable: sunken chip radius for the character, quiet text for the word, so it reads
+/// as a reference entry and cannot be mistaken for a chip button.
+struct TalkieWordMark: View {
+    let word: String
+    let mark: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text(verbatim: mark)
+                .font(.talkieHeading(12, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(minWidth: 18)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .fill(Theme.surfaceSunken))
+            Text(verbatim: word)
+                .font(.talkieHeading(12, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(word): \(mark)"))
+    }
+}
+
+/// "Show all" / "Show fewer" under a shortened list: a small secondary button (so it
+/// has the shared hover and press feedback) with a chevron that turns when open.
+struct TalkieDisclosureButton: View {
+    @Binding var isExpanded: Bool
+    var collapsedTitle: String = "Show all".loc
+    var expandedTitle: String = "Show fewer".loc
+
+    var body: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.18)) { isExpanded.toggle() }
+        } label: {
+            HStack(spacing: 5) {
+                Text(isExpanded ? expandedTitle : collapsedTitle)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+        }
+        .buttonStyle(.talkie(.secondary, size: .small))
+        .accessibilityValue(Text(isExpanded ? "Expanded".loc : "Collapsed".loc))
+    }
+}
+
 /// One of the user's real keys drawn as a key cap (dictation key, format key).
 /// Never clickable; pair it with a separate "Change…" button.
 struct TalkieKeycap: View {

@@ -1152,3 +1152,9 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@이(가) macOS 음성 인식에 연결하지 못했습니다. 키를 다시 눌러 보세요. 계속 그러면 %@을(를) 종료한 뒤 다시 여세요.";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "말로 입력할 수 있는 문장 부호";
+"Say punctuation" = "문장 부호 말하기";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "문장 부호 이름만 따로 말하면 기호로 바뀝니다. 일반 문장 안에서는 그대로 단어로 남습니다. “new line”과 “new paragraph”는 앞뒤로 잠깐 쉬어 주세요.";
+"Show all" = "모두 보기";
+"Show fewer" = "간단히 보기";

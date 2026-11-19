@@ -1152,3 +1152,9 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ kon de spraakherkenning van macOS niet bereiken. Druk de toets nog een keer in – blijft het gebeuren, sluit %@ dan af en open het opnieuw.";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "Leestekens die je kunt zeggen";
+"Say punctuation" = "Leestekens uitspreken";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Zeg een leesteken-woord los en het wordt het teken. Midden in een gewone zin blijft het een woord. “New line” en “new paragraph” hebben een korte pauze ervoor en erna nodig.";
+"Show all" = "Alles tonen";
+"Show fewer" = "Minder tonen";

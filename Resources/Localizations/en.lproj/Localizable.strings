@@ -1163,3 +1163,9 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@.";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "Punctuation you can say";
+"Say punctuation" = "Say punctuation";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after.";
+"Show all" = "Show all";
+"Show fewer" = "Show fewer";

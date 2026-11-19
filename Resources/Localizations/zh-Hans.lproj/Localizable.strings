@@ -1152,3 +1152,9 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ 无法连接到 macOS 语音识别。请再按一次按键；如果问题持续，请退出并重新打开 %@。";
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "可以说出的标点";
+"Say punctuation" = "说出标点";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "单独说出一个标点词，它就会变成符号。在正常句子中间，它仍然只是一个词。“new line”和“new paragraph”前后需要稍作停顿。";
+"Show all" = "显示全部";
+"Show fewer" = "收起";
