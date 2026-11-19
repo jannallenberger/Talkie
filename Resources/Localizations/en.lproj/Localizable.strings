@@ -1163,3 +1163,24 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@.";
+
+// MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
+"Commands are on · hold %@ while dictating" = "Commands are on · hold %@ while dictating";
+"Commands are off" = "Commands are off";
+"Say a format while you hold the key, then let go and keep talking." = "Say a format while you hold the key, then let go and keep talking.";
+"Turn on to format as you dictate. Normal dictation keeps working either way." = "Turn on to format as you dictate. Normal dictation keeps working either way.";
+"Turn %@ on or off" = "Turn %@ on or off";
+"Use %@" = "Use %@";
+"Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected.";
+"Each format has its own switch. Open a card to see every way to say it and to add your own wording." = "Each format has its own switch. Open a card to see every way to say it and to add your own wording.";
+"You can say" = "You can say";
+"Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine." = "Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine.";
+"Show other languages" = "Show other languages";
+"Hide other languages" = "Hide other languages";
+"Add your own wording" = "Add your own wording";
+"It works like the built-in ones. Your own words can be removed again with the ×." = "It works like the built-in ones. Your own words can be removed again with the ×.";
+"For example, a word you often say" = "For example, a word you often say";
+"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text.";
+"%@ is on" = "%@ is on";
+"No format heard · kept as text" = "No format heard · kept as text";
+"No format heard. Your words were kept as text." = "No format heard. Your words were kept as text.";

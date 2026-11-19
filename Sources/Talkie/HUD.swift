@@ -825,16 +825,16 @@ final class HUDController {
         let after = model.formatState
         guard after.flash != before.flash || event == .keyDown else { return }
         formatFlashTask?.cancel()
-        let seconds: Double
+        guard let seconds = after.flashSeconds else { return }
         switch after.flash {
         case .none:
             return
         case .confirmed(let name):
             announce(String(format: "Format: %@".loc, name))
-            seconds = PillFormatState.confirmSeconds
         case .notRecognised:
-            announce("Format not recognised.".loc)
-            seconds = PillFormatState.notRecognisedSeconds
+            announce("No format heard. Your words were kept as text.".loc)
+        case .ended:
+            announce("Back to normal text".loc)
         }
         formatFlashTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
@@ -1224,9 +1224,9 @@ struct HUDView: View {
     /// recognised; "Not recognised" as its own brief state. Nothing in normal dictation.
     @ViewBuilder
     private var formatChipView: some View {
-        let state = model.formatState
         let size: CGFloat = model.highContrast ? 12 : 11
-        if state.showsListeningHint {
+        switch model.formatState.statusLine {
+        case .listening:
             HStack(spacing: 4) {
                 Image(systemName: "keyboard")
                     .font(.system(size: size - 1, weight: .semibold))
@@ -1239,15 +1239,13 @@ struct HUDView: View {
             .fixedSize()
             .transition(.opacity)
             .accessibilityElement(children: .combine)
-        } else if let chip = state.chip {
+        case .confirmed(let name):
             HStack(spacing: 4) {
-                if chip.confirming {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: size - 1, weight: .bold))
-                        .transition(.scale.combined(with: .opacity))
-                        .accessibilityHidden(true)
-                }
-                Text(chip.name)
+                Image(systemName: "checkmark")
+                    .font(.system(size: size - 1, weight: .bold))
+                    .transition(.scale.combined(with: .opacity))
+                    .accessibilityHidden(true)
+                Text(verbatim: name)
                     .font(.system(size: size, weight: .semibold))
             }
             .foregroundStyle(Self.formatBlue)
@@ -1255,18 +1253,48 @@ struct HUDView: View {
             .fixedSize()
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
-            .background(Capsule().fill(Self.formatBlue.opacity(chip.confirming
-                ? PillPalette.confirmingChipFillOpacity : PillPalette.chipFillOpacity)))
+            .background(Capsule().fill(Self.formatBlue.opacity(PillPalette.confirmingChipFillOpacity)))
             .transition(.scale.combined(with: .opacity))
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(String(format: "Format: %@".loc, chip.name))
-        }
-        if state.showsNotRecognised {
+            .accessibilityLabel(String(format: "Format: %@".loc, name))
+        case .active(let name):
+            // Quiet and persistent: the format is still on until it is ended.
             HStack(spacing: 4) {
-                Image(systemName: "questionmark.circle")
+                Image(systemName: "textformat")
                     .font(.system(size: size - 1, weight: .semibold))
                     .accessibilityHidden(true)
-                Text("Not recognised".loc)
+                Text(String(format: "%@ is on".loc, name))
+                    .font(.system(size: size, weight: .medium))
+            }
+            .foregroundStyle(Self.formatBlue)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Self.formatBlue.opacity(PillPalette.chipFillOpacity)))
+            .transition(.opacity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(format: "Format: %@".loc, name))
+        case .notRecognised:
+            // Neutral warning tone (not red — it is not an error): the words stay as text.
+            HStack(spacing: 4) {
+                Image(systemName: "text.alignleft")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("No format heard · kept as text".loc)
+                    .font(.system(size: size, weight: .semibold))
+            }
+            .foregroundStyle(Self.warningTone)
+            .lineLimit(1)
+            .fixedSize()
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+        case .ended:
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("Back to normal text".loc)
                     .font(.system(size: size, weight: .medium))
             }
             .foregroundStyle(ink(0.78))
@@ -1274,8 +1302,16 @@ struct HUDView: View {
             .fixedSize()
             .transition(.opacity)
             .accessibilityElement(children: .combine)
+        case nil:
+            EmptyView()
         }
     }
+
+    /// The pill's warning tone for "No format heard": `Theme.warning` dark value at
+    /// full strength (the pill is black in both appearances).
+    static let warningTone = Color(.sRGB, red: PillPalette.warning.r / 255,
+                                   green: PillPalette.warning.g / 255,
+                                   blue: PillPalette.warning.b / 255, opacity: 1)
 
     /// The pill's format blue: the brand blue's dark-surface value (`Theme.coral` dark,
     /// #4AA0E6) at full strength, fixed — the pill is black in either appearance, so
@@ -1286,8 +1322,7 @@ struct HUDView: View {
 
     /// Whether the format status line (below the waveform) has anything to show.
     private var hasFormatStatus: Bool {
-        let s = model.formatState
-        return s.showsListeningHint || s.chip != nil || s.showsNotRecognised
+        model.formatState.statusLine != nil
     }
 
     /// The format status on its own line, centred under the waveform row — never

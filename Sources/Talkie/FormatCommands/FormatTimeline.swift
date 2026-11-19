@@ -73,7 +73,8 @@ enum FormatSpanResolution: Sendable, Equatable {
     /// A user-made fixed-text command inserted its text here.
     case inserted(UserCommand)
     case ended
-    /// Words were said but none matched a preset — nothing changes.
+    /// Words were said but none matched a format — nothing changes, the words stay
+    /// in the dictation as normal text.
     case notRecognised(String)
 }
 
@@ -171,6 +172,13 @@ enum FormatTimeline {
             commands.append(resolved ?? fallback(n))
         }
 
+        // Nothing the user said may be lost: words spoken while the key was held that
+        // match no format are NOT a command. They stay in the dictation as normal text
+        // (in whatever format is active) and dictation carries on.
+        for n in spans.indices where commands[n] == nil && !spokenTexts[n].isEmpty {
+            for i in owner.indices where owner[i] == n { owner[i] = nil }
+        }
+
         if refineByPhrase {
             for n in spans.indices {
                 guard let expected = commands[n] else { continue }
@@ -221,8 +229,8 @@ enum FormatTimeline {
                         resolutions.append(.ended)
                         changes.append((from, nil))
                     } else {
-                        // Words that match nothing change nothing (they're still dropped:
-                        // they were spoken as a command).
+                        // Words that match nothing change nothing and are kept as text
+                        // (their ownership was released above).
                         resolutions.append(.notRecognised(spokenTexts[n]))
                     }
                 }

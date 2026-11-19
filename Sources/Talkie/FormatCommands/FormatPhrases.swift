@@ -25,8 +25,8 @@ enum FormatPhrases {
     static func phrases(_ preset: FormatPreset, language: String) -> [String] {
         switch (preset, language) {
         // MARK: Bullet list
-        case (.bulletList, "en"): return ["bullet points", "bullet list", "bullets", "as a list", "list"]
-        case (.bulletList, "de"): return ["in Stichpunkten", "Stichpunkte", "als Liste", "Aufzählung", "Aufzählungszeichen", "Spiegelstriche"]
+        case (.bulletList, "en"): return ["bullet points", "bullet list", "bullets", "as a list", "list", "bullet point list", "bullet point", "bulletpoints", "points", "dot points", "unordered list"]
+        case (.bulletList, "de"): return ["in Stichpunkten", "Stichpunkte", "als Liste", "Aufzählung", "Aufzählungszeichen", "Spiegelstriche", "Punkte", "Bulletpoints", "Spiegelstrichliste", "Aufzählungsliste", "Stichpunktliste", "Stichpunkt", "Liste machen", "Auflistung"]
         case (.bulletList, "fr"): return ["liste à puces", "puces", "en liste"]
         case (.bulletList, "es"): return ["con viñetas", "viñetas", "lista"]
         case (.bulletList, "it"): return ["elenco puntato", "punti elenco", "elenco"]
@@ -36,8 +36,8 @@ enum FormatPhrases {
         case (.bulletList, "ko"): return ["글머리 기호", "목록"]
         case (.bulletList, "zh"): return ["项目符号", "列表"]
         // MARK: Numbered list
-        case (.numberedList, "en"): return ["numbered list", "numbered", "numbers"]
-        case (.numberedList, "de"): return ["nummerierte Liste", "nummeriert", "Nummerierung", "durchnummeriert"]
+        case (.numberedList, "en"): return ["numbered list", "numbered", "numbers", "numbered points", "number list", "ordered list", "numbered items"]
+        case (.numberedList, "de"): return ["nummerierte Liste", "nummeriert", "Nummerierung", "durchnummeriert", "Nummernliste", "nummerierte Aufzählung", "nummerierte Punkte", "durchnummerierte Liste", "Nummern"]
         case (.numberedList, "fr"): return ["liste numérotée", "numérotée", "numéroté"]
         case (.numberedList, "es"): return ["lista numerada", "numerada"]
         case (.numberedList, "it"): return ["elenco numerato", "numerato"]
@@ -47,8 +47,8 @@ enum FormatPhrases {
         case (.numberedList, "ko"): return ["번호 목록", "번호 매기기"]
         case (.numberedList, "zh"): return ["编号列表", "编号"]
         // MARK: To-do list
-        case (.todoList, "en"): return ["to-do list", "todo list", "checklist", "to-dos", "tasks"]
-        case (.todoList, "de"): return ["als To-do-Liste", "To-do-Liste", "Aufgabenliste", "Checkliste", "Aufgaben", "To-dos"]
+        case (.todoList, "en"): return ["to-do list", "todo list", "checklist", "to-dos", "tasks", "to do list", "to do", "task list", "checkboxes", "check list"]
+        case (.todoList, "de"): return ["als To-do-Liste", "To-do-Liste", "Aufgabenliste", "Checkliste", "Aufgaben", "To-dos", "Todo-Liste", "Todo", "Aufgabe", "Abhakliste", "Checkboxen", "Erledigungsliste"]
         case (.todoList, "fr"): return ["liste de tâches", "tâches", "liste à cocher"]
         case (.todoList, "es"): return ["lista de tareas", "tareas", "pendientes"]
         case (.todoList, "it"): return ["lista di cose da fare", "elenco attività", "attività"]
@@ -58,8 +58,8 @@ enum FormatPhrases {
         case (.todoList, "ko"): return ["할 일 목록", "체크리스트"]
         case (.todoList, "zh"): return ["待办清单", "待办事项", "清单"]
         // MARK: ALL CAPS
-        case (.allCaps, "en"): return ["all caps", "caps lock", "capslock", "caps", "uppercase", "capital letters", "capitals"]
-        case (.allCaps, "de"): return ["alles groß", "Großbuchstaben", "Großschreibung", "Capslock", "Feststelltaste", "alles in Großbuchstaben"]
+        case (.allCaps, "en"): return ["all caps", "caps lock", "capslock", "caps", "uppercase", "capital letters", "capitals", "all capitals", "all uppercase", "upper case", "big letters", "all upper case"]
+        case (.allCaps, "de"): return ["alles groß", "Großbuchstaben", "Großschreibung", "Capslock", "Feststelltaste", "alles in Großbuchstaben", "Versalien", "alles groß geschrieben", "großgeschrieben", "Caps", "komplett groß", "in Großbuchstaben"]
         case (.allCaps, "fr"): return ["en majuscules", "majuscules", "tout en majuscules"]
         case (.allCaps, "es"): return ["en mayúsculas", "mayúsculas", "todo en mayúsculas"]
         case (.allCaps, "it"): return ["tutto maiuscolo", "maiuscolo", "in maiuscolo"]
@@ -69,8 +69,8 @@ enum FormatPhrases {
         case (.allCaps, "ko"): return ["대문자", "모두 대문자"]
         case (.allCaps, "zh"): return ["大写", "全部大写"]
         // MARK: lowercase
-        case (.lowercase, "en"): return ["all lowercase", "lowercase", "lower case", "small letters"]
-        case (.lowercase, "de"): return ["alles klein", "Kleinbuchstaben", "Kleinschreibung", "alles in Kleinbuchstaben"]
+        case (.lowercase, "en"): return ["all lowercase", "lowercase", "lower case", "small letters", "all lower case", "lowercase letters", "lower", "no caps", "all small"]
+        case (.lowercase, "de"): return ["alles klein", "Kleinbuchstaben", "Kleinschreibung", "alles in Kleinbuchstaben", "kleingeschrieben", "alles klein geschrieben", "komplett klein", "in Kleinbuchstaben", "keine Großbuchstaben"]
         case (.lowercase, "fr"): return ["en minuscules", "minuscules", "tout en minuscules"]
         case (.lowercase, "es"): return ["en minúsculas", "minúsculas", "todo en minúsculas"]
         case (.lowercase, "it"): return ["tutto minuscolo", "minuscolo", "in minuscolo"]
@@ -80,8 +80,8 @@ enum FormatPhrases {
         case (.lowercase, "ko"): return ["소문자", "모두 소문자"]
         case (.lowercase, "zh"): return ["小写", "全部小写"]
         // MARK: Quotes
-        case (.quotes, "en"): return ["in quotes", "quotation marks", "quotes", "quote"]
-        case (.quotes, "de"): return ["in Anführungszeichen", "Anführungszeichen", "in Gänsefüßchen", "Gänsefüßchen", "als Zitat", "Zitat"]
+        case (.quotes, "en"): return ["in quotes", "quotation marks", "quotes", "quote", "with quotes", "in double quotes", "speech marks", "inverted commas", "quotation"]
+        case (.quotes, "de"): return ["in Anführungszeichen", "Anführungszeichen", "in Gänsefüßchen", "Gänsefüßchen", "als Zitat", "Zitat", "in Anführungsstrichen", "Anführungsstriche", "zitieren", "wörtliche Rede", "Zitatzeichen"]
         case (.quotes, "fr"): return ["entre guillemets", "guillemets", "citation"]
         case (.quotes, "es"): return ["entre comillas", "comillas", "cita"]
         case (.quotes, "it"): return ["tra virgolette", "virgolette", "citazione"]
@@ -91,8 +91,8 @@ enum FormatPhrases {
         case (.quotes, "ko"): return ["따옴표", "인용 부호"]
         case (.quotes, "zh"): return ["引号", "加引号"]
         // MARK: Parentheses
-        case (.parentheses, "en"): return ["in parentheses", "parentheses", "brackets", "in brackets"]
-        case (.parentheses, "de"): return ["in Klammern", "Klammern", "Klammer"]
+        case (.parentheses, "en"): return ["in parentheses", "parentheses", "brackets", "in brackets", "round brackets", "in round brackets", "parenthesis", "bracket"]
+        case (.parentheses, "de"): return ["in Klammern", "Klammern", "Klammer", "in Klammer", "runde Klammern", "in runden Klammern", "eingeklammert"]
         case (.parentheses, "fr"): return ["entre parenthèses", "parenthèses"]
         case (.parentheses, "es"): return ["entre paréntesis", "paréntesis"]
         case (.parentheses, "it"): return ["tra parentesi", "parentesi"]
@@ -102,8 +102,8 @@ enum FormatPhrases {
         case (.parentheses, "ko"): return ["괄호", "괄호 안에"]
         case (.parentheses, "zh"): return ["括号", "加括号"]
         // MARK: Heading
-        case (.heading, "en"): return ["as a heading", "heading", "headline", "title"]
-        case (.heading, "de"): return ["als Überschrift", "Überschrift", "Titel"]
+        case (.heading, "en"): return ["as a heading", "heading", "headline", "title", "as a title", "as heading", "header", "as a header", "section title"]
+        case (.heading, "de"): return ["als Überschrift", "Überschrift", "Titel", "als Titel", "Headline", "Header", "als Header", "Schlagzeile"]
         case (.heading, "fr"): return ["en titre", "titre"]
         case (.heading, "es"): return ["como título", "título", "encabezado"]
         case (.heading, "it"): return ["come titolo", "titolo", "intestazione"]
@@ -113,8 +113,8 @@ enum FormatPhrases {
         case (.heading, "ko"): return ["제목", "제목으로"]
         case (.heading, "zh"): return ["标题", "作为标题"]
         // MARK: Verbatim / code
-        case (.verbatim, "en"): return ["verbatim", "as code", "code", "word for word", "literally"]
-        case (.verbatim, "de"): return ["wörtlich", "als Code", "Code", "unverändert", "Wort für Wort"]
+        case (.verbatim, "en"): return ["verbatim", "as code", "code", "word for word", "literally", "exactly", "unchanged", "code block", "raw", "exactly as said"]
+        case (.verbatim, "de"): return ["wörtlich", "als Code", "Code", "unverändert", "Wort für Wort", "exakt", "genauso", "im Wortlaut", "Codeblock", "Quelltext", "wortwörtlich"]
         case (.verbatim, "fr"): return ["mot pour mot", "tel quel", "en code"]
         case (.verbatim, "es"): return ["al pie de la letra", "textual", "código"]
         case (.verbatim, "it"): return ["alla lettera", "letterale", "codice"]
@@ -124,8 +124,8 @@ enum FormatPhrases {
         case (.verbatim, "ko"): return ["그대로", "코드"]
         case (.verbatim, "zh"): return ["原样", "代码"]
         // MARK: E-mail
-        case (.email, "en"): return ["as an email", "email", "e-mail", "as a mail"]
-        case (.email, "de"): return ["als E-Mail", "E-Mail", "als Mail", "Mail"]
+        case (.email, "en"): return ["as an email", "email", "e-mail", "as a mail", "as e-mail", "email format", "e mail", "email message"]
+        case (.email, "de"): return ["als E-Mail", "E-Mail", "als Mail", "Mail", "Email", "als Email", "Mailformat", "E-Mail-Format", "per E-Mail"]
         case (.email, "fr"): return ["en e-mail", "courriel", "en mail"]
         case (.email, "es"): return ["como correo", "correo", "correo electrónico"]
         case (.email, "it"): return ["come email", "posta elettronica"]
@@ -135,8 +135,8 @@ enum FormatPhrases {
         case (.email, "ko"): return ["이메일", "메일"]
         case (.email, "zh"): return ["邮件", "电子邮件"]
         // MARK: Formal
-        case (.formal, "en"): return ["formal", "formally", "more formal", "professional"]
-        case (.formal, "de"): return ["formell", "förmlich", "professionell", "Sie-Form"]
+        case (.formal, "en"): return ["formal", "formally", "more formal", "professional", "formal tone", "more formally", "polite", "business style", "official"]
+        case (.formal, "de"): return ["formell", "förmlich", "professionell", "Sie-Form", "höflich", "geschäftlich", "offiziell", "formeller", "förmlicher"]
         case (.formal, "fr"): return ["formel", "plus formel", "soutenu"]
         case (.formal, "es"): return ["más formal", "formalmente"]
         case (.formal, "it"): return ["formale", "più formale"]
@@ -146,8 +146,8 @@ enum FormatPhrases {
         case (.formal, "ko"): return ["격식체", "공손하게"]
         case (.formal, "zh"): return ["正式", "更正式"]
         // MARK: Shorter
-        case (.shorter, "en"): return ["shorter", "shorten", "make it shorter", "concise", "short"]
-        case (.shorter, "de"): return ["kürzer", "kürzen", "kurz und knapp", "knapper", "kurz"]
+        case (.shorter, "en"): return ["shorter", "shorten", "make it shorter", "concise", "short", "make shorter", "condense", "more concise", "briefer", "tighter", "trim it"]
+        case (.shorter, "de"): return ["kürzer", "kürzen", "kurz und knapp", "knapper", "kurz", "gekürzt", "kompakter", "prägnant", "kürzere Version"]
         case (.shorter, "fr"): return ["plus court", "raccourcir"]
         case (.shorter, "es"): return ["más corto", "acortar"]
         case (.shorter, "it"): return ["più corto", "accorcia"]
@@ -157,8 +157,8 @@ enum FormatPhrases {
         case (.shorter, "ko"): return ["짧게", "간단하게"]
         case (.shorter, "zh"): return ["简短", "缩短"]
         // MARK: Translate to English
-        case (.translateToEnglish, "en"): return ["in English", "English", "translate to English"]
-        case (.translateToEnglish, "de"): return ["auf Englisch", "ins Englische", "Englisch", "übersetze ins Englische"]
+        case (.translateToEnglish, "en"): return ["in English", "English", "translate to English", "into English", "to English", "in English please", "English version"]
+        case (.translateToEnglish, "de"): return ["auf Englisch", "ins Englische", "Englisch", "übersetze ins Englische", "nach Englisch", "in Englisch", "englische Version", "auf Englisch übersetzen"]
         case (.translateToEnglish, "fr"): return ["en anglais", "anglais", "traduire en anglais"]
         case (.translateToEnglish, "es"): return ["en inglés", "inglés", "traducir al inglés"]
         case (.translateToEnglish, "it"): return ["in inglese", "inglese", "traduci in inglese"]
@@ -168,8 +168,8 @@ enum FormatPhrases {
         case (.translateToEnglish, "ko"): return ["영어로", "영어로 번역"]
         case (.translateToEnglish, "zh"): return ["翻译成英文", "用英语", "英文"]
         // MARK: Translate to German
-        case (.translateToGerman, "en"): return ["in German", "German", "translate to German"]
-        case (.translateToGerman, "de"): return ["auf Deutsch", "ins Deutsche", "Deutsch", "übersetze ins Deutsche"]
+        case (.translateToGerman, "en"): return ["in German", "German", "translate to German", "into German", "to German", "German version"]
+        case (.translateToGerman, "de"): return ["auf Deutsch", "ins Deutsche", "Deutsch", "übersetze ins Deutsche", "nach Deutsch", "in Deutsch", "deutsche Version", "auf Deutsch übersetzen"]
         case (.translateToGerman, "fr"): return ["en allemand", "allemand", "traduire en allemand"]
         case (.translateToGerman, "es"): return ["en alemán", "alemán", "traducir al alemán"]
         case (.translateToGerman, "it"): return ["in tedesco", "tedesco", "traduci in tedesco"]

@@ -536,9 +536,21 @@ private struct TalkieCardButtonBody: View {
 /// can never be mistaken for a chip button.
 struct TalkieTag: View {
     let text: String
+    /// Show `text` exactly as given (spoken phrases, names) — never look it up as a
+    /// localisation key.
+    var isVerbatim = false
+
+    init(text: String) { self.text = text }
+
+    init(verbatim text: String) {
+        self.text = text
+        self.isVerbatim = true
+    }
 
     var body: some View {
-        Text(LocalizedStringKey(text))
+        Group {
+            if isVerbatim { Text(verbatim: text) } else { Text(LocalizedStringKey(text)) }
+        }
             .font(.talkieHeading(11, weight: .medium))
             .foregroundStyle(Theme.inkSecondary)
             .padding(.horizontal, 7)

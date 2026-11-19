@@ -1152,3 +1152,24 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ konnte die Spracherkennung von macOS nicht erreichen. Drück die Taste noch einmal – falls das so bleibt, beende %@ und öffne es neu.";
+
+// MARK: - Commands clarity (global on/off, card switches, wordings, pill status)
+"Commands are on · hold %@ while dictating" = "Befehle sind an · halte beim Diktieren %@ gedrückt";
+"Commands are off" = "Befehle sind aus";
+"Say a format while you hold the key, then let go and keep talking." = "Sag ein Format, während du die Taste hältst, lass dann los und sprich einfach weiter.";
+"Turn on to format as you dictate. Normal dictation keeps working either way." = "Einschalten, um beim Diktieren zu formatieren. Normales Diktieren funktioniert in beiden Fällen.";
+"Turn %@ on or off" = "%@ ein- oder ausschalten";
+"Use %@" = "%@ verwenden";
+"Commands are off, so these formats do nothing until you turn commands on above. Your dictation is not affected." = "Befehle sind aus, deshalb bewirken diese Formate nichts, bis du oben die Befehle einschaltest. Dein Diktat bleibt davon unberührt.";
+"Each format has its own switch. Open a card to see every way to say it and to add your own wording." = "Jedes Format hat seinen eigenen Schalter. Öffne eine Karte, um alle Sagweisen zu sehen und eigene Formulierungen hinzuzufügen.";
+"You can say" = "Das kannst du sagen";
+"Any of these works, in any language you speak — you can mix them. Words around it, like “please” or “as a”, are fine." = "Jede dieser Formulierungen funktioniert, in jeder Sprache, die du sprichst – du kannst sie mischen. Wörter drumherum wie „bitte“ oder „als“ sind in Ordnung.";
+"Show other languages" = "Andere Sprachen anzeigen";
+"Hide other languages" = "Andere Sprachen ausblenden";
+"Add your own wording" = "Eigene Formulierung hinzufügen";
+"It works like the built-in ones. Your own words can be removed again with the ×." = "Sie funktioniert wie die eingebauten. Eigene Formulierungen lassen sich mit dem × wieder entfernen.";
+"For example, a word you often say" = "Zum Beispiel ein Wort, das du oft sagst";
+"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Solange du die Formattaste hältst, wird das Gesagte als Format gelesen – in jeder deiner Sprachen. Wird kein Format erkannt, bleiben deine Worte einfach als Text erhalten.";
+"%@ is on" = "%@ ist an";
+"No format heard · kept as text" = "Kein Format erkannt · als Text behalten";
+"No format heard. Your words were kept as text." = "Kein Format erkannt. Deine Worte wurden als Text behalten.";

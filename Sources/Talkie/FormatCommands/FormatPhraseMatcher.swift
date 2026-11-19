@@ -207,9 +207,11 @@ enum FormatPhraseMatcher {
         "es", "den", "die", "der", "dem", "ein", "eine", "einer", "einen", "jetzt", "format",
         "formatieren", "formatiert", "schreib", "schreibe", "schreiben", "modus", "und",
         "okay", "ok", "also", "ah", "ahm", "ubersetze", "ubersetzen", "uebersetze", "nun",
+        "formatiere", "formatier", "setz", "setze", "gib", "mit", "bring", "stell", "dann",
         // English
         "as", "a", "an", "into", "the", "please", "make", "it", "this", "that", "formatted",
         "write", "now", "mode", "to", "um", "uh", "translate", "translated", "and", "so",
+        "with", "turn", "set", "put", "use", "give", "me", "some", "just",
         // French
         "en", "comme", "le", "la", "les", "un", "une", "des", "du", "de", "sil", "vous", "plait",
         "traduire", "traduis",
