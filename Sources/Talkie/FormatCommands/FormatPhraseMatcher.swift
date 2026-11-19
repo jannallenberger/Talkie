@@ -67,7 +67,7 @@ struct FormatPhraseBook: Sendable {
 
     // MARK: Conflicts
 
-    enum Refusal: Equatable, Sendable {
+    enum Refusal: Error, Equatable, Sendable {
         /// Nothing left after dropping filler words ("as", "please" …).
         case onlyFillerWords
         /// Already said for another command (its display name).

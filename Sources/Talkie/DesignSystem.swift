@@ -482,6 +482,56 @@ private struct TalkieChipBody: View {
     }
 }
 
+// MARK: - Selectable cards
+
+/// A whole card that is one button (a grid of choices, e.g. the Commands page's
+/// format cards): the card surface and radius, a one-step fill shift on hover, the
+/// pressed scale, and — when selected — a brand ring with the brand wash, so the
+/// selection never relies on colour alone (the ring changes the outline too).
+struct TalkieCardButtonStyle: ButtonStyle {
+    var isSelected = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        TalkieCardButtonBody(configuration: configuration, isSelected: isSelected)
+    }
+}
+
+extension ButtonStyle where Self == TalkieCardButtonStyle {
+    /// `.buttonStyle(.talkieCard(selected: …))`.
+    static func talkieCard(selected: Bool) -> TalkieCardButtonStyle { TalkieCardButtonStyle(isSelected: selected) }
+}
+
+private struct TalkieCardButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let isSelected: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        configuration.label
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(shape.fill(fill))
+            .overlay(shape.strokeBorder(Theme.brand, lineWidth: isSelected ? 2 : 0))
+            .clipShape(shape)
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
+            .contentShape(shape)
+            .opacity(isEnabled ? 1 : 0.45)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: hovering)
+            .onHover { hovering = $0 && isEnabled }
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var fill: Color {
+        let base = isSelected ? Theme.surface.mix(with: Theme.brandWash, by: 0.6) : Theme.surface
+        if configuration.isPressed && isEnabled { return base.mix(with: Theme.ink, by: 0.08) }
+        return hovering ? base.mix(with: Theme.ink, by: 0.04) : base
+    }
+}
+
 /// A static, non-interactive tag ("slower"). Capsule, no hover, no glyph — so it
 /// can never be mistaken for a chip button.
 struct TalkieTag: View {
