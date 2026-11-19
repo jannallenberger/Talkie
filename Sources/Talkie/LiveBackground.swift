@@ -31,8 +31,11 @@ struct LiveBackground: View {
 
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Pause the drift when Talkie isn't frontmost.
-    @State private var active = true
+    /// Pause the drift when Talkie isn't frontmost. Seeded from the app's real state:
+    /// a fixed `true` meant a window that appeared while Talkie was in the background
+    /// (launch at login, the relaunch after an update) drifted on — at ~6 % CPU —
+    /// until the first activate/resign round trip.
+    @State private var active = NSApplication.shared.isActive
     /// Pause the drift when the hosting window is occluded (covered by another
     /// window, minimized, or on another Space) — catches the case app-active/
     /// inactive alone misses: Talkie can stay the frontmost app while this
@@ -74,6 +77,7 @@ struct LiveBackground: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { _ in
             occluded = !(hostWindow?.occlusionState.contains(.visible) ?? true)
         }
+        .onAppear { active = NSApplication.shared.isActive }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             active = false
         }
