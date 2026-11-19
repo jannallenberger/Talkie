@@ -47,6 +47,24 @@ enum SpokenPunctuationTables {
             default: return nil
             }
         }
+        /// Marks written right after the previous word ("Hallo:", "wirklich?", "gesagt)").
+        /// Said first, with more words after, they have nothing to attach to.
+        var attachesToPrevious: Bool {
+            switch self {
+            case .colon, .semicolon, .question, .exclaim, .ellipsis,
+                 .closeParen, .closeBracket, .closeBrace, .quoteClose,
+                 .emDash, .enDash, .dash, .dashSpaced: return true
+            default: return false
+            }
+        }
+        var isOpener: Bool { openFamily != nil }
+        /// Free-standing symbols ("a = b", "#launch", "100 %").
+        var isSymbol: Bool {
+            switch self {
+            case .ampersand, .equals, .plus, .asterisk, .section, .hash, .percent: return true
+            default: return false
+            }
+        }
         /// Marks that join two words and are meaningless without the second one.
         var isJoin: Bool {
             switch self {
@@ -103,9 +121,9 @@ enum SpokenPunctuationTables {
         e("at zeichen", .at, ignorePrev: ["an"]), e("klammeraffe", .at),
         e("prozentzeichen", .percent), e("prozent zeichen", .percent),
         e("et zeichen", .ampersand), e("e zeichen", .ampersand), e("kaufmännisches und", .ampersand),
-        e("raute", .hash, boundary: true), e("rautenzeichen", .hash), e("hash zeichen", .hash),
+        e("raute", .hash), e("rautenzeichen", .hash), e("hash zeichen", .hash),
         e("hashtag", .hash, boundary: true),
-        e("sternchen", .asterisk, boundary: true),
+        e("sternchen", .asterisk),
         e("gleichheitszeichen", .equals),
         e("pluszeichen", .plus), e("plus zeichen", .plus),
         e("paragraphzeichen", .section), e("paragrafzeichen", .section),
@@ -138,7 +156,8 @@ enum SpokenPunctuationTables {
         e("close quote", .quoteClose), e("close quotes", .quoteClose),
         e("end quote", .quoteClose), e("unquote", .quoteClose),
         e("dash", .dash, boundary: true),
-        e("em dash", .emDash), e("en dash", .enDash),
+        // The recognizer writes a spoken "em dash" as "M dash" (measured).
+        e("em dash", .emDash), e("m dash", .emDash), e("en dash", .enDash),
         e("hyphen", .hyphen),
         e("underscore", .underscore),
         e("at sign", .at, ignorePrev: ["at"]), e("at symbol", .at, ignorePrev: ["at"]),
@@ -221,7 +240,7 @@ enum SpokenPunctuationTables {
         lösche löschen schreib schreibe tipp tippe nutz nutze nutzen verwende verwenden benutze \
         benutzen brauchen brauche braucht brauchst haben habe hab hat suche streich ersetze \
         ersetzen nenn nenne nimm nehmen ändere ergänze lass lassen vergiss vermeide vermeiden \
-        drück drücke heißt heisst bedeutet auch als
+        drück drücke heißt heisst bedeutet auch als fehlt fehlen gehört gehören folgt steht
         the a an this that these those my your his her its our their another each every any some \
         no both all one other
         in on at with without after before behind between from to into onto of for by about around \
@@ -243,7 +262,10 @@ enum SpokenPunctuationTables {
         machen gibt geht gehen
         is are was were be been means mean goes go comes come should must can could will would has \
         have had does do needs need sits sit stands stand looks look makes make gets get belongs \
-        isn't doesn't
+        isn't doesn't matters matter works work marks separates separate denotes indicates \
+        represents starts start ends end follows seems appears breaks helps
+        funktioniert funktionieren trennt trennen markiert zeigt beginnt endet folgt kennzeichnet \
+        wirkt sieht stört fehlte
         """)
 
     /// Either side: the sentence is ABOUT punctuation, not using it.
@@ -253,6 +275,61 @@ enum SpokenPunctuationTables {
         symbol key keys character characters command commands shortcut keyboard word words term \
         called named label token punctuation
         """)
+
+    /// Directly AFTER the word: a preposition makes it a noun ("Fragezeichen durch Punkte
+    /// ersetzen", "colon in the title"). The tagger adds more when it is available.
+    static let prepositions: Set<String> = set("""
+        in im ins an am ans auf aufs bei beim mit nach von vom vor zum zur zwischen über unter \
+        hinter neben für durch gegen ohne um bis aus ab seit statt anstatt wegen während
+        in on at with without after before behind between from to into onto of for by about \
+        around over under through during until since via per inside outside near above below \
+        instead
+        """)
+
+    /// Directly AFTER a joining mark: a determiner ("underscore the importance").
+    static let determiners: Set<String> = set("""
+        der die das den dem des ein eine einen einem einer eines
+        the a an this these those
+        """)
+
+    /// English auxiliaries and modals: "we should slash prices", "to underscore".
+    static let auxiliaries: Set<String> = set("should would could can will must may might shall to don't didn't won't")
+
+    /// Articles only (no demonstratives): "mit der neuen …", "a big …".
+    static let articles: Set<String> = set("der die das den dem des ein eine einen einem einer eines the a an")
+
+    /// Clause-joining words: "und Semikolon trennt …" is a subject.
+    static let conjunctions: Set<String> = set("und aber oder weil dass wenn ob and but or because that if whether")
+
+    /// Plain punctuation nouns that are never replaced but count as a mark name in a
+    /// list ("Fragezeichen oder Punkt?", "colons and semicolons").
+    static let markNouns: Set<String> = set("""
+        punkt punkte komma kommas kommata strich striche leerzeichen klammer klammern doppelpunkte \
+        semikolons semikola schrägstriche slashes backslashes bindestriche gedankenstriche \
+        unterstriche zeile zeilen absatz absätze raute rauten sternchen anführungszeichen
+        period periods comma commas dot dots space spaces colons semicolons brackets bracket \
+        parenthesis parentheses paren parens quote quotes hyphens dashes underscores asterisks \
+        hashtags line lines paragraph paragraphs
+        """)
+
+    /// Words that link two items of a list. Returns the connector's length at `k`.
+    static func connectorLength(_ lowered: [String], at k: Int) -> Int? {
+        guard k < lowered.count else { return nil }
+        if k + 1 < lowered.count, twoWordConnectors.contains([lowered[k], lowered[k + 1]]) { return 2 }
+        return connectors.contains(lowered[k]) ? 1 : nil
+    }
+
+    /// The start index of a connector that ends at word `k`, or nil.
+    static func connectorStart(_ lowered: [String], endingAt k: Int) -> Int? {
+        guard k >= 0, k < lowered.count else { return nil }
+        if k >= 1, twoWordConnectors.contains([lowered[k - 1], lowered[k]]) { return k - 1 }
+        return connectors.contains(lowered[k]) ? k : nil
+    }
+
+    private static let connectors: Set<String> = set("""
+        und oder bzw beziehungsweise sowie statt anstatt als versus vs and or nor than
+        """)
+    private static let twoWordConnectors: Set<[String]> = [["instead", "of"], ["rather", "than"], ["anstelle", "von"]]
 
     /// Words that start a person's own sentence-initial determiner use ("A" the letter).
     static let numberWords: [String: String] = [

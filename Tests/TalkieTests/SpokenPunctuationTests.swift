@@ -200,7 +200,7 @@ final class SpokenPunctuationTests: XCTestCase {
         XCTAssertEqual(en("take coffee, forward slash, tea"), "take coffee/tea")
         XCTAssertEqual(de("Slash review"), "/review")
         XCTAssertEqual(en("backslash, temp"), "\\temp")
-        XCTAssertEqual(de("Bitte nimm uns Schrägstrich oder Slash."), "Bitte nimm uns/oder Slash.") // no word after: stays
+        XCTAssertEqual(de("Bitte nimm uns Schrägstrich oder Slash."), "Bitte nimm uns Schrägstrich oder Slash.") // two mark names linked by "oder": a list
         XCTAssertEqual(en("Use slash."), "Use slash.")
     }
 
@@ -266,7 +266,7 @@ final class SpokenPunctuationTests: XCTestCase {
         XCTAssertEqual(en("hashtag"), "hashtag")
         XCTAssertEqual(en("Add a dash of salt to the soup."), "Add a dash of salt to the soup.")
         XCTAssertEqual(en("run to the store and dash home"), "run to the store and dash home") // no punctuation: literal
-        XCTAssertEqual(de("Das Thema Raute wichtig"), "Das Thema Raute wichtig")
+        XCTAssertEqual(de("Das Thema Raute wichtig"), "Das Thema #wichtig")   // inline mark since the second pass
         XCTAssertEqual(de("Das ist ein Sternchen für dich."), "Das ist ein Sternchen für dich.")
         XCTAssertEqual(de("Ein Sternchen und ein Pluszeichen."), "Ein Sternchen und ein Pluszeichen.")
     }
@@ -443,8 +443,8 @@ final class SpokenPunctuationTests: XCTestCase {
             XCTAssertEqual(SpokenPunctuation.apply(out, languageCode: f.lang), out, "idempotent \(f.id)")
             if f.id.hasSuffix("_S"), out != f.input { sentenceUseChanged.append(f.id) }
         }
-        // 45 sentence-use clips: exactly one false positive, and it is a recognizer artefact
-        // (the synthetic "A backslash matters" came back without its article).
-        XCTAssertEqual(sentenceUseChanged, ["probe_bslash_S"])
+        // 45 sentence-use clips, no false positive (the first pass had one: "backslash
+        // matters in windows", now kept by the verb after it).
+        XCTAssertEqual(sentenceUseChanged, [])
     }
 }
