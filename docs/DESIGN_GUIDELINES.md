@@ -74,7 +74,11 @@ SF Symbols for functional icons < 24 pt (semibold, 11–14 pt, `inkTertiary` or 
 - Loading / status / error inline: `TalkieStatusLine(text, tone:)` — `.progress` (spinner), `.info`, `.success`, `.warning`, `.error` (icon + colour, never colour alone).
 - Dismissible notices (update reminder): `TalkieNotice` on a control-radius surface with its action and a quiet ×.
 
-## 12. Copy
+## 12. Dictation pill
+- Status lines (the format hint "Listening for a format…", the format chip, "Not recognised") sit on their **own line, horizontally centred directly below the waveform row** — never beside the waveform. The live transcript stays below them. The waveform row keeps its position; height changes animate.
+- State colours on the pill are used at **full strength**: the pill is black in both appearances, so the format state uses the brand blue's dark-surface value (`Theme.coral` dark, #4AA0E6) at full opacity for the waveform bars and hint text — no extra dimming or blending. Every state colour must reach **≥ 4.5:1** against the pill background (and against the fills it sits on) and differ clearly from the normal red waveform; `PillPaletteTests` checks both.
+
+## 13. Copy
 Sentence case everywhere; second person; plain and calm; privacy stated as fact; no exclamation marks; ellipsis (…) only on buttons that open a further step. Every string uses `.loc` / `LocalizedStringKey` and exists in all 10 languages.
 
 ## Known disagreements between the sources (resolved as above)

@@ -1250,12 +1250,13 @@ struct HUDView: View {
                 Text(chip.name)
                     .font(.system(size: size, weight: .semibold))
             }
-            .foregroundStyle(chip.confirming ? Color.white : Self.formatBlue)
+            .foregroundStyle(Self.formatBlue)
             .lineLimit(1)
             .fixedSize()
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
-            .background(Capsule().fill(chip.confirming ? Self.formatBlue : Self.formatBlue.opacity(0.2)))
+            .background(Capsule().fill(Self.formatBlue.opacity(chip.confirming
+                ? PillPalette.confirmingChipFillOpacity : PillPalette.chipFillOpacity)))
             .transition(.scale.combined(with: .opacity))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(String(format: "Format: %@".loc, chip.name))
@@ -1276,9 +1277,27 @@ struct HUDView: View {
         }
     }
 
-    /// The pill's format blue: the brand blue as it reads on the always-black pill
-    /// (the dark-appearance value of `Theme.brand`, which `featherBlue` shares).
-    private static let formatBlue = Theme.featherBlue
+    /// The pill's format blue: the brand blue's dark-surface value (`Theme.coral` dark,
+    /// #4AA0E6) at full strength, fixed — the pill is black in either appearance, so
+    /// the light-mode blue would read as dim navy. See `PillPalette` (contrast-tested).
+    static let formatBlue = Color(.sRGB, red: PillPalette.formatBlue.r / 255,
+                                  green: PillPalette.formatBlue.g / 255,
+                                  blue: PillPalette.formatBlue.b / 255, opacity: 1)
+
+    /// Whether the format status line (below the waveform) has anything to show.
+    private var hasFormatStatus: Bool {
+        let s = model.formatState
+        return s.showsListeningHint || s.chip != nil || s.showsNotRecognised
+    }
+
+    /// The format status on its own line, centred under the waveform row — never
+    /// beside it, so the row keeps its position when a format state appears.
+    private var formatStatusLine: some View {
+        HStack(spacing: 8) { formatChipView }
+            .fixedSize()
+            .layoutValue(key: PillCentred.self, value: true)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+    }
 
     /// C1 — the live tail as a WRAPPING block below the waveform. `PillColumnLayout`
     /// offers it at most `liveTailWidth`, and it takes only the width its words need
@@ -1308,7 +1327,7 @@ struct HUDView: View {
         if !volatile.isEmpty {
             let joiner = model.text.isEmpty ? "" : " "
             var tail = AttributedString(joiner + volatile)
-            tail.foregroundColor = blue ? Self.formatBlue.opacity(0.75) : ink(model.highContrast ? 0.7 : 0.5)
+            tail.foregroundColor = blue ? Self.formatBlue : ink(model.highContrast ? 0.7 : 0.5)
             attributed.append(tail)
         }
         return attributed
@@ -1436,20 +1455,22 @@ struct HUDView: View {
             // saturated feather color, left as-is.
             let tint = recording ? Theme.featherRed : ink(model.highContrast ? 0.9 : 0.55)
             // "Format while you dictate": the waves turn blue while a format is active.
-            let waveTint = (recording && model.formatState.waveformIsBlue) ? Self.formatBlue : tint
+            let formatBlueWave = recording && model.formatState.waveformIsBlue
+            let waveTint = formatBlueWave ? Self.formatBlue : tint
             Group {
                 if model.silenceCountingDown {
                     // B5: the auto-stop countdown owns the row (and hides the live tail).
+                    VStack(spacing: 5) {
                     HStack(spacing: 8) {
                         StatusDot(color: tint, filled: recording)
                             .animation(.easeInOut(duration: 0.25), value: recording)
                         // A red waveform: equal-width bars whose heights move with your
                         // voice. A one-shot wave of opacity sweeps across it the instant
                         // recording starts, then it settles to steady red.
-                        Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID)
+                        Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID,
+                                 fullStrength: formatBlueWave)
                             .accessibilityHidden(true)
                         lockGlyph
-                        formatChipView
                         // Feature 14: the active cleanup style/level, tappable to cycle —
                         // change how the dictation is polished without leaving the record.
                         // Hidden entirely when no switcher is wired (today's pill).
@@ -1464,6 +1485,8 @@ struct HUDView: View {
                             .fixedSize(horizontal: true, vertical: false)
                             .transition(.blurReplace)
                     }
+                    if hasFormatStatus { formatStatusLine }
+                    }
                 } else {
                     // The pill hugs its content: as wide as the status row needs, growing
                     // sideways only as far as the live words below need (they wrap at
@@ -1476,17 +1499,20 @@ struct HUDView: View {
                             // A red waveform: equal-width bars whose heights move with your
                             // voice. A one-shot wave of opacity sweeps across it the instant
                             // recording starts, then it settles to steady red.
-                            Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID)
+                            Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID,
+                                 fullStrength: formatBlueWave)
                                 .accessibilityHidden(true)
                             HStack(spacing: 8) {
                                 lockGlyph
-                                formatChipView
                                 // Feature 14: the active cleanup style/level, tappable to cycle —
                                 // change how the dictation is polished without leaving the record.
                                 // Hidden entirely when no switcher is wired (today's pill).
                                 CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
                             }
                         }
+                        // "Format while you dictate": its status sits on its own line,
+                        // centred directly below the waveform row (never beside it).
+                        if hasFormatStatus { formatStatusLine }
                         // C1: the live tail of what's being heard flows BELOW the waveform
                         // as wrapping text. Gated by the Settings toggle; absent until there
                         // are words — so the bare pill is just the compact status row.
@@ -2306,6 +2332,8 @@ private struct Waveform: View {
     let levels: [CGFloat]          // 0…1, newest last
     var tint: Color
     var sweepTrigger: Int          // bumped once when audio goes live
+    /// Format state: every bar at full opacity (no sweep dimming).
+    var fullStrength = false
 
     @State private var opacities = Array(repeating: 0.5, count: HUDModel.barCount)
 
@@ -2320,7 +2348,7 @@ private struct Waveform: View {
                 Capsule(style: .continuous)
                     .fill(tint)
                     .frame(width: barWidth, height: floor + level * (maxHeight - floor))
-                    .opacity(idx < opacities.count ? opacities[idx] : 1)
+                    .opacity(fullStrength ? 1 : (idx < opacities.count ? opacities[idx] : 1))
             }
         }
         .frame(height: maxHeight)
@@ -2354,7 +2382,10 @@ struct PillColumnLayout: Layout {
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = columnWidth(subviews)
-        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+        let heights = subviews.map {
+            $0[PillCentred.self] ? $0.sizeThatFits(.unspecified).height
+                                 : $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+        }
         return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(max(0, heights.count - 1)))
     }
 
@@ -2362,6 +2393,14 @@ struct PillColumnLayout: Layout {
         let width = columnWidth(subviews)
         var y = bounds.minY
         for subview in subviews {
+            if subview[PillCentred.self] {
+                // A centred line (the format status): its own width, centred.
+                let size = subview.sizeThatFits(.unspecified)
+                subview.place(at: CGPoint(x: bounds.minX + (width - size.width) / 2, y: y), anchor: .topLeading,
+                              proposal: ProposedViewSize(size))
+                y += size.height + spacing
+                continue
+            }
             let height = subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
             subview.place(at: CGPoint(x: bounds.minX, y: y), anchor: .topLeading,
                           proposal: ProposedViewSize(width: width, height: height))
@@ -2373,10 +2412,17 @@ struct PillColumnLayout: Layout {
         guard let row = subviews.first else { return 0 }
         var width = row.sizeThatFits(.unspecified).width
         for below in subviews.dropFirst() {
-            width = max(width, below.sizeThatFits(ProposedViewSize(width: maxTailWidth, height: nil)).width)
+            let w = below[PillCentred.self] ? below.sizeThatFits(.unspecified).width
+                : below.sizeThatFits(ProposedViewSize(width: maxTailWidth, height: nil)).width
+            width = max(width, w)
         }
         return ceil(width)
     }
+}
+
+/// Marks a `PillColumnLayout` line that is centred at its own width (the format status).
+struct PillCentred: LayoutValueKey {
+    static let defaultValue = false
 }
 
 /// A three-part row — leading, centre, trailing — that puts the centre view dead

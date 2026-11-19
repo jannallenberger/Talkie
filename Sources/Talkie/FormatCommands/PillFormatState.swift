@@ -117,3 +117,55 @@ struct PillFormatState: Equatable, Sendable {
         }
     }
 }
+
+/// The pill's colours for the format states, as plain sRGB numbers so their contrast
+/// is unit-tested. The pill is always black (dark surface), so the format blue is the
+/// brand blue's DARK-surface value (`Theme.coral` dark, #4AA0E6) at full strength —
+/// never the light-mode value and never dimmed — whatever the system appearance.
+enum PillPalette {
+    struct RGB: Equatable, Sendable {
+        var r: Double, g: Double, b: Double   // 0…255
+        init(_ r: Double, _ g: Double, _ b: Double) { self.r = r; self.g = g; self.b = b }
+        init(hex: UInt32) {
+            self.init(Double((hex >> 16) & 0xFF), Double((hex >> 8) & 0xFF), Double(hex & 0xFF))
+        }
+    }
+
+    /// Format state: waveform bars, hint text, chip text. `Theme.coral` dark value.
+    static let formatBlueHex: UInt32 = 0x4AA0E6
+    static var formatBlue: RGB { RGB(hex: formatBlueHex) }
+    /// The normal recording waveform (`Theme.featherRed`, light and dark values).
+    static let recordingRed = [RGB(hex: 0xE0342B), RGB(hex: 0xF0473B)]
+    /// The pill background.
+    static let pillBackground = RGB(0, 0, 0)
+    /// The hold-to-lock fill that can sit behind the row (featherRed at 16 %).
+    static let latchFillOpacity = 0.16
+    /// The persistent chip's fill (format blue over the pill) and the confirming one's.
+    static let chipFillOpacity = 0.2
+    static let confirmingChipFillOpacity = 0.28
+    /// The required minimum contrast for state colours on the pill (WCAG AA text).
+    static let minimumContrast = 4.5
+
+    static func relativeLuminance(_ c: RGB) -> Double {
+        func channel(_ v: Double) -> Double {
+            let s = v / 255
+            return s <= 0.03928 ? s / 12.92 : pow((s + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+    }
+
+    static func contrast(_ a: RGB, _ b: RGB) -> Double {
+        let la = relativeLuminance(a), lb = relativeLuminance(b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+
+    /// `fg` at `alpha` over `bg`.
+    static func over(_ fg: RGB, alpha: Double, _ bg: RGB) -> RGB {
+        RGB(fg.r * alpha + bg.r * (1 - alpha), fg.g * alpha + bg.g * (1 - alpha), fg.b * alpha + bg.b * (1 - alpha))
+    }
+
+    /// Straight-line distance in sRGB (0…441).
+    static func distance(_ a: RGB, _ b: RGB) -> Double {
+        ((a.r - b.r) * (a.r - b.r) + (a.g - b.g) * (a.g - b.g) + (a.b - b.b) * (a.b - b.b)).squareRoot()
+    }
+}

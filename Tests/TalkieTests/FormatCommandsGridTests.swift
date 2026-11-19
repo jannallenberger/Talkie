@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import XCTest
 @testable import Talkie
@@ -451,5 +452,44 @@ final class PillFormatStateTests: XCTestCase {
                        .applied(.bulletList))
         XCTAssertEqual(FormatLivePreview.resolve("", alternatives: ["in quotes"], book: .builtIn), .applied(.quotes))
         XCTAssertEqual(FormatLivePreview.resolve("", book: .builtIn), .ended)
+    }
+}
+
+final class PillPaletteTests: XCTestCase {
+
+    /// The format blue on the pill: bars, hint text and chip text must clear 4.5:1 on
+    /// the black pill, on the hold-to-lock fill, and on the chips' own fills.
+    func testFormatBlueContrastOnThePill() {
+        let blue = PillPalette.formatBlue
+        let black = PillPalette.pillBackground
+        XCTAssertGreaterThanOrEqual(PillPalette.contrast(blue, black), PillPalette.minimumContrast)
+        let latch = PillPalette.over(PillPalette.recordingRed[1], alpha: PillPalette.latchFillOpacity, black)
+        XCTAssertGreaterThanOrEqual(PillPalette.contrast(blue, latch), PillPalette.minimumContrast)
+        for alpha in [PillPalette.chipFillOpacity, PillPalette.confirmingChipFillOpacity] {
+            let chip = PillPalette.over(blue, alpha: alpha, black)
+            XCTAssertGreaterThanOrEqual(PillPalette.contrast(blue, chip), PillPalette.minimumContrast, "\(alpha)")
+        }
+    }
+
+    /// Clearly not the normal (red) waveform, in either appearance.
+    func testFormatBlueIsClearlyDifferentFromTheNormalWaveform() {
+        for red in PillPalette.recordingRed {
+            XCTAssertGreaterThan(PillPalette.distance(PillPalette.formatBlue, red), 200)
+        }
+    }
+
+    /// It is the brand blue's dark-surface value, at full strength.
+    @MainActor
+    func testFormatBlueIsTheBrandBluesDarkValue() throws {
+        let dark = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        var resolved: NSColor?
+        dark.performAsCurrentDrawingAppearance {
+            resolved = NSColor(Theme.coral).usingColorSpace(.sRGB)
+        }
+        let c = try XCTUnwrap(resolved)
+        XCTAssertEqual(c.redComponent * 255, PillPalette.formatBlue.r, accuracy: 1)
+        XCTAssertEqual(c.greenComponent * 255, PillPalette.formatBlue.g, accuracy: 1)
+        XCTAssertEqual(c.blueComponent * 255, PillPalette.formatBlue.b, accuracy: 1)
+        XCTAssertEqual(c.alphaComponent, 1, accuracy: 0.001)
     }
 }
