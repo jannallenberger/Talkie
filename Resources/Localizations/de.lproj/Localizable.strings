@@ -1151,8 +1151,8 @@
 "slower — uses the on-device model" = "langsamer – nutzt das Modell auf dem Gerät";
 
 /* Spoken punctuation (Commands page) */
-"Punctuation you can say" = "Satzzeichen zum Sagen";
+"Punctuation you can say" = "Gesprochene Satzzeichen";
 "Say punctuation" = "Satzzeichen sprechen";
-"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Sag ein Satzzeichen-Wort für sich allein, dann wird es zum Zeichen. Mitten in einem normalen Satz bleibt es ein Wort. „Neue Zeile“ und „neuer Absatz“ brauchen davor und danach eine kurze Pause.";
-"Show all" = "Alle zeigen";
-"Show fewer" = "Weniger zeigen";
+"Say a punctuation word on its own and it becomes the sign. Inside a normal sentence it stays a word. “New line” and “new paragraph” need a short pause before and after." = "Sag den Namen eines Satzzeichens für sich allein, dann wird daraus das Zeichen. Mitten in einem normalen Satz bleibt er ein Wort. „Neue Zeile“ und „neuer Absatz“ brauchen davor und danach eine kurze Pause.";
+"Show all" = "Alle anzeigen";
+"Show fewer" = "Weniger anzeigen";

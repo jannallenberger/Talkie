@@ -32,7 +32,8 @@ struct SpokenPunctuationCard: View {
                 isOn: $settings.spokenPunctuation)
             SettingsDivider()
             VStack(alignment: .leading, spacing: 12) {
-                marks(SpokenPunctuationTables.examples(language: uiBase))
+                // The examples are a teaser for the full lists; shown together they repeat.
+                if !(on && expanded) { marks(SpokenPunctuationTables.examples(language: uiBase)) }
                 if on, expanded {
                     ForEach(listLanguages, id: \.self) { code in
                         VStack(alignment: .leading, spacing: 8) {
