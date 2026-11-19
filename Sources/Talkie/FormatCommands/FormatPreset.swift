@@ -67,79 +67,18 @@ enum FormatPreset: String, CaseIterable, Sendable, Equatable, Identifiable {
         }
     }
 
-    /// What to say, German. The first entry is the one shown in the UI; the rest are
-    /// accepted variants. Matching is tolerant (see `FormatPhraseMatcher`).
-    var germanPhrases: [String] {
-        switch self {
-        case .bulletList:
-            return ["in Stichpunkten", "Stichpunkte", "als Liste", "Aufzählung", "Aufzählungszeichen", "Spiegelstriche"]
-        case .numberedList:
-            return ["nummerierte Liste", "nummeriert", "Nummerierung", "durchnummeriert"]
-        case .todoList:
-            return ["als To-do-Liste", "To-do-Liste", "Aufgabenliste", "Checkliste", "Aufgaben", "To-dos"]
-        case .allCaps:
-            return ["alles groß", "Großbuchstaben", "Großschreibung", "Capslock", "Feststelltaste", "alles in Großbuchstaben"]
-        case .lowercase:
-            return ["alles klein", "Kleinbuchstaben", "Kleinschreibung", "alles in Kleinbuchstaben"]
-        case .quotes:
-            return ["in Anführungszeichen", "Anführungszeichen", "in Gänsefüßchen", "Gänsefüßchen", "als Zitat", "Zitat"]
-        case .parentheses:
-            return ["in Klammern", "Klammern", "Klammer"]
-        case .heading:
-            return ["als Überschrift", "Überschrift", "Titel"]
-        case .verbatim:
-            return ["wörtlich", "als Code", "Code", "unverändert", "Wort für Wort"]
-        case .email:
-            return ["als E-Mail", "E-Mail", "als Mail", "Mail"]
-        case .formal:
-            return ["formell", "förmlich", "formal", "professionell", "Sie-Form"]
-        case .shorter:
-            return ["kürzer", "kürzen", "kurz und knapp", "knapper", "kurz"]
-        case .translateToEnglish:
-            return ["auf Englisch", "ins Englische", "Englisch", "übersetze ins Englische"]
-        case .translateToGerman:
-            return ["auf Deutsch", "ins Deutsche", "Deutsch", "übersetze ins Deutsche"]
-        }
-    }
+    /// What to say, German / English (kept for callers that want just these two).
+    var germanPhrases: [String] { FormatPhrases.phrases(self, language: "de") }
+    var englishPhrases: [String] { FormatPhrases.phrases(self, language: "en") }
 
-    /// What to say, English. First entry is shown in the UI.
-    var englishPhrases: [String] {
-        switch self {
-        case .bulletList:
-            return ["bullet points", "bullet list", "bullets", "as a list", "list"]
-        case .numberedList:
-            return ["numbered list", "numbered", "numbers"]
-        case .todoList:
-            return ["to-do list", "todo list", "checklist", "to-dos", "tasks"]
-        case .allCaps:
-            return ["all caps", "caps lock", "capslock", "caps", "uppercase", "capital letters", "capitals"]
-        case .lowercase:
-            return ["all lowercase", "lowercase", "lower case", "small letters"]
-        case .quotes:
-            return ["in quotes", "quotation marks", "quotes", "quote"]
-        case .parentheses:
-            return ["in parentheses", "parentheses", "brackets", "in brackets"]
-        case .heading:
-            return ["as a heading", "heading", "headline", "title"]
-        case .verbatim:
-            return ["verbatim", "as code", "code", "word for word", "literally"]
-        case .email:
-            return ["as an email", "email", "e-mail", "as a mail"]
-        case .formal:
-            return ["formal", "formally", "more formal", "professional"]
-        case .shorter:
-            return ["shorter", "shorten", "make it shorter", "concise", "short"]
-        case .translateToEnglish:
-            return ["in English", "English", "translate to English"]
-        case .translateToGerman:
-            return ["in German", "German", "translate to German"]
-        }
-    }
+    /// Every built-in phrase, every transcription language.
+    var allPhrases: [String] { FormatPhrases.allPhrases(self) }
 
-    /// The phrase to show in the UI language (German UI → German phrase, otherwise
-    /// English — the two languages the matcher understands).
+    /// The phrase to show in the UI language (its own table when there is one,
+    /// otherwise English). Every language's phrases always work, whatever is shown.
     func shownPhrase(uiLanguageCode: String?) -> String {
-        (uiLanguageCode?.lowercased().hasPrefix("de") == true ? germanPhrases : englishPhrases)[0]
+        let lang = FormatPhrases.language(of: uiLanguageCode) ?? "en"
+        return FormatPhrases.phrases(self, language: lang).first ?? englishPhrases[0]
     }
 
     /// A tiny before → after example for the Commands page (English source; `.loc`).
@@ -167,10 +106,21 @@ enum FormatPreset: String, CaseIterable, Sendable, Equatable, Identifiable {
 enum FormatCommand: Equatable, Sendable {
     /// Switch the following speech into this format (replacing any active one).
     case apply(FormatPreset)
+    /// A user-made command: format what follows, or insert its fixed text.
+    case user(UserCommand)
     /// Back to normal text ("normal", "Ende", …).
     case end
 
+    /// The name to show for it (pill chip, conflict messages).
+    var displayName: String {
+        switch self {
+        case .apply(let p): return p.displayName
+        case .user(let c): return c.name
+        case .end: return "Back to normal text".loc
+        }
+    }
+
     /// Phrases that end the active format.
-    static let germanEndPhrases = ["normal", "Ende", "normaler Text", "Stopp", "Schluss", "fertig", "aus"]
-    static let englishEndPhrases = ["normal", "end", "plain text", "stop", "done", "off"]
+    static var germanEndPhrases: [String] { FormatPhrases.endPhrases(language: "de") }
+    static var englishEndPhrases: [String] { FormatPhrases.endPhrases(language: "en") }
 }

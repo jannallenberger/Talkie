@@ -147,6 +147,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Per command span (in order): what the live preview matched at release — the
     /// last fallback when a re-transcribed span is empty or unmatched.
     private var sessionLiveCommands: [FormatCommand?] = []
+    /// Per command span (in order): the span's audio re-recognised in the other
+    /// enabled languages (nil with one language). See `FormatCrossLanguage`.
+    private var sessionSpanAlternatives: [Task<[String], Never>?] = []
+    /// Keeps the matcher's phrase book in step with the snippets.
+    private var macrosObservation: AnyCancellable?
     /// True from key-release until the transcript has been polished + inserted.
     /// Blocks a new session from overlapping the in-flight one (which shares the
     /// engine + audio); a re-press during this window just nudges the pill.
@@ -868,42 +873,92 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let myID = sessionID
         switch output {
         case .pressed:
+            // Blue the instant the key goes down — before anything is heard.
+            hud.formatEvent(.keyDown)
             let engine = self.engine!
             formatPressSnapshot = Task { await engine.liveTranscript() }
         case .cancelled:
             formatPressSnapshot = nil
+            hud.formatEvent(.keyCancelled)
         case .tap(let at):
             formatPressSnapshot = nil
             sessionFormatMarks.append(.endTap(at: audioTime(forUptime: at)))
-            hud.setFormatChip(nil)
+            hud.formatEvent(.tapped)
         case .span(let start, let end):
-            sessionFormatMarks.append(.span(start: audioTime(forUptime: start), end: audioTime(forUptime: end)))
+            let spanStart = audioTime(forUptime: start)
+            let spanEnd = audioTime(forUptime: end)
+            sessionFormatMarks.append(.span(start: spanStart, end: spanEnd))
+            hud.formatEvent(.spanReleased)
             let spanNumber = sessionLiveCommands.count
             sessionLiveCommands.append(nil)
+            let alternatives = startSpanRecognition(start: spanStart, end: spanEnd, sessionID: myID)
+            sessionSpanAlternatives.append(alternatives)
             let before = formatPressSnapshot
             formatPressSnapshot = nil
             Task { @MainActor [weak self] in
-                // Give the recognizer a moment to emit the words said just before release.
-                try? await Task.sleep(for: .milliseconds(600))
-                guard let self, self.isDictating, self.sessionID == myID else { return }
+                // Give the recognizer a moment to emit the words said just before
+                // release; a slow recognizer gets two more looks before "nothing said".
+                var heard = ""
                 let earlier = await before?.value ?? ""
-                let now = await self.engine.liveTranscript()
-                guard self.isDictating, self.sessionID == myID else { return }
-                let resolution = FormatLivePreview.resolve(FormatLivePreview.addedWords(before: earlier, after: now))
+                for _ in 0..<3 {
+                    try? await Task.sleep(for: .milliseconds(600))
+                    guard let self, self.isDictating, self.sessionID == myID else { return }
+                    let now = await self.engine.liveTranscript()
+                    heard = FormatLivePreview.addedWords(before: earlier, after: now)
+                    if !heard.isEmpty { break }
+                }
+                guard let self, self.isDictating, self.sessionID == myID else { return }
+                var resolution = FormatLivePreview.resolve(heard)
+                // The live recognizer may be in another language than the command:
+                // when it didn't read as one, ask the other languages' readings.
+                let unresolved: Bool = {
+                    if case .notRecognised = resolution { return true }
+                    return heard.isEmpty
+                }()
+                if unresolved, let alternatives {
+                    let others = await FormatCrossLanguage.value(
+                        of: alternatives, within: FormatCrossLanguage.spanBudgetSeconds + 0.5) ?? []
+                    guard self.isDictating, self.sessionID == myID else { return }
+                    if !others.isEmpty { resolution = FormatLivePreview.resolve(heard, alternatives: others) }
+                }
                 if spanNumber < self.sessionLiveCommands.count {
                     switch resolution {
                     case .applied(let preset): self.sessionLiveCommands[spanNumber] = .apply(preset)
+                    case .appliedUser(let c), .inserted(let c): self.sessionLiveCommands[spanNumber] = .user(c)
                     case .ended: self.sessionLiveCommands[spanNumber] = .end
                     case .notRecognised: break
                     }
                 }
-                switch resolution {
-                case .applied(let preset): self.hud.setFormatChip(preset.displayName)
-                case .ended: self.hud.setFormatChip(nil)
-                case .notRecognised: self.hud.flashFormatNotRecognised()
-                }
+                self.hud.formatEvent(.resolved(PillFormatState.resolution(resolution)))
             }
         }
+    }
+
+    /// With more than one dictation language: re-recognise this span's audio in the
+    /// other enabled languages, in the background (see `FormatCrossLanguage`). Nil
+    /// with one language, or when the capture window no longer starts at time 0.
+    private func startSpanRecognition(start: Double, end: Double, sessionID myID: Int) -> Task<[String], Never>? {
+        guard FormatCrossLanguage.shouldRecognise(spokenLanguages: settings.spokenLanguages),
+              audio.bufferedAudioIsComplete else { return nil }
+        let others = FormatCrossLanguage.otherLanguages(spokenLanguages: settings.spokenLanguages,
+                                                        currentLocaleID: currentLocaleID)
+        guard !others.isEmpty else { return nil }
+        return Task { @MainActor [weak self] in
+            // Let the last syllables reach the capture window.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard let self, self.sessionID == myID else { return [] }
+            let buffers = self.audio.bufferedAudioSnapshot()
+            guard !buffers.isEmpty else { return [] }
+            let model = await self.engine.lastSessionModel()
+            return await self.engine.recognizeSpan(buffers, start: start, end: end, localeIdentifiers: others,
+                                                   model: model,
+                                                   budgetSeconds: FormatCrossLanguage.spanBudgetSeconds)
+        }
+    }
+
+    /// Keep the matcher's phrase book (synonyms, on/off, user-made commands) current.
+    private func refreshFormatPhraseBook() {
+        FormatPhraseBook.current = UserCommandLibrary.book(settings: settings, macros: macros)
     }
 
     /// Run the format assembly for a dictation with command spans (see
@@ -911,8 +966,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// deterministic number + dictionary pass; normal text gets the full chain later.
     nonisolated private static func formatPlan(
         segments: [TimedSegment], marks: [FormatMark], words: [FormatWord]?,
-        fallbackCommands: [FormatCommand?], refineByPhrase: Bool, cleanup: CleanupEngine,
-        style: CleanupStyle?, languageCode: String?, replacements: [Replacement],
+        fallbackCommands: [FormatCommand?], alternatives: [[String]], refineByPhrase: Bool,
+        cleanup: CleanupEngine, style: CleanupStyle?, languageCode: String?, replacements: [Replacement],
         stripEnglishFillers: Bool, userName: String
     ) async -> FormatDictationAssembler.Plan {
         var clean: FormatDictationAssembler.Cleaner?
@@ -925,7 +980,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return await FormatDictationAssembler.assemble(
             segments: segments, marks: marks, words: words, fallbackCommands: fallbackCommands,
-            refineByPhrase: refineByPhrase, clean: clean, postProcessFormatted: post,
+            alternatives: alternatives, refineByPhrase: refineByPhrase, clean: clean, postProcessFormatted: post,
             languageCode: languageCode, userName: userName)
     }
 
@@ -1015,10 +1070,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func observeSettings() {
+        refreshFormatPhraseBook()
+        macrosObservation = macros.$macros.dropFirst().sink { [weak self] _ in
+            // `@Published` fires before the value is stored: rebuild on the next turn.
+            Task { @MainActor in self?.refreshFormatPhraseBook() }
+        }
         // Re-bind the hotkey + sound prefs when settings change.
         settingsObservation = Task { @MainActor [weak self] in
             for await _ in NotificationCenter.default.notifications(named: .talkieSettingsChanged) {
                 guard let self else { return }
+                self.refreshFormatPhraseBook()
                 Feedback.enabled = self.settings.playSounds
                 self.hotKey?.update(config: self.hotKeyConfig)
                 self.updateStatusUI()
@@ -1262,6 +1323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionLive = false
         sessionFormatMarks = []
         sessionLiveCommands = []
+        sessionSpanAlternatives = []
         audioStartUptime = nil
         formatPressSnapshot = nil
         sessionID += 1
@@ -1986,8 +2048,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // command span (`needsAssembly` false) every branch below is exactly as before.
         let formatMarks = settings.formatCommandsEnabled ? sessionFormatMarks : []
         let formatLiveCommands = sessionLiveCommands
+        let formatSpanAlternatives = sessionSpanAlternatives
         sessionFormatMarks = []
         sessionLiveCommands = []
+        sessionSpanAlternatives = []
         formatPressSnapshot = nil
         let hasFormatSpans = FormatAssembly.needsAssembly(formatMarks)
         let formatUserName = settings.userName
@@ -2185,11 +2249,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var formatPlan: FormatDictationAssembler.Plan?
             if hasFormatSpans {
                 streaming?.cancel()
+                // Other readings of each span: its re-recognition in the other enabled
+                // languages (waiting at most `pasteWaitSeconds` in total for any still
+                // running), plus the original transcript's words after a language switch.
+                let waitStarted = Date()
+                var spanAlternatives: [[String]] = []
+                for task in formatSpanAlternatives {
+                    guard let task else { spanAlternatives.append([]); continue }
+                    let left = FormatCrossLanguage.pasteWaitSeconds - Date().timeIntervalSince(waitStarted)
+                    spanAlternatives.append(await FormatCrossLanguage.value(of: task, within: left) ?? [])
+                }
+                if languageSwitched {
+                    let original = FormatTimeline.spanTexts(words: FormatTimeline.words(from: timedSegments),
+                                                            marks: formatMarks)
+                    for (n, text) in original.enumerated() where !text.isEmpty {
+                        while spanAlternatives.count <= n { spanAlternatives.append([]) }
+                        spanAlternatives[n].append(text)
+                    }
+                }
                 let plan = await Self.formatPlan(
                     segments: timedSegments, marks: formatMarks, words: formatWords,
                     fallbackCommands: FormatRetranscription.fallbackCommands(
                         original: FormatTimeline.words(from: timedSegments), marks: formatMarks,
                         live: formatLiveCommands),
+                    alternatives: spanAlternatives,
                     refineByPhrase: formatWordsEstimated, cleanup: cleanupEngine,
                     style: cleanupEnabled ? style : nil, languageCode: cleanupLangCode,
                     replacements: replacements, stripEnglishFillers: stripEnglishFillers,

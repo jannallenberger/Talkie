@@ -30,15 +30,48 @@ struct FormatWord: Sendable, Equatable {
     var midpoint: Double { (start + end) / 2 }
 }
 
-/// A run of dictated words that share one format (nil = normal text).
+/// What a formatted region is pasted as: a built-in format or a user-made command.
+enum FormatStyle: Sendable, Equatable {
+    case preset(FormatPreset)
+    case user(UserCommand)
+
+    var displayName: String {
+        switch self {
+        case .preset(let p): return p.displayName
+        case .user(let c): return c.name
+        }
+    }
+}
+
+/// A run of dictated words that share one format (nil = normal text). A user-made
+/// fixed-text command is a region of its own with no words (its text is inserted).
 struct FormatRegion: Sendable, Equatable {
-    var format: FormatPreset?
+    var style: FormatStyle?
     var words: [FormatWord]
+
+    init(style: FormatStyle?, words: [FormatWord]) {
+        self.style = style
+        self.words = words
+    }
+
+    init(format: FormatPreset?, words: [FormatWord]) {
+        self.init(style: format.map(FormatStyle.preset), words: words)
+    }
+
+    /// The built-in format, if this region has one.
+    var format: FormatPreset? {
+        if case .preset(let p)? = style { return p }
+        return nil
+    }
 }
 
 /// How one command span resolved.
 enum FormatSpanResolution: Sendable, Equatable {
     case applied(FormatPreset)
+    /// A user-made command now formats what follows.
+    case appliedUser(UserCommand)
+    /// A user-made fixed-text command inserted its text here.
+    case inserted(UserCommand)
     case ended
     /// Words were said but none matched a preset — nothing changes.
     case notRecognised(String)
@@ -85,8 +118,8 @@ enum FormatTimeline {
         var resolutions: [FormatSpanResolution]
     }
 
-    /// Split `words` into regions. `match` maps a span's text to a command (injected
-    /// so tests can stub it; the live caller passes `FormatPhraseMatcher.match`).
+    /// Split `words` into regions. `book` holds the phrases a span's text is matched
+    /// against (the live phrase book by default; tests pass their own).
     ///
     /// - `fallback`: per span (in time order), the command to use when the span's
     ///   words here are empty or match nothing — e.g. after a stop-time language
@@ -96,9 +129,14 @@ enum FormatTimeline {
     ///   no recognizer timings). Each span's word range is then nudged by up to
     ///   `refineReach` words either way to the range that is exactly the command
     ///   phrase, so command words don't leak into the paste when the estimate is off.
+    /// - `alternatives`: per span, other readings of the same audio (re-recognised in
+    ///   the other enabled languages, or the original transcript's words). When there
+    ///   are any, the best match across all readings decides
+    ///   (`FormatPhraseMatcher.bestAcross`); with none, behaviour is unchanged.
     static func layout(words: [FormatWord], marks: [FormatMark],
-                       match: (String) -> FormatCommand? = FormatPhraseMatcher.match,
+                       book: FormatPhraseBook = .current,
                        fallback: (Int) -> FormatCommand? = { _ in nil },
+                       alternatives: (Int) -> [String] = { _ in [] },
                        refineByPhrase: Bool = false) -> Layout {
         let sorted = marks.sorted { $0.effectiveTime < $1.effectiveTime }
         let spans: [(start: Double, end: Double)] = sorted.compactMap {
@@ -123,7 +161,14 @@ enum FormatTimeline {
         for n in spans.indices {
             let spoken = ownedRange(n).map { text(of: Array(words[$0])) } ?? ""
             spokenTexts.append(spoken)
-            commands.append((spoken.isEmpty ? nil : match(spoken)) ?? fallback(n))
+            let others = alternatives(n).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let resolved: FormatCommand?
+            if others.isEmpty {
+                resolved = spoken.isEmpty ? nil : FormatPhraseMatcher.match(spoken, book: book)
+            } else {
+                resolved = FormatPhraseMatcher.bestAcross([spoken] + others, book: book)
+            }
+            commands.append(resolved ?? fallback(n))
         }
 
         if refineByPhrase {
@@ -135,7 +180,7 @@ enum FormatTimeline {
                     return i...i
                 }()
                 if let better = bestPhraseRange(in: words, around: estimate, owner: owner, span: n,
-                                                expected: expected) {
+                                                expected: expected, book: book) {
                     for i in owner.indices where owner[i] == n { owner[i] = nil }
                     for i in better { owner[i] = n }
                     spokenTexts[n] = text(of: Array(words[better]))
@@ -144,7 +189,8 @@ enum FormatTimeline {
         }
 
         // Each mark becomes a format change that takes effect from a word index on.
-        var changes: [(index: Int, format: FormatPreset?)] = []
+        var changes: [(index: Int, format: FormatStyle?)] = []
+        var insertions: [(index: Int, command: UserCommand)] = []
         var resolutions: [FormatSpanResolution] = []
         var spanNumber = 0
         for mark in sorted {
@@ -159,7 +205,13 @@ enum FormatTimeline {
                 switch commands[n] {
                 case .apply(let preset)?:
                     resolutions.append(.applied(preset))
-                    changes.append((from, preset))
+                    changes.append((from, .preset(preset)))
+                case .user(let command)? where command.isInsertion:
+                    resolutions.append(.inserted(command))
+                    insertions.append((from, command))
+                case .user(let command)?:
+                    resolutions.append(.appliedUser(command))
+                    changes.append((from, .user(command)))
                 case .end?:
                     resolutions.append(.ended)
                     changes.append((from, nil))
@@ -181,9 +233,11 @@ enum FormatTimeline {
         // Walk the content words in order. A new format command always opens a new
         // region (a second "bullet list" starts a second list); normal text either
         // side of an ended mode merges back.
+        insertions.sort { $0.index < $1.index }   // stable, like `changes`
         var regions: [FormatRegion] = []
-        var current: FormatPreset? = nil
+        var current: FormatStyle? = nil
         var ci = 0
+        var ii = 0
         for (i, w) in words.enumerated() {
             var changed = false
             while ci < changes.count, changes[ci].index <= i {
@@ -192,11 +246,21 @@ enum FormatTimeline {
                 ci += 1
             }
             guard owner[i] == nil else { continue }
-            if let last = regions.last, last.format == current, !(changed && current != nil) {
+            // A fixed text said before this word goes in here, without changing the format.
+            while ii < insertions.count, insertions[ii].index <= i {
+                regions.append(FormatRegion(style: .user(insertions[ii].command), words: []))
+                ii += 1
+                changed = true
+            }
+            if let last = regions.last, last.style == current, !(changed && current != nil) {
                 regions[regions.count - 1].words.append(w)
             } else {
-                regions.append(FormatRegion(format: current, words: [w]))
+                regions.append(FormatRegion(style: current, words: [w]))
             }
+        }
+        while ii < insertions.count {
+            regions.append(FormatRegion(style: .user(insertions[ii].command), words: []))
+            ii += 1
         }
         return Layout(regions: regions, resolutions: resolutions)
     }
@@ -209,7 +273,8 @@ enum FormatTimeline {
     /// the longer range so carrier words ("in", "als") go too. Never takes words that
     /// belong to another span. Nil when no nearby range is the phrase.
     static func bestPhraseRange(in words: [FormatWord], around estimate: ClosedRange<Int>, owner: [Int?],
-                                span n: Int, expected: FormatCommand) -> ClosedRange<Int>? {
+                                span n: Int, expected: FormatCommand,
+                                book: FormatPhraseBook = .current) -> ClosedRange<Int>? {
         guard !words.isEmpty else { return nil }
         let lo = max(0, estimate.lowerBound - refineReach)
         let hi = min(words.count - 1, max(estimate.lowerBound, estimate.upperBound) + refineReach)
@@ -218,7 +283,7 @@ enum FormatTimeline {
         for a in lo...hi {
             for b in a...min(hi, a + 5) {
                 guard (a...b).allSatisfy({ owner[$0] == nil || owner[$0] == n }) else { continue }
-                guard FormatPhraseMatcher.matchWhole(text(of: Array(words[a...b]))) == expected else { continue }
+                guard FormatPhraseMatcher.matchWhole(text(of: Array(words[a...b])), book: book) == expected else { continue }
                 let cost = abs(a - estimate.lowerBound) + abs(b - estimate.upperBound)
                 if best == nil || cost < best!.cost
                     || (cost == best!.cost && b - a > best!.range.count - 1) {
@@ -229,10 +294,24 @@ enum FormatTimeline {
         return best?.range
     }
 
+    /// Per span (time order): the span's audio interval and the words heard in it.
+    static func spans(of marks: [FormatMark]) -> [(start: Double, end: Double)] {
+        marks.sorted { $0.effectiveTime < $1.effectiveTime }.compactMap {
+            if case .span(let s, let e) = $0 { return (s, e) } else { return nil }
+        }
+    }
+
+    /// Per span (time order): the text `words` hold inside it ("" when none).
+    static func spanTexts(words: [FormatWord], marks: [FormatMark]) -> [String] {
+        spans(of: marks).map { span in
+            text(of: words.filter { $0.midpoint >= span.start - spanLeadPadding && $0.midpoint <= span.end + spanTrailPadding })
+        }
+    }
+
     /// Per span (time order): the command its words match, or nil. Used to read the
     /// command from the ORIGINAL transcript as the fallback after a re-transcription.
     static func spanCommands(words: [FormatWord], marks: [FormatMark],
-                             match: (String) -> FormatCommand? = FormatPhraseMatcher.match) -> [FormatCommand?] {
+                             match: (String) -> FormatCommand? = { FormatPhraseMatcher.match($0) }) -> [FormatCommand?] {
         let spans: [(start: Double, end: Double)] = marks.sorted { $0.effectiveTime < $1.effectiveTime }.compactMap {
             if case .span(let s, let e) = $0 { return (s, e) } else { return nil }
         }

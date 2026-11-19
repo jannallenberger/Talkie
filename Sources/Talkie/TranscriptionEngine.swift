@@ -609,6 +609,51 @@ actor TranscriptionEngine {
         return LanguageDetector.LanguageCandidate(localeID: best.localeID, text: whole.text, confidence: best.confidence)
     }
 
+    /// "Format while you dictate" across languages: re-recognise ONE command span's
+    /// audio (a second or two) in each of `ids`, so a command said in another enabled
+    /// language than the running recognizer's still reads as itself. Sequential inside
+    /// the actor (the audio is non-`Sendable`), and bounded: no new pass starts once
+    /// `budgetSeconds` have passed. Never installs a model inline. Returns the texts
+    /// it got (possibly fewer than `ids`).
+    func recognizeSpan(
+        _ buffers: [AVAudioPCMBuffer],
+        start: Double, end: Double,
+        localeIdentifiers ids: [String],
+        model: RecognizerModel,
+        budgetSeconds: Double
+    ) async -> [String] {
+        let slice = Self.slice(buffers, from: start - FormatCrossLanguage.audioPadding,
+                               to: end + FormatCrossLanguage.audioPadding)
+        guard !slice.isEmpty else { return [] }
+        let began = Date()
+        var out: [String] = []
+        for id in ids {
+            guard Date().timeIntervalSince(began) < budgetSeconds else {
+                talkieDebugLog("format: span re-recognition stopped at the \(budgetSeconds) s budget")
+                break
+            }
+            var effective = model
+            if model == .dictation,
+               await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) == nil {
+                effective = .speech
+            }
+            if let scored = await transcribeScored(slice, localeIdentifier: id, installIfNeeded: false,
+                                                   model: effective, keepSegments: false) {
+                out.append(scored.text)
+            }
+        }
+        return out
+    }
+
+    /// The buffers covering `from…to` seconds of the capture (whole buffers; the
+    /// capture's first buffer is time 0).
+    nonisolated static func slice(_ buffers: [AVAudioPCMBuffer], from: Double, to: Double) -> [AVAudioPCMBuffer] {
+        guard let rate = buffers.first?.format.sampleRate, rate > 0 else { return [] }
+        let range = FormatCrossLanguage.bufferRange(frameCounts: buffers.map { Int($0.frameLength) },
+                                                    sampleRate: rate, from: from, to: to)
+        return Array(buffers[range])
+    }
+
     /// One-shot re-transcription of already-captured audio in a locale, returning
     /// just the text (used by the meeting language-correction shim). Returns nil
     /// when the language can't be transcribed at all.
@@ -648,7 +693,8 @@ actor TranscriptionEngine {
         _ buffers: [AVAudioPCMBuffer],
         localeIdentifier id: String,
         installIfNeeded: Bool = false,
-        model: RecognizerModel = .speech
+        model: RecognizerModel = .speech,
+        keepSegments: Bool = true
     ) async -> (text: String, confidence: Double)? {
         guard SpeechTranscriber.isAvailable, !buffers.isEmpty else {
             talkieDebugLog("reTx[\(id)]: bail — unavailable or no buffers (\(buffers.count))")
@@ -760,7 +806,7 @@ actor TranscriptionEngine {
             return nil
         }
         let confidence = collected.confCount > 0 ? collected.confSum / Double(collected.confCount) : 0
-        reTranscribedSegments[id] = collected.timed
+        if keepSegments { reTranscribedSegments[id] = collected.timed }
         // Per-word text is dictated content — never log it, even when the sink
         // is enabled. The min/max spread (vs. the mean above) is what actually
         // showed whether confidence separates right-vs-wrong model per word;
