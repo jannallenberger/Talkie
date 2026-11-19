@@ -547,6 +547,33 @@ struct TalkieTag: View {
     }
 }
 
+/// A spoken word next to the character it becomes ("colon" -> ":"). Static and never
+/// clickable: sunken chip radius for the character, quiet text for the word, so it reads
+/// as a reference entry and cannot be mistaken for a chip button.
+struct TalkieWordMark: View {
+    let word: String
+    let mark: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text(verbatim: mark)
+                .font(.talkieHeading(12, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(minWidth: 18)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .fill(Theme.surfaceSunken))
+            Text(verbatim: word)
+                .font(.talkieHeading(12, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(word): \(mark)"))
+    }
+}
+
 /// One of the user's real keys drawn as a key cap (dictation key, format key).
 /// Never clickable; pair it with a separate "Change…" button.
 struct TalkieKeycap: View {

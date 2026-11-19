@@ -1149,3 +1149,8 @@
 "“%@” stops working, also when said as its own dictation." = "“%@”将不再有效，作为单独听写说出也一样。";
 "lower case" = "小写";
 "slower — uses the on-device model" = "较慢——使用设备端模型";
+
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "可以说出的标点";
+"Say punctuation" = "说出标点";
+"Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word." = "单独说出这个词，并稍作停顿：“冒号”会变成符号。在正常句子中间，它仍然只是一个词。";

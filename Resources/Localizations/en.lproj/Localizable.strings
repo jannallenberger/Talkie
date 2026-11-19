@@ -1160,3 +1160,8 @@
 "“%@” stops working, also when said as its own dictation." = "“%@” stops working, also when said as its own dictation.";
 "lower case" = "lower case";
 "slower — uses the on-device model" = "slower — uses the on-device model";
+
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "Punctuation you can say";
+"Say punctuation" = "Say punctuation";
+"Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word." = "Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word.";

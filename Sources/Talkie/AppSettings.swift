@@ -178,6 +178,11 @@ final class AppSettings: ObservableObject {
     @Published var formatCommandsEnabled: Bool {
         didSet { defaults.set(formatCommandsEnabled, forKey: Keys.formatCommandsEnabled); notifyChanged() }
     }
+    /// "Punctuation you can say" on/off (default on): spoken words like "Doppelpunkt" or
+    /// "slash", said on their own, become the character. See `SpokenPunctuation`.
+    @Published var spokenPunctuation: Bool {
+        didSet { defaults.set(spokenPunctuation, forKey: Keys.spokenPunctuation); notifyChanged() }
+    }
     /// User-added phrases per built-in format ("bulletList" → ["dot points"]); the
     /// matcher treats them exactly like built-in phrases.
     @Published var formatSynonyms: [String: [String]] {
@@ -469,6 +474,7 @@ final class AppSettings: ObservableObject {
             Keys.activationKey: ActivationKey.rightOption.rawValue,
             Keys.formatCommandKey: FormatCommandKey.defaultKey.rawValue,
             Keys.formatCommandsEnabled: true,
+            Keys.spokenPunctuation: true,
             Keys.localeIdentifier: canonicalLocaleID(Locale.current.identifier),
             Keys.learnFromEdits: true,
             Keys.historyRetentionDays: 7,
@@ -502,6 +508,7 @@ final class AppSettings: ObservableObject {
         formatCommandKey = ActivationKey(rawValue: d.string(forKey: Keys.formatCommandKey) ?? "")
             ?? FormatCommandKey.defaultKey
         formatCommandsEnabled = d.bool(forKey: Keys.formatCommandsEnabled)
+        spokenPunctuation = d.bool(forKey: Keys.spokenPunctuation)
         formatSynonyms = Self.load([String: [String]].self, Keys.formatSynonyms, d) ?? [:]
         disabledFormatPresets = d.stringArray(forKey: Keys.disabledFormatPresets) ?? []
         userFormatCommands = Self.load([UserCommand].self, Keys.userFormatCommands, d) ?? []
@@ -702,6 +709,7 @@ final class AppSettings: ObservableObject {
         static let activationKey = "activationKey"
         static let formatCommandKey = "formatCommandKey"
         static let formatCommandsEnabled = "formatCommandsEnabled"
+        static let spokenPunctuation = "spokenPunctuation"
         static let formatSynonyms = "formatSynonyms"
         static let disabledFormatPresets = "disabledFormatPresets"
         static let userFormatCommands = "userFormatCommands"

@@ -157,6 +157,29 @@ final class CommandsSnapshotTests: XCTestCase {
         }
     }
 
+    func testPunctuationSection() throws {
+        let settings = AppSettings()
+        let saved = settings.spokenPunctuation
+        defer { settings.spokenPunctuation = saved }
+        settings.spokenPunctuation = true
+        try shot("punctuation-card-en", width: 760) {
+            SpokenPunctuationCard(settings: settings, uiLanguageCode: "en")
+        }
+        try shot("punctuation-card-de", width: 760) {
+            SpokenPunctuationCard(settings: settings, uiLanguageCode: "de")
+        }
+        settings.spokenPunctuation = false
+        try shot("punctuation-card-off", width: 760) {
+            SpokenPunctuationCard(settings: settings, uiLanguageCode: "en")
+        }
+        settings.spokenPunctuation = true
+        let macros = MacroStore()
+        try shot("commands-page-with-punctuation", width: 900, height: 2300, padding: 0) {
+            CommandsView(settings: settings, macros: macros, commandRouter: CommandRouter(macros: macros),
+                         hud: HUDController(), meetingStore: try! store())
+        }
+    }
+
     // MARK: Pill
 
     private func pill(_ name: String, _ events: [PillFormatState.Event]) throws {

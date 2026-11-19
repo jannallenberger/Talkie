@@ -968,15 +968,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         segments: [TimedSegment], marks: [FormatMark], words: [FormatWord]?,
         fallbackCommands: [FormatCommand?], alternatives: [[String]], refineByPhrase: Bool,
         cleanup: CleanupEngine, style: CleanupStyle?, languageCode: String?, replacements: [Replacement],
-        stripEnglishFillers: Bool, userName: String
+        stripEnglishFillers: Bool, userName: String, spokenPunctuation: Bool
     ) async -> FormatDictationAssembler.Plan {
         var clean: FormatDictationAssembler.Cleaner?
         if let style, CleanupEngine.isAvailable {
             clean = { text in await cleanup.clean(text, style: style, languageCode: languageCode) }
         }
         let post: @Sendable (String) -> String = { text in
-            TextProcessor.apply(replacements: replacements, removeFillers: stripEnglishFillers,
-                                autoCapitalize: false, to: NumberNormalizer.normalize(text)).text
+            let processed = TextProcessor.apply(replacements: replacements, removeFillers: stripEnglishFillers,
+                                                autoCapitalize: false, to: NumberNormalizer.normalize(text)).text
+            return spokenPunctuation ? SpokenPunctuation.apply(processed, languageCode: languageCode) : processed
         }
         return await FormatDictationAssembler.assemble(
             segments: segments, marks: marks, words: words, fallbackCommands: fallbackCommands,
@@ -1871,6 +1872,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showProcessing()
 
         let replacements = dictionary.replacementsSnapshot()
+        let spokenPunctuation = settings.spokenPunctuation
         // The jargon fed to the post-hoc niche corrector below: the hand-curated
         // Dictionary vocabulary UNIONED with the self-learned niche terms that have
         // graduated (confidence-boosted AND guard-safe). Snapshotted here on the main
@@ -2276,7 +2278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     refineByPhrase: formatWordsEstimated, cleanup: cleanupEngine,
                     style: cleanupEnabled ? style : nil, languageCode: cleanupLangCode,
                     replacements: replacements, stripEnglishFillers: stripEnglishFillers,
-                    userName: formatUserName)
+                    userName: formatUserName, spokenPunctuation: spokenPunctuation)
                 formatPlan = plan
                 finalRaw = plan.plainRaw
                 cleaned = plan.normalStream
@@ -2443,8 +2445,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ON PURPOSE: a user dictionary rule that targets "new line" runs first
             // and consumes the phrase, so a custom mapping still wins — that's the
             // escape hatch. Running structural ahead of the dictionary would break it.
-            finalText = StructuralCommands.apply(finalText, languageCode: cleanupLangCode)
+            finalText = StructuralCommands.apply(finalText, languageCode: cleanupLangCode,
+                                                 anyLanguage: spokenPunctuation)
             Self.pipelineTrace("structural", finalText)
+            // Spoken punctuation ("Doppelpunkt", "slash", "Klammer auf" …): German + English
+            // whatever the dictation language. After the dictionary (your own spellings win)
+            // and after structural commands (their line breaks are already in), before
+            // vibe file matching. A word that is part of a sentence stays a word.
+            if spokenPunctuation {
+                finalText = SpokenPunctuation.apply(finalText, languageCode: cleanupLangCode)
+                Self.pipelineTrace("punctuation", finalText)
+            }
 
             // Vibe coding: snap spoken filenames to the real files in your project
             // ("exercise library dot tsx" → "ExerciseLibrary.tsx").

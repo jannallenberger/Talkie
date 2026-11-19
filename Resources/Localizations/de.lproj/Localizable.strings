@@ -1149,3 +1149,8 @@
 "“%@” stops working, also when said as its own dictation." = "„%@“ funktioniert dann nicht mehr, auch nicht als eigenes Diktat.";
 "lower case" = "kleinbuchstaben";
 "slower — uses the on-device model" = "langsamer – nutzt das Modell auf dem Gerät";
+
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "Satzzeichen zum Sagen";
+"Say punctuation" = "Satzzeichen sprechen";
+"Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word." = "Sag das Wort allein, mit einer kurzen Pause: „Doppelpunkt“ wird zu einem Doppelpunkt. Mitten im normalen Satz bleibt es ein Wort.";

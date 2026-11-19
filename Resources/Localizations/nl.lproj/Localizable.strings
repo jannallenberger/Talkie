@@ -1149,3 +1149,8 @@
 "“%@” stops working, also when said as its own dictation." = "‘%@’ werkt dan niet meer, ook niet als losse dictatie.";
 "lower case" = "kleine letters";
 "slower — uses the on-device model" = "trager – gebruikt het model op het apparaat";
+
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "Leestekens die je kunt zeggen";
+"Say punctuation" = "Leestekens uitspreken";
+"Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word." = "Zeg het woord apart, met een korte pauze: “dubbele punt” wordt het teken. Midden in een gewone zin blijft het een woord.";

@@ -1149,3 +1149,8 @@
 "“%@” stops working, also when said as its own dictation." = "「%@」は使えなくなります。単独の音声入力でも同様です。";
 "lower case" = "小文字";
 "slower — uses the on-device model" = "遅め — デバイス上のモデルを使用";
+
+/* Spoken punctuation (Commands page) */
+"Punctuation you can say" = "声に出して言える句読点・記号";
+"Say punctuation" = "記号を声で入力";
+"Say the word on its own, with a short pause: “colon” becomes a colon. Inside a normal sentence it stays a word." = "その単語だけを、短い間をあけて言います。「コロン」は記号になります。通常の文の途中では、ただの単語のままです。";

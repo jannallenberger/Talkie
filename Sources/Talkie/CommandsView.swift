@@ -25,6 +25,7 @@ struct CommandsView: View {
             HowItWorksStrip(dictationKey: settings.activationKey, formatKey: settings.effectiveFormatCommandKey)
             formatGrid
             editGroup
+            punctuationCard
             optionsCard
         }
     }
@@ -114,6 +115,12 @@ struct CommandsView: View {
         }
     }
 
+    // MARK: Punctuation you can say
+
+    private var punctuationCard: some View {
+        SpokenPunctuationCard(settings: settings, uiLanguageCode: uiLanguageCode)
+    }
+
     // MARK: Options
 
     private var commandKeyBinding: Binding<ActivationKey> {
@@ -139,6 +146,48 @@ struct CommandsView: View {
                 title: "Ask about your meetings".loc,
                 subtitle: "Requests like \u{201C}email Sarah the action items from my last meeting\u{201D} run as a command, with a preview first. Uses only what is on this Mac.".loc,
                 isOn: $settings.crossSurfaceCommandsEnabled)
+        }
+    }
+}
+
+/// "Punctuation you can say": one switch and a plain reference of the words. Says in one
+/// sentence how it works; the list shows the user's UI language and English.
+struct SpokenPunctuationCard: View {
+    @ObservedObject var settings: AppSettings
+    let uiLanguageCode: String?
+
+    /// UI language first (when it has a table), then English.
+    private var languages: [String] {
+        let base = uiLanguageCode.map { String($0.lowercased().prefix(2)) } ?? "en"
+        return base == "en" || base.isEmpty ? ["en"] : [base, "en"]
+    }
+
+    var body: some View {
+        SettingsCard(header: "Punctuation you can say") {
+            SettingsToggleRow(
+                title: "Say punctuation".loc,
+                subtitle: "Say the word on its own, with a short pause: \u{201C}colon\u{201D} becomes a colon. Inside a normal sentence it stays a word.".loc,
+                isOn: $settings.spokenPunctuation)
+            ForEach(languages, id: \.self) { code in
+                let words = SpokenPunctuationTables.reference(language: code)
+                if !words.isEmpty {
+                    SettingsDivider()
+                    VStack(alignment: .leading, spacing: 9) {
+                        Text(verbatim: Locale.current.localizedString(forLanguageCode: code)?.capitalized ?? code)
+                            .font(.talkieHeading(12, weight: .semibold))
+                            .foregroundStyle(Theme.inkSecondary)
+                        FlowLayout(spacing: 8) {
+                            ForEach(Array(words.enumerated()), id: \.offset) { _, item in
+                                TalkieWordMark(word: item.word, mark: item.mark)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .opacity(settings.spokenPunctuation ? 1 : 0.5)
+                }
+            }
         }
     }
 }
