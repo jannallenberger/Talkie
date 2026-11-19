@@ -389,6 +389,14 @@ final class AudioCapture: @unchecked Sendable {
         talkieDebugLog("mic: prewarmed in \(Int(Date().timeIntervalSince(started) * 1000)) ms (mic stays off)")
     }
 
+    /// Drop an idle engine (prewarmed or not) so a sleep/wake or a -10877 can't leave a
+    /// dead input unit behind; the next `start()` or `prewarm` builds a fresh one. A
+    /// no-op while capturing — never touches a live session.
+    func discardIdleEngine() {
+        guard !isRunning else { return }
+        replaceEngine(observing: false)
+    }
+
     /// Recover capture after a mid-session input-device/config change. Always on the
     /// main thread (the observer uses `queue: .main`). Removes the now-dead tap,
     /// re-resolves the input device, rebuilds the converter against the (possibly

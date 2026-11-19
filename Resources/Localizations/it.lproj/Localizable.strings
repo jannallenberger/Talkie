@@ -1149,3 +1149,6 @@
 "“%@” stops working, also when said as its own dictation." = "«%@» smette di funzionare, anche come dettatura a sé.";
 "lower case" = "minuscolo";
 "slower — uses the on-device model" = "più lento: usa il modello sul dispositivo";
+
+// MARK: - Speech service recovery (wake / stale connection)
+"%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ non è riuscito a raggiungere il riconoscimento vocale di macOS. Premi di nuovo il tasto: se succede ancora, chiudi %@ e riaprilo.";
