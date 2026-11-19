@@ -622,13 +622,13 @@ private struct MilestoneCelebrationBanner: View {
         }
         .padding(Theme.Space.card)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .fill(LinearGradient(gradient: Theme.emberRamp, startPoint: .leading, endPoint: .trailing))
+                .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
         )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-        .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
         .opacity(appeared || reduceMotion ? 1 : 0)
         .onAppear {
             guard !reduceMotion else { return }
@@ -760,8 +760,12 @@ private struct WordsPerDayCard: View {
     /// Two weeks reads as a clean rhythm at hero width without crowding the bars.
     private let dayCount = 14
 
-    /// Drives the grow-from-baseline entrance; flipped once on appear.
-    @State private var grown = false
+    /// Drives the grow-from-baseline entrance; flipped once on appear. Starts grown
+    /// once the entrance has played in this launch: any running SwiftUI animation
+    /// makes every frame re-diff the whole dashboard, so the rise is a first-visit
+    /// flourish, not a toll on every tab switch.
+    @State private var grown = WordsPerDayCard.entrancePlayed
+    @MainActor private static var entrancePlayed = false
 
     private var series: [(date: Date, words: Int)] { activity.dailyWords(days: dayCount) }
     private var maxWords: Int { max(1, series.map(\.words).max() ?? 0) }
@@ -792,8 +796,13 @@ private struct WordsPerDayCard: View {
         }
         .talkieCard(fill: true)
         .onAppear {
+            guard !grown else { return }
+            Self.entrancePlayed = true
             guard !reduceMotion else { grown = true; return }
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.78)) { grown = true }
+            // A finite ease-out with a little overshoot (the old spring's look) instead
+            // of the spring itself, whose settling tail kept SwiftUI re-rendering the
+            // whole dashboard for ~2 s after every visit.
+            withAnimation(.timingCurve(0.34, 1.35, 0.64, 1, duration: 0.6)) { grown = true }
         }
     }
 
@@ -801,7 +810,11 @@ private struct WordsPerDayCard: View {
     /// number. Each bar is a squircle capsule; zero-word days collapse to a faint
     /// baseline stub so the two-week axis stays continuous.
     private var chart: some View {
-        GeometryReader { geo in
+        // Derived once per render: `series` walks the activity log, and it used to be
+        // re-derived for every bar (through `maxWords`) on every pass.
+        let series = self.series
+        let maxWords = max(1, series.map(\.words).max() ?? 0)
+        return GeometryReader { geo in
             let n = max(series.count, 1)
             let gap: CGFloat = 5
             let barW = max(3, (geo.size.width - gap * CGFloat(n - 1)) / CGFloat(n))
@@ -820,6 +833,10 @@ private struct WordsPerDayCard: View {
                         .help(dayHelp(day))
                 }
             }
+            // Entrance: the bars spring up from the baseline. A vertical scale is a
+            // render-only transform; animating each bar's HEIGHT (as before) re-ran
+            // layout for the whole window on every frame of the ~1.5 s spring.
+            .scaleEffect(x: 1, y: grown ? 1 : 0.001, anchor: .bottom)
         }
         .frame(maxHeight: .infinity)
         // VoiceOver: fold the 14 individual bars — whose per-day counts are exposed
@@ -831,11 +848,10 @@ private struct WordsPerDayCard: View {
     }
 
     /// A bar's drawn height: a faint 3-pt stub for an empty day; otherwise the
-    /// day's share of the busiest day scaled to the chart height — or `0` before
-    /// the entrance animation runs, so the bars spring up from the baseline.
+    /// day's share of the busiest day scaled to the chart height. (The entrance
+    /// rise is a scale on the whole row, see `chart`.)
     private func barHeight(frac: CGFloat, full: CGFloat, empty: Bool) -> CGFloat {
         if empty { return 3 }
-        guard grown else { return 0 }
         return max(4, full * frac)
     }
 

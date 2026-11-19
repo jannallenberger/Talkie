@@ -37,7 +37,11 @@ struct VibeCodingView: View {
                     HStack {
                         Eyebrow(text: "Projects")
                         Spacer()
-                        if projectIndex.isScanning { ProgressView().controlSize(.small) }
+                        // With pinned folders the file count below shows a skeleton
+                        // while scanning; without, this spinner is the only signal.
+                        if projectIndex.isScanning, !projectIndex.hasFolders {
+                            ProgressView().controlSize(.small)
+                        }
                     }
 
                     Text("Talkie detects the project behind the editor or terminal you dictate into automatically — including parallel worktrees — and scopes filenames to it. Everything stays on your Mac; it only reads filenames, never file contents.")
@@ -64,9 +68,18 @@ struct VibeCodingView: View {
                                 Label("Pin a folder…", systemImage: "folder.badge.plus")
                             }
                             Spacer()
-                            Text(statusLine)
-                                .font(.talkieHeading(12, weight: .regular))
-                                .foregroundStyle(Theme.inkTertiary)
+                            if projectIndex.isScanning {
+                                // The count is being recomputed: hold its place.
+                                TalkieSkeletonGroup {
+                                    TalkieSkeletonLine(width: 150, textSize: 12)
+                                }
+                                .transition(.opacity)
+                            } else {
+                                Text(statusLine)
+                                    .font(.talkieHeading(12, weight: .regular))
+                                    .foregroundStyle(Theme.inkTertiary)
+                                    .transition(.opacity)
+                            }
                         }
                     } else {
                         Button(action: chooseFolders) {

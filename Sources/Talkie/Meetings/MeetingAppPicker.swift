@@ -29,7 +29,7 @@ struct MeetingAppPickerSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if !loaded {
-                        ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+                        appGridSkeleton
                     } else if apps.isEmpty {
                         Text("No apps found — use Choose from Finder below.".loc)
                             .font(.talkieHeading(13, weight: .regular))
@@ -54,8 +54,10 @@ struct MeetingAppPickerSheet: View {
         .frame(width: 560, height: 620)
         .background(Theme.canvas)
         .task {
-            apps = InstalledAppScanner.scan()
-            loaded = true
+            // Off the main actor: the scan reads every app bundle's Info.plist, which
+            // used to freeze the sheet (and its spinner) while it ran.
+            apps = await Task.detached(priority: .userInitiated) { InstalledAppScanner.scan() }.value
+            withAnimation(.easeOut(duration: 0.16)) { loaded = true }
         }
     }
 
@@ -88,6 +90,33 @@ struct MeetingAppPickerSheet: View {
         .padding(20)
     }
 
+    /// Placeholder tiles in the grid's exact geometry while the scan runs.
+    private var appGridSkeleton: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TalkieSkeletonGroup { TalkieSkeletonLine(width: 80, textSize: 11) }
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(0..<15, id: \.self) { i in
+                    // The group sits inside the tile, so only the placeholders shimmer.
+                    TalkieSkeletonGroup {
+                        VStack(spacing: 8) {
+                            TalkieSkeletonBlock(width: 40, height: 40, cornerRadius: Theme.Radius.chip)
+                            TalkieSkeletonLine(width: [52, 64, 44, 58][i % 4], textSize: 11.5)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                            .fill(Theme.surface)
+                    )
+                }
+            }
+        }
+        .talkieSkeletonRegion()
+        .transition(.opacity)
+    }
+
     @ViewBuilder
     private func section(title: String, apps: [InstalledApp]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -96,7 +125,7 @@ struct MeetingAppPickerSheet: View {
                 ForEach(apps) { app in
                     AppTile(
                         name: app.displayName,
-                        icon: NSWorkspace.shared.icon(forFile: app.path),
+                        icon: AppPathIcon.icon(forPath: app.path),
                         selected: isAdded(app.bundleID)
                     ) { toggle(app) }
                 }
@@ -203,5 +232,19 @@ private struct AppTile: View {
                 .foregroundStyle(.white)
         }
         .frame(width: 15, height: 15)
+    }
+}
+
+/// App icons by bundle path, cached: the picker re-renders every tile on each
+/// toggle, and `NSWorkspace.icon(forFile:)` is a LaunchServices lookup per call.
+@MainActor
+private enum AppPathIcon {
+    private static var cache: [String: NSImage] = [:]
+
+    static func icon(forPath path: String) -> NSImage {
+        if let cached = cache[path] { return cached }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        cache[path] = icon
+        return icon
     }
 }

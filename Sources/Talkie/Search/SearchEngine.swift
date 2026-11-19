@@ -102,4 +102,22 @@ final class SearchEngine: ObservableObject {
     func search(_ query: String, limit: Int = 20) -> [SearchHit] {
         index.search(query, limit: limit)
     }
+
+    /// The same search, off the main actor: the index is an immutable `Sendable`
+    /// value, so the current one is handed to a serial background runner (embedding
+    /// the query + scoring every chunk no longer stalls typing or the UI). Searches
+    /// run one at a time, so two never share the index's `NLEmbedding` at once.
+    func searchInBackground(_ query: String, limit: Int = 20) async -> [SearchHit] {
+        let snapshot = index
+        return await Self.runner.run(snapshot, query: query, limit: limit)
+    }
+
+    private static let runner = SearchRunner()
+}
+
+/// Serializes background searches (see `SearchEngine.searchInBackground`).
+private actor SearchRunner {
+    func run(_ index: SemanticIndex, query: String, limit: Int) -> [SearchHit] {
+        index.search(query, limit: limit)
+    }
 }

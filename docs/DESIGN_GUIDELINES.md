@@ -72,6 +72,11 @@ SF Symbols for functional icons < 24 pt (semibold, 11–14 pt, `inkTertiary` or 
 ## 11. Empty, loading, error
 - Empty: centred, max 420 wide: clay or SF hero, 15 medium `inkSecondary` title, 13 `inkTertiary` one-line what-to-do.
 - Loading / status / error inline: `TalkieStatusLine(text, tone:)` — `.progress` (spinner), `.info`, `.success`, `.warning`, `.error` (icon + colour, never colour alone).
+- Waiting for **content** (a page's first frame, search results, a scan, a summary being written): a skeleton from `Skeleton.swift`, shaped like what is coming so nothing jumps when it lands. Parts: `TalkieSkeletonLine` / `Text` / `Block` / `Chip` / `Circle`; layouts: `TalkieSkeletonCard`, `TalkieSkeletonList`, `TalkieSkeletonChips`. Fill `Theme.skeleton` (= `surfaceSunken`), chip radius for lines and chips, control radius for blocks.
+- Placeholder parts sit in a `TalkieSkeletonGroup` placed **inside** their card (the shimmer is masked to the parts, so card surfaces stay still): one shimmer per group, never per bar, frozen under Reduce Motion, read by VoiceOver as one "Loading…". Several skeleton cards together get `.talkieSkeletonRegion()` (one VoiceOver element). A skeleton is transient — it leaves the hierarchy when content arrives — so nothing animates in a hidden window.
+- A **running action** (Check now, Install, Stop & summarize) keeps its spinner or `TalkieStatusLine(.progress)`; a skeleton never replaces a button's feedback. A status line may sit above a skeleton ("Writing the summary…" over placeholder lines).
+- The shimmer runs on a Core Animation layer (`ShimmerBandView`), never on a SwiftUI animation: any running SwiftUI animation re-diffs the whole window's display list every frame.
+- Repeating animations (pulses, shimmers) run only while their surface is on screen: a view kept alive in an ordered-out panel must not hold a `repeatForever`. Entrance animations on heavy pages are finite (a timing curve, not a spring with a settling tail) and play once per launch.
 - Dismissible notices (update reminder): `TalkieNotice` on a control-radius surface with its action and a quiet ×.
 
 ## 12. Dictation pill

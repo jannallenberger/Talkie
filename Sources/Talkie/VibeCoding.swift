@@ -289,7 +289,12 @@ final class ProjectIndexStore: ObservableObject {
     init(fileURL: URL? = nil) {
         self.fileURL = fileURL ?? AppPaths.supportDirectory().appendingPathComponent("project_index.json")
         load()
-        rebuildSnapshot()
+        // Perf: the launch build runs off the main actor. Deriving spoken keys + the
+        // guarded corrector terms for every indexed file took ~0.7 s of main-thread
+        // time at launch with a real three-project index. Until it lands `snapshot`
+        // is `.empty` — exactly the state before a first scan, which every caller
+        // already handles. Any later synchronous rebuild supersedes it.
+        rebuildSnapshotInBackground()
         // G10 migration: a legacy pre-A10 `project_index.json` stored a flat merged
         // `filePaths` with NO per-root structure, so we can't derive repo-relative paths
         // from it — `mergedRelativeFilePaths` skips the legacy blob by design. If we loaded
@@ -506,13 +511,34 @@ final class ProjectIndexStore: ObservableObject {
         }
     }
 
+    /// Bumped by every snapshot rebuild, so a background build that finishes after a
+    /// newer (synchronous) one is dropped instead of overwriting it.
+    private var snapshotGeneration = 0
+
     private func rebuildSnapshot() {
+        snapshotGeneration += 1
+        snapshot = Self.makeSnapshot(from: data)
+    }
+
+    /// The same build as `rebuildSnapshot`, off the main actor (used at launch).
+    private func rebuildSnapshotInBackground() {
+        snapshotGeneration += 1
+        let generation = snapshotGeneration
+        let data = self.data
+        Task { [weak self] in
+            let built = await Task.detached(priority: .userInitiated) { Self.makeSnapshot(from: data) }.value
+            guard let self, generation == self.snapshotGeneration else { return }
+            self.snapshot = built
+        }
+    }
+
+    nonisolated private static func makeSnapshot(from data: ProjectIndexData) -> ProjectIndexSnapshot {
         // G10: the merged fallback snapshot also carries repo-relative paths (first-folder-
         // wins across roots, each file stripped against its own root), so a terminal still
         // gets paths when we couldn't resolve which checkout you're in.
-        snapshot = SpokenFileMatcher.buildSnapshot(files: data.mergedFiles, symbols: data.mergedSymbols,
-                                                   docTerms: data.mergedDocTerms,
-                                                   filePaths: data.mergedRelativeFilePaths)
+        SpokenFileMatcher.buildSnapshot(files: data.mergedFiles, symbols: data.mergedSymbols,
+                                        docTerms: data.mergedDocTerms,
+                                        filePaths: data.mergedRelativeFilePaths)
     }
 
     private func load() {

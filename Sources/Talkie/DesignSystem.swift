@@ -199,15 +199,22 @@ extension View {
     /// corner so stacked rows / dividers can't poke past it, lifted by two whisper
     /// shadows. `talkieCard` adds padding on top; grouped row-stacks (the settings
     /// cards) apply it directly so their hairlines clip cleanly.
+    ///
+    /// Perf: the shadows hang off the background SHAPE, not the whole card. A shadow
+    /// on the composited card made Core Animation render every card's full content
+    /// off-screen to derive the shadow's alpha — again on every content change and
+    /// on scroll (a long transcript card, a list of rows). The surface is opaque, so
+    /// the shape's shadow is pixel-identical and costs a path, not a render pass.
     func talkieSurface(cornerRadius: CGFloat = Theme.Radius.card) -> some View {
-        self
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return self
+            .clipShape(shape)
             .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                shape
                     .fill(Theme.surface)
+                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
             )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
     }
 
     /// Standard Talkie card: borderless — a clean surface lifted by a single
@@ -511,11 +518,14 @@ private struct TalkieCardButtonBody: View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
         configuration.label
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(shape.fill(fill))
-            .overlay(shape.strokeBorder(Theme.brand, lineWidth: isSelected ? 2 : 0))
             .clipShape(shape)
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
+            .overlay(shape.strokeBorder(Theme.brand, lineWidth: isSelected ? 2 : 0))
+            // Shadows on the shape, not the card content (see `talkieSurface`).
+            .background(
+                shape.fill(fill)
+                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
+            )
             .contentShape(shape)
             .opacity(isEnabled ? 1 : 0.45)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
@@ -1135,11 +1145,22 @@ struct ClayIcon: View {
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    /// Each subview's natural size, measured once per change of the subviews instead
+    /// of on every sizing AND placement pass (a hundred-plus vocabulary chips were
+    /// measured several times per layout).
+    func makeCache(subviews: Subviews) -> [CGSize] {
+        subviews.map { $0.sizeThatFits(.unspecified) }
+    }
+
+    func updateCache(_ cache: inout [CGSize], subviews: Subviews) {
+        cache = makeCache(subviews: subviews)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout [CGSize]) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
-        for sub in subviews {
-            let size = sub.sizeThatFits(.unspecified)
+        for (index, _) in subviews.enumerated() {
+            let size = cache[index]
             if x > 0, x + size.width > maxWidth {
                 x = 0; y += rowHeight + spacing; rowHeight = 0
             }
@@ -1150,10 +1171,10 @@ struct FlowLayout: Layout {
         return CGSize(width: width, height: y + rowHeight)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout [CGSize]) {
         var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
-        for sub in subviews {
-            let size = sub.sizeThatFits(.unspecified)
+        for (index, sub) in subviews.enumerated() {
+            let size = cache[index]
             if x > bounds.minX, x + size.width > bounds.maxX {
                 x = bounds.minX; y += rowHeight + spacing; rowHeight = 0
             }

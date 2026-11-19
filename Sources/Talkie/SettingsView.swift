@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import Combine
 
 #if TALKIE_DEV_TOOLS
 import TalkieUpdater
@@ -291,35 +292,40 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 }
 
 struct MainView: View {
+    // Perf: MainView observes ONLY what its own body reads — `settings.hasOnboarded`,
+    // `router.selectedTab`, and `permissions` for the sidebar badge. Every store is
+    // forwarded as a plain reference; each page observes the stores it displays.
+    // Observing all of them here re-ran this whole body (split view, sidebar, page
+    // switch) on any change anywhere — every second while a meeting records, after
+    // every dictation, on each latency sample.
     @ObservedObject var settings: AppSettings
-    @ObservedObject var dictionary: DictionaryStore
+    let dictionary: DictionaryStore
     @ObservedObject var permissions: PermissionsModel
-    @ObservedObject var history: HistoryStore
-    @ObservedObject var stats: StatsStore
-    @ObservedObject var appUsage: AppUsageStore
-    @ObservedObject var activity: ActivityStore
-    @ObservedObject var wordFreq: WordFrequencyStore
+    let history: HistoryStore
+    let stats: StatsStore
+    let appUsage: AppUsageStore
+    let activity: ActivityStore
+    let wordFreq: WordFrequencyStore
     /// L5-b: the on-device invented job title, shown on the Milestones page.
-    @ObservedObject var jobTitle: JobTitleStore
-    @ObservedObject var latency: LatencyStore
-    @ObservedObject var systemPressure: SystemPressure
-    @ObservedObject var scratchpad: ScratchpadStore
+    let jobTitle: JobTitleStore
+    let latency: LatencyStore
+    let systemPressure: SystemPressure
+    let scratchpad: ScratchpadStore
     /// L7: the optional profile picture, forwarded to the dashboard header, the
     /// meeting rows, and `MemoryView` (whose "Clear everything" clears it too).
-    @ObservedObject var profileImage: ProfileImageStore
+    let profileImage: ProfileImageStore
     /// L2-b (LOG-ONLY): forwarded to `MemoryView` only so its true-delete cascade can
-    /// purge the AI-auto-add calibration log. Not `@ObservedObject` — this log drives
-    /// no UI, so nothing here should redraw when it changes.
+    /// purge the AI-auto-add calibration log.
     let autoAddPreviewLog: AutoAddPreviewLog
-    @ObservedObject var projectIndex: ProjectIndexStore
-    @ObservedObject var contextSummary: ContextSummaryStore
-    @ObservedObject var meetingRecorder: MeetingRecorder
-    @ObservedObject var meetingStore: MeetingStore
-    @ObservedObject var contextGraph: ContextGraphStore
-    @ObservedObject var macros: MacroStore
-    @ObservedObject var profiles: AppProfileStore
-    @ObservedObject var searchEngine: SearchEngine
-    @ObservedObject var nicheVocab: NicheVocabStore
+    let projectIndex: ProjectIndexStore
+    let contextSummary: ContextSummaryStore
+    let meetingRecorder: MeetingRecorder
+    let meetingStore: MeetingStore
+    let contextGraph: ContextGraphStore
+    let macros: MacroStore
+    let profiles: AppProfileStore
+    let searchEngine: SearchEngine
+    let nicheVocab: NicheVocabStore
     let commandRouter: CommandRouter
     let hud: HUDController
     @ObservedObject var router: SettingsRouter
@@ -1903,11 +1909,32 @@ struct DictionarySettings: View {
 
     /// The self-learned terms that have graduated into the live corrector — the ones
     /// currently rescuing close misses without a hand-curated Dictionary entry.
-    private var learnedTerms: [String] {
-        nicheVocab.snapshot()
-            .correctorTerms(forNiche: NicheID.default.key, limit: 60)
-            // Don't repeat terms the user has already curated by hand above.
-            .filter { term in !dictionary.vocabulary.contains { $0.lowercased() == term.lowercased() } }
+    /// nil until the first background computation lands (see `refreshLearnedTerms`).
+    ///
+    /// Perf: this used to be a computed property, so EVERY render of the page —
+    /// including each keystroke in "Add a word" — re-ran the corrector selection,
+    /// whose false-boost guard edit-distance-checks every candidate against the
+    /// whole common-word list. Now it is computed off the main actor when the niche
+    /// terms or the curated vocabulary change, and cached here.
+    @State private var learnedTerms: [String]?
+
+    /// Recompute `learnedTerms` from a snapshot, off the main actor.
+    private func refreshLearnedTerms() async {
+        let snapshot = nicheVocab.snapshot()
+        let curated = Set(dictionary.vocabulary.map { $0.lowercased() })
+        let terms = await Task.detached(priority: .userInitiated) {
+            snapshot.correctorTerms(forNiche: NicheID.default.key, limit: 60)
+                // Don't repeat terms the user has already curated by hand above.
+                .filter { !curated.contains($0.lowercased()) }
+        }.value
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: 0.16)) { learnedTerms = terms }
+    }
+
+    /// Whether the learned card may appear at all — cheap: are there any niche terms?
+    /// Used to hold the card's place with a skeleton only when it can actually show.
+    private var mayHaveLearnedTerms: Bool {
+        !(nicheVocab.terms[NicheID.default.key]?.isEmpty ?? true)
     }
 
     // Import/export (.talkiepack). The preview is computed BEFORE anything is
@@ -1991,7 +2018,7 @@ struct DictionarySettings: View {
                 // Learned vocabulary — jargon Talkie picked up from what you say and
                 // confirm, now correcting close misses on its own. Read-only; stays
                 // hidden until something has graduated, so it never adds noise.
-                if !learnedTerms.isEmpty {
+                if let learnedTerms, !learnedTerms.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         Eyebrow(text: "Learned vocabulary")
                         Text("Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong.")
@@ -2004,6 +2031,21 @@ struct DictionarySettings: View {
                         }
                     }
                     .talkieCard()
+                    .transition(.opacity)
+                } else if learnedTerms == nil, mayHaveLearnedTerms {
+                    // First computation still running: hold the card's place so the
+                    // Replacements card below doesn't jump when it lands.
+                    VStack(alignment: .leading, spacing: 14) {
+                        Eyebrow(text: "Learned vocabulary")
+                        TalkieSkeletonGroup {
+                            VStack(alignment: .leading, spacing: 14) {
+                                TalkieSkeletonText(lines: 2, textSize: 13, lastLineFraction: 0.45)
+                                TalkieSkeletonChips(count: 9)
+                            }
+                        }
+                    }
+                    .talkieCard()
+                    .transition(.opacity)
                 }
 
                 // Replacements.
@@ -2025,7 +2067,11 @@ struct DictionarySettings: View {
                             .font(.talkieHeading(13, weight: .regular))
                             .foregroundStyle(Theme.inkTertiary)
                     } else {
-                        VStack(spacing: 10) {
+                        // Lazy: every rule is two native text fields, and building all
+                        // of them up front (92 rules → 184 fields) was most of the half
+                        // second the Dictionary page took to open. Only rows near the
+                        // visible part of the page's scroll view are built now.
+                        LazyVStack(spacing: 10) {
                             ForEach($dictionary.replacements) { $rule in
                                 ReplacementRow(rule: $rule) { removeRule(rule) }
                             }
@@ -2048,6 +2094,15 @@ struct DictionarySettings: View {
         // "Import from another app" menu can offer them directly. Cheap fileExists
         // checks only; runs when the pane appears.
         .onAppear { detectedApps = CompetitorDictionaryImport.detectInstalledApps() }
+        // Learned terms: computed once on appear, then again (debounced) whenever the
+        // niche terms or the curated vocabulary change — never per render.
+        .task { await refreshLearnedTerms() }
+        .onReceive(nicheVocab.$terms.dropFirst().debounce(for: .milliseconds(250), scheduler: RunLoop.main)) { _ in
+            Task { await refreshLearnedTerms() }
+        }
+        .onChange(of: dictionary.vocabulary) { _, _ in
+            Task { await refreshLearnedTerms() }
+        }
         // Drag a .talkiepack onto the Dictionary tab to import it.
         .onDrop(of: [.fileURL], isTargeted: $isTargetedForDrop) { providers in
             loadDroppedPack(providers)

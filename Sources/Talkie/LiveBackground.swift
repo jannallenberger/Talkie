@@ -182,6 +182,23 @@ private struct DriftingGlow: View {
         .init(color: Theme.featherCoral, cx: 0.55, cy: 0.78, ax: 0.05, ay: 0.05, dia: 0.80, f: 0.060, p: 4.0, opacity: 0.12),
     ]
 
+    /// How far past the original circle's edge the (formerly blurred) glow reaches,
+    /// as a multiple of its radius.
+    private static let glowReach: CGFloat = 1.45
+
+    /// The blurred glow's radial alpha profile, as (radius ÷ original radius, alpha ÷
+    /// opacity) — sampled from SwiftUI's render of the old fade + `blur(0.16·d)`.
+    private static let glowProfile: [(r: CGFloat, a: Double)] = [
+        (0, 0.627), (0.2, 0.592), (0.4, 0.482), (0.6, 0.337),
+        (0.8, 0.200), (1.0, 0.094), (1.2, 0.031), (1.45, 0),
+    ]
+
+    private static func glowGradient(_ color: Color, opacity: Double) -> Gradient {
+        Gradient(stops: glowProfile.map {
+            .init(color: color.opacity(opacity * $0.a), location: $0.r / glowReach)
+        })
+    }
+
     var body: some View {
         GeometryReader { geo in
             TimelineView(.animation(minimumInterval: driftFrameInterval, paused: !animate)) { ctx in
@@ -191,15 +208,22 @@ private struct DriftingGlow: View {
                 ZStack {
                     ForEach(Array(specs.enumerated()), id: \.offset) { _, s in
                         let d = base * s.dia
+                        // Perf: this used to be a linear radial fade blurred by 0.16·d — a
+                        // ~110 pt Gaussian blur over three ~700 pt circles, re-rendered at
+                        // 12 fps, which cost ~35 ms of main-thread time per frame (~40 %
+                        // CPU while the dashboard sat open). The stops below are that
+                        // blurred profile measured off SwiftUI's own render (max error
+                        // 0.012 before the ≤0.20 opacity: under one 8-bit step), so the
+                        // look is unchanged and each frame only moves three gradients.
                         Circle()
                             .fill(
                                 RadialGradient(
-                                    colors: [s.color.opacity(s.opacity), s.color.opacity(0)],
-                                    center: .center, startRadius: 0, endRadius: d / 2
+                                    gradient: Self.glowGradient(s.color, opacity: s.opacity),
+                                    center: .center, startRadius: 0,
+                                    endRadius: d / 2 * Self.glowReach
                                 )
                             )
-                            .frame(width: d, height: d)
-                            .blur(radius: d * 0.16)
+                            .frame(width: d * Self.glowReach, height: d * Self.glowReach)
                             .position(
                                 x: w * s.cx + w * s.ax * CGFloat(sin(t * s.f + s.p)),
                                 y: h * s.cy + h * s.ay * CGFloat(cos(t * s.f * 1.1 + s.p))

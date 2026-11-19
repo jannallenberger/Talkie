@@ -881,6 +881,16 @@ private struct MeetingDetail: View, Equatable {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .talkieCard(padding: 16)
                 }
+            } else if isSummarizing || isDiarizing {
+                // The summary is on its way (the status line above says which step):
+                // hold its place with a skeleton shaped like the summary card, so the
+                // transcript doesn't jump down when it lands.
+                VStack(alignment: .leading, spacing: 8) {
+                    Eyebrow(text: "Summary")
+                    SummarySkeleton()
+                        .talkieCard(padding: 16)
+                }
+                .transition(.opacity)
             }
             transcriptSection
         }
@@ -1076,11 +1086,7 @@ private struct MeetingDetail: View, Equatable {
             } else if SpeakerPresentation.showsTurns(for: meeting), let segments = meeting.segments {
                 SpeakerTurnsView(segments: segments)
             } else {
-                Text(meeting.namedTranscript)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                LongTranscriptText(text: meeting.namedTranscript)
             }
             if draft == nil, !learnable.isEmpty {
                 learnChips
@@ -1336,7 +1342,16 @@ struct MeetingPlaybackView: View {
         self.audioFiles = audioFiles
         self.folderURL = folderURL
         self.showsSpeakerLabels = showsSpeakerLabels
+        // Derived once per input, not on every playback tick (the body re-runs ~12×/s
+        // while audio plays).
+        self.showLabels = showsSpeakerLabels && SpeakerPresentation.showsLabels(segments)
+        self.colorSlots = SpeakerPresentation.colorIndices(for: segments.map(\.speaker))
+        self.turnStarts = SpeakerPresentation.turnStarts(segments)
     }
+
+    private let showLabels: Bool
+    private let colorSlots: [String: Int]
+    private let turnStarts: [Bool]
 
     /// The loaded player, or nil before the first tap. Recreated when a tap targets a
     /// different file than the one currently loaded (two-stream Me↔Them switch).
@@ -1351,9 +1366,6 @@ struct MeetingPlaybackView: View {
     /// the row shows an honest one-line notice instead of silently doing nothing.
     @State private var loadError = false
 
-    /// ~12 Hz is smooth enough for a moving highlight without busy-spinning; it only
-    /// does work while something is actually playing.
-    private let ticker = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
 
     /// The segment currently sounding (for the highlight), or nil when paused/stopped or
     /// playing a different file's stream. Pure function over the polled time.
@@ -1363,21 +1375,21 @@ struct MeetingPlaybackView: View {
             at: currentTime, segments: segments, fileName: currentFile, audioFiles: audioFiles)
     }
 
-    private var showLabels: Bool { showsSpeakerLabels && SpeakerPresentation.showsLabels(segments) }
-    private var colorSlots: [String: Int] { SpeakerPresentation.colorIndices(for: segments.map(\.speaker)) }
-    private var turnStarts: [Bool] { SpeakerPresentation.turnStarts(segments) }
-
     var body: some View {
         let slots = colorSlots
         let starts = turnStarts
-        VStack(alignment: .leading, spacing: 2) {
+        // Resolved once per render, not once per row (it scans the segments).
+        let active = activeIndex
+        // Lazy: a long meeting has hundreds to thousands of lines; only the ones near
+        // the visible part of the detail's scroll view are built.
+        LazyVStack(alignment: .leading, spacing: 2) {
             ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
                 if showLabels, starts[index] {
                     SpeakerLabel(speaker: segment.speaker, slot: slots[segment.speaker] ?? 0)
                         .padding(.leading, 6)
                         .padding(.top, index == 0 ? 0 : 8)
                 }
-                segmentRow(index: index, segment: segment)
+                segmentRow(index: index, segment: segment, isActive: active == index)
             }
             if loadError {
                 Text("That audio couldn’t be played — the file may be missing or incomplete.".loc)
@@ -1386,14 +1398,23 @@ struct MeetingPlaybackView: View {
                     .padding(.top, 4)
             }
         }
-        .onReceive(ticker) { _ in tick() }
+        // ~12 Hz is smooth enough for a moving highlight. The loop exists only while
+        // audio plays: it used to be a `Timer.publish` that fired forever (and was
+        // re-created on every parent render) even with nothing playing.
+        .task(id: isPlaying) {
+            guard isPlaying else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(80))
+                guard !Task.isCancelled else { return }
+                tick()
+            }
+        }
         .onDisappear(perform: teardown)
     }
 
     @ViewBuilder
-    private func segmentRow(index: Int, segment: MeetingSegment) -> some View {
+    private func segmentRow(index: Int, segment: MeetingSegment, isActive: Bool) -> some View {
         let playable = Meeting.audioFileName(forSpeaker: segment.audioKey, in: audioFiles) != nil
-        let isActive = activeIndex == index
         Button {
             toggle(segment: segment)
         } label: {
@@ -1525,6 +1546,64 @@ struct SpeakerLabel: View {
     }
 }
 
+/// A plain transcript. Short ones stay one selectable `Text`; a long one (an imported
+/// hour-long recording) is laid out paragraph by paragraph in a lazy stack, so only
+/// the visible part is typeset instead of tens of thousands of characters at once.
+/// (Selection then works within a paragraph; Copy still copies the whole transcript.)
+struct LongTranscriptText: View {
+    let text: String
+    private let paragraphs: [String]?
+
+    /// Above this many characters the transcript is split.
+    static let splitThreshold = 4_000
+
+    init(text: String) {
+        self.text = text
+        paragraphs = text.count > Self.splitThreshold
+            ? text.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            : nil
+    }
+
+    var body: some View {
+        if let paragraphs {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                    line(paragraph)
+                }
+            }
+        } else {
+            line(text)
+        }
+    }
+
+    private func line(_ value: String) -> some View {
+        Text(value)
+            .font(.system(size: 12.5))
+            .foregroundStyle(Theme.inkSecondary)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The summary card's placeholder: a lead sentence, then three bullets.
+struct SummarySkeleton: View {
+    var body: some View {
+        TalkieSkeletonGroup {
+            VStack(alignment: .leading, spacing: 6) {
+                TalkieSkeletonText(lines: 2, textSize: 13, lastLineFraction: 0.72)
+                ForEach([0.82, 0.64, 0.74], id: \.self) { fraction in
+                    HStack(spacing: 8) {
+                        TalkieSkeletonCircle(size: 5)
+                        TalkieSkeletonLine(fraction: fraction, textSize: 13)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 /// The read-only transcript for a meeting with two or more speakers (no kept audio):
 /// consecutive same-speaker segments merged into one turn under a single label.
 struct SpeakerTurnsView: View {
@@ -1532,7 +1611,8 @@ struct SpeakerTurnsView: View {
 
     var body: some View {
         let slots = SpeakerPresentation.colorIndices(for: segments.map(\.speaker))
-        VStack(alignment: .leading, spacing: 8) {
+        // Lazy like the playback list: only turns near the visible region are built.
+        LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(Array(SpeakerPresentation.turns(segments).enumerated()), id: \.offset) { _, turn in
                 VStack(alignment: .leading, spacing: 3) {
                     SpeakerLabel(speaker: turn.speaker, slot: slots[turn.speaker] ?? 0)

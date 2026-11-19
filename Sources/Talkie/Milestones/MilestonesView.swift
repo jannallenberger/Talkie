@@ -441,13 +441,21 @@ private struct InventedTitleCard: View {
                     .font(.talkieHeading(14, weight: .regular))
                     .foregroundStyle(Theme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+            } else if jobTitle.isGenerating {
+                // First run: a skeleton in the exact shape of the title + sentence it
+                // becomes — the page paints at once, nothing jumps when it lands.
+                // Never an error, never a blocking spinner.
+                TalkieSkeletonGroup(label: "Coining your title…") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        TalkieSkeletonLine(width: 230, textSize: 22)
+                        TalkieSkeletonLine(fraction: 0.8, textSize: 14)
+                    }
+                }
+                .transition(.opacity)
             } else {
-                // First-run placeholder — the page paints, this fills in a moment
-                // later. Never an error, never a blocking spinner.
                 Text("Coining your title…")
                     .font(.talkieHeading(15, weight: .medium))
                     .foregroundStyle(Theme.inkTertiary)
-                    .redacted(reason: jobTitle.isGenerating ? .placeholder : [])
             }
 
             Divider().overlay(Theme.hairline).padding(.vertical, 2)

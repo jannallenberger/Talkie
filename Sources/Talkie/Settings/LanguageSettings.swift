@@ -136,14 +136,15 @@ private struct LanguageStripTile: View {
             }
             .frame(maxWidth: .infinity, minHeight: 128)
             .background(
+                // Shadow on the tile shape, not its content (see `talkieSurface`).
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(selected ? Theme.coralWash : Theme.surface)
+                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .strokeBorder(selected ? Theme.coral : Color.clear, lineWidth: 2)
             )
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
             .scaleEffect(hovering ? 1.03 : 1)
             .animation(.easeOut(duration: 0.12), value: hovering)
             .animation(.easeOut(duration: 0.14), value: selected)
@@ -204,9 +205,9 @@ private struct AllLanguagesTile: View {
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(Theme.surface)
+                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
             )
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
             .scaleEffect(hovering ? 1.03 : 1)
             .animation(.easeOut(duration: 0.12), value: hovering)
             .contentShape(Rectangle())
@@ -287,15 +288,16 @@ private struct LanguageCard: View {
             .padding(.vertical, 18)
             .padding(.horizontal, 12)
             .background(
+                // Shadow on the tile shape, not its content (see `talkieSurface`).
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(selected ? Theme.coralWash : Theme.surface)
+                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.06), radius: 14, x: 0, y: 7)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .strokeBorder(selected ? Theme.coral : Color.clear, lineWidth: 2)
             )
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.06), radius: 14, x: 0, y: 7)
             .scaleEffect(hovering ? 1.015 : 1)
             .animation(.easeOut(duration: 0.12), value: hovering)
             .animation(.easeOut(duration: 0.14), value: selected)

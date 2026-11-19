@@ -13,6 +13,8 @@ import SwiftUI
 @MainActor
 final class MeetingPillController {
     private var panel: NSPanel?
+    private weak var recorder: MeetingRecorder?
+    private weak var subtopic: MeetingSubtopicModel?
 
     private static let panelSize = NSSize(width: 540, height: 104)
 
@@ -20,21 +22,31 @@ final class MeetingPillController {
     /// Call once; `show()`/`hide()` then drive visibility.
     func attach(recorder: MeetingRecorder, subtopic: MeetingSubtopicModel) {
         guard panel == nil else { return }
-        let panel = NotchPanel.make(size: Self.panelSize, interactive: false)
-        panel.contentView = NSHostingView(
-            rootView: MeetingPillView(recorder: recorder, subtopic: subtopic)
-        )
-        self.panel = panel
+        panel = NotchPanel.make(size: Self.panelSize, interactive: false)
+        self.recorder = recorder
+        self.subtopic = subtopic
     }
 
+    /// The SwiftUI content is mounted only while the pill is on screen. It used to be
+    /// built once at launch and kept in the ordered-out panel, where the pulsing REC
+    /// dot (an animated shadow, `repeatForever`) kept the render loop busy all day —
+    /// several percent CPU with no meeting running.
     func show() {
         guard let panel else { return }
+        if !(panel.contentView is NSHostingView<MeetingPillView>), let recorder, let subtopic {
+            panel.contentView = NSHostingView(rootView: MeetingPillView(recorder: recorder, subtopic: subtopic))
+        }
         NotchPanel.reposition(panel)
         panel.orderFrontRegardless()
     }
 
+    /// Order out AND unmount, so nothing in the pill keeps animating while hidden.
     func hide() {
-        panel?.orderOut(nil)
+        guard let panel else { return }
+        panel.orderOut(nil)
+        if panel.contentView is NSHostingView<MeetingPillView> {
+            panel.contentView = NSView()
+        }
     }
 }
 

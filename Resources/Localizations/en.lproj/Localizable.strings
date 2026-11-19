@@ -1163,3 +1163,7 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@.";
+
+// MARK: - Skeleton loading (accessibility labels)
+"Loading…" = "Loading…";
+"Searching…" = "Searching…";
