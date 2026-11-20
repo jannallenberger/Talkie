@@ -350,9 +350,11 @@ final class SpokenFileMatcherTests: XCTestCase {
         try legacyJSON.data(using: .utf8)!.write(to: url)
 
         let store = ProjectIndexStore(fileURL: url)
-        // Immediately after load (before/around the migration rescan): matching still works
-        // from the legacy blob, and preferPaths never crashes — it falls back to basename
-        // until paths are backfilled.
+        // The launch build runs off the main actor (perf), so `snapshot` is `.empty` until it
+        // lands, legacy or not. Once it has (before/around the migration rescan): matching
+        // still works from the legacy blob, and preferPaths never crashes — it falls back
+        // to basename until paths are backfilled.
+        try await waitUntil { !store.snapshot.isEmpty }
         let (early, earlyReps) = SpokenFileMatcher.format("exercise library dot tsx",
                                                           snapshot: store.snapshot, preferPaths: true)
         XCTAssertEqual(earlyReps, 1, "a legacy index must still snap basenames pre-migration: \(early)")
