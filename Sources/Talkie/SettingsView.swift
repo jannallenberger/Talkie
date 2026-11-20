@@ -40,6 +40,9 @@ enum SettingsTab: Hashable, CaseIterable {
         }
     }
 
+    /// The step this tab turns the backdrop gradient by (see `TalkieBackdrop`).
+    var backdropTurn: Int { Self.allCases.firstIndex(of: self) ?? 0 }
+
     /// Per-item macaw-feather tint for the sidebar (v2). Feature tabs wear a
     /// feather hue; Settings rides the brand blue.
     var tint: Color {
@@ -79,6 +82,8 @@ enum SettingsPage: Hashable {
     case privacy
     /// Developer — dev-only tools (shown only when `showDeveloperSection`).
     case developer
+    /// Profile & appearance — photo and name, colours, backdrop, glass.
+    case appearance
 
     // ── Nested / deep-link destinations ──────────────────────────────────
     /// The full "All languages" picker (the Languages subpage shows a strip).
@@ -231,7 +236,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         // Kills the gray titlebar hairline that otherwise survives the transparent
         // titlebar in both windowed and full-screen.
         window.titlebarSeparatorStyle = .none
-        window.isMovableByWindowBackground = true
+        // The window moves by its titlebar/toolbar strip only. "Movable by the
+        // background" also grabbed drags that belong to controls on glass cards:
+        // moving a slider or selecting text dragged the whole window.
+        window.isMovableByWindowBackground = false
         // Opaque v2 canvas; NavigationSplitView supplies the Liquid Glass sidebar.
         window.backgroundColor = NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
@@ -252,6 +260,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         // is retained by `AppDelegate`, so reopening reuses the same instance.
         window.delegate = self
     }
+
+    /// The main window is on screen and the one being typed in.
+    var isInFront: Bool { window.isVisible && window.isKeyWindow && NSApp.isActive }
 
     func show(tab: SettingsTab) {
         router.selectedTab = tab
@@ -336,6 +347,8 @@ struct MainView: View {
             if settings.hasOnboarded {
                 NavigationSplitView {
                     SidebarList(router: router, settings: settings, permissions: permissions)
+                        // The sidebar's own glass samples the backdrop behind it.
+                        .scrollContentBackground(.hidden)
                 } detail: {
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -344,7 +357,6 @@ struct MainView: View {
                         // (`Theme.Space.pageTop`, measured from the window's top
                         // edge). The sidebar keeps its native safe areas.
                         .ignoresSafeArea(.container, edges: .top)
-                        .background(Theme.canvas.ignoresSafeArea())
                         // No toolbar strip in windowed or fullscreen mode: the
                         // toolbar stays (sidebar toggle, native sidebar look) but
                         // draws no background of its own.
@@ -357,6 +369,12 @@ struct MainView: View {
                         // "pill" it produced was removed app-wide (each page already
                         // carries its own in-content header), so nothing bridges to the
                         // window toolbar here anymore.
+                }
+                // One backdrop behind the sidebar and every page: the logo-colour
+                // gradient, turned a step per tab. Pages are see-through over it.
+                .background {
+                    TalkieBackdrop(turn: router.selectedTab.backdropTurn)
+                        .animation(.easeInOut(duration: 0.45), value: router.selectedTab)
                 }
                 .transition(.opacity)
             } else {
@@ -402,7 +420,8 @@ struct MainView: View {
         case .general:
             SettingsHome(settings: settings, permissions: permissions,
                          profiles: profiles,
-                         history: history, router: router, onRetryHotKey: onRetryHotKey)
+                         history: history, profileImage: profileImage,
+                         router: router, onRetryHotKey: onRetryHotKey)
         }
     }
 }
@@ -470,6 +489,7 @@ private struct SettingsHome: View {
     @ObservedObject var permissions: PermissionsModel
     @ObservedObject var profiles: AppProfileStore
     @ObservedObject var history: HistoryStore
+    let profileImage: ProfileImageStore
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Bool
 
@@ -487,6 +507,11 @@ private struct SettingsHome: View {
                     // below. It carries the same page header as every other tab.
                     TalkiePageHeader(title: "Settings")
                         .padding(.bottom, 6)
+                    // 0. Profile & appearance — who you are and how Talkie looks.
+                    SettingsIndexRow(icon: "IconPalette", fallback: "paintpalette.fill",
+                                     title: "Profile & appearance",
+                                     subtitle: "Your photo and name, plus colors, backdrop and glass.",
+                                     page: .appearance)
                     //
                     // 1. Dictation — activation key, insertion, and the mic.
                     SettingsIndexRow(icon: "IconWaveform", fallback: "waveform",
@@ -589,6 +614,8 @@ private struct SettingsHome: View {
                         PrivacyAndPermissionsSettings(settings: settings, permissions: permissions,
                                                       history: history, onRetryHotKey: onRetryHotKey)
                     }
+                case .appearance:
+                    AppearanceSettings(settings: settings, profileImage: profileImage)
                 case .developer:
                     SubPage(title: "Developer",
                             subtitle: "Tools that ship only in development builds.") {
@@ -1257,7 +1284,7 @@ private struct BugBundlePreviewSheet: View {
         }
         .padding(20)
         .frame(width: 560, height: 520)
-        .background(Theme.canvas)
+        .background { TalkieBackdrop() }
     }
 
     /// The one and only write to the pasteboard in this feature — reached only from
@@ -2080,14 +2107,8 @@ struct DictionarySettings: View {
                 }
                 .talkieCard()
         }
-        .background(
-            // A calm brand wash confirms a valid drag is over the pane.
-            Theme.canvas.overlay(
-                isTargetedForDrop
-                    ? Theme.coral.opacity(0.06)
-                    : Color.clear
-            )
-        )
+        // A calm brand wash confirms a valid drag is over the pane.
+        .background(isTargetedForDrop ? Theme.coral.opacity(0.08) : Color.clear)
         .onChange(of: dictionary.replacements) { _, _ in dictionary.save() }
         .onChange(of: dictionary.vocabulary) { _, _ in dictionary.save() }
         // A7 — check which other dictation apps have a dictionary on disk so the
@@ -2521,7 +2542,7 @@ private struct ImportPreviewSheet: View {
             footer
         }
         .frame(width: 460, height: 540)
-        .background(Theme.canvas)
+        .background { TalkieBackdrop() }
     }
 
     private var header: some View {

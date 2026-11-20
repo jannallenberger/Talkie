@@ -319,6 +319,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let consentBanner = MeetingConsentBannerController()
     /// The live meeting pill under the notch (shown for the duration of a recording).
     private let meetingPill = MeetingPillController()
+    /// The small notes window for a running meeting (built on first use).
+    private var meetingNotesWindow: MeetingNotesWindowController?
+    private var finishingObservation: AnyCancellable?
     /// The on-device live-subtopic detector + the value the pill observes.
     private let subtopicModel = MeetingSubtopicModel()
     private var subtopicEngine: MeetingSubtopicEngine!
@@ -344,6 +347,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("Talkie: applicationDidFinishLaunching")
         // Regular Dock app: shows in the Dock with a real window (not menu-bar-only).
         NSApp.setActivationPolicy(.regular)
+        // The user's light/dark choice (Settings ▸ Profile & appearance).
+        AppearanceStore.shared.applyMode()
 
         // L3b: begin watching for memory-pressure events so the speed diagnostics can
         // surface a row only if the OS actually reports pressure this session.
@@ -730,6 +735,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        menu.addItem(withTitle: "Meeting notes".loc, action: #selector(openMeetingNotes), keyEquivalent: "n")
+            .target = self
         menu.addItem(withTitle: "Dictionary…", action: #selector(openDictionary), keyEquivalent: "d")
             .target = self
         menu.addItem(withTitle: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: ",")
@@ -1194,6 +1201,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Show the pill + run the subtopic engine for ANY recording (auto or manual),
         // and hide/reset on stop. `$isRecording` emits its current value on subscribe.
+        // A notes window that opened itself steps aside once the recording is saved.
+        finishingObservation = meetingRecorder.$isFinishing
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] finishing in
+                guard !finishing else { return }
+                Task { @MainActor in
+                    guard let self, self.meetingRecorder?.isRecording != true else { return }
+                    self.meetingNotesWindow?.recordingFinished()
+                }
+            }
         recordingObservation = meetingRecorder.$isRecording
             .removeDuplicates()
             .sink { [weak self] recording in
@@ -1260,6 +1278,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // are different concerns — the pill toggle must not silently suppress a
         // saved-notes feature. (No new toggle: respects H1's single-switch mandate.)
         Task { await subtopicEngine.start() }
+        // The notes window comes up beside the call, unless the main window is in
+        // front (its Meetings page then shows the same notes editor).
+        if MeetingNotesWindowController.shouldOpenAutomatically(
+            settingOn: settings.openMeetingNotesWindow,
+            mainWindowInFront: mainWindow?.isInFront ?? false,
+            alreadyVisible: meetingNotesWindow?.isVisible ?? false) {
+            showMeetingNotesWindow(automatic: true)
+        }
         guard settings.showMeetingPill else { return }
         meetingPill.show()
     }
@@ -3922,6 +3948,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Status-menu "Open Talkie" (H7): bring the window back to the dashboard and
     /// restore the Dock icon. `openSettings` handles the `.regular` flip + focus tick.
     @objc private func openMain() { openSettings(tab: .dashboard) }
+    @objc private func openMeetingNotes() { showMeetingNotesWindow() }
+
+    /// Show the small meeting-notes window. `automatic`: it comes up beside the call
+    /// without taking the keyboard (a recording just started); otherwise it is key.
+    func showMeetingNotesWindow(automatic: Bool = false) {
+        guard let meetingRecorder else { return }
+        if meetingNotesWindow == nil {
+            meetingNotesWindow = MeetingNotesWindowController(
+                recorder: meetingRecorder, subtopic: subtopicModel, settings: settings,
+                onOpenMeetings: { [weak self] in self?.openSettings(tab: .meetings) })
+        }
+        meetingNotesWindow?.show(automatic: automatic)
+    }
     @objc private func openDictionary() { openSettings(tab: .dictionary) }
     @objc private func openSettingsMenu() { openSettings(tab: .general) }
 

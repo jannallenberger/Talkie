@@ -3,19 +3,24 @@
 The rulebook for every main-window, popover, sheet and onboarding surface. It is
 distilled from [BRAND.md](BRAND.md), [BRAND_VISUAL_LANGUAGE.md](BRAND_VISUAL_LANGUAGE.md),
 the macOS 26 Liquid Glass migration plan and `Sources/Talkie/DesignSystem.swift`.
-Where they disagree, the migration plan and **DesignSystem.swift win**. Every rule
+Where they disagree, **DesignSystem.swift and Appearance.swift win**. This is the
+**v3 look (2026-11)**: the logo's colours as a gradient behind every page, Liquid
+Glass cards on top, a blur fade at the scroll edges — and the user can change the
+accent, the backdrop and the glass in Settings ▸ Profile & appearance. Every rule
 below is checkable in code review; "use X" means the named component, not a look-alike.
 
 ## 1. Colour roles
 | Role | Token | Allowed for | Never for |
 |---|---|---|---|
-| Canvas | `Theme.canvas` | page background | cards |
-| Surface | `Theme.surface` via `.talkieSurface()` / `.talkieCard()` | cards, panels, grouped rows | outlines |
-| Sunken | `Theme.surfaceSunken` | text-editor wells, chips, tracks, secondary-button fill | page background |
+| Backdrop | `TalkieBackdrop` (logo-colour gradient over `Theme.canvas`) | behind every page, sheet and window — drawn once per window | cards; never paint `Theme.canvas` over it |
+| Surface | `.talkieSurface()` / `.talkieCard()` (Liquid Glass; opaque `surfaceSolid` for Solid cards and Reduce Transparency) | cards, panels, grouped rows | outlines |
+| Frost | `Theme.surface` | small raised fills drawn straight on the page (tiles, floating labels) | cards (use `.talkieSurface()`), anything floating over other apps (use `surfaceSolid`) |
+| Sunken | `Theme.surfaceSunken` (a translucent ink tint) | text-editor wells, chips, tracks, secondary-button fill | page background |
 | Ink | `ink` / `inkSecondary` / `inkTertiary` | primary text / help + subtitles / captions, meta, placeholders | — |
 | Hairline | `Theme.hairline` | row dividers (`SettingsDivider`, `Divider().overlay(hairline)`) | element outlines |
-| Brand | `Theme.brand` (`coral` in old code), `brandWash`, `brandDeep` | primary button, selection, focus, links, progress tint — **one primary per view** | error text, data |
-| Feathers | `featherRed/Gold/Blue/Green/Plum` | data marks only: charts, heatmap, speaker dots, nav tints | text, button labels, backgrounds of chrome |
+| Brand | `Theme.brand` (`coral` in old code), `brandWash`, `brandDeep`, `onBrand` | primary button, selection, focus, links, progress tint — **one primary per view**. The value is the accent the user picked (blue by default); text on a brand fill is `Theme.onBrand`, never a literal white | error text, data |
+| Feathers | `featherRed/Gold/Blue/Green/Plum` | data marks only: speaker dots, nav tints, semantic colours | text, button labels, backgrounds of chrome |
+| Data | `Theme.dataRamp`, `Theme.dataColor(at:)`, `Theme.dataColor(series:)` | every chart, gauge, progress fill and legend dot: the feathers of the backdrop the user picked, so graphs are tuned to the page behind them. The heatmap is the accent growing stronger (`Theme.emberHeat`) | hard-coded feather colours in a chart |
 | Semantic | `positive` / `warning` / `danger` | status icons + `TalkieStatusLine` tones; `danger` also destructive labels | decoration |
 | Recording | `tint: Theme.featherRed` on `.talkie(.primary)` | the Stop/recording control and the live-recording glyph only | anything else |
 
@@ -44,6 +49,7 @@ Sizes: **regular (30 pt)** for page headers, popover/sheet action rows and singl
 - Clickable chips: `.buttonStyle(.talkieChip)` (chip radius, sunken fill, hover darkens) and **a trailing action glyph** (`pencil` rename, `xmark` remove, `chevron.down` menu). On/off chips: `TalkieChipToggleStyle`.
 - Static tags (e.g. "slower"): `TalkieTag` — capsule, no hover, no glyph. A tag is never clickable; a chip always is.
 - Keys: `TalkieKeycap`.
+- Sliders: `TalkieSlider(value:range:step:label:)` — sunken track, accent fill, white lit thumb. Never the system `Slider`.
 - Pickers and action menus: `TalkieMenuPicker` (choice) / `TalkieMenuButton` (actions); both show a `chevron.down`. Native `Picker` pop-ups only inside settings rows that already use them.
 
 ## 6. Forms
@@ -63,8 +69,14 @@ Sizes: **regular (30 pt)** for page headers, popover/sheet action rows and singl
 - Hover: fill shifts one step (built into the styles); pressed: scale 0.97; disabled: 45 % opacity and still visible; focus: system ring.
 - Every icon-only control has `.help` and `.accessibilityLabel`.
 
-## 9. Liquid Glass
-Only on the top functional layer: sidebar, toolbar, HUD pill, mic FAB, the pushed-page back button (`TalkieBackButton`), and the onboarding card over its atmospheric background. Never on cards, lists, rows, popover contents or the page body.
+## 9. Backdrop, glass and edge fades (v3)
+- **Backdrop.** Every page sits on `TalkieBackdrop`: one gradient of the logo's colours running in one direction, over the canvas. The main window draws it once, behind the sidebar and all pages, and turns it a step per tab (`SettingsTab.backdropTurn`); sheets and separate windows draw their own (`.background { TalkieBackdrop() }`). It is still — nothing animates at rest. Pages and scroll views are transparent; never lay an opaque fill over it.
+- **Glass.** Cards are Liquid Glass: `.talkieSurface()` / `.talkieCard()` (which is `glassEffect` in the card squircle). Never hand-roll a material card. Group a page's cards in one `GlassEffectContainer` (`TalkieScrollPage` does). No glass inside glass: controls on a card (buttons, chips, wells, tiles) use the sunken tint or the frost fill, with the fine light rim (`Theme.glassRim`) the button styles already draw.
+- **Shine.** The light on a surface comes from its top edge: the primary button's lit gradient and rim, the rim on secondary buttons and avatars. No glows, no drop shadows on glass, no second highlight.
+- **Scroll edge effect.** A scrolling area uses the system's own soft scroll edge effect (the iOS 26 blur content runs into under a bar): `.talkieScrollEdgeFades(top:bottom:)` on the `ScrollView`, which is SwiftUI's `scrollEdgeEffectStyle(.soft)` plus an empty `safeAreaBar` at each edge (`TalkieScrollPage` applies it). The bars inset the content by their height, so the caller's own edge padding shrinks by as much. Never rebuild the effect by hand (a masked material, a gradient, a custom blur layer).
+- **Windows move by their titlebar only.** No window is `isMovableByWindowBackground`: on glass it steals the drags of sliders and text selection. A small window that needs more to grab puts `TalkieWindowDragArea` behind its content (the notes window does).
+- **Respect the user's look.** Read colours from `Theme` and surfaces from the modifiers above, so Solid cards, Plain backdrop, another accent and Reduce Transparency all keep working. A view that caches a brand colour must re-read it when `AppearanceStore.shared.look.accent` changes (the page scaffold re-identifies page content for this).
+- System chrome keeps the system's own glass: sidebar, HUD pill, the pushed-page back button (`TalkieBackButton`).
 
 ## 10. Icons
 SF Symbols for functional icons < 24 pt (semibold, 11–14 pt, `inkTertiary` or semantic colour). Clay `ClayIcon` for identity/category icons — settings index rows and onboarding permission rows (22–24 pt) and empty-state heroes (≥ 40 pt). New clay art only via the Higgsfield + isolation pipeline.
@@ -79,9 +91,18 @@ SF Symbols for functional icons < 24 pt (semibold, 11–14 pt, `inkTertiary` or 
 - Repeating animations (pulses, shimmers) run only while their surface is on screen: a view kept alive in an ordered-out panel must not hold a `repeatForever`. Entrance animations on heavy pages are finite (a timing curve, not a spring with a settling tail) and play once per launch.
 - Dismissible notices (update reminder): `TalkieNotice` on a control-radius surface with its action and a quiet ×.
 
+## 11c. Dashboard grid
+The dashboard is a bento on one grid: rows are `BentoRow` (children share the width by `.bentoWeight`, all take the row's fixed height), so the cards of a row are level and none is left alone on a row. Figures are `DashboardTile` (tinted glyph + label, serif number, one line or a small bar of detail). A card whose content can grow (the scratchpad) scrolls inside its cell instead of pushing the page down. New dashboard content joins a row; it never becomes a full-width card of its own.
+
+## 11a. Profile photo
+The photo is set in two places, both through `ProfilePhotoEditor`: Settings ▸ Profile & appearance, and the popover behind the dashboard avatar. `AvatarView` draws it; where the photo can be set it shows a placeholder (the user's initial on the accent) so there is always something to click. Imports are turned upright, centred on the face and stored at 512 px.
+
+## 11b. Meeting-notes window
+`MeetingNotesWindowController`: a small floating panel (420 × 680, min 340 × 440) for notes during a call, opened from the menu bar, the Meetings header, or by itself when a recording starts while the main window is not in front. It takes typing without activating the app. Layout top to bottom: status row in the titlebar band (recording dot, state, time; pin and open-app as quiet buttons) · the notes editor card (takes the spare height) · the context card ("So far" / "Said just now" chips, Stop & summarize as the one primary, the live topic, then the list). It edits the same notes as the Meetings page (`MeetingRecorder.notesDraft`).
+
 ## 12. Dictation pill
 - Status lines (the format hint "Listening for a format…", the format chip, "Not recognised") sit on their **own line, horizontally centred directly below the waveform row** — never beside the waveform. The live transcript stays below them. The waveform row keeps its position; height changes animate.
-- State colours on the pill are used at **full strength**: the pill is black in both appearances, so the format state uses the brand blue's dark-surface value (`Theme.coral` dark, #4AA0E6) at full opacity for the waveform bars and hint text — no extra dimming or blending. Every state colour must reach **≥ 4.5:1** against the pill background (and against the fills it sits on) and differ clearly from the normal red waveform; `PillPaletteTests` checks both.
+- State colours on the pill are used at **full strength**: the pill is black in both appearances, so the format state uses the brand blue's dark-surface value (`PillPalette.formatBlue`, #4AA0E6 — fixed, it does not follow the accent) at full opacity for the waveform bars and hint text — no extra dimming or blending. Every state colour must reach **≥ 4.5:1** against the pill background (and against the fills it sits on) and differ clearly from the normal red waveform; `PillPaletteTests` checks both.
 
 ## 13. Copy
 Sentence case everywhere; second person; plain and calm; privacy stated as fact; no exclamation marks; ellipsis (…) only on buttons that open a further step. Every string uses `.loc` / `LocalizedStringKey` and exists in all 10 languages.

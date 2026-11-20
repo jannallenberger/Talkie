@@ -223,7 +223,7 @@ final class BackdropPerfBenchTests: XCTestCase {
         }
         var out: [String] = []
         out.append(String(format: "empty canvas      2 s: %7.1f ms CPU", idleCPU(Theme.canvas)))
-        out.append(String(format: "LiveBackground    2 s: %7.1f ms CPU", idleCPU(LiveBackground(mood: .ambient))))
+        out.append(String(format: "TalkieBackdrop    2 s: %7.1f ms CPU", idleCPU(TalkieBackdrop())))
         out.append(String(format: "skeleton group    2 s: %7.1f ms CPU", idleCPU(
             VStack(spacing: 10) { ForEach(0..<4, id: \.self) { _ in TalkieSkeletonCard() } }
                 .padding(28))))

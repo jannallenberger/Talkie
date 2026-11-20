@@ -54,6 +54,8 @@ enum SpeedGrade: Int, CaseIterable {
 /// second `navigationDestination` (mirrors the Milestones entry card exactly).
 struct SpeedCard: View {
     @ObservedObject var latency: LatencyStore
+    /// The dashboard's tile row: the figure and its grade only.
+    var compact = false
 
     /// The steady-state median (cold-start + optimistic dropped), or nil when there
     /// isn't a representative sample yet.
@@ -64,6 +66,27 @@ struct SpeedCard: View {
     private var sampleCount: Int { latency.steadyStateSampleCount }
 
     var body: some View {
+        if compact { tile } else { card }
+    }
+
+    private var tile: some View {
+        NavigationLink(value: SpeedRoute.detail) {
+            DashboardTile(title: "Speed",
+                          value: medianMs.map { String(format: "%.1f s".loc, $0 / 1000) } ?? "—",
+                          symbol: "bolt.fill", series: 2, opens: true) {
+                if let medianMs {
+                    GradePill(grade: SpeedGrade.grade(medianMs: medianMs), small: true)
+                } else {
+                    DashboardTileNote(text: "After a few dictations".loc)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Dictation speed".loc)
+    }
+
+    private var card: some View {
         NavigationLink(value: SpeedRoute.detail) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
@@ -118,12 +141,13 @@ struct SpeedCard: View {
 /// the grade's hue. Presentation only; carries no shareable surface.
 private struct GradePill: View {
     let grade: SpeedGrade
+    var small = false
     var body: some View {
         Text(grade.label)
-            .font(.talkieHeading(12, weight: .semibold))
+            .font(.talkieHeading(small ? 11 : 12, weight: .semibold))
             .foregroundStyle(grade.tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
+            .padding(.horizontal, small ? 8 : 10)
+            .padding(.vertical, small ? 2 : 4)
             .background(
                 Capsule().fill(grade.tint.opacity(0.14))
             )

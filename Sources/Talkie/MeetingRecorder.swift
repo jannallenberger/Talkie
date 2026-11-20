@@ -121,6 +121,15 @@ final class MeetingRecorder: ObservableObject {
     /// Test-only seam: the UI snapshot test shows a meeting mid-summary without
     /// running the real background pass.
     func markSummarizingForTesting(_ id: UUID) { summarizingMeetingIDs.insert(id) }
+    /// Test-only seam: the notes-window snapshot shows a recording in progress
+    /// (no audio, no engines).
+    func stageRecordingForTesting(elapsed: TimeInterval, farEnd: Bool, notes: String) {
+        self.elapsed = elapsed
+        capturingFarEnd = farEnd
+        self.notes = notes
+        noteLines = MeetingNoteStamper.lines(text: notes, notes: [])
+        isRecording = true
+    }
     #endif
     /// An imported file's background summary uses the same "Writing the summary…" state.
     func setSummarizing(_ id: UUID, _ on: Bool) {
@@ -169,6 +178,26 @@ final class MeetingRecorder: ObservableObject {
     var noteLines: [MeetingNoteStamper.Line] = []
     /// The notes as items, for the partial, the live hints and the summary.
     var noteItems: [MeetingNote] { MeetingNoteStamper.notes(from: noteLines) }
+    /// The in-progress notes draft every notes editor types into (the Meetings page
+    /// and the small notes window), so there is one text however many editors are
+    /// open, and `stop()` always saves the very last keystroke.
+    let notesDraft = NotesDraftBox()
+    /// The last things said, for the notes window. Its own object: it publishes only
+    /// when a new turn lands, so only that list re-renders.
+    let liveTail = LiveTranscriptTail()
+
+    /// Take the editors' latest text before the notes are read (stop, a crash flush).
+    private func adoptNotesDraft() {
+        guard notesDraft.isLive else { return }
+        if noteLines != notesDraft.lines { noteLines = notesDraft.lines }
+        if notes != notesDraft.text { notes = notesDraft.text }
+    }
+
+    private func clearNotes() {
+        notes = ""
+        noteLines = []
+        notesDraft.reset()
+    }
 
     /// The provisional "So far" view of the live summary (W2). Its own object so a
     /// pass landing re-renders only that list, never the page.
@@ -656,6 +685,7 @@ final class MeetingRecorder: ObservableObject {
         elapsed = 0
         lastRotationElapsed = 0
         capturingFarEnd = farActive
+        liveTail.reset()
         isRecording = true
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
@@ -838,6 +868,7 @@ final class MeetingRecorder: ObservableObject {
         }
 
         scheduleLivePass()
+        if let turnLog { liveTail.refresh(from: turnLog) }
 
         // Periodic crash-safety flush of the structured partial (C7): transcript AND
         // the user's typed live notes AND the far-end flag, so a crash loses nothing.
@@ -951,6 +982,9 @@ final class MeetingRecorder: ObservableObject {
         // unstopped after we return.
         if isStarting { cancelStart = true }
         guard isRecording else { return }
+        // The editors' last keystroke may still sit in their debounce: take it now,
+        // before anything below reads the notes (no `await` in between).
+        adoptNotesDraft()
         isRecording = false
         isFinishing = true
         // A wedged finalize must never leave the recorder stuck "finishing" — that
@@ -1128,8 +1162,7 @@ final class MeetingRecorder: ObservableObject {
                 self.partialURL = nil
             }
             // isFinishing / capturingFarEnd are cleared by the `defer` at the top.
-            notes = ""
-            noteLines = []
+            clearNotes()
             return
         }
 
@@ -1182,8 +1215,7 @@ final class MeetingRecorder: ObservableObject {
 
         let digest = digestBuilder
         digestBuilder = nil
-        notes = ""
-        noteLines = []
+        clearNotes()
         eventTitle = nil
         let attendees = eventAttendees
         eventAttendees = []

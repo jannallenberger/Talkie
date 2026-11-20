@@ -4,7 +4,7 @@ import AppKit
 
 /// L7: `ProfileImageStore` owns a single binary asset — `profile.png` under
 /// Application Support — rather than a Codable JSON tree. It center-crops to a
-/// square, downscales to 256 px, re-encodes PNG (stripping EXIF), and writes
+/// square, downscales to 512 px, re-encodes PNG (stripping EXIF), and writes
 /// atomically; `clear()` deletes the file.
 ///
 /// The store reads/writes that fixed path, so these tests snapshot whatever is on
@@ -97,10 +97,10 @@ final class ProfileImageStoreTests: XCTestCase {
         XCTAssertNotNil(reloaded.image, "a set photo is reloaded from disk on init")
     }
 
-    // MARK: downscale bound (256)
+    // MARK: downscale bound (512)
 
-    func testLargeImageIsDownscaledTo256() throws {
-        // A 4000×3000 source must come out 256×256 on disk (square-cropped + downscaled).
+    func testLargeImageIsDownscaledTo512() throws {
+        // A 4000×3000 source must come out 512×512 on disk (square-cropped + downscaled).
         let src = try makePNGFile(width: 4000, height: 3000)
         let store = ProfileImageStore()
         XCTAssertTrue(store.setImage(fromFile: src))
@@ -108,24 +108,24 @@ final class ProfileImageStoreTests: XCTestCase {
         let size = try XCTUnwrap(persistedPixelSize(), "the stored PNG must be readable")
         XCTAssertEqual(size.width, ProfileImageStore.targetPixels)
         XCTAssertEqual(size.height, ProfileImageStore.targetPixels)
-        XCTAssertEqual(size.width, 256)
-        XCTAssertEqual(size.height, 256)
+        XCTAssertEqual(size.width, 512)
+        XCTAssertEqual(size.height, 512)
     }
 
-    func testSmallImageIsAlsoNormalizedTo256Square() throws {
-        // Even a small, non-square source is normalized to the 256 square (the store
+    func testSmallImageIsAlsoNormalizedTo512Square() throws {
+        // Even a small, non-square source is normalized to the 512 square (the store
         // targets a fixed on-disk size rather than preserving the original).
         let src = try makePNGFile(width: 120, height: 80)
         let store = ProfileImageStore()
         XCTAssertTrue(store.setImage(fromFile: src))
 
         let size = try XCTUnwrap(persistedPixelSize())
-        XCTAssertEqual(size.width, 256)
-        XCTAssertEqual(size.height, 256)
+        XCTAssertEqual(size.width, 512)
+        XCTAssertEqual(size.height, 512)
     }
 
     func testNormalizedPNGProducesSquareBytes() throws {
-        // The pure normalizer, exercised directly: any input → a 256² PNG.
+        // The pure normalizer, exercised directly: any input → a 512² PNG.
         let src = NSImage(size: NSSize(width: 640, height: 200))
         src.lockFocus()
         NSColor.red.setFill()
@@ -134,8 +134,36 @@ final class ProfileImageStoreTests: XCTestCase {
 
         let png = try XCTUnwrap(ProfileImageStore.normalizedPNG(from: src))
         let rep = try XCTUnwrap(NSBitmapImageRep(data: png))
-        XCTAssertEqual(rep.pixelsWide, 256)
-        XCTAssertEqual(rep.pixelsHigh, 256)
+        XCTAssertEqual(rep.pixelsWide, 512)
+        XCTAssertEqual(rep.pixelsHigh, 512)
+    }
+
+    // MARK: face-aware crop (pure)
+
+    func testCropWithoutFaceIsTheCentredSquare() {
+        let r = ProfileImageStore.cropSquare(imageSize: CGSize(width: 4000, height: 3000), face: nil)
+        XCTAssertEqual(r, CGRect(x: 500, y: 0, width: 3000, height: 3000))
+    }
+
+    func testCropFollowsAFaceOffToTheSide() {
+        // A face near the right edge of a landscape photo: the square moves to it
+        // (a centre crop would cut it off) and stays inside the image.
+        let face = CGRect(x: 3300, y: 900, width: 400, height: 500)
+        let r = ProfileImageStore.cropSquare(imageSize: CGSize(width: 4000, height: 3000), face: face)
+        XCTAssertEqual(r.width, r.height)
+        XCTAssertTrue(r.contains(face), "the whole face is inside the crop")
+        XCTAssertLessThanOrEqual(r.maxX, 4000)
+        XCTAssertGreaterThanOrEqual(r.minY, 0)
+        XCTAssertEqual(r.width, 1250, accuracy: 1, "head and shoulders: 2.5× the face height")
+    }
+
+    func testCropNeverExceedsTheImageForAHugeFace() {
+        let face = CGRect(x: 100, y: 100, width: 700, height: 800)
+        let r = ProfileImageStore.cropSquare(imageSize: CGSize(width: 900, height: 1000), face: face)
+        XCTAssertEqual(r.width, 900)
+        XCTAssertEqual(r.height, 900)
+        XCTAssertGreaterThanOrEqual(r.minY, 0)
+        XCTAssertLessThanOrEqual(r.maxY, 1000)
     }
 
     // MARK: clear (the delete path)

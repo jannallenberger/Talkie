@@ -84,7 +84,7 @@ struct ProofCard: View {
         }
         .padding(22)
         .frame(width: Self.width, alignment: .leading)
-        .background(Theme.surface)
+        .background(Theme.surfaceSolid)
         // A subtle brand hairline frame reads well as a standalone image (the
         // borderless in-app rule is about the live UI; an exported card wants an
         // edge so it doesn't bleed into a Slack background).

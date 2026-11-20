@@ -1,16 +1,20 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Talkie Design System (v2 — native macOS 26)
+// MARK: - Talkie Design System (v3 — logo colours on Liquid Glass)
 //
-// Brand DNA: the layered scarlet-macaw logo on a clean, system-native canvas.
+// Brand DNA: the layered scarlet-macaw logo, its colours behind every page, and
+// glass on top.
 //
-//   • Canvas  — pure white in light, true black in dark. Surfaces lift by
-//               contrast + one whisper shadow, never an outline (borderless).
-//   • Accent  — macaw BLUE leads the chrome (primary action, selection, focus,
-//               the HUD, the mic FAB). Kept here under the historical name
-//               `coral` so every existing call site stays valid — the *value*
-//               is now blue. New code can read it as the brand accent.
+//   • Backdrop — a one-direction gradient of the logo's feathers over the canvas
+//               (white in light, near-black in dark), turned a step per page
+//               (`TalkieBackdrop`, Appearance.swift). The user picks the palette,
+//               its strength and its angle.
+//   • Surfaces — cards are Liquid Glass over that backdrop (`talkieSurface`);
+//               opaque when the user picks Solid or the Mac reduces transparency.
+//   • Accent  — one feather leads the chrome (primary action, selection, focus).
+//               Macaw BLUE by default; the user can pick another. Kept under the
+//               historical name `coral` so every existing call site stays valid.
 //   • Data    — the macaw's feathers (red / gold / blue / green / plum) are the
 //               categorical palette: charts, the streak heatmap, per-item nav
 //               tints. `featherCoral` is the macaw RED.
@@ -24,14 +28,20 @@ enum Theme {
 
     // MARK: Surfaces
 
-    /// App background — pure white / true black.
-    static let canvas        = dyn(light: 0xFFFFFF, dark: 0x000000)
+    /// The base under the backdrop gradient — pure white / near black.
+    static let canvas        = dyn(light: 0xFFFFFF, dark: 0x050506)
     /// Sidebar / chrome fallback (the real sidebar is Liquid Glass).
     static let canvasRaised  = dyn(light: 0xEFF1F3, dark: 0x121214)
-    /// Card / panel fill — the higher surface.
-    static let surface       = dyn(light: 0xF5F6F8, dark: 0x1B1B1E)
-    /// Inset wells, chart tracks, empty heatmap cells.
-    static let surfaceSunken = dyn(light: 0xE9EBEE, dark: 0x29292D)
+    /// The opaque card fill: Solid cards, Reduce Transparency, and anything that
+    /// must not show what is behind it.
+    static let surfaceSolid  = dyn(light: 0xF5F6F8, dark: 0x1B1B1E)
+    /// A frosted fill for small raised pieces drawn straight on the page (tiles,
+    /// floating labels). Cards themselves use `.talkieSurface()` (Liquid Glass).
+    static var surface: Color { ThemeState.flatSurfaces ? surfaceSolid : surfaceFrost }
+    private static let surfaceFrost = dyn(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.62, darkAlpha: 0.10)
+    /// Inset wells, chart tracks, chips, empty heatmap cells: a translucent ink
+    /// tint, so it reads as "pressed in" on glass and on the page alike.
+    static let surfaceSunken = dyn(light: 0x1C1D20, dark: 0xFFFFFF, lightAlpha: 0.07, darkAlpha: 0.11)
 
     // MARK: Ink
 
@@ -47,19 +57,26 @@ enum Theme {
     /// Row dividers only — never an element outline.
     static let hairline      = dyn(light: 0xE6E8EB, dark: 0x2B2B2F)
 
-    // MARK: Brand accent — macaw blue (leads the chrome)
+    // MARK: Brand accent — the feather the user picked (macaw blue by default)
 
-    /// The brand accent. Buttons, selection, focus, the HUD, the mic FAB.
-    /// (Named `coral` for call-site compatibility; the value is macaw blue.)
-    static let coral         = dyn(light: 0x1F66B3, dark: 0x4AA0E6)
+    /// The brand accent. Buttons, selection, focus, links.
+    /// (Named `coral` for call-site compatibility; the value follows the
+    /// accent chosen in Settings ▸ Appearance.)
+    static var coral: Color { ThemeState.accent.palette.base }
     /// Deeper press/emphasis state.
-    static let coralDeep     = dyn(light: 0x18548F, dark: 0x79B8EE)
+    static var coralDeep: Color { ThemeState.accent.palette.deep }
     /// Soft wash for selected rows / tinted fills.
-    static let coralWash     = dyn(light: 0xE1ECF6, dark: 0x122739)
+    static var coralWash: Color { ThemeState.accent.palette.wash }
     /// Semantic alias — prefer this name in new code.
     static var brand: Color { coral }
     static var brandDeep: Color { coralDeep }
     static var brandWash: Color { coralWash }
+    /// Text and glyphs on a `brand` fill (white, or ink on the light feathers in dark mode).
+    static var onBrand: Color { ThemeState.accent.palette.on }
+    /// A raised key cap: opaque, lighter than the card it sits on.
+    static let keycap        = dyn(light: 0xFFFFFF, dark: 0x3A3A3F)
+    /// The light catching the top edge of glass and of raised controls.
+    static let glassRim      = dyn(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.85, darkAlpha: 0.22)
 
     // MARK: Feather palette (categorical data + nav tints)
 
@@ -72,8 +89,27 @@ enum Theme {
     /// Clearer alias for the macaw red.
     static var featherRed: Color { featherCoral }
 
-    /// The single shared warm gold→red data-viz ramp (gauges, progress fills).
-    static var emberRamp: Gradient { Gradient(colors: [featherGold, featherCoral]) }
+    /// The colours of charts, gauges and progress fills: the feathers of the
+    /// backdrop the user picked, so graphs are tuned to the page behind them.
+    static var dataColors: [Color] { ThemeState.backdrop.dataColors }
+    /// `dataColors` as one ramp (gauge sweeps, progress fills).
+    static var dataRamp: Gradient { Gradient(colors: dataColors) }
+    /// The data ramp under its historical name (it was a fixed gold→red).
+    static var emberRamp: Gradient { dataRamp }
+    /// The colour at `fraction` (0…1) along the data ramp.
+    static func dataColor(at fraction: Double) -> Color {
+        let colors = dataColors
+        guard colors.count > 1 else { return colors.first ?? featherCoral }
+        let position = min(1, max(0, fraction)) * Double(colors.count - 1)
+        let index = min(colors.count - 2, Int(position))
+        return colors[index].mix(with: colors[index + 1], by: position - Double(index))
+    }
+    /// The `index`-th categorical colour of the data palette (series, legend dots),
+    /// wrapping round.
+    static func dataColor(series index: Int) -> Color {
+        let colors = dataColors
+        return colors[((index % colors.count) + colors.count) % colors.count]
+    }
 
     /// Ordered categorical ramp for charts (app-usage bars, etc).
     static let categorical: [Color] = [featherCoral, featherGold, featherBlue, featherGreen, featherPlum]
@@ -91,14 +127,13 @@ enum Theme {
         }
     }
 
-    /// The streak heatmap ramp, tied to `emberRamp` so the grid reads as the same
-    /// warm family as the gauge and words-per-day chart. Level 0 is the empty cell;
-    /// 1…4 interpolate featherGold → featherCoral by intensity. The heatmap cells
-    /// AND the "Less … More" legend must both use this so they never drift apart.
+    /// The streak heatmap ramp: level 0 is the empty cell, 1…4 are the accent
+    /// growing stronger — one hue, so "more" always reads as "more" whatever the
+    /// backdrop's colours are. The heatmap cells AND the "Less … More" legend must
+    /// both use this so they never drift apart.
     static func emberHeat(_ level: Int) -> Color {
         let l = max(0, min(4, level))
-        return l == 0 ? surfaceSunken
-                      : featherGold.mix(with: featherCoral, by: Double(l - 1) / 3.0)
+        return l == 0 ? surfaceSunken : brand.opacity(0.22 + 0.26 * Double(l - 1))
     }
 
     // MARK: Semantic
@@ -128,6 +163,9 @@ enum Theme {
         static let pageSide: CGFloat = 28
         /// Bottom inset under the last card of a scrolling page.
         static let pageBottom: CGFloat = 28
+        /// The zone at the top and bottom of a scrolling page where content runs
+        /// into the system's scroll edge blur.
+        static let edgeBar: CGFloat = 28
         /// Inner padding of a popover (`TalkiePopover`).
         static let popover: CGFloat = 16
         /// Inner padding of a sheet.
@@ -147,10 +185,12 @@ enum Theme {
     // MARK: Dynamic color helper
 
     /// A light/dark-adaptive color from two hex values.
-    static func dyn(light: UInt32, dark: UInt32) -> Color {
+    static func dyn(light: UInt32, dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            return NSColor(hex: isDark ? dark : light)
+            let color = NSColor(hex: isDark ? dark : light)
+            let alpha = isDark ? darkAlpha : lightAlpha
+            return alpha < 1 ? color.withAlphaComponent(alpha) : color
         })
     }
 }
@@ -195,30 +235,16 @@ enum TalkieFonts {
 // MARK: - Card surface
 
 extension View {
-    /// The brand surface treatment, padding-free: a squircle fill, clipped to the
-    /// corner so stacked rows / dividers can't poke past it, lifted by two whisper
-    /// shadows. `talkieCard` adds padding on top; grouped row-stacks (the settings
-    /// cards) apply it directly so their hairlines clip cleanly.
-    ///
-    /// Perf: the shadows hang off the background SHAPE, not the whole card. A shadow
-    /// on the composited card made Core Animation render every card's full content
-    /// off-screen to derive the shadow's alpha — again on every content change and
-    /// on scroll (a long transcript card, a list of rows). The surface is opaque, so
-    /// the shape's shadow is pixel-identical and costs a path, not a render pass.
+    /// The brand surface treatment, padding-free: Liquid Glass in a squircle,
+    /// clipped to the corner so stacked rows / dividers can't poke past it.
+    /// `talkieCard` adds padding on top; grouped row-stacks (the settings cards)
+    /// apply it directly so their hairlines clip cleanly. Opaque (with the two
+    /// whisper shadows) when the user chose Solid cards or reduces transparency.
     func talkieSurface(cornerRadius: CGFloat = Theme.Radius.card) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        return self
-            .clipShape(shape)
-            .background(
-                shape
-                    .fill(Theme.surface)
-                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-                    .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
-            )
+        modifier(TalkieGlassSurface(cornerRadius: cornerRadius))
     }
 
-    /// Standard Talkie card: borderless — a clean surface lifted by a single
-    /// whisper shadow, squircle corner. No outline (v2).
+    /// Standard Talkie card: padded content on the glass surface, squircle corner.
     func talkieCard(padding: CGFloat = Theme.Space.card, fill: Bool = false) -> some View {
         self
             .padding(padding)
@@ -308,6 +334,7 @@ private struct TalkieButtonBody: View {
 
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.controlSize) private var controlSize
+    @ObservedObject private var appearance = AppearanceStore.shared
     @State private var hovering = false
 
     private var small: Bool {
@@ -324,7 +351,7 @@ private struct TalkieButtonBody: View {
             .foregroundStyle(foreground)
             .padding(.horizontal, kind == .quiet ? 0 : (small ? 9 : 14))
             .frame(minWidth: kind == .quiet ? height : nil, minHeight: height)
-            .background(Capsule(style: .continuous).fill(fill))
+            .background(background)
             .contentShape(Capsule(style: .continuous))
             .opacity(isEnabled ? 1 : 0.45)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
@@ -333,9 +360,35 @@ private struct TalkieButtonBody: View {
             .onHover { hovering = $0 && isEnabled }
     }
 
+    /// The capsule: its fill, then the light on its top edge (the "shine").
+    /// Primary is a lit accent gradient with a soft glow of its own colour;
+    /// secondary and destructive are a pressed-in tint with a fine rim.
+    @ViewBuilder private var background: some View {
+        let capsule = Capsule(style: .continuous)
+        switch kind {
+        case .primary:
+            let base = tint ?? appearance.look.accent.palette.base
+            capsule
+                .fill(LinearGradient(colors: [fill.mix(with: .white, by: 0.16), fill],
+                                     startPoint: .top, endPoint: .bottom))
+                .overlay(capsule.strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.05)],
+                                   startPoint: .top, endPoint: .bottom), lineWidth: 1))
+                .shadow(color: base.opacity(isEnabled ? 0.30 : 0), radius: small ? 4 : 7, x: 0, y: small ? 2 : 3)
+        case .secondary, .destructive:
+            capsule
+                .fill(fill)
+                .overlay(capsule.strokeBorder(
+                    LinearGradient(colors: [Theme.glassRim, Theme.glassRim.opacity(0.15)],
+                                   startPoint: .top, endPoint: .bottom), lineWidth: 0.75))
+        case .quiet:
+            capsule.fill(fill)
+        }
+    }
+
     private var foreground: Color {
         switch kind {
-        case .primary:     return .white
+        case .primary:     return tint == nil ? appearance.look.accent.palette.on : .white
         case .secondary:   return Theme.ink
         case .destructive: return Theme.featherRed
         case .quiet:       return tint ?? (hovering ? Theme.ink : Theme.inkSecondary)
@@ -344,10 +397,11 @@ private struct TalkieButtonBody: View {
 
     private var fill: Color {
         let pressed = configuration.isPressed && isEnabled
+        let accent = appearance.look.accent.palette
         switch kind {
         case .primary:
-            let base = tint ?? Theme.coral
-            if pressed { return tint == nil ? Theme.coralDeep : base.opacity(0.8) }
+            let base = tint ?? accent.base
+            if pressed { return tint == nil ? accent.deep : base.opacity(0.8) }
             return hovering ? base.opacity(0.9) : base
         case .secondary, .destructive:
             if pressed { return Theme.surfaceSunken.mix(with: Theme.ink, by: 0.12) }
@@ -518,14 +572,10 @@ private struct TalkieCardButtonBody: View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
         configuration.label
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .clipShape(shape)
+            // The state (hover, pressed, selected) is a tint laid on the glass.
+            .background(shape.fill(tintFill))
+            .talkieSurface()
             .overlay(shape.strokeBorder(Theme.brand, lineWidth: isSelected ? 2 : 0))
-            // Shadows on the shape, not the card content (see `talkieSurface`).
-            .background(
-                shape.fill(fill)
-                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-                    .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
-            )
             .contentShape(shape)
             .opacity(isEnabled ? 1 : 0.45)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
@@ -535,8 +585,8 @@ private struct TalkieCardButtonBody: View {
             .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var fill: Color {
-        let base = isSelected ? Theme.surface.mix(with: Theme.brandWash, by: 0.6) : Theme.surface
+    private var tintFill: Color {
+        let base = isSelected ? Theme.brand.opacity(0.12) : Color.clear
         if configuration.isPressed && isEnabled { return base.mix(with: Theme.ink, by: 0.08) }
         return hovering ? base.mix(with: Theme.ink, by: 0.04) : base
     }
@@ -639,8 +689,128 @@ struct TalkieKeycap: View {
         // A raised key (canvas + a 1pt key shadow), deliberately unlike the sunken
         // fill of buttons and chips: a keycap shows a key, it is not clickable.
         .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-            .fill(Theme.canvas)
+            .fill(Theme.keycap)
             .shadow(color: .black.opacity(0.18), radius: 0.5, x: 0, y: 1))
+    }
+}
+
+// MARK: - Slider
+
+/// The arithmetic of `TalkieSlider`, pure so it is unit-tested.
+enum TalkieSliderMath {
+    /// The value under a pointer at `x` in a track `width` wide whose thumb is
+    /// `thumb` across: the thumb's centre follows the pointer, clamped to the track.
+    static func value(atX x: CGFloat, width: CGFloat, thumb: CGFloat,
+                      range: ClosedRange<Double>, step: Double?) -> Double {
+        let travel = max(1, width - thumb)
+        let fraction = Double(min(1, max(0, (x - thumb / 2) / travel)))
+        return snapped(range.lowerBound + fraction * (range.upperBound - range.lowerBound), range: range, step: step)
+    }
+
+    /// Where the thumb's leading edge sits for `value`.
+    static func thumbOffset(value: Double, width: CGFloat, thumb: CGFloat, range: ClosedRange<Double>) -> CGFloat {
+        let span = range.upperBound - range.lowerBound
+        guard span > 0 else { return 0 }
+        let fraction = min(1, max(0, (value - range.lowerBound) / span))
+        return CGFloat(fraction) * max(0, width - thumb)
+    }
+
+    /// `value` moved by `steps` keyboard/VoiceOver increments (a twentieth of the
+    /// range each, or one `step`).
+    static func nudged(_ value: Double, by steps: Int, range: ClosedRange<Double>, step: Double?) -> Double {
+        let unit = step ?? (range.upperBound - range.lowerBound) / 20
+        return snapped(value + Double(steps) * unit, range: range, step: step)
+    }
+
+    static func snapped(_ value: Double, range: ClosedRange<Double>, step: Double?) -> Double {
+        var v = value
+        if let step, step > 0 { v = range.lowerBound + ((v - range.lowerBound) / step).rounded() * step }
+        return min(range.upperBound, max(range.lowerBound, v))
+    }
+}
+
+/// The one slider: a sunken track filled with the accent up to a white, lit thumb.
+/// Drag anywhere on it, or click to jump; arrow keys and VoiceOver adjust it.
+struct TalkieSlider: View {
+    @Binding var value: Double
+    var range: ClosedRange<Double> = 0...1
+    var step: Double? = nil
+    /// What the slider sets, for VoiceOver ("Strength").
+    let label: String
+    /// The spoken value ("40 %", "135°"); the fraction of the range when nil.
+    var valueText: String? = nil
+
+    @Environment(\.isEnabled) private var isEnabled
+    @ObservedObject private var appearance = AppearanceStore.shared
+    @State private var dragging = false
+    @State private var hovering = false
+    @FocusState private var focused: Bool
+
+    private static let thumb: CGFloat = 20
+    private static let track: CGFloat = 6
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let offset = TalkieSliderMath.thumbOffset(value: value, width: width, thumb: Self.thumb, range: range)
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Theme.surfaceSunken)
+                    .frame(height: Self.track)
+                Capsule(style: .continuous)
+                    .fill(appearance.look.accent.palette.base)
+                    .frame(width: offset + Self.thumb / 2, height: Self.track)
+                Circle()
+                    .fill(LinearGradient(colors: [.white, Color(white: 0.93)], startPoint: .top, endPoint: .bottom))
+                    .overlay(Circle().strokeBorder(.black.opacity(0.08), lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.22), radius: dragging ? 5 : 3, x: 0, y: dragging ? 2 : 1)
+                    .frame(width: Self.thumb, height: Self.thumb)
+                    .scaleEffect(dragging ? 1.12 : (hovering ? 1.05 : 1))
+                    .offset(x: offset)
+            }
+            .frame(width: width, height: geo.size.height)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        dragging = true
+                        let next = TalkieSliderMath.value(atX: gesture.location.x, width: width, thumb: Self.thumb,
+                                                          range: range, step: step)
+                        if next != value { value = next }
+                    }
+                    .onEnded { _ in dragging = false }
+            )
+        }
+        .frame(height: 24)
+        .opacity(isEnabled ? 1 : 0.45)
+        .animation(.easeOut(duration: 0.12), value: dragging)
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .onHover { hovering = $0 && isEnabled }
+        .focusable()
+        .focused($focused)
+        .onMoveCommand { direction in
+            switch direction {
+            case .left, .down: value = TalkieSliderMath.nudged(value, by: -1, range: range, step: step)
+            case .right, .up:  value = TalkieSliderMath.nudged(value, by: 1, range: range, step: step)
+            default: break
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel(Text(verbatim: label))
+        .accessibilityValue(Text(verbatim: valueText ?? defaultValueText))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: value = TalkieSliderMath.nudged(value, by: 1, range: range, step: step)
+            case .decrement: value = TalkieSliderMath.nudged(value, by: -1, range: range, step: step)
+            @unknown default: break
+            }
+        }
+    }
+
+    private var defaultValueText: String {
+        let span = range.upperBound - range.lowerBound
+        guard span > 0 else { return "" }
+        return "\(Int(((value - range.lowerBound) / span * 100).rounded())) %"
     }
 }
 
@@ -1010,8 +1180,10 @@ extension TalkiePageHeader where Actions == EmptyView {
     }
 }
 
-/// What paints behind a page: the flat canvas, the Dashboard's ambient ember,
-/// or nothing (the caller paints, e.g. a drop-target wash over the canvas).
+/// What paints behind a page. The main window draws the logo-colour backdrop
+/// once, behind the sidebar and every page, so pages themselves are see-through:
+/// `canvas` and `ambient` both mean "the shared backdrop"; `none` is for a caller
+/// that lays a wash of its own over it (a drop target).
 enum TalkiePageBackground {
     case canvas, ambient, none
 }
@@ -1027,10 +1199,12 @@ private struct TalkiePagePadding: ViewModifier {
     let bottom: Bool
 
     func body(content: Content) -> some View {
+        // The scroll edge bars (`talkieScrollEdgeFades`) already take `edgeBar`
+        // of the top and the bottom.
         content
-            .padding(.top, Theme.Space.pageTop)
+            .padding(.top, Theme.Space.pageTop - Theme.Space.edgeBar)
             .padding(.horizontal, Theme.Space.pageSide)
-            .padding(.bottom, bottom ? Theme.Space.pageBottom : 0)
+            .padding(.bottom, bottom ? Theme.Space.pageBottom - Theme.Space.edgeBar : 0)
     }
 }
 
@@ -1041,24 +1215,27 @@ struct TalkieScrollPage<Content: View>: View {
     var background: TalkiePageBackground = .canvas
     @ViewBuilder var content: Content
 
+    @ObservedObject private var appearance = AppearanceStore.shared
+
     var body: some View {
         ScrollView {
+            // No `GlassEffectContainer` around the page: it draws every card's glass
+            // in one layer ABOVE anything that is not inside a card, so a control
+            // laid over a card from outside (a switch in a card's corner) ended up
+            // behind the glass.
             VStack(alignment: .leading, spacing: spacing) { content }
                 .talkiePagePadding()
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // A new accent or backdrop repaints the page (colour tokens are
+                // plain reads).
+                .id(appearance.look.paintKey)
         }
         .scrollContentBackground(.hidden)
-        // No toolbar material when content scrolls under the transparent toolbar.
-        .scrollEdgeEffectHidden(true, for: .top)
-        .background { backgroundView }
-    }
-
-    @ViewBuilder private var backgroundView: some View {
-        switch background {
-        case .canvas:  Theme.canvas
-        case .ambient: LiveBackground(mood: .ambient)
-        case .none:    Color.clear
-        }
+        // The system edge effect is off: the page frosts its own top and bottom
+        // edge (`talkieScrollEdgeFades`), the same on every page.
+        // The system's soft scroll edge effect, top and bottom (the bars it needs
+        // take `Space.edgeBar` of each edge; the page padding is trimmed to match).
+        .talkieScrollEdgeFades()
     }
 }
 

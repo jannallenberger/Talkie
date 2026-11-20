@@ -89,6 +89,16 @@ final class TurnLog: @unchecked Sendable {
         lock.withLock { turns.isEmpty }
     }
 
+    /// How many turns there are and the last `limit` of them, in one lock (the
+    /// notes window's "said just now" list asks every second and copies nothing
+    /// when the count has not moved).
+    func tail(_ limit: Int, ifCountDiffersFrom known: Int) -> (count: Int, turns: [Turn])? {
+        lock.withLock {
+            guard turns.count != known else { return nil }
+            return (turns.count, Array(turns.suffix(max(0, limit))))
+        }
+    }
+
     /// All turns for one speaker (drives per-stream language correction).
     func turns(for speaker: MeetingSpeaker) -> [Turn] {
         lock.withLock { turns.filter { $0.speaker == speaker } }

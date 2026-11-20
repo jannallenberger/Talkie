@@ -143,7 +143,7 @@ struct BiasABTestView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
-                .background(Theme.canvas)
+                .background(Theme.surfaceSunken)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         }
     }

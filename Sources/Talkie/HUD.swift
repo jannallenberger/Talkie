@@ -1102,7 +1102,7 @@ private struct CorrectionPopover: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .fill(Theme.surface)
+                .fill(Theme.surfaceSolid)
                 .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
         )
         .frame(width: 320)

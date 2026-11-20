@@ -8,6 +8,16 @@ implement it live in [`Sources/Talkie/DesignSystem.swift`](../Sources/Talkie/Des
 **that file is the source of truth for exact values; this doc is the source of
 truth for philosophy.** They are now reconciled (this is the **v2** system).
 
+> **v3 (2026-11) — logo colours on glass.** The canvas is no longer bare: every
+> page sits on a one-direction gradient mixed from the logo's own feathers (gold,
+> red, blue, green), cards are Liquid Glass over it, and scrolling content fades
+> into a blur at the top and bottom edge. The accent is still macaw blue by
+> default, but the user can pick another feather, another backdrop (or none) and
+> how clear the glass is — Settings ▸ Profile & appearance. Sections 3.1, 5 and 6
+> below describe the neutral v2 base that the Solid/Plain options still give;
+> the binding component rules for v3 are in
+> [DESIGN_GUIDELINES.md](DESIGN_GUIDELINES.md) §1 and §9.
+>
 > **v1 → v2.** Talkie's first identity was a warm ivory-paper "Claude canvas"
 > with a clay-**coral** accent. The shipped app is **v2**: a clean, native
 > **macOS 26** surface — pure white / true black — with **macaw blue** leading

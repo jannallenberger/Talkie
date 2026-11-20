@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The dashboard hero card: a zero-chrome adaptive Scratchpad. Notes and checkbox
+/// The dashboard's Scratchpad card: compact, a fixed cell of the grid (its lines
+/// scroll inside it), with the composer in a well at the bottom. Notes and checkbox
 /// tasks live as editable rows bound to `ScratchpadStore`; typing a leading `- ` or
 /// `[]` promotes a row to a task, tapping the box toggles it (done rows strike
 /// through), and Return commits the row and drops a fresh one below. Dictating into
@@ -13,42 +14,62 @@ struct ScratchpadCard: View {
     /// Which row currently owns keyboard focus (nil = the trailing "new line" row).
     @FocusState private var focusedID: UUID?
 
+    /// Tasks still to do, shown beside the title.
+    private var openTasks: Int { scratchpad.lines.filter { $0.isTask && !$0.done }.count }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Eyebrow(text: "Scratchpad")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                Eyebrow(text: "Scratchpad")
+                Spacer(minLength: 0)
+                if openTasks > 0 {
+                    TalkieTag(verbatim: String(format: "%d open".loc, openTasks))
+                }
+            }
+            .frame(minHeight: 18)
 
             if scratchpad.lines.isEmpty {
-                // EmptyHint renders its `text` via `Text(String)`, which does NOT
-                // auto-localize (only string *literals* do), so localize explicitly.
-                EmptyHint(icon: "square.and.pencil",
-                          text: "Jot a note or a task here — type “- ” for a checkbox. Anything Talkie can’t paste lands here too, so it’s never lost.".loc)
+                // One calm line instead of a tall placeholder; the card keeps its
+                // place in the grid whether it holds notes or not.
+                Text("Jot notes and tasks — type “- ” for a checkbox. Anything that can’t be pasted lands here too.".loc)
+                    .font(.talkieHeading(12.5, weight: .regular))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            } else {
+                // The notes scroll inside the card, so a long list never pushes the
+                // rest of the dashboard down.
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(scratchpad.lines) { line in
+                            ScratchpadRow(
+                                line: line,
+                                isFocused: focusedID == line.id,
+                                onToggle: { scratchpad.toggleDone(id: line.id) },
+                                onCommit: { newText in commit(id: line.id, text: newText) },
+                                onSubmit: { insertRowBelow() },
+                                onDelete: { scratchpad.delete(id: line.id) }
+                            )
+                            .focused($focusedID, equals: line.id)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollEdgeEffectHidden(true, for: .all)
+                .frame(maxHeight: .infinity)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(scratchpad.lines) { line in
-                    ScratchpadRow(
-                        line: line,
-                        isFocused: focusedID == line.id,
-                        onToggle: { scratchpad.toggleDone(id: line.id) },
-                        onCommit: { newText in commit(id: line.id, text: newText) },
-                        onSubmit: { insertRowBelow() },
-                        onDelete: { scratchpad.delete(id: line.id) }
-                    )
-                    .focused($focusedID, equals: line.id)
-                }
-
-                // The always-present composer row: type here to add a line, Return to
-                // keep going. Kept out of the store until it has content so an empty
-                // trailing row is never persisted.
-                NewLineRow { text in
-                    scratchpad.addLine(text)
-                    // Focus follows into the freshly added row for a natural flow.
-                    focusedID = scratchpad.lines.last?.id
-                }
-                .focused($focusedID, equals: nil)
+            // The always-present composer: type here to add a line, Return to keep
+            // going. Kept out of the store until it has content so an empty trailing
+            // row is never persisted.
+            NewLineRow { text in
+                scratchpad.addLine(text)
+                // Focus follows into the freshly added row for a natural flow.
+                focusedID = scratchpad.lines.last?.id
             }
+            .focused($focusedID, equals: nil)
         }
-        .talkieCard()
+        .talkieCard(padding: 16, fill: true)
     }
 
     /// Commit an edited row's text back to the store (re-parsing prefixes). An empty
@@ -173,15 +194,19 @@ private struct NewLineRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "plus")
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.inkTertiary.opacity(0.7))
+                .foregroundStyle(Theme.inkTertiary)
                 .frame(width: 14)
             TextField("Add a note or task…", text: $draft)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13.5))
+                .font(.system(size: 13))
                 .foregroundStyle(Theme.ink)
                 .onSubmit { flush() }
         }
-        .padding(.vertical, 3)
+        // A well, so the place to type is obvious at a glance.
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Theme.surfaceSunken,
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
     }
 
     private func flush() {

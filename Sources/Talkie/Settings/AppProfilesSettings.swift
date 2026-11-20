@@ -417,7 +417,6 @@ private struct AppProfileEditor: View {
                 }
                 .padding(20)
             }
-            .background(Theme.canvas)
 
             Divider().overlay(Theme.hairline)
 
@@ -430,7 +429,7 @@ private struct AppProfileEditor: View {
             .padding(20)
         }
         .frame(width: 460, height: 560)
-        .background(Theme.canvas)
+        .background { TalkieBackdrop() }
     }
 
     private var appIcon: NSImage? {

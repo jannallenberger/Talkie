@@ -47,12 +47,11 @@ struct MeetingAppPickerSheet: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Theme.canvas)
             Divider().overlay(Theme.hairline)
             footer
         }
         .frame(width: 560, height: 620)
-        .background(Theme.canvas)
+        .background { TalkieBackdrop() }
         .task {
             // Off the main actor: the scan reads every app bundle's Info.plist, which
             // used to freeze the sheet (and its spinner) while it ran.
@@ -229,7 +228,7 @@ private struct AppTile: View {
             Circle().fill(Theme.coral)
             Image(systemName: "checkmark")
                 .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.onBrand)
         }
         .frame(width: 15, height: 15)
     }

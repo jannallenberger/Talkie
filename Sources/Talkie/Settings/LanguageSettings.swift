@@ -173,7 +173,7 @@ private struct LanguageStripTile: View {
                 .frame(width: 20, height: 20)
             Image(systemName: "checkmark")
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.onBrand)
         }
     }
 }
@@ -326,7 +326,7 @@ private struct LanguageCard: View {
                 .frame(width: 26, height: 26)
             Image(systemName: "checkmark")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.onBrand)
         }
     }
 }
