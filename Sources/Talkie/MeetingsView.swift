@@ -1138,12 +1138,16 @@ private struct MeetingDetail: View, Equatable {
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.inkTertiary)
             }
+            // No card behind the transcript: it is far taller than the window, and
+            // glass that tall is dropped and redrawn as it scrolls (the surface
+            // popped in and out). The text sits straight on the page.
             transcriptBody
-                .talkieCard(padding: 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 2)
         }
     }
 
-    /// The transcript itself, on a card under the section label: the editor, the
+    /// The transcript itself, under the section label: the editor, the
     /// click-to-play lines, speaker turns, or the plain text, plus any learn chips.
     @ViewBuilder
     private var transcriptBody: some View {
