@@ -111,6 +111,7 @@ final class MeetingNotesWindowController: NSObject, NSWindowDelegate {
         panel.level = isPinned ? .floating : .normal
         // Beside a full-screen call too, and on whichever Space the call is on.
         panel.collectionBehavior = [.fullScreenAuxiliary, .canJoinAllSpaces]
+        ScreenShareVisibility.register(panel)
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.minSize = Self.minSize

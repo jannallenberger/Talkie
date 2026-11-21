@@ -1253,3 +1253,7 @@
 "%d open" = "%d open";
 "Jot notes and tasks — type “- ” for a checkbox. Anything that can’t be pasted lands here too." = "Noteer notities en taken — typ “- ” voor een selectievakje. Wat niet geplakt kan worden, komt ook hier terecht.";
 "The gradient is mixed from the colors of the logo and sits behind every page. Charts and buttons take their colors from it." = "Het verloop is gemengd uit de kleuren van het logo en staat achter elke pagina. Grafieken en knoppen nemen de kleuren ervan over.";
+
+/* Command key as a switch, pill hints, screen sharing (2026-11) */
+"Hide from screen sharing" = "Verbergen bij schermdeling";
+"The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it." = "De vergaderpil en het notitievenster blijven voor jou zichtbaar, maar ontbreken wanneer je je scherm deelt of opneemt.";

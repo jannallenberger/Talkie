@@ -117,6 +117,11 @@ struct MeetingsSettings: View {
                 title: "Open the notes window when recording starts".loc,
                 subtitle: "A small window beside the call for your notes, with what has been said so far. It stays closed while the main window is in front.".loc,
                 isOn: $settings.openMeetingNotesWindow)
+            SettingsDivider()
+            SettingsToggleRow(
+                title: "Hide from screen sharing".loc,
+                subtitle: "The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it.".loc,
+                isOn: $settings.hideMeetingWindowsFromScreenSharing)
         }
     }
 

@@ -1253,3 +1253,7 @@
 "%d open" = "%d pendientes";
 "Jot notes and tasks — type “- ” for a checkbox. Anything that can’t be pasted lands here too." = "Anota notas y tareas: escribe «- » para una casilla. Lo que no se pueda pegar también llega aquí.";
 "The gradient is mixed from the colors of the logo and sits behind every page. Charts and buttons take their colors from it." = "El degradado se mezcla con los colores del logotipo y está detrás de cada página. Los gráficos y botones toman sus colores de él.";
+
+/* Command key as a switch, pill hints, screen sharing (2026-11) */
+"Hide from screen sharing" = "Ocultar al compartir pantalla";
+"The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it." = "El indicador de reunión y la ventana de notas siguen visibles para ti, pero no aparecen cuando compartes o grabas tu pantalla.";
