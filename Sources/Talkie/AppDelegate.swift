@@ -290,6 +290,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Whether `currentStreaming` converts spoken punctuation before its model call (the
     /// switch as it was when the session began). See `SpokenPunctuationPipeline`.
     private var currentStreamingPunctuates = false
+    /// This dictation's pause-made full stops, settled while you speak (see
+    /// `PauseStops`). Feeds the pill's live text and, without a cleanup style, the
+    /// pasted text. Nil between dictations.
+    private var currentPauseStops: PauseStopResolver?
+    /// The newest live transcript, kept so the pill can be redrawn when a stop is
+    /// settled between two partial results.
+    private var lastLiveTranscript: (finalized: String, volatile: String)?
+    /// The longest the paste waits for stops the model is still looking at.
+    static let pauseStopBudgetSeconds: Double = 1.2
     /// The project file index snapshot to apply to the current dictation (vibe coding).
     private var currentVibeSnapshot: ProjectIndexSnapshot = .empty
     /// A discoverable project root behind the editor/terminal being dictated into,
@@ -796,8 +805,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // the flattened `combined`, so it can render the still-changing tail
                     // fainter and let words firm up as they finalize. Display only — the
                     // transcript itself still flows to the focused app unchanged.
-                    AppDelegate.sharedHUD?.updateTranscribing(finalized: update.finalizedText,
-                                                              volatile: update.volatileText)
+                    if let delegate = AppDelegate.shared {
+                        delegate.showLiveTranscript(finalized: update.finalizedText, volatile: update.volatileText)
+                    } else {
+                        AppDelegate.sharedHUD?.updateTranscribing(finalized: update.finalizedText,
+                                                                  volatile: update.volatileText)
+                    }
                     // H5: when a sealed onboarding try-it is active, also stream the
                     // live transcript into its results field so words appear as you
                     // speak. The HUD pill still updates too (acceptable/good — the
@@ -808,6 +821,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         AppDelegate.sharedHUD = hud
+    }
+
+    /// The pill's live text: the committed words with the pause-made full stops
+    /// already settled (see `PauseStops`), then the still-changing tail.
+    private func showLiveTranscript(finalized: String, volatile: String) {
+        lastLiveTranscript = (finalized, volatile)
+        guard isDictating, let stops = currentPauseStops else {
+            hud.updateTranscribing(finalized: finalized, volatile: volatile)
+            return
+        }
+        let code = LanguageDetector.languageCode(of: currentLocaleID)
+        stops.noteFinalized(finalized, languageCode: code)
+        hud.updateTranscribing(finalized: stops.live(finalized, languageCode: code), volatile: volatile)
+    }
+
+    /// A stop was settled between two partial results: redraw the pill's text.
+    private func refreshLiveTranscript() {
+        guard isDictating, let last = lastLiveTranscript else { return }
+        showLiveTranscript(finalized: last.finalized, volatile: last.volatile)
     }
 
     // The engine's @Sendable handler can't capture `self` cleanly across the
@@ -1682,6 +1714,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ? StreamingCleanup(enabled: true, cleanOne: cleanOne)
             : nil
         currentStreaming = streaming
+        // Pause-made full stops are settled while you speak. With a cleanup style
+        // that model re-punctuates the whole text at the end (and is busy with the
+        // streamed cleanup), so only the fixed rules run here, for the pill.
+        let pauseJudge: PauseStopJudging? = (!cleanupEnabled && OnDevicePauseStopJudge.isUsable)
+            ? OnDevicePauseStopJudge() : nil
+        currentPauseStops = PauseStopResolver(judge: pauseJudge) {
+            Task { @MainActor in AppDelegate.shared?.refreshLiveTranscript() }
+        }
+        lastLiveTranscript = nil
         let segmentHandler: (@Sendable (String) -> Void)?
         if let streaming {
             segmentHandler = { segment in streaming.ingest(segment) }
@@ -1971,6 +2012,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         musicController.resumeAfterDictation()
         currentStreaming?.cancel()
         currentStreaming = nil
+        currentPauseStops?.cancel()
+        currentPauseStops = nil
         // H3: a capture failure ends the session — drop any in-pill style override so
         // it can't leak into the next dictation (nothing was inserted, so no keep chip).
         sessionCleanup = nil
@@ -2020,6 +2063,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard sessionLive else {
             currentStreaming?.cancel()
             currentStreaming = nil
+            currentPauseStops?.cancel()
+            currentPauseStops = nil
             // No-op unless a race left music paused; keeps the invariant that music
             // is never left ducked when a session ends.
             musicController.resumeAfterDictation()
@@ -2236,6 +2281,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let streaming = currentStreaming
         let streamingPunctuates = currentStreamingPunctuates
         currentStreaming = nil
+        let pauseStops = currentPauseStops
+        currentPauseStops = nil
+        lastLiveTranscript = nil
         // "Format while you dictate": the command-key marks of this session. Without a
         // command span (`needsAssembly` false) every branch below is exactly as before.
         let formatMarks = settings.formatCommandsEnabled ? sessionFormatMarks : []
@@ -2524,12 +2572,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             } else {
                 streaming?.cancel()
-                // No AI pass (cleanup off / model unavailable) — still neutralize the
-                // pause-seams deterministically so we stop over-punctuating.
-                if !languageSwitched, segments.count > 1 {
+                // No AI cleanup (off / model unavailable): the full stops a thinking
+                // pause made are settled by grammar, one stop at a time, without
+                // touching a word (see `PauseStops`). Most were settled while you
+                // spoke; the paste waits briefly for the last ones. This also covers a
+                // re-transcribed (language-switched) text, which has no segments.
+                if let pauseStops, !finalRaw.isEmpty {
+                    cleaned = await pauseStops.settled(finalRaw, languageCode: cleanupLangCode,
+                                                       budget: Self.pauseStopBudgetSeconds)
+                    Self.pipelineTrace("pauseStops", cleaned)
+                } else if !languageSwitched, segments.count > 1 {
                     cleaned = SentenceFlow.mergeContinuations(segments)
                 }
             }
+            pauseStops?.cancel()
             trace.stage("cleanup")
             Self.pipelineTrace("cleanup", cleaned,
                                detail: "enabled=\(cleanupEnabled) style=\(style) streamed=\(usedStreaming)")
