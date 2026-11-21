@@ -1260,3 +1260,4 @@
 "Press %@ once and say a format" = "%@ einmal drücken und ein Format sagen";
 "Press %@ again and keep talking — it comes out formatted" = "%@ noch einmal drücken und weitersprechen – es kommt formatiert heraus";
 "Press the format key, say it, then press the key again." = "Formattaste drücken, es sagen, Taste noch einmal drücken.";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@ an · gilt beim Stoppen · zweimal %2$@ beendet";

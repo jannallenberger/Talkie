@@ -147,6 +147,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// When command listening was switched on (uptime of the first press of the
     /// command key), nil while it is off. See `FormatKeyGesture`.
     private var formatListeningStart: TimeInterval?
+    /// This session's commands as the live preview resolved them, placed in the live
+    /// text by word position — so the pill shows the words in their format while
+    /// you speak (`FormatLivePreview.displayed`). The pasted text does not use this.
+    private var sessionLiveFormat: [FormatLivePreview.Placed] = []
     /// Per command span (in order): what the live preview matched at release — the
     /// last fallback when a re-transcribed span is empty or unmatched.
     private var sessionLiveCommands: [FormatCommand?] = []
@@ -827,6 +831,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// already settled (see `PauseStops`), then the still-changing tail.
     private func showLiveTranscript(finalized: String, volatile: String) {
         lastLiveTranscript = (finalized, volatile)
+        // After a format command the pill shows every region in its format, without
+        // the command's own words (the paste decides the same from word timings).
+        if isDictating, !sessionLiveFormat.isEmpty {
+            let shown = FormatLivePreview.displayed(
+                finalized: finalized, volatile: volatile, commands: sessionLiveFormat,
+                languageCode: LanguageDetector.languageCode(of: currentLocaleID))
+            hud.updateTranscribing(finalized: shown.firm, volatile: shown.rest, volatileContinues: true)
+            return
+        }
         guard isDictating, let stops = currentPauseStops else {
             hud.updateTranscribing(finalized: finalized, volatile: volatile)
             return
@@ -935,6 +948,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             formatPressSnapshot = nil
             sessionFormatMarks.append(.endTap(at: audioTime(forUptime: at)))
             hud.formatEvent(.tapped)
+            // The words from here on are normal text in the pill as well.
+            Task { @MainActor [weak self] in
+                guard let self, self.isDictating, self.sessionID == myID else { return }
+                let now = await self.engine.liveTranscript()
+                guard self.isDictating, self.sessionID == myID else { return }
+                let count = now.split(whereSeparator: \.isWhitespace).count
+                self.sessionLiveFormat.append(.init(start: count, end: count, effect: .end))
+                self.refreshLiveTranscript()
+            }
         case .span(let start, let end):
             formatListeningStart = nil
             let spanStart = audioTime(forUptime: start)
@@ -951,11 +973,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Give the recognizer a moment to emit the words said just before
                 // release; a slow recognizer gets two more looks before "nothing said".
                 var heard = ""
+                var latest = ""
                 let earlier = await before?.value ?? ""
                 for _ in 0..<3 {
                     try? await Task.sleep(for: .milliseconds(600))
                     guard let self, self.isDictating, self.sessionID == myID else { return }
                     let now = await self.engine.liveTranscript()
+                    latest = now
                     heard = FormatLivePreview.addedWords(before: earlier, after: now)
                     if !heard.isEmpty { break }
                 }
@@ -985,7 +1009,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     case .notRecognised: break
                     }
                 }
-                // Held the key and said nothing: no flash, nothing to report.
+                // The same command in the pill's live text: from here on the words
+                // are shown in the format, the command's own words not at all.
+                if let placed = FormatLivePreview.placed(resolution, saidAnything: saidAnything,
+                                                         before: earlier, now: latest) {
+                    self.sessionLiveFormat.append(placed)
+                    if case .format(let style) = placed.effect {
+                        self.hud.setFormatAppliedAtEnd(!FormatLivePreview.showsLive(style))
+                    }
+                    self.refreshLiveTranscript()
+                }
+                // Two presses and nothing said: no flash, nothing to report.
                 self.hud.formatEvent(.resolved(!saidAnything ? .emptyHold : PillFormatState.resolution(resolution)))
             }
         }
@@ -1498,6 +1532,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         audioStartUptime = nil
         formatPressSnapshot = nil
         formatListeningStart = nil
+        sessionLiveFormat = []
         sessionID += 1
         let myID = sessionID
         updateStatusUI()
@@ -2284,6 +2319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pauseStops = currentPauseStops
         currentPauseStops = nil
         lastLiveTranscript = nil
+        sessionLiveFormat = []
         // "Format while you dictate": the command-key marks of this session. Without a
         // command span (`needsAssembly` false) every branch below is exactly as before.
         let formatMarks = settings.formatCommandsEnabled ? sessionFormatMarks : []

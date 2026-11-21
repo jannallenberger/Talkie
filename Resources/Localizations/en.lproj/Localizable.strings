@@ -1271,3 +1271,4 @@
 "Press %@ once and say a format" = "Press %@ once and say a format";
 "Press %@ again and keep talking — it comes out formatted" = "Press %@ again and keep talking — it comes out formatted";
 "Press the format key, say it, then press the key again." = "Press the format key, say it, then press the key again.";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@ on · applied when you stop · %2$@ twice ends it";

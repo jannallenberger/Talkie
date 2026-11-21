@@ -276,14 +276,19 @@ final class CommandsSnapshotTests: XCTestCase {
 
     // MARK: Pill
 
-    private func pill(_ name: String, _ events: [PillFormatState.Event]) throws {
+    private func pill(_ name: String, _ events: [PillFormatState.Event], text: String = "Ich brauche",
+                      volatile: String = "", height: CGFloat = 110, volatileContinues: Bool = false,
+                      appliedAtEnd: Bool = false) throws {
         let model = HUDModel()
         model.phase = .listening
         model.levels = (0..<HUDModel.barCount).map { i in CGFloat(0.25 + 0.6 * abs(sin(Double(i) * 0.7))) }
-        model.text = "Ich brauche"
+        model.text = text
+        model.volatileText = volatile
+        model.volatileContinues = volatileContinues
+        model.formatAppliedAtEnd = appliedAtEnd
         for e in events { model.formatState.handle(e) }
         for (label, bg) in [("bglight", Color(white: 0.93)), ("bgdark", Color(white: 0.16))] {
-            try shot("pill-\(name)-\(label)", width: 440, height: 110, background: bg, padding: 0) {
+            try shot("pill-\(name)-\(label)", width: 440, height: height, background: bg, padding: 0) {
                 HUDView(model: model, pillFrame: PillFrameBox())
             }
         }
@@ -302,7 +307,33 @@ final class CommandsSnapshotTests: XCTestCase {
                  [.resolved(.format("ALL CAPS")), .flashExpired, .keyDown, .spanReleased, .resolved(.notRecognised)])
         try pill("7-inserted", [.keyDown, .spanReleased, .resolved(.inserted("my address"))])
         try pill("8-ended", [.resolved(.format("Bullet list")), .flashExpired, .tapped])
+        // The live text: a few lines grow the pill; more than it holds shows the newest.
+        let long = "Yes, please. We also need to make a couple of changes that I will list now. First of all, "
+            + "we need to make sure that the Commands option when pressing the control key or whatever key is "
+            + "selected for the user is actually enabled by just pressing the key once and disabled by pressing "
+            + "the key once again because currently there is kind of like a long press going on that I do not "
+            + "seem to understand."
+        try pill("9-live-two-lines", [], text: "We also need to make a couple of changes",
+                 volatile: "that I will list now", height: 170)
+        try pill("9-live-rolling", [], text: long, volatile: "The newest words are here", height: 170)
+        try pill("9-live-rolling-format", [.resolved(.format("Bullet list")), .flashExpired], text: long,
+                 volatile: "The newest words are here", height: 190)
+        // After a command the live text is shown in the format (`FormatLivePreview`).
+        let caps = FormatLivePreview.displayed(
+            finalized: "Please note all caps this is very", volatile: "urgent indeed",
+            commands: [.init(start: 2, end: 4, effect: .format(.preset(.allCaps)))], languageCode: "en")
+        try pill("10-live-all-caps", [.resolved(.format("ALL CAPS")), .flashExpired], text: caps.firm,
+                 volatile: caps.rest, height: 150, volatileContinues: true)
+        let list = FormatLivePreview.displayed(
+            finalized: "I need bullet list milk. Eggs.", volatile: "Fresh bread",
+            commands: [.init(start: 2, end: 4, effect: .format(.preset(.bulletList)))], languageCode: "en")
+        try pill("10-live-bullet-list", [.resolved(.format("Bullet list")), .flashExpired], text: list.firm,
+                 volatile: list.rest, height: 190, volatileContinues: true)
+        try pill("10-live-model-format", [.resolved(.format("Formal")), .flashExpired],
+                 text: "Hello can you send it", height: 150, appliedAtEnd: true)
         useUILanguage("de")
+        try pill("de-10-live-model-format", [.resolved(.format("Formell")), .flashExpired],
+                 text: "Hallo kannst du es schicken", height: 150, appliedAtEnd: true)
         try pill("de-2-key-held", [.keyDown])
         try pill("de-4-active-format", [.resolved(.format("Aufzählung")), .flashExpired])
         try pill("de-5-not-recognised", [.keyDown, .spanReleased, .resolved(.notRecognised)])

@@ -1260,3 +1260,4 @@
 "Press %@ once and say a format" = "Druk één keer op %@ en zeg een opmaak";
 "Press %@ again and keep talking — it comes out formatted" = "Druk nog een keer op %@ en praat verder – het komt er opgemaakt uit";
 "Press the format key, say it, then press the key again." = "Druk op de opmaaktoets, zeg het en druk nog een keer op de toets.";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@ aan · toegepast als je stopt · twee keer %2$@ stopt het";

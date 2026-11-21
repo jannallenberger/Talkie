@@ -1260,3 +1260,4 @@
 "Press %@ once and say a format" = "%@ 를 한 번 누르고 서식 말하기";
 "Press %@ again and keep talking — it comes out formatted" = "%@ 를 다시 누르고 계속 말하면 서식이 적용되어 입력됩니다";
 "Press the format key, say it, then press the key again." = "서식 키를 누르고, 말한 다음, 키를 다시 누르세요.";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@ 켜짐 · 멈출 때 적용 · %2$@ 두 번으로 종료";

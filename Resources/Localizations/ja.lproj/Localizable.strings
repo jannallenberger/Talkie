@@ -1260,3 +1260,4 @@
 "Press %@ once and say a format" = "%@ を1回押して書式を言う";
 "Press %@ again and keep talking — it comes out formatted" = "%@ をもう一度押して話し続けると、書式付きで入力されます";
 "Press the format key, say it, then press the key again." = "書式キーを押し、言ってから、もう一度キーを押します。";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@ オン・停止時に適用・%2$@ を2回で終了";

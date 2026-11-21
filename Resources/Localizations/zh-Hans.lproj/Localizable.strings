@@ -1260,3 +1260,4 @@
 "Press %@ once and say a format" = "按一次 %@ 并说出格式";
 "Press %@ again and keep talking — it comes out formatted" = "再按一次 %@ 并继续说话，文字会带格式输出";
 "Press the format key, say it, then press the key again." = "按格式键，说出格式，然后再按一次。";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@已开启 · 停止时应用 · 按两次 %2$@ 结束";
