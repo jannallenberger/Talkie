@@ -1,30 +1,31 @@
 import Foundation
 
 /// What the pill shows for "format while you dictate". Pure state machine (no clocks,
-/// no I/O): the app feeds it the format-key edges and the span's resolution, and a
-/// timer feeds `flashExpired`. Every transition is unit-tested.
+/// no I/O): the app feeds it the format-key presses and the command's resolution, and
+/// a timer feeds `flashExpired`. Every transition is unit-tested.
 ///
-/// The pill answers "what is happening now" at every step, on one status line below
-/// the waveform (`statusLine`, highest priority first):
-///   key held / words being checked → "Listening for a format…"
-///   no format heard                → "No format heard · kept as text" (~2 s; the words
-///                                    stay in the dictation, dictation carries on)
-///   format ended                   → "Back to normal text" (brief)
-///   format recognised              → its name with a tick (brief), then
-///   format active                  → "<name> is on" for as long as it applies
-///   normal dictation               → nothing
+/// The pill answers "what is happening now, and what do I do next" at every step, on
+/// one status line below the waveform (`statusLine`, highest priority first):
+///   listening (after the first press) → "Say the format, then press ⌃ again"
+///   words being checked               → "Checking…"
+///   no format heard                   → "No format heard · kept as text" (~2 s; the
+///                                       words stay in the dictation, which carries on)
+///   format ended                      → "Back to normal text" (brief)
+///   format recognised                 → its name with a tick (brief), then
+///   format active                     → "<name> on · press ⌃ twice to end"
+///   normal dictation                  → nothing
 ///
-///   key down          → listening
-///   key up (span)     → still listening while the words are checked
+///   first press       → listening (the key does not have to stay held)
+///   second press      → the words said in between are checked
 ///   resolved: format  → confirming name + tick; then the active indicator
 ///   resolved: insert  → brief confirming tick with the command's name; format unchanged
 ///   resolved: end     → the active indicator goes, "Back to normal text" for a moment
 ///   resolved: unknown → "No format heard · kept as text"; the active format (if any) stays
 ///   resolved: empty   → nothing was said: no flash, nothing else changes
-///                       (the held key with no words still ends an active format, as
+///                       (two presses with no words still end an active format, as
 ///                       the pasted text does)
-///   tap               → like "end"
-///   key cancelled     → back to what it was (another key or a click spoiled the hold)
+///   tap               → a quick double press: like "end"
+///   key cancelled     → back to what it was (the press was part of a shortcut)
 struct PillFormatState: Equatable, Sendable {
     enum Flash: Equatable, Sendable {
         case none
@@ -38,16 +39,19 @@ struct PillFormatState: Equatable, Sendable {
 
     /// The single line under the waveform.
     enum StatusLine: Equatable, Sendable {
+        /// Command listening is on: say the format, then press the key again.
         case listening
+        /// The second press came; the words are being matched.
+        case checking
         case confirmed(String)
         case active(String)
         case notRecognised
         case ended
     }
 
-    /// The format key is held right now.
+    /// Command listening is on (between the first and the second press).
     private(set) var listening = false
-    /// Released; the span's words are being checked.
+    /// Switched off again; the words said in between are being checked.
     private(set) var checking = false
     /// The active format's name (the chip), nil = normal text.
     private(set) var activeFormat: String?
@@ -119,12 +123,12 @@ struct PillFormatState: Equatable, Sendable {
     var textIsBlue: Bool { listening || checking }
     var waveformIsBlue: Bool { listening || checking || activeFormat != nil }
 
-    /// The short hint under the waveform while the key is held or being checked.
+    /// The hint under the waveform while listening for, or checking, a command.
     var showsListeningHint: Bool { (listening || checking) && flash == .none }
 
     /// What the status line says right now, nil = nothing (normal dictation).
     var statusLine: StatusLine? {
-        if showsListeningHint { return .listening }
+        if showsListeningHint { return listening ? .listening : .checking }
         switch flash {
         case .notRecognised: return .notRecognised
         case .ended: return .ended

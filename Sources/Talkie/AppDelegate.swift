@@ -144,6 +144,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var audioStartUptime: TimeInterval?
     /// The live transcript at the last clean command-key press, for the pill preview.
     private var formatPressSnapshot: Task<String, Never>?
+    /// When command listening was switched on (uptime of the first press of the
+    /// command key), nil while it is off. See `FormatKeyGesture`.
+    private var formatListeningStart: TimeInterval?
     /// Per command span (in order): what the live preview matched at release — the
     /// last fallback when a re-transcribed span is empty or unmatched.
     private var sessionLiveCommands: [FormatCommand?] = []
@@ -883,19 +886,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard isDictating, settings.formatCommandsEnabled else { return }
         let myID = sessionID
         switch output {
-        case .pressed:
-            // Blue the instant the key goes down — before anything is heard.
+        case .pressed(let at):
+            // First press: command listening is on. Blue the instant the key goes
+            // down — before anything is heard. It stays on until the second press.
+            formatListeningStart = at
             hud.formatEvent(.keyDown)
             let engine = self.engine!
             formatPressSnapshot = Task { await engine.liveTranscript() }
         case .cancelled:
+            formatListeningStart = nil
             formatPressSnapshot = nil
             hud.formatEvent(.keyCancelled)
         case .tap(let at):
+            // A quick double press: no room for words, it ends the active format.
+            formatListeningStart = nil
             formatPressSnapshot = nil
             sessionFormatMarks.append(.endTap(at: audioTime(forUptime: at)))
             hud.formatEvent(.tapped)
         case .span(let start, let end):
+            formatListeningStart = nil
             let spanStart = audioTime(forUptime: start)
             let spanEnd = audioTime(forUptime: end)
             sessionFormatMarks.append(.span(start: spanStart, end: spanEnd))
@@ -948,6 +957,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.hud.formatEvent(.resolved(!saidAnything ? .emptyHold : PillFormatState.resolution(resolution)))
             }
         }
+    }
+
+    /// The dictation ended while command listening was still on (the command key was
+    /// not pressed a second time). What was said since the first press is the command,
+    /// so the span is closed at the end of the audio instead of being dropped.
+    private func closeOpenFormatSpan() {
+        guard let start = formatListeningStart else { return }
+        formatListeningStart = nil
+        formatPressSnapshot = nil
+        guard settings.formatCommandsEnabled else { return }
+        let spanStart = audioTime(forUptime: start)
+        let spanEnd = audioTime(forUptime: ProcessInfo.processInfo.systemUptime)
+        guard spanEnd > spanStart else { return }
+        sessionFormatMarks.append(.span(start: spanStart, end: spanEnd))
+        sessionLiveCommands.append(nil)
+        sessionSpanAlternatives.append(nil)
     }
 
     /// With more than one dictation language: re-recognise this span's audio in the
@@ -1440,10 +1465,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionSpanAlternatives = []
         audioStartUptime = nil
         formatPressSnapshot = nil
+        formatListeningStart = nil
         sessionID += 1
         let myID = sessionID
         updateStatusUI()
         Feedback.start()
+        hud.setFormatKeyName(settings.effectiveFormatCommandKey.shortName)
         // Acknowledge the press immediately — but the dot stays GRAY (arming) until
         // audio is genuinely flowing; only then does it turn red (recording).
         hud.showArming()
@@ -2002,6 +2029,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sessionCleanup = nil
             sessionStyleOverride = nil
             sessionFrontApp = nil   // L2-b: drop the gate snapshot too (no ingest on this path).
+            formatListeningStart = nil
             hud.hide()
             // H5: a try-it stopped before audio went live (e.g. clicked stop during
             // mic/model setup) — clear the sink and reset the onboarding button.
@@ -2009,6 +2037,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         sessionLive = false
+        closeOpenFormatSpan()
         let duration = Date().timeIntervalSince(recordingStartedAt ?? Date())
         recordingStartedAt = nil
         // A "lone quick tap" is a session that never latched hands-free and whose live

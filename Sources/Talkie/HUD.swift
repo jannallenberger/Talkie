@@ -121,6 +121,9 @@ final class HUDModel: ObservableObject {
     /// (blue while it's held, the active format's chip, "Not recognised"). The pure
     /// `PillFormatState`; reset when a session ends.
     @Published var formatState = PillFormatState()
+    /// The command key in short ("⌃", "F5"), named in the format status line so it
+    /// says which key to press next.
+    @Published var formatKeyName: String = FormatCommandKey.defaultKey.shortName
     /// The live transcript's *finalized* portion — segments the recognizer has
     /// committed and won't revise — rendered firmly (higher opacity) as the head of
     /// the capture-pill's one-line tail (C1). Empty renders nothing, i.e. today's
@@ -823,6 +826,9 @@ final class HUDController {
         let before = model.formatState
         model.formatState.handle(event)
         let after = model.formatState
+        if event == .keyDown {
+            announce(String(format: "Listening for a format. Say it, then press %@ again.".loc, model.formatKeyName))
+        }
         guard after.flash != before.flash || event == .keyDown else { return }
         formatFlashTask?.cancel()
         guard let seconds = after.flashSeconds else { return }
@@ -841,6 +847,11 @@ final class HUDController {
             guard !Task.isCancelled else { return }
             self?.model.formatState.handle(.flashExpired)
         }
+    }
+
+    /// Which key the format status line names (the user's command key, in short).
+    func setFormatKeyName(_ name: String) {
+        if model.formatKeyName != name { model.formatKeyName = name }
     }
 
     private func resetFormatState() {
@@ -1218,10 +1229,11 @@ struct HUDView: View {
         }
     }
 
-    /// "Format while you dictate", in the capture pill: "Listening for a format…" in
-    /// blue while the format key is held (and while its words are checked); the
-    /// active format as a blue chip — with a tick for a moment right after it is
-    /// recognised; "Not recognised" as its own brief state. Nothing in normal dictation.
+    /// "Format while you dictate", in the capture pill. Every state says what happens
+    /// next: after the first press "Say the format, then press ⌃ again" in blue;
+    /// "Checking…" while the words are matched; the active format as a blue chip that
+    /// also says how to end it — with a tick for a moment right after it is recognised;
+    /// "No format heard" as its own brief state. Nothing in normal dictation.
     @ViewBuilder
     private var formatChipView: some View {
         let size: CGFloat = model.highContrast ? 12 : 11
@@ -1231,7 +1243,20 @@ struct HUDView: View {
                 Image(systemName: "keyboard")
                     .font(.system(size: size - 1, weight: .semibold))
                     .accessibilityHidden(true)
-                Text("Listening for a format…".loc)
+                Text(String(format: "Say the format, then press %@ again".loc, model.formatKeyName))
+                    .font(.system(size: size, weight: .semibold))
+            }
+            .foregroundStyle(Self.formatBlue)
+            .lineLimit(1)
+            .fixedSize()
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+        case .checking:
+            HStack(spacing: 4) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("Checking…".loc)
                     .font(.system(size: size, weight: .semibold))
             }
             .foregroundStyle(Self.formatBlue)
@@ -1263,7 +1288,7 @@ struct HUDView: View {
                 Image(systemName: "textformat")
                     .font(.system(size: size - 1, weight: .semibold))
                     .accessibilityHidden(true)
-                Text(String(format: "%@ is on".loc, name))
+                Text(String(format: "%1$@ on · press %2$@ twice to end".loc, name, model.formatKeyName))
                     .font(.system(size: size, weight: .medium))
             }
             .foregroundStyle(Self.formatBlue)
@@ -1274,7 +1299,7 @@ struct HUDView: View {
             .background(Capsule().fill(Self.formatBlue.opacity(PillPalette.chipFillOpacity)))
             .transition(.opacity)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(String(format: "Format: %@".loc, name))
+            .accessibilityLabel(String(format: "Format: %1$@. Press %2$@ twice to end it.".loc, name, model.formatKeyName))
         case .notRecognised:
             // Neutral warning tone (not red — it is not an error): the words stay as text.
             HStack(spacing: 4) {

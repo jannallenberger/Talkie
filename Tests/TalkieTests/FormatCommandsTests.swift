@@ -84,75 +84,147 @@ final class FormatPhraseMatcherTests: XCTestCase {
 
 final class FormatKeyGestureTests: XCTestCase {
 
-    func testCleanHoldIsASpan() {
+    func testFirstPressSwitchesListeningOnAndSecondPressSwitchesItOff() {
         var g = FormatKeyGesture()
         XCTAssertEqual(g.keyDown(at: 10, othersHeld: false), .pressed(at: 10))
         XCTAssertTrue(g.isHeld)
-        XCTAssertEqual(g.keyUp(at: 11.2), .span(start: 10, end: 11.2))
+        XCTAssertTrue(g.isListening)
+        // Releasing the key changes nothing: listening stays on, nothing is held.
+        XCTAssertNil(g.keyUp(at: 10.1))
         XCTAssertFalse(g.isHeld)
+        XCTAssertTrue(g.isListening)
+        // The second press ends it; the command was said up to that key-down.
+        XCTAssertNil(g.keyDown(at: 12, othersHeld: false))
+        XCTAssertTrue(g.isListening)
+        XCTAssertEqual(g.keyUp(at: 12.1), .span(start: 10, end: 12))
+        XCTAssertFalse(g.isListening)
     }
 
-    func testMinimumHoldBoundary() {
+    func testHowLongEitherPressIsHeldDoesNotMatter() {
+        // Held for two seconds while speaking (the old habit): still just "on".
         var g = FormatKeyGesture()
         _ = g.keyDown(at: 0, othersHeld: false)
-        XCTAssertEqual(g.keyUp(at: 0.25), .span(start: 0, end: 0.25))
-        _ = g.keyDown(at: 1, othersHeld: false)
-        XCTAssertEqual(g.keyUp(at: 1.249), .tap(at: 1.249))
+        XCTAssertNil(g.keyUp(at: 2))
+        XCTAssertTrue(g.isListening)
+        // A long second press ends at its key-down, not at its release.
+        _ = g.keyDown(at: 3, othersHeld: false)
+        XCTAssertEqual(g.keyUp(at: 5), .span(start: 0, end: 3))
     }
 
-    func testShortCleanPressIsATap() {
+    func testQuickDoublePressIsATap() {
         var g = FormatKeyGesture()
         _ = g.keyDown(at: 5, othersHeld: false)
-        XCTAssertEqual(g.keyUp(at: 5.1), .tap(at: 5.1))
+        _ = g.keyUp(at: 5.08)
+        _ = g.keyDown(at: 5.2, othersHeld: false)
+        XCTAssertEqual(g.keyUp(at: 5.3), .tap(at: 5.2))
+        XCTAssertFalse(g.isListening)
     }
 
-    func testAnyOtherInputDuringHoldCancels() {
+    func testMinimumSpanBoundary() {
+        var g = FormatKeyGesture()
+        _ = g.keyDown(at: 0, othersHeld: false)
+        _ = g.keyUp(at: 0.05)
+        _ = g.keyDown(at: 0.25, othersHeld: false)
+        XCTAssertEqual(g.keyUp(at: 0.3), .span(start: 0, end: 0.25))
+        _ = g.keyDown(at: 1, othersHeld: false)
+        _ = g.keyUp(at: 1.05)
+        _ = g.keyDown(at: 1.249, othersHeld: false)
+        XCTAssertEqual(g.keyUp(at: 1.3), .tap(at: 1.249))
+    }
+
+    func testOtherInputDuringTheFirstPressCancels() {
         var g = FormatKeyGesture()
         _ = g.keyDown(at: 0, othersHeld: false)
         g.otherInput()                     // e.g. Ctrl+C in another app
         XCTAssertEqual(g.keyUp(at: 2), .cancelled)
-        // A short spoiled press is cancelled too — never a tap that ends the mode.
-        _ = g.keyDown(at: 3, othersHeld: false)
-        g.otherInput()
-        XCTAssertEqual(g.keyUp(at: 3.1), .cancelled)
+        XCTAssertFalse(g.isListening)
     }
 
     func testOtherModifierAlreadyDownCancels() {
         var g = FormatKeyGesture()
         XCTAssertNil(g.keyDown(at: 0, othersHeld: true))   // ⌘ then ⌃ → a chord
+        XCTAssertFalse(g.isListening)
         XCTAssertEqual(g.keyUp(at: 1), .cancelled)
     }
 
-    func testCancellationDoesNotLeakIntoTheNextHold() {
+    func testShortcutChordWhileListeningLeavesListeningOn() {
+        var g = FormatKeyGesture()
+        _ = g.keyDown(at: 0, othersHeld: false)
+        _ = g.keyUp(at: 0.1)
+        // Ctrl+C while listening: not the second press.
+        XCTAssertNil(g.keyDown(at: 1, othersHeld: false))
+        g.otherInput()
+        XCTAssertNil(g.keyUp(at: 1.2))
+        XCTAssertTrue(g.isListening)
+        // ⌘ already down, then the command key: a chord as well.
+        XCTAssertNil(g.keyDown(at: 2, othersHeld: true))
+        XCTAssertNil(g.keyUp(at: 2.1))
+        XCTAssertTrue(g.isListening)
+        // The real second press still ends the span that began at the first press.
+        _ = g.keyDown(at: 3, othersHeld: false)
+        XCTAssertEqual(g.keyUp(at: 3.1), .span(start: 0, end: 3))
+    }
+
+    func testCancellationDoesNotLeakIntoTheNextPress() {
         var g = FormatKeyGesture()
         _ = g.keyDown(at: 0, othersHeld: false)
         g.otherInput()
         _ = g.keyUp(at: 1)
-        _ = g.keyDown(at: 2, othersHeld: false)
-        XCTAssertEqual(g.keyUp(at: 3), .span(start: 2, end: 3))
+        XCTAssertEqual(g.keyDown(at: 2, othersHeld: false), .pressed(at: 2))
+        XCTAssertNil(g.keyUp(at: 2.1))
+        _ = g.keyDown(at: 3, othersHeld: false)
+        XCTAssertEqual(g.keyUp(at: 3.1), .span(start: 2, end: 3))
     }
 
-    func testOtherInputWhileNotHeldIsIgnored() {
+    func testOtherInputWhileTheKeyIsUpIsIgnored() {
         var g = FormatKeyGesture()
         g.otherInput()
         _ = g.keyDown(at: 0, othersHeld: false)
-        XCTAssertEqual(g.keyUp(at: 1), .span(start: 0, end: 1))
+        _ = g.keyUp(at: 0.1)
+        g.otherInput()                     // typing while listening spoils nothing
+        _ = g.keyDown(at: 1, othersHeld: false)
+        XCTAssertEqual(g.keyUp(at: 1.1), .span(start: 0, end: 1))
     }
 
     func testDuplicateDownAndStrayUp() {
         var g = FormatKeyGesture()
         XCTAssertNil(g.keyUp(at: 0))
-        _ = g.keyDown(at: 1, othersHeld: false)
+        XCTAssertEqual(g.keyDown(at: 1, othersHeld: false), .pressed(at: 1))
         XCTAssertNil(g.keyDown(at: 1.1, othersHeld: false))    // dropped up — keep the first
-        XCTAssertEqual(g.keyUp(at: 2), .span(start: 1, end: 2))
+        XCTAssertNil(g.keyUp(at: 2))
+        XCTAssertTrue(g.isListening)
     }
 
-    func testResetDropsTheHold() {
+    func testLostReleaseForgetsThePressAndKeepsListening() {
+        var g = FormatKeyGesture()
+        _ = g.keyDown(at: 0, othersHeld: false)
+        g.releaseLost()                    // the key-up never arrived
+        XCTAssertFalse(g.isHeld)
+        XCTAssertTrue(g.isListening)
+        _ = g.keyDown(at: 2, othersHeld: false)
+        XCTAssertEqual(g.keyUp(at: 2.1), .span(start: 0, end: 2))
+        // Lost on the second press: listening stays on until a complete press.
+        _ = g.keyDown(at: 5, othersHeld: false)
+        _ = g.keyUp(at: 5.1)
+        _ = g.keyDown(at: 6, othersHeld: false)
+        g.releaseLost()
+        XCTAssertTrue(g.isListening)
+        _ = g.keyDown(at: 7, othersHeld: false)
+        XCTAssertEqual(g.keyUp(at: 7.1), .span(start: 5, end: 7))
+    }
+
+    func testResetSwitchesListeningOff() {
         var g = FormatKeyGesture()
         _ = g.keyDown(at: 0, othersHeld: false)
         XCTAssertTrue(g.reset())
         XCTAssertNil(g.keyUp(at: 1))
         XCTAssertFalse(g.reset())
+        // Listening with the key released counts as in flight too.
+        _ = g.keyDown(at: 2, othersHeld: false)
+        _ = g.keyUp(at: 2.1)
+        XCTAssertTrue(g.reset())
+        XCTAssertFalse(g.isListening)
+        XCTAssertEqual(g.keyDown(at: 3, othersHeld: false), .pressed(at: 3))
     }
 
     func testOtherModifiersHeldIgnoresCommandAndDictationKeys() {
@@ -507,13 +579,22 @@ final class FormatKeyStepTests: XCTestCase {
         g.step(e, rawFlags: flags, commandKey: command, dictationKey: dictation, dictationActive: active, now: t)
     }
 
-    func testAloneHoldIsASpan() {
-        var g = FormatKeyGesture()
-        XCTAssertEqual(step(&g, ctrl(true), flags: 0x1, at: 1), .pressed(at: 1))
-        XCTAssertEqual(step(&g, ctrl(false), at: 2), .span(start: 1, end: 2))
+    /// One clean press and release of the command key.
+    private func press(_ g: inout FormatKeyGesture, at t: TimeInterval, extra: UInt64 = 0) -> FormatKeyGesture.Output? {
+        let down = step(&g, ctrl(true, extra: extra), flags: 0x1 | extra, at: t)
+        let up = step(&g, ctrl(false, extra: extra), flags: extra, at: t + 0.08)
+        return down ?? up
     }
 
-    func testControlCShortcutCancels() {
+    func testTwoPressesAreASpan() {
+        var g = FormatKeyGesture()
+        XCTAssertEqual(step(&g, ctrl(true), flags: 0x1, at: 1), .pressed(at: 1))
+        XCTAssertNil(step(&g, ctrl(false), at: 1.1))
+        XCTAssertNil(step(&g, ctrl(true), flags: 0x1, at: 2))
+        XCTAssertEqual(step(&g, ctrl(false), at: 2.1), .span(start: 1, end: 2))
+    }
+
+    func testControlCShortcutCancelsTheFirstPress() {
         var g = FormatKeyGesture()
         _ = step(&g, ctrl(true), flags: 0x1, at: 1)
         XCTAssertNil(step(&g, .keyDown(keyCode: 8, isAutorepeat: false), flags: 0x1, at: 1.3))   // C
@@ -521,7 +602,26 @@ final class FormatKeyStepTests: XCTestCase {
         XCTAssertEqual(step(&g, ctrl(false), at: 2), .cancelled)
     }
 
-    func testMouseClickDuringHoldCancels() {
+    func testControlCShortcutWhileListeningIsNotTheSecondPress() {
+        var g = FormatKeyGesture()
+        XCTAssertEqual(press(&g, at: 1), .pressed(at: 1))
+        _ = step(&g, ctrl(true), flags: 0x1, at: 2)
+        _ = step(&g, .keyDown(keyCode: 8, isAutorepeat: false), flags: 0x1, at: 2.1)   // C
+        _ = step(&g, .keyUp(keyCode: 8), flags: 0x1, at: 2.2)
+        XCTAssertNil(step(&g, ctrl(false), at: 2.3))
+        XCTAssertTrue(g.isListening)
+        XCTAssertEqual(press(&g, at: 3), .span(start: 1, end: 3))
+    }
+
+    func testTypingWhileListeningDoesNotEndIt() {
+        var g = FormatKeyGesture()
+        _ = press(&g, at: 1)
+        XCTAssertNil(step(&g, .keyDown(keyCode: 0, isAutorepeat: false), at: 1.5))   // A, key is up
+        XCTAssertNil(step(&g, .mouseDown(button: 0), at: 1.6))
+        XCTAssertEqual(press(&g, at: 2), .span(start: 1, end: 2))
+    }
+
+    func testMouseClickDuringThePressCancels() {
         var g = FormatKeyGesture()
         _ = step(&g, ctrl(true), flags: 0x1, at: 1)
         _ = step(&g, .mouseDown(button: 0), flags: 0x1, at: 1.5)
@@ -535,7 +635,7 @@ final class FormatKeyStepTests: XCTestCase {
         XCTAssertEqual(step(&g, ctrl(false, extra: 0x8), flags: 0x8, at: 2), .cancelled)
     }
 
-    func testShiftPressedDuringHoldCancels() {
+    func testShiftPressedDuringThePressCancels() {
         var g = FormatKeyGesture()
         _ = step(&g, ctrl(true), flags: 0x1, at: 1)
         _ = step(&g, .flagsChanged(keyCode: 56, rawFlags: 0x1 | 0x2), flags: 0x1 | 0x2, at: 1.2)
@@ -545,24 +645,27 @@ final class FormatKeyStepTests: XCTestCase {
     func testHeldDictationKeyDoesNotCancel() {
         // Push-to-talk: Right ⌥ is held the whole time; its flags are present.
         var g = FormatKeyGesture()
-        XCTAssertEqual(step(&g, ctrl(true, extra: 0x40), flags: 0x41, at: 1), .pressed(at: 1))
-        XCTAssertEqual(step(&g, ctrl(false, extra: 0x40), flags: 0x40, at: 1.6), .span(start: 1, end: 1.6))
+        XCTAssertEqual(press(&g, at: 1, extra: 0x40), .pressed(at: 1))
+        XCTAssertEqual(press(&g, at: 1.6, extra: 0x40), .span(start: 1, end: 1.6))
     }
 
-    func testShortTapEndsAndMinimumHold() {
+    func testQuickDoublePressIsATap() {
         var g = FormatKeyGesture()
-        _ = step(&g, ctrl(true), flags: 0x1, at: 1)
-        XCTAssertEqual(step(&g, ctrl(false), at: 1.1), .tap(at: 1.1))
+        _ = press(&g, at: 1)
+        XCTAssertEqual(press(&g, at: 1.15), .tap(at: 1.15))
     }
 
     func testIgnoredWhenNoDictationIsActive() {
         var g = FormatKeyGesture()
         XCTAssertNil(step(&g, ctrl(true), flags: 0x1, active: false, at: 1))
         XCTAssertNil(step(&g, ctrl(false), active: false, at: 2))
-        // A hold that was running when the dictation ended is dropped.
-        _ = step(&g, ctrl(true), flags: 0x1, at: 3)
+        // Listening that was on when the dictation ended is switched off: the next
+        // dictation starts with a first press again.
+        _ = press(&g, at: 3)
+        XCTAssertTrue(g.isListening)
         XCTAssertNil(step(&g, .keyDown(keyCode: 0, isAutorepeat: false), active: false, at: 3.2))
-        XCTAssertNil(step(&g, ctrl(false), at: 4))
+        XCTAssertFalse(g.isListening)
+        XCTAssertEqual(press(&g, at: 4), .pressed(at: 4))
     }
 
     func testFeatureOffOrSameKeyIsInert() {
@@ -581,7 +684,10 @@ final class FormatKeyStepTests: XCTestCase {
         }
         XCTAssertEqual(s(.keyDown(keyCode: 96, isAutorepeat: false), 1), .pressed(at: 1))
         XCTAssertNil(s(.keyDown(keyCode: 96, isAutorepeat: true), 1.5))
-        XCTAssertEqual(s(.keyUp(keyCode: 96), 2), .span(start: 1, end: 2))
+        XCTAssertNil(s(.keyUp(keyCode: 96), 2))
+        XCTAssertNil(s(.keyDown(keyCode: 96, isAutorepeat: false), 3))
+        XCTAssertNil(s(.keyDown(keyCode: 96, isAutorepeat: true), 3.5))
+        XCTAssertEqual(s(.keyUp(keyCode: 96), 4), .span(start: 1, end: 3))
     }
 }
 

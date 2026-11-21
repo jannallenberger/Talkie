@@ -116,7 +116,8 @@ struct EditCommandCard: View {
 // MARK: - How it works
 
 /// Three steps with the user's real keys and a tiny pill: hold the dictation key and
-/// talk → hold the format key and say the format → let go and keep talking.
+/// talk → press the format key once and say the format → press it again and keep
+/// talking. The format key is a switch; it never has to stay held.
 struct HowItWorksStrip: View {
     let dictationKey: ActivationKey
     let formatKey: ActivationKey
@@ -124,7 +125,7 @@ struct HowItWorksStrip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             // The one-sentence rule, before the three steps.
-            Text("While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text.".loc)
+            Text("Press the format key once, say a format in any of your languages, then press the key again. If no format is caught, your words are simply kept as text.".loc)
                 .font(.talkieHeading(13, weight: .medium))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -139,14 +140,14 @@ struct HowItWorksStrip: View {
                 TalkieKeycap(text: dictationKey.displayName, symbol: dictationKey.symbolName)
             }
             arrow
-            step(String(format: "Also hold %@ and say a format".loc, formatKey.displayName)) {
+            step(String(format: "Press %@ once and say a format".loc, formatKey.displayName)) {
                 HStack(spacing: 8) {
                     TalkieKeycap(text: formatKey.displayName, symbol: formatKey.symbolName)
                     PillMock()
                 }
             }
             arrow
-            step("Let go and keep talking — it comes out formatted".loc) {
+            step(String(format: "Press %@ again and keep talking — it comes out formatted".loc, formatKey.displayName)) {
                 CommandIllustration(kind: .preset(.bulletList), height: 40)
                     .frame(maxWidth: 150)
             }
@@ -358,7 +359,7 @@ struct UserCommandEditor: View {
 
     var body: some View {
         TalkiePopover(title: existing == nil ? "New command" : "Edit command",
-                      subtitle: "Hold the format key while you say it.",
+                      subtitle: "Press the format key, say it, then press the key again.",
                       width: Theme.Width.popoverWide) {
             TalkieField(label: "Name") {
                 TextField("For example, Shout".loc, text: $name)

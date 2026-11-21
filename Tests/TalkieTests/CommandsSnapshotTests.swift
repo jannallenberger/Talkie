@@ -294,6 +294,7 @@ final class CommandsSnapshotTests: XCTestCase {
         defer { useUILanguage(nil) }
         try pill("1-normal", [])
         try pill("2-key-held", [.keyDown])
+        try pill("2b-checking", [.keyDown, .spanReleased])
         try pill("3-recognised", [.keyDown, .spanReleased, .resolved(.format("Bullet list"))])
         try pill("4-active-format", [.resolved(.format("Bullet list")), .flashExpired])
         try pill("5-not-recognised", [.keyDown, .spanReleased, .resolved(.notRecognised)])

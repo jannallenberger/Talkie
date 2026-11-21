@@ -127,6 +127,21 @@ struct ActivationKey: Hashable, Sendable, Codable, RawRepresentable {
         }
     }
 
+    /// The key in as few characters as possible, for a line of running text in the
+    /// pill ("press ⌃ again"): a modifier's glyph, "F5", or the mouse button's name.
+    var shortName: String {
+        switch kind {
+        case .modifier:
+            let glyphs: Set<Character> = ["⇧", "⌃", "⌥", "⌘"]
+            if let glyph = (modifierInfo?.name ?? "").first(where: { glyphs.contains($0) }) {
+                return String(glyph)
+            }
+            return displayName
+        case .function, .mouse:
+            return displayName
+        }
+    }
+
     var isMouseButton: Bool { kind == .mouse }
 
     /// SF Symbol for the picker/keycap; nil when the name already carries a glyph.
