@@ -26,8 +26,7 @@ struct SpeedDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.section) {
+        TalkieScrollPage(spacing: Theme.Space.section, background: .ambient) {
                 header
 
                 if medianMs == nil {
@@ -43,25 +42,13 @@ struct SpeedDetailView: View {
                 if !latency.recentSamples(1).isEmpty {
                     recentCard
                 }
-            }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(LiveBackground(mood: .ambient))
-        .scrollContentBackground(.hidden)
         .navigationTitle("Dictation speed")
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Dictation speed".loc)
-                .font(.talkieDisplay(28))
-                .foregroundStyle(Theme.ink)
-            Text("Where the time goes between you stopping and your words landing — measured on this Mac, nothing shared.".loc)
-                .font(.talkieHeading(13, weight: .regular))
-                .foregroundStyle(Theme.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        TalkiePageHeader(title: "Dictation speed",
+                         subtitle: "Where the time goes between you stopping and your words landing — measured on this Mac, nothing shared.")
     }
 
     // MARK: - Waterfall

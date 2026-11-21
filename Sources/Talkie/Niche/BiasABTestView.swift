@@ -61,7 +61,7 @@ struct BiasABTestView: View {
                     .font(.body.monospaced())
                     .frame(height: 88)
                     .padding(6)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.hairline))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).stroke(Theme.hairline))
                     .disabled(isBusy)
             }
 
@@ -87,8 +87,7 @@ struct BiasABTestView: View {
             Button { Task { await stop() } } label: {
                 Label("Stop & correct", systemImage: "stop.fill")
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .buttonStyle(.talkie(.primary, tint: Theme.featherRed))
 
         case .preparing, .transcribing:
             HStack(spacing: 8) {
@@ -102,8 +101,7 @@ struct BiasABTestView: View {
             Button { Task { await record() } } label: {
                 Label("Record", systemImage: "mic.fill")
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.coral)
+            .buttonStyle(.talkie(.primary))
             .disabled(phrases.isEmpty)
         }
     }
@@ -146,7 +144,7 @@ struct BiasABTestView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
                 .background(Theme.canvas)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         }
     }
 

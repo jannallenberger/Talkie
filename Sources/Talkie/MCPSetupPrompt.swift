@@ -86,9 +86,9 @@ enum MCPSetupPrompt {
         - get_brief — today's on-device brief
         - lookup_entity — resolve a person/project/term by name
 
-        Writes only SUGGEST: each is queued and I confirm it in Talkie with a one-tap \
-        Undo — it does NOT take effect until I do, so just call it and tell me what you \
-        queued.
+        Writes are SUGGESTIONS I can reverse: Talkie applies each right away with a \
+        one-tap Undo pill (queued if Talkie is closed), so just call it and tell me \
+        what you queued.
         - add_vocabulary_term — teach a name/product/acronym its spelling
         - add_replacement — map a misheard form to what I meant (get hub → GitHub)
         - remove_replacement / update_replacement — remove or retarget a rule

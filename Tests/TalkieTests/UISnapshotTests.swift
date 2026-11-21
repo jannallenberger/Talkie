@@ -131,7 +131,7 @@ final class UISnapshotTests: XCTestCase {
             meetingStore: store, contextGraph: ContextGraphStore(directory: tmp),
             primaryLocale: { "en-US" }, spokenLanguages: { ["en-US"] },
             isDictating: { false }, isProcessing: { false }, isRecording: { false },
-            summarize: { _ in "" })
+            summarize: { _, _ in "" })
         let page = MeetingsView(recorder: recorder, store: store, settings: AppSettings(),
                                 profileImage: ProfileImageStore(), importer: importer, contextGraph: nil,
                                 router: SettingsRouter())

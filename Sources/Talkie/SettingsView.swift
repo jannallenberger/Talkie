@@ -47,7 +47,9 @@ enum SettingsTab: Hashable, CaseIterable {
         case .memory:      return Theme.featherGold
         case .meetings:    return Theme.featherPlum
         case .dictionary:  return Theme.featherGreen
-        case .commands:    return Theme.featherPlum
+        // Neutral, so Commands no longer shares Meetings' plum (every feather is
+        // already taken by another tab).
+        case .commands:    return Theme.inkSecondary
         case .vibeCoding:  return Theme.featherBlue
         case .general:     return Theme.coral
         }
@@ -96,6 +98,48 @@ final class SettingsRouter: ObservableObject {
     /// sets it yet, and the Settings root drains it on appear, so a `nil` here is
     /// the normal "just show the index" case.
     @Published var pendingPage: SettingsPage?
+
+    /// Extra top inset for the sidebar column, set from `MainWindowChrome` (non-zero
+    /// only in native fullscreen, where the revealed titlebar's traffic lights would
+    /// otherwise sit on the first sidebar row).
+    @Published var sidebarTopInset: CGFloat = 0
+}
+
+/// The main window's chrome, windowed vs native fullscreen. One pure function so
+/// both directions are unit-tested and exit restores the windowed values exactly.
+///
+/// Windowed (owner-approved): the tall unified toolbar (its background is hidden
+/// in SwiftUI) over a transparent titlebar, native glass sidebar, no extra inset.
+/// Fullscreen: the revealed slide-down bar becomes the thin compact titlebar with
+/// an opaque backdrop, and the sidebar gets a top inset equal to that bar's height
+/// so the traffic lights no longer cover its first row. The toolbar itself is
+/// kept (never hidden): removing it changes how NavigationSplitView presents the
+/// sidebar (see 84abc4f -> d9c913f).
+struct MainWindowChrome: Equatable {
+    let toolbarStyle: NSWindow.ToolbarStyle
+    let titlebarAppearsTransparent: Bool
+    let sidebarTopInset: CGFloat
+
+    /// Titlebar height of a `.unifiedCompact` window (measured: 40pt).
+    static let compactTitlebarHeight: CGFloat = 40
+
+    static let windowed = MainWindowChrome(toolbarStyle: .unified,
+                                           titlebarAppearsTransparent: true,
+                                           sidebarTopInset: 0)
+
+    static func settings(fullScreen: Bool) -> MainWindowChrome {
+        fullScreen
+            ? MainWindowChrome(toolbarStyle: .unifiedCompact,
+                               titlebarAppearsTransparent: false,
+                               sidebarTopInset: compactTitlebarHeight)
+            : windowed
+    }
+
+    @MainActor func apply(to window: NSWindow, router: SettingsRouter) {
+        window.toolbarStyle = toolbarStyle
+        window.titlebarAppearsTransparent = titlebarAppearsTransparent
+        router.sidebarTopInset = sidebarTopInset
+    }
 }
 
 /// The app's main window (Dock app). A Claude-style sidebar shell hosting the
@@ -182,7 +226,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         )
         window.title = Brand.displayName
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
+        window.titlebarAppearsTransparent = MainWindowChrome.windowed.titlebarAppearsTransparent
         // Kills the gray titlebar hairline that otherwise survives the transparent
         // titlebar in both windowed and full-screen.
         window.titlebarSeparatorStyle = .none
@@ -197,7 +241,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         // the system scroll-edge gradient as content passes under it.
         let hostingController = NSHostingController(rootView: root)
         window.contentViewController = hostingController
-        window.toolbarStyle = .unified
+        window.toolbarStyle = MainWindowChrome.windowed.toolbarStyle
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("TalkieMainWindow")
         window.center()
@@ -221,9 +265,28 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     /// sheet is presented shouldn't strip the Dock icon. A miniaturize never routes
     /// here (it isn't a close), so no extra guard is needed for that. `AppDelegate`
     /// does the actual `.accessory` flip via `onGenuineClose`.
+    /// Native fullscreen: thin compact titlebar with the traffic lights on an opaque
+    /// backdrop, sidebar inset below it. Exit restores the windowed chrome exactly.
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        MainWindowChrome.settings(fullScreen: true).apply(to: window, router: router)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        MainWindowChrome.settings(fullScreen: false).apply(to: window, router: router)
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard window.attachedSheet == nil else { return }
         onGenuineClose?()
+    }
+
+    /// Native fullscreen: the toolbar (kept for the native sidebar + its toggle)
+    /// auto-hides with the menu bar instead of being drawn as a fixed strip above
+    /// the canvas. Its background is also hidden (see `MainView`).
+    func window(_ window: NSWindow,
+                willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = [])
+        -> NSApplication.PresentationOptions {
+        proposedOptions.union([.fullScreen, .autoHideMenuBar, .autoHideToolbar])
     }
 }
 
@@ -270,7 +333,20 @@ struct MainView: View {
                 } detail: {
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .background(Theme.canvas)
+                        // ONLY the detail pages extend under the (background-less)
+                        // window toolbar: they own their top inset
+                        // (`Theme.Space.pageTop`, measured from the window's top
+                        // edge). The sidebar keeps its native safe areas.
+                        .ignoresSafeArea(.container, edges: .top)
+                        .background(Theme.canvas.ignoresSafeArea())
+                        // No toolbar strip in windowed or fullscreen mode: the
+                        // toolbar stays (sidebar toggle, native sidebar look) but
+                        // draws no background of its own.
+                        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+                        // The default button look of every main-window page: a bare
+                        // `Button` reads as a secondary capsule. Sites that need
+                        // another role say so explicitly.
+                        .buttonStyle(.talkie(.secondary))
                         // No principal toolbar item: the floating Liquid-Glass title
                         // "pill" it produced was removed app-wide (each page already
                         // carries its own in-content header), so nothing bridges to the
@@ -302,9 +378,10 @@ struct MainView: View {
                          settings: settings, profileImage: profileImage,
                          router: router)
         case .dictionary:
-            DictionarySettings(dictionary: dictionary, nicheVocab: nicheVocab)
+            DictionarySettings(settings: settings, dictionary: dictionary, nicheVocab: nicheVocab)
         case .memory:
-            MemoryView(contextGraph: contextGraph, history: history,
+            MemoryView(settings: settings,
+                       contextGraph: contextGraph, history: history,
                        searchEngine: searchEngine, meetingStore: meetingStore,
                        wordFreq: wordFreq, scratchpad: scratchpad,
                        autoAddPreviewLog: autoAddPreviewLog,
@@ -349,6 +426,9 @@ private struct SidebarList: View {
                 .badge(tab == .general && !permissions.allGranted ? 1 : 0)
         }
         .listStyle(.sidebar)
+        // 0 when windowed (unchanged native sidebar); the compact titlebar's height
+        // in native fullscreen, so the revealed traffic lights clear the first row.
+        .safeAreaPadding(.top, router.sidebarTopInset)
         .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 3) {
@@ -364,25 +444,9 @@ private struct SidebarList: View {
     }
 }
 
-/// Page header used by the non-dashboard panes — serif title + subtitle.
-struct PageHeader: View {
-    let title: String
-    var subtitle: String? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(LocalizedStringKey(title))
-                .font(.talkieDisplay(26))
-                .foregroundStyle(Theme.ink)
-            if let subtitle {
-                Text(LocalizedStringKey(subtitle))
-                    .font(.talkieHeading(13, weight: .regular))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
+/// Page header used by the non-dashboard panes — the shared `TalkiePageHeader`
+/// (serif-26 title + subtitle, back chevron when pushed).
+typealias PageHeader = TalkiePageHeader<EmptyView>
 
 // MARK: - General
 
@@ -410,13 +474,13 @@ private struct SettingsHome: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+            TalkieScrollPage(spacing: 12) {
                     // The Settings root is a tidy INDEX of icon rows (down from one
                     // long flat scroll). Each row pushes a focused subpage via a
                     // `SettingsPage` route, resolved by the `.navigationDestination`
-                    // below. The page title lives in the native window toolbar now
-                    // (Finder-style), so no in-content header — the index leads.
+                    // below. It carries the same page header as every other tab.
+                    TalkiePageHeader(title: "Settings")
+                        .padding(.bottom, 6)
                     //
                     // 1. Dictation — activation key, insertion, and the mic.
                     SettingsIndexRow(icon: "IconWaveform", fallback: "waveform",
@@ -466,22 +530,19 @@ private struct SettingsHome: View {
                                          subtitle: "Tools that ship only in development builds.",
                                          page: .developer)
                     }
-                }
-                .padding(28)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                    // Public re-entry to the first-run introduction (it used to be
+                    // reachable only from the dev-gated Developer section).
+                    ReplayIntroductionCard(settings: settings)
+                        .padding(.top, 8)
+                    VersionRow()
             }
-            // Native macOS 26 scroll-edge effect: softly blurs this page's own
-            // content as it passes under the top edge, replacing the old custom
-            // `.scrollTopBlur()` overlay (which read as a flat grey band).
-            .scrollEdgeEffectStyle(.soft, for: .top)
-            .background(Theme.canvas)
             // Push destinations for the Settings index. Each index row resolves to
             // a focused `SubPage` of the relevant leaf card-stacks (the leaves are
             // card VStacks, so `SubPage` supplies the one ScrollView — no nesting).
             // The trailing three cases are the nested / deep-link targets reached
             // from within a subpage.
             .navigationDestination(for: SettingsPage.self) { page in
-                switch page {
+                Group { switch page {
                 // ── Index-row subpages ───────────────────────────────────────
                 case .dictation:
                     SubPage(title: "Dictation",
@@ -543,7 +604,8 @@ private struct SettingsHome: View {
                     // commands, the live entitlement list, and the data-locations
                     // bullets — reached from inside Privacy & history.
                     VerifyClaimsSubpage()
-                }
+                } }
+                .talkiePushedPage()
             }
         }
         // Deep-link drain: if another tab asked for a subpage, push it and clear
@@ -631,32 +693,41 @@ private struct SettingsIndexRow: View {
     }
 }
 
-/// The header for a top-level Settings *group* (L6a). Deliberately distinct from
-/// the card `Eyebrow` so the two rungs of the hierarchy read apart: this is
-/// SENTENCE CASE, `.talkieHeading(13, weight: .semibold)`, and `Theme.ink`,
-/// whereas `Eyebrow` is UPPERCASED, 11pt semibold, and `Theme.inkSecondary`
-/// (DesignSystem.swift). That's four differing attributes — size (13 vs 11),
-/// color (ink vs inkSecondary), case (sentence vs upper), and tracking (none vs
-/// 0.8) — so a group title no longer looks pixel-identical to the card titles
-/// nested beneath it. Lives here, not in DesignSystem.swift (which is read-only).
+/// The header for a top-level Settings *group* (L6a): the shared eyebrow-caps
+/// section label (`TalkieSectionLabel`), like every other page's section labels.
 struct SettingsSectionHeader: View {
     let title: String
     var subtitle: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(LocalizedStringKey(title))
-                .font(.talkieHeading(13, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-            if let subtitle {
-                Text(LocalizedStringKey(subtitle))
-                    .font(.talkieHeading(12, weight: .regular))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        TalkieSectionLabel(title: title, subtitle: subtitle)
+    }
+}
+
+/// Public "Replay introduction" row on the Settings root. Restarts the first-run
+/// onboarding; name, settings, history, and dictionary are untouched.
+private struct ReplayIntroductionCard: View {
+    @ObservedObject var settings: AppSettings
+    @State private var replaying = false
+
+    var body: some View {
+        SettingsCard(
+            header: "Introduction".loc,
+            footer: "Walks through the welcome flow again. Your name, settings, history, and dictionary are untouched.".loc
+        ) {
+            SettingsRow(
+                title: "Replay introduction".loc,
+                subtitle: replaying ? "Opening the welcome flow…".loc : "Show the welcome flow again".loc
+            ) {
+                Button("Replay") {
+                    replaying = true
+                    // Defer a tick so the press settles before the window crossfades.
+                    DispatchQueue.main.async { settings.hasOnboarded = false }
+                }
+                .buttonStyle(.talkie(.primary))
+                .disabled(replaying)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 4)
     }
 }
 
@@ -695,8 +766,7 @@ private struct DeveloperSettings: View {
                         // whole window crossfades over to onboarding.
                         DispatchQueue.main.async { settings.hasOnboarded = false }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
                     .disabled(replaying)
                 }
             }
@@ -920,7 +990,7 @@ private struct MCPConnectorCard: View {
     var body: some View {
         SettingsCard(
             header: "Connect your AI agent",
-            footer: String(format: "%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — but every change waits for your one-tap confirmation with an Undo. Bundled with the app: no separate download or build.".loc, Brand.mcpDisplayName)
+            footer: String(format: "%@ ships a tiny local server so your AI agent can read your meetings, brief, commitments, context, stats, dictionary, and notes — on-device, nothing leaves your Mac. Your AI agent can also manage your dictionary — adding, changing, or removing terms and rules — and each change applies right away with an Undo pill so you can reverse it. Bundled with the app: no separate download or build.".loc, Brand.mcpDisplayName)
         ) {
             if let path {
                 // (a) Claude Desktop — one double-click via the bundled .mcpb. The
@@ -931,8 +1001,7 @@ private struct MCPConnectorCard: View {
                     subtitle: desktopStatus ?? Self.desktopSubtitle(desktopState)
                 ) {
                     Button(Self.desktopButtonLabel(desktopState)) { openDesktopConnector() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.coral)
+                        .buttonStyle(.talkie(.primary))
                         .disabled(Self.mcpbURL() == nil)
                 }
                 SettingsDivider()
@@ -949,8 +1018,7 @@ private struct MCPConnectorCard: View {
                         Label(copiedConfig ? "Copied".loc : "Copy config".loc,
                               systemImage: copiedConfig ? "checkmark" : "doc.on.doc")
                     }
-                    .buttonStyle(.bordered)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.secondary))
                 }
                 SettingsRow(title: "Or from the terminal".loc) {
                     Button {
@@ -960,8 +1028,7 @@ private struct MCPConnectorCard: View {
                         Label(copiedCommand ? "Copied".loc : "Copy command".loc,
                               systemImage: copiedCommand ? "checkmark" : "terminal")
                     }
-                    .buttonStyle(.bordered)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.secondary))
                 }
                 // (c) Let the agent wire itself up: a paste-in prompt that has it
                 // run the add command, learn the tools, and honestly frame the writes
@@ -977,8 +1044,7 @@ private struct MCPConnectorCard: View {
                         Label(copiedPrompt ? "Copied".loc : "Copy setup prompt".loc,
                               systemImage: copiedPrompt ? "checkmark" : "text.bubble")
                     }
-                    .buttonStyle(.bordered)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.secondary))
                 }
                 SettingsDivider()
 
@@ -1080,8 +1146,7 @@ private struct ImproveTalkieCard: View {
                 subtitle: "Review it in full, then copy — nothing is copied until you do"
             ) {
                 Button("Review…") { previewing = true }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
             }
             if Brand.repoURL != nil {
                 SettingsDivider()
@@ -1094,8 +1159,7 @@ private struct ImproveTalkieCard: View {
                     } label: {
                         Label("Open GitHub", systemImage: "arrow.up.forward.square")
                     }
-                    .buttonStyle(.bordered)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.secondary))
                 }
             }
         }
@@ -1174,15 +1238,14 @@ private struct BugBundlePreviewSheet: View {
             HStack(spacing: 10) {
                 Spacer()
                 Button("Close") { onClose() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.talkie(.secondary))
                 Button {
                     copyToClipboard()
                 } label: {
                     Label(copied ? "Copied".loc : "Copy".loc,
                           systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.coral)
+                .buttonStyle(.talkie(.primary))
             }
         }
         .padding(20)
@@ -1281,10 +1344,9 @@ private struct AppUpdateSection: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button("Enable update checks".loc) { grantConsent() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
                 Button("Not now".loc) { declineConsent() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.talkie(.secondary))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1299,7 +1361,7 @@ private struct AppUpdateSection: View {
             subtitle: "This build won't contact GitHub. Turn checks on whenever you want the latest.".loc
         ) {
             Button("Enable update checks".loc) { grantConsent() }
-                .buttonStyle(.bordered)
+                .buttonStyle(.talkie(.secondary))
         }
     }
 
@@ -1320,7 +1382,7 @@ private struct AppUpdateSection: View {
         case .idle, .upToDate, .failed:
             SettingsRow(title: idleTitle, subtitle: idleSubtitle) {
                 Button("Check now") { Task { await updater.check() } }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.talkie(.secondary))
             }
         case .checking:
             SettingsRow(title: "Checking for updates…") {
@@ -1334,8 +1396,7 @@ private struct AppUpdateSection: View {
                     : release.notes
             ) {
                 Button("Update") { Task { await updater.downloadAndInstall() } }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
             }
         case .downloading(let progress):
             SettingsRow(title: "Downloading the update…") {
@@ -1389,7 +1450,7 @@ private struct AppUpdateSection: View {
                     tokenField = ""
                     Task { await updater.check() }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.talkie(.secondary))
                 .disabled(tokenField.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
@@ -1414,16 +1475,8 @@ struct SubPage<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                PageHeader(title: title, subtitle: subtitle)
-                content
-            }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(Theme.canvas)
-        .navigationTitle("")
+        TalkiePage(title: title, subtitle: subtitle) { content }
+            .navigationTitle("")
     }
 }
 
@@ -1656,16 +1709,7 @@ private struct ActivationSettings: View {
                 footer: activationFooter
             ) {
                 SettingsRow(title: "Dictation key".loc) {
-                    Picker("", selection: $settings.activationKey) {
-                        ForEach(ActivationKey.allCases) { key in
-                            if let symbol = key.symbolName {
-                                Label(key.displayName, systemImage: symbol).tag(key)
-                            } else {
-                                Text(key.displayName).tag(key)
-                            }
-                        }
-                    }
-                    .labelsHidden().fixedSize()
+                    ActivationKeyRecorder(key: $settings.activationKey)
                 }
             }
             SettingsCard(
@@ -1849,6 +1893,9 @@ private struct BehaviorSettings: View {
 // MARK: - Dictionary
 
 private struct DictionarySettings: View {
+    /// For the header's "Learn from my edits" switch — the same
+    /// `AppSettings.learnFromEdits` as Settings > Context & learning.
+    @ObservedObject var settings: AppSettings
     @ObservedObject var dictionary: DictionaryStore
     @ObservedObject var nicheVocab: NicheVocabStore
     @State private var newTerm: String = ""
@@ -1885,12 +1932,16 @@ private struct DictionarySettings: View {
     // existing importError alert rather than crashing.
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
-                    PageHeader(title: "Dictionary",
-                               subtitle: "Names, brands, and jargon Talkie should spell correctly.")
-                    Spacer()
+        TalkieScrollPage(spacing: 16, background: .none) {
+                TalkiePageHeader(title: "Dictionary",
+                                 subtitle: "Names, brands, and jargon Talkie should spell correctly.") {
+                    Toggle("Learn from my edits", isOn: $settings.learnFromEdits)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .tint(Theme.coral)
+                        .fixedSize()
+                        .help("Auto-improve the dictionary.".loc)
+                        .padding(.trailing, 4)
                     importExportButtons
                 }
 
@@ -1902,8 +1953,7 @@ private struct DictionarySettings: View {
                             .textFieldStyle(.roundedBorder)
                             .onSubmit(addTerm)
                         Button("Add", action: addTerm)
-                            .buttonStyle(.borderedProminent)
-                            .tint(Theme.coral)
+                            .buttonStyle(.talkie(.primary))
                             .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                     .controlSize(.large)
@@ -1963,7 +2013,7 @@ private struct DictionarySettings: View {
                         Button { dictionary.addReplacement() } label: {
                             Label("Add rule", systemImage: "plus")
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.talkie(.secondary))
                     }
                     Text("Rewrite what was heard into what you meant — e.g. “get hub” → “GitHub”.")
                         .font(.talkieHeading(13, weight: .regular))
@@ -1982,9 +2032,6 @@ private struct DictionarySettings: View {
                     }
                 }
                 .talkieCard()
-            }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(
             // A calm brand wash confirms a valid drag is over the pane.
@@ -2041,7 +2088,7 @@ private struct DictionarySettings: View {
             Button { presentImportPanel() } label: {
                 Label("Import…", systemImage: "square.and.arrow.down")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.talkie(.secondary))
             .help("Import a .talkiepack file — preview what's inside before adding it")
 
             importFromAnotherAppMenu
@@ -2049,7 +2096,7 @@ private struct DictionarySettings: View {
             Button { presentExportPanel() } label: {
                 Label("Export…", systemImage: "square.and.arrow.up")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.talkie(.secondary))
             .disabled(dictionary.vocabulary.isEmpty && dictionary.replacementsSnapshot().isEmpty)
             .help("Save your whole dictionary to a shareable .talkiepack file")
         }
@@ -2087,7 +2134,8 @@ private struct DictionarySettings: View {
         } label: {
             Label("Import from another app", systemImage: "arrow.down.doc")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.talkie(.secondary))
         .fixedSize()
         .help("Bring your dictionary over from VoiceInk, Superwhisper, or Wispr Flow")
     }
@@ -2314,7 +2362,7 @@ private struct StarterPackRow: View {
             Button(action: onInstall) {
                 Label("Install", systemImage: "square.and.arrow.down")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.talkie(.secondary))
             .help(String(format: "Preview and add the %@ pack".loc, pack.title))
         }
         .padding(.vertical, 4)
@@ -2365,15 +2413,15 @@ private struct ReplacementRow: View {
                 .frame(width: 13)
                 .help(rule.isLearned ? "Learned automatically from your edits" : "")
             Toggle("Aa", isOn: $rule.caseSensitive)
-                .toggleStyle(.button).help("Case sensitive")
+                .toggleStyle(.talkieChip).help("Case sensitive")
             Toggle("W", isOn: $rule.wholeWord)
-                .toggleStyle(.button).help("Whole word only")
+                .toggleStyle(.talkieChip).help("Whole word only")
             Button(action: onDelete) {
                 Image(systemName: "trash")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.inkTertiary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.talkie(.quiet, size: .small))
             .help("Delete this rule")
         }
     }
@@ -2528,12 +2576,11 @@ private struct ImportPreviewSheet: View {
         HStack {
             Spacer()
             Button("Cancel", action: onCancel)
-                .buttonStyle(.bordered)
+                .buttonStyle(.talkie(.secondary))
                 .keyboardShortcut(.cancelAction)
             Button(preview.hasSomethingToAdd ? "Add to dictionary" : "Nothing to add",
                    action: onConfirm)
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.coral)
+                .buttonStyle(.talkie(.primary))
                 .keyboardShortcut(.defaultAction)
                 .disabled(!preview.hasSomethingToAdd)
         }
@@ -2626,15 +2673,14 @@ private struct PermissionsSection: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Button("Relaunch now") { permissions.relaunch() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.coral)
+                        .buttonStyle(.talkie(.primary))
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // Borderless (v2): the tint alone reads as a warning surface, lifted
                 // off the canvas by a whisper shadow instead of an outline.
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.warning.opacity(0.10)))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).fill(Theme.warning.opacity(0.10)))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                 .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
             }
 

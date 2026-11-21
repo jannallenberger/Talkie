@@ -8,10 +8,8 @@ struct VibeCodingView: View {
     @ObservedObject var settings: AppSettings
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                PageHeader(title: "Vibe Coding",
-                           subtitle: "Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx.")
+        TalkiePage(title: "Vibe Coding",
+                   subtitle: "Say a filename, get the real file — “user profile dot t-s-x” becomes UserProfile.tsx.") {
 
                 // Enable toggle.
                 VStack(alignment: .leading, spacing: 8) {
@@ -89,8 +87,6 @@ struct VibeCodingView: View {
                     ExampleRow(spoken: "“app delegate dot swift”", result: "AppDelegate.swift")
                 }
                 .talkieCard()
-            }
-            .padding(28)
         }
     }
 
@@ -146,7 +142,7 @@ private struct FolderRow: View {
                     .font(.system(size: 15))
                     .foregroundStyle(hovering ? Theme.danger : Theme.inkTertiary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.talkie(.quiet, size: .small))
             .help("Remove this folder")
         }
         .padding(.horizontal, 14)

@@ -3,9 +3,9 @@ import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The Meetings page: a fixed top bar (Record, Import, settings), an optional status
-/// line and live-recording panel under it, then two panes — the meeting list on the
-/// left and the selected meeting's detail on the right. Persistent preferences (keep
+/// The Meetings page: the shared page header (language, Record, Import, settings), an
+/// optional status line and live-recording panel under it, then two panes — the
+/// meeting list on a card at the left and the selected meeting's detail on the right. Persistent preferences (keep
 /// audio, watched folder, where notes land) live on the Meeting settings page.
 struct MeetingsView: View {
     @ObservedObject var recorder: MeetingRecorder
@@ -32,6 +32,8 @@ struct MeetingsView: View {
     /// The meeting to show first, when it exists (else the newest). Snapshot tests use it.
     var initialSelection: UUID? = nil
 
+    /// The gear's quick-settings popover is open.
+    @State private var showQuickSettings = false
     /// Flashes the drop zone briefly when a non-audio file is rejected.
     @State private var rejectedDrop = false
     /// True while a supported file is hovering over the drop target.
@@ -53,8 +55,8 @@ struct MeetingsView: View {
     /// `ObservableObject` — mutating `.text` is silent by design.
     @State private var notesDraftBox = NotesDraftBox()
 
-    private static let listWidth: CGFloat = 280
-    private static let pagePadding: CGFloat = 28
+    private static let listWidth: CGFloat = 256
+    private static let pagePadding: CGFloat = Theme.Space.pageSide
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -68,22 +70,29 @@ struct MeetingsView: View {
                     .padding(.horizontal, Self.pagePadding)
                     .padding(.bottom, 14)
             }
-            Rectangle().fill(Theme.hairline).frame(height: 1)
             if store.meetings.isEmpty {
                 emptyState
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                HStack(spacing: 0) {
+                // Two panes, no hairlines: the list sits on its own card; the detail
+                // scrolls on the canvas with its sections on cards. The detail's
+                // ScrollView runs to the window edge (its content carries the trailing
+                // inset) so card shadows aren't clipped at the scroll bounds.
+                HStack(alignment: .top, spacing: Theme.Space.gridGap - 4) {
                     meetingList
                         .frame(width: Self.listWidth)
-                    Rectangle().fill(Theme.hairline).frame(width: 1)
+                        .frame(maxHeight: .infinity)
+                        .talkieSurface()
+                        .padding(.bottom, Self.pagePadding)
                     detailPane
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .padding(.leading, Self.pagePadding)
                 .frame(maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Theme.canvas)
         .contentShape(Rectangle())
         .onAppear {
             selectedID = MeetingSelection.resolve(current: selectedID ?? initialSelection, old: [], new: meetingIDs)
@@ -175,11 +184,7 @@ struct MeetingsView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Text("Meetings")
-                .font(.talkieDisplay(26))
-                .foregroundStyle(Theme.ink)
-            Spacer(minLength: 16)
+        TalkiePageHeader(title: "Meetings") {
             languagePicker
             recordControl
             if let importer {
@@ -188,40 +193,73 @@ struct MeetingsView: View {
                 } label: {
                     Label("Import…".loc, systemImage: "square.and.arrow.down")
                 }
-                .controlSize(.large)
+                .buttonStyle(.talkie(.secondary))
                 .disabled(!FileImportEngine.isAvailable)
                 .help("…or drop audio, video, or a folder onto this tab.".loc)
             }
             if let router {
                 Button {
-                    router.selectedTab = .general
-                    router.pendingPage = .meetings
+                    showQuickSettings.toggle()
                 } label: {
                     Image(systemName: "gearshape")
+                        .font(.system(size: 14, weight: .medium))
                 }
-                .controlSize(.large)
+                .buttonStyle(.talkie(.quiet))
                 .help("Meeting settings")
                 .accessibilityLabel("Meeting settings")
+                .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
+                    quickSettings(router: router)
+                }
             }
         }
+        .padding(.top, Theme.Space.pageTop)
         .padding(.horizontal, Self.pagePadding)
-        .padding(.top, 22)
-        .padding(.bottom, 16)
+        .padding(.bottom, 18)
+    }
+
+    /// The gear's popover: the one meeting preference worth flipping from here (keep
+    /// audio — the same `AppSettings.keepMeetingAudio` the Settings page binds, so
+    /// there is one source of truth) and the deep link to the full Meeting settings.
+    private func quickSettings(router: SettingsRouter) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsToggleRow(
+                title: "Keep audio with meeting notes".loc,
+                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
+                isOn: $settings.keepMeetingAudio)
+            HStack {
+                Spacer()
+                Button("All meeting settings…") {
+                    showQuickSettings = false
+                    router.selectedTab = .general
+                    router.pendingPage = .meetings
+                }
+                .buttonStyle(.talkie(.secondary, size: .small))
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+        .frame(width: 340)
     }
 
     /// Auto (multilingual) or pin transcription to one of the user's languages. Read
     /// when a recording starts, so it sits next to Record and is locked while one runs.
     private var languagePicker: some View {
-        Picker(selection: $settings.meetingLanguageMode) {
+        TalkieMenuPicker(selection: $settings.meetingLanguageMode) {
             Text("Auto (multilingual)").tag("auto")
             ForEach(settings.spokenLanguages, id: \.self) { id in
                 Text(Self.languageName(id)).tag(id)
             }
         } label: {
-            Image(systemName: "globe")
+            HStack(spacing: 6) {
+                Image(systemName: "globe")
+                    .foregroundStyle(Theme.inkSecondary)
+                if settings.meetingLanguageMode == "auto" {
+                    Text("Auto (multilingual)")
+                } else {
+                    Text(Self.languageName(settings.meetingLanguageMode))
+                }
+            }
         }
-        .pickerStyle(.menu)
-        .fixedSize()
         .disabled(recorder.isRecording)
         .help("Transcription language")
         .accessibilityLabel("Transcription language")
@@ -250,9 +288,7 @@ struct MeetingsView: View {
                 recorder.notes = notesDraftBox.text
                 Task { await recorder.stop() }
             }
-            .controlSize(.large)
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.featherRed)
+            .buttonStyle(.talkie(.primary, tint: Theme.featherRed))
         } else if recorder.isFinishing {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
@@ -264,9 +300,7 @@ struct MeetingsView: View {
             Button { Task { await recorder.start() } } label: {
                 Label("Record".loc, systemImage: "record.circle")
             }
-            .controlSize(.large)
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.coral)
+            .buttonStyle(.talkie(.primary))
             .disabled(!MeetingSummarizer.isAvailable && !TranscriptionEngine.isAvailable)
             .help("Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically.")
         }
@@ -326,9 +360,11 @@ struct MeetingsView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
             }
+            .scrollEdgeEffectHidden(true, for: .top)
             .focusable()
             .focusEffectDisabled()
             .focused($listFocused)
@@ -377,10 +413,12 @@ struct MeetingsView: View {
                 .equatable()
                 // Fresh per-meeting state (edit draft, learn chips, playback) on switch.
                 .id(meeting.id)
-                .padding(.horizontal, Self.pagePadding)
-                .padding(.vertical, 24)
+                .padding(.leading, 4)
+                .padding(.trailing, Self.pagePadding)
+                .padding(.bottom, Self.pagePadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .scrollEdgeEffectHidden(true, for: .top)
         }
     }
 
@@ -426,7 +464,7 @@ struct MeetingsView: View {
     /// with the user before calling this whenever there's an existing, non-empty
     /// summary to lose.
     private func regenerateSummary(_ meeting: Meeting) async {
-        guard let summary = await MeetingSummarizer().summarize(meeting.transcript) else { return }
+        guard let summary = await MeetingSummarizer().summarize(meeting.transcript, segments: meeting.segments) else { return }
         var updated = meeting
         updated.summary = summary
         store.update(updated)
@@ -563,7 +601,7 @@ private struct RecordingNotesEditor: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 88, maxHeight: 150)
                 .padding(8)
-                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                 .overlay(alignment: .topLeading) {
                     if draft.isEmpty {
                         Text("Jot key points — Talkie expands them with the transcript…")
@@ -664,23 +702,14 @@ private struct MeetingListRow: View, Equatable {
                         .padding(.top, 2)
                 }
             }
-            .padding(.leading, 14)
+            .padding(.leading, 12)
             .padding(.trailing, 10)
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                    .fill(isSelected ? Theme.surfaceSunken : (hovering ? Theme.surface : Color.clear))
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .fill(isSelected ? Theme.coralWash : (hovering ? Theme.surfaceSunken : Color.clear))
             )
-            .overlay(alignment: .leading) {
-                if isSelected {
-                    Capsule()
-                        .fill(Theme.coral)
-                        .frame(width: 3)
-                        .padding(.vertical, 8)
-                        .padding(.leading, 4)
-                }
-            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -802,7 +831,7 @@ private struct MeetingDetail: View, Equatable {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(meeting.title)
-                .font(.talkieDisplay(24))
+                .font(.talkieDisplay(22))
                 .foregroundStyle(Theme.ink)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -833,22 +862,38 @@ private struct MeetingDetail: View, Equatable {
     }
 
     private var actionButtons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Button(action: onCopy) { Label("Copy".loc, systemImage: "doc.on.doc") }
                 .help("Copy transcript")
             // Timestamped exports (D3) — only when this meeting actually has timed
-            // segments (recorded/imported after D2). Pre-D2 notes simply don't show
-            // the menu, so there's no dead UI and no migration.
-            if let segments = meeting.segments, !segments.isEmpty {
+            // segments (recorded/imported after D2) — plus the kept audio files.
+            // A meeting with neither shows no menu, so there's no dead UI.
+            let segments = meeting.segments ?? []
+            let audioItems = MeetingAudioExport.items(
+                audioFiles: meeting.audioFiles, baseName: exportBaseName,
+                fileExists: { FileManager.default.fileExists(atPath: folderURL.appendingPathComponent($0).path) })
+            if !segments.isEmpty || !audioItems.isEmpty {
                 Menu {
-                    Button("Subtitles (.srt)") { export(segments, as: .srt) }
-                    Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
-                    Button("Spreadsheet (.csv)") { export(segments, as: .csv) }
-                    Button("Data (.json)") { export(segments, as: .json) }
-                    // Chapter list (D8) — offered ONLY when the meeting shifted
-                    // topics (≥2 chapters); a lone/absent topic shows nothing.
-                    if let chapters = meeting.chapters, chapters.count >= 2 {
-                        Button("Chapters (.txt)") { exportChapters(chapters) }
+                    if !segments.isEmpty {
+                        Button("Subtitles (.srt)") { export(segments, as: .srt) }
+                        Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
+                        Button("Spreadsheet (.csv)") { export(segments, as: .csv) }
+                        Button("Data (.json)") { export(segments, as: .json) }
+                        // Chapter list (D8) — offered ONLY when the meeting shifted
+                        // topics (≥2 chapters); a lone/absent topic shows nothing.
+                        if let chapters = meeting.chapters, chapters.count >= 2 {
+                            Button("Chapters (.txt)") { exportChapters(chapters) }
+                        }
+                        Divider()
+                    }
+                    // Kept audio, one file per side, copied as-is (never mixed).
+                    if audioItems.isEmpty {
+                        Button("No audio was kept for this meeting") {}
+                            .disabled(true)
+                    } else {
+                        ForEach(audioItems, id: \.fileName) { item in
+                            Button(item.title) { exportAudio(item) }
+                        }
                     }
                 } label: {
                     Label("Export…".loc, systemImage: "square.and.arrow.up")
@@ -888,12 +933,11 @@ private struct MeetingDetail: View, Equatable {
             Spacer(minLength: 12)
             Button(role: .destructive, action: onDelete) {
                 Label("Delete".loc, systemImage: "trash")
-                    .foregroundStyle(Theme.featherRed)
             }
+            .buttonStyle(.talkie(.destructive, size: .small))
             .help("Delete")
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .buttonStyle(.talkie(.secondary, size: .small))
     }
 
     @ViewBuilder
@@ -942,6 +986,16 @@ private struct MeetingDetail: View, Equatable {
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.inkTertiary)
             }
+            transcriptBody
+                .talkieCard(padding: 16)
+        }
+    }
+
+    /// The transcript itself, on a card under the section label: the editor, the
+    /// click-to-play lines, speaker turns, or the plain text, plus any learn chips.
+    @ViewBuilder
+    private var transcriptBody: some View {
+        VStack(alignment: .leading, spacing: 8) {
             if draft != nil {
                 transcriptEditor
             } else if meeting.hasPlayableAudio, let segments = meeting.segments {
@@ -986,7 +1040,7 @@ private struct MeetingDetail: View, Equatable {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 120, maxHeight: 320)
                 .padding(8)
-                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                 .onExitCommand { cancelEditing() }
 
             HStack(spacing: 8) {
@@ -995,10 +1049,10 @@ private struct MeetingDetail: View, Equatable {
                     .foregroundStyle(Theme.inkTertiary)
                 Spacer()
                 Button("Cancel") { cancelEditing() }
-                    .controlSize(.small)
+                    .buttonStyle(.talkie(.secondary, size: .small))
                     .keyboardShortcut(.cancelAction)
                 Button("Save") { commitEditing(editing.wrappedValue) }
-                    .controlSize(.small)
+                    .buttonStyle(.talkie(.primary, size: .small))
                     .keyboardShortcut(.defaultAction)
                     .disabled(editing.wrappedValue == meeting.transcript)
             }
@@ -1035,7 +1089,7 @@ private struct MeetingDetail: View, Equatable {
                     Spacer(minLength: 6)
                     if !candidate.added {
                         Button("Learn") { accept(candidate) }
-                            .controlSize(.small)
+                            .buttonStyle(.talkie(.primary, size: .small))
                     }
                 }
                 .padding(.horizontal, 10)
@@ -1149,6 +1203,33 @@ private struct MeetingDetail: View, Equatable {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             try? Data(contents.utf8).write(to: url, options: .atomic)
+        }
+    }
+
+    /// Copy one kept audio file out through a save panel. A byte-for-byte copy of the
+    /// file beside the note (no re-encode); the panel already confirmed any overwrite,
+    /// so an existing file at the destination is replaced. Local disk only.
+    private func exportAudio(_ item: MeetingAudioExport.Item) {
+        let source = folderURL.appendingPathComponent(item.fileName)
+        let panel = NSSavePanel()
+        panel.title = "Export…".loc
+        panel.nameFieldStringValue = item.defaultName
+        panel.canCreateDirectories = true
+        if let type = UTType(filenameExtension: item.fileExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let fm = FileManager.default
+            do {
+                if fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
+                try fm.copyItem(at: source, to: url)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Couldn't export the audio.".loc
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
         }
     }
 
@@ -1271,8 +1352,8 @@ struct MeetingPlaybackView: View {
             .padding(.vertical, 3)
             .padding(.horizontal, 6)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isActive ? Theme.coral.opacity(0.12) : Color.clear)
+                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .fill(isActive ? Theme.coralWash : Color.clear)
             )
             .contentShape(Rectangle())
         }
@@ -1575,7 +1656,7 @@ private struct ImportStatusLine: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Theme.inkTertiary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.talkie(.quiet, size: .small))
             .help("Dismiss".loc)
             .accessibilityLabel("Dismiss".loc)
         }

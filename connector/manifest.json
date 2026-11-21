@@ -4,7 +4,7 @@
   "display_name": "Talkie",
   "version": "0.4.0",
   "description": "Query your local Talkie meetings, daily brief, context graph, and dictation history — on-device, no network.",
-  "long_description": "Talkie's local MCP server exposes your meetings, today's brief, your personal context graph (people, projects, commitments), and your dictation history to Claude — 100% on-device. Nothing leaves your Mac. Reads are direct; the dictionary tools (add / update / remove vocabulary terms and replacement rules) only QUEUE a suggestion, which Talkie applies with a one-tap Undo — so a session can never silently change your speech recognition.",
+  "long_description": "Talkie's local MCP server exposes your meetings, today's brief, your personal context graph (people, projects, commitments), and your dictation history to Claude — 100% on-device. Nothing leaves your Mac. Reads are direct; the dictionary tools (add / update / remove vocabulary terms and replacement rules) are suggestions that Talkie applies right away, visibly, with a one-tap Undo pill — so a session can never change your speech recognition out of sight.",
   "author": {
     "name": "Talkie"
   },
@@ -31,12 +31,12 @@
     { "name": "get_dictionary", "description": "List the user's Talkie dictionary — vocabulary terms and spoken→written replacement rules (learned rules tagged) — on-device; call before add_vocabulary_term or add_replacement so you don't suggest a duplicate." },
     { "name": "list_dictations", "description": "List the user's recent dictations newest-first (timestamp, app, opening text) from the retained history window — a recent window, not an archive: Talkie prunes history per the user's retention setting (default 7 days)." },
     { "name": "read_scratchpad", "description": "Read the user's Talkie scratchpad — their quick notes and checkbox tasks (done-state shown) — on-device and read-only (Claude reads the scratchpad but never writes it)." },
-    { "name": "add_vocabulary_term", "description": "Suggest a niche/jargon term for the user's dictionary so recognition spells it right — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
-    { "name": "add_replacement", "description": "Suggest a spoken→written replacement rule for the user's dictionary — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
-    { "name": "remove_replacement", "description": "Remove a spoken→written replacement rule (by its exact from → to) from the user's dictionary — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
-    { "name": "update_replacement", "description": "Change an existing replacement rule's target (the rule matched by from/to should produce new_to) — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
-    { "name": "remove_vocabulary_term", "description": "Remove a niche/jargon vocabulary term from the user's dictionary — queued for the user to confirm in Talkie with a one-tap Undo (never applied silently)." },
-    { "name": "retitle_meeting", "description": "Rename a meeting in the user's meeting history (matched by id or 8-char prefix) — queued for the user to confirm with a one-tap Undo (never applied silently)." }
+    { "name": "add_vocabulary_term", "description": "Suggest a niche/jargon term for the user's dictionary so recognition spells it right — applied by Talkie right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
+    { "name": "add_replacement", "description": "Suggest a spoken→written replacement rule for the user's dictionary — applied by Talkie right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
+    { "name": "remove_replacement", "description": "Remove a spoken→written replacement rule (by its exact from → to) from the user's dictionary — applied by Talkie right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
+    { "name": "update_replacement", "description": "Change an existing replacement rule's target (the rule matched by from/to should produce new_to) — applied by Talkie right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
+    { "name": "remove_vocabulary_term", "description": "Remove a niche/jargon vocabulary term from the user's dictionary — applied by Talkie right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
+    { "name": "retitle_meeting", "description": "Rename a meeting in the user's meeting history (matched by id or 8-char prefix) — applied right away with a visible one-tap Undo pill (queued only while Talkie is closed)." }
   ],
   "compatibility": {
     "platforms": ["darwin"]

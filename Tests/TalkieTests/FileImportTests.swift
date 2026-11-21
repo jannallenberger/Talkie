@@ -399,6 +399,32 @@ final class FileImportTests: XCTestCase {
                        "the lane audio is deleted after the pass")
     }
 
+    /// The import's summary is written only AFTER the speaker pass (like a recorded
+    /// meeting), from the saved note's segments, and never blocks the saved transcript.
+    @MainActor
+    func testImportSummaryWaitsForDiarization() async throws {
+        let fake = FakeImporter()
+        await fake.setResult(try diarizableResult())
+        let gate = AsyncGate()
+        let summarized = ImportTestBox<Int?>(nil)
+        let (coordinator, store) = makeCoordinatorWithStore(importer: fake, diarize: { _, _, _, _, transcript, _ in
+            await gate.wait()
+            var step = MeetingRecorder.DiarizationStep(transcript: transcript)
+            step.state = .unchanged
+            return step
+        }, summarize: { _, segments in
+            await MainActor.run { summarized.value = segments?.count ?? -1 }
+            return "Zusammenfassung"
+        })
+        coordinator.enqueue([URL(fileURLWithPath: "/tmp/talk4.m4a")])
+        await waitUntil("saved") { store.meetings.count == 1 && coordinator.active == nil }
+        XCTAssertEqual(store.meetings.first?.summary, "", "no summary while the speaker pass runs")
+        XCTAssertNil(summarized.value)
+        await gate.open()
+        await waitUntil("summary lands") { store.meetings.first?.summary == "Zusammenfassung" }
+        XCTAssertEqual(summarized.value, 2, "the summarizer got the note's segments")
+    }
+
     /// A failed pass leaves the saved transcript untouched and records the failed state.
     @MainActor
     func testDiarizationFailureKeepsTranscript() async throws {
@@ -448,7 +474,8 @@ final class FileImportTests: XCTestCase {
         isProcessing: @escaping () -> Bool = { false },
         isRecording: @escaping () -> Bool = { false },
         importer: FileImporting,
-        diarize: FileImportCoordinator.Diarize? = nil
+        diarize: FileImportCoordinator.Diarize? = nil,
+        summarize: (@Sendable (String, [MeetingSegment]?) async -> String)? = nil
     ) -> (FileImportCoordinator, MeetingStore) {
         let scratch = FileManager.default.temporaryDirectory
             .appendingPathComponent("talkie-fileimport-tests-\(UUID().uuidString)", isDirectory: true)
@@ -466,7 +493,7 @@ final class FileImportTests: XCTestCase {
             importer: importer,
             // Inject a synchronous no-op summarizer so the queue tests never touch the
             // on-device model (machine-dependent + slow) — we test the queue, not the LLM.
-            summarize: { _ in "" },
+            summarize: summarize ?? { _, _ in "" },
             diarize: diarize)
         return (coordinator, store)
     }

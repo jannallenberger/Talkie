@@ -24,11 +24,26 @@ struct PrivacySection: View {
     /// Set true while the "Copy diagnostic report" button flashes its confirmation.
     @State private var copiedReport = false
 
-    /// Bridges the scalar `historyRetentionDays` setting to the typed picker.
+    /// A shorter retention that would delete dictations waits here for confirmation
+    /// (same rule as the Memory page's inline picker — see `RetentionChange`).
+    @State private var pendingRetention: HistoryRetention?
+    @State private var pendingDeleteCount = 0
+
+    /// Bridges the scalar `historyRetentionDays` setting to the typed picker. A write
+    /// that would delete entries is parked for confirmation instead of applied.
     private var retention: Binding<HistoryRetention> {
         Binding(
             get: { HistoryRetention.from(days: settings.historyRetentionDays) },
-            set: { settings.historyRetentionDays = $0.rawValue }
+            set: { choice in
+                if let n = RetentionChange.confirmationCount(
+                    from: settings.historyRetentionDays, to: choice.rawValue,
+                    timestamps: history.entries.map(\.timestampUnix), now: Date()) {
+                    pendingDeleteCount = n
+                    pendingRetention = choice
+                } else {
+                    settings.historyRetentionDays = choice.rawValue
+                }
+            }
         )
     }
 
@@ -153,8 +168,7 @@ struct PrivacySection: View {
                             Label(copiedProof ? "Copied".loc : "Copy proof card".loc,
                                   systemImage: copiedProof ? "checkmark" : "doc.on.doc")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.coral)
+                        .buttonStyle(.talkie(.primary))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16)
@@ -183,8 +197,7 @@ struct PrivacySection: View {
                             Label(copiedReport ? "Copied".loc : "Copy diagnostic report".loc,
                                   systemImage: copiedReport ? "checkmark" : "doc.on.doc")
                         }
-                        .buttonStyle(.bordered)
-                        .tint(Theme.coral)
+                        .buttonStyle(.talkie(.secondary))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16)
@@ -233,6 +246,20 @@ struct PrivacySection: View {
             }
         }
         .onAppear(perform: loadEntitlements)
+        .alert(
+            String(format: "Keep history for %@?".loc, pendingRetention?.displayName ?? ""),
+            isPresented: Binding(get: { pendingRetention != nil },
+                                 set: { if !$0 { pendingRetention = nil } }),
+            presenting: pendingRetention
+        ) { choice in
+            Button("Delete older dictations", role: .destructive) {
+                settings.historyRetentionDays = choice.rawValue
+                pendingRetention = nil
+            }
+            Button("Cancel", role: .cancel) { pendingRetention = nil }
+        } message: { _ in
+            Text(RetentionChange.confirmationMessage(count: pendingDeleteCount))
+        }
     }
 
     /// Read the entitlement keys — plus the code-signature hash (cdhash) and the

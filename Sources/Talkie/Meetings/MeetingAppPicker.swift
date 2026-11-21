@@ -71,8 +71,7 @@ struct MeetingAppPickerSheet: View {
             }
             Spacer()
             Button("Done".loc, action: onDismiss)
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.coral)
+                .buttonStyle(.talkie(.primary))
         }
         .padding(20)
     }

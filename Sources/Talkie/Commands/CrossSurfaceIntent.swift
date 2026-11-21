@@ -586,7 +586,18 @@ enum ActionItemSource {
     }
 
     private static func headingMatches(_ line: String, name: String) -> Bool {
-        line.lowercased().contains(name.lowercased())
+        let l = line.lowercased()
+        if l.contains(name.lowercased()) { return true }
+        // The summary writes its section titles in the meeting's language (W1), so
+        // also match the localized title of the same section.
+        let titles = SummaryLanguage.titleTable.values
+        let localized: [String]
+        switch name.lowercased() {
+        case "action items": localized = titles.map(\.actionItems)
+        case "decisions": localized = titles.map(\.decisions)
+        default: localized = []
+        }
+        return localized.contains { l.contains($0.lowercased()) }
     }
 
     /// Strip a leading bullet marker ("-", "*", "•", "1.") if present; return the

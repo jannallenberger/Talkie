@@ -60,6 +60,11 @@ struct DashboardView: View {
     /// "Add a photo" affordance when no photo is set (a set photo shows regardless).
     @State private var headerHovered = false
 
+    /// Update reminder: last dismissal (epoch seconds, 0 = never). Evaluated once per
+    /// appearance; no timers, no network.
+    @AppStorage("updateReminderDismissedAt") private var updateDismissedAt: Double = 0
+    @State private var updateDecision: UpdateReminder.Decision = .hidden
+
     /// The highest milestone tier the user has already been congratulated for.
     /// Persisted so the crossing banner fires ONCE per tier, never on relaunch.
     /// A raw threshold value (0 = none celebrated yet); we compare tiers by index.
@@ -73,9 +78,15 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.section) {
+            TalkieScrollPage(spacing: Theme.Space.section, background: .ambient) {
                     header
+
+                    if case .show(let days) = updateDecision {
+                        UpdateReminderLine(days: days) {
+                            updateDismissedAt = Date().timeIntervalSince1970
+                            updateDecision = .hidden
+                        }
+                    }
 
                     if let banner = pendingCelebration {
                         MilestoneCelebrationBanner(
@@ -121,24 +132,25 @@ struct DashboardView: View {
                             .accessibilityElement(children: .combine)
                         MilestoneEntryCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
                     }
-                }
-                .padding(28)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(LiveBackground(mood: .ambient))
-            .scrollContentBackground(.hidden)
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .onAppear {
+                updateDecision = UpdateReminder.decide(
+                    buildDate: UpdateReminder.bundleBuildDate, now: Date(),
+                    lastDismissed: updateDismissedAt > 0 ? Date(timeIntervalSince1970: updateDismissedAt) : nil)
+            }
             .navigationDestination(for: MilestoneRoute.self) { route in
                 switch route {
                 case .plumage:
                     MilestonesView(stats: stats, activity: activity, wordFreq: wordFreq,
                                    appUsage: appUsage, jobTitle: jobTitle)
+                        .talkiePushedPage()
                 }
             }
             .navigationDestination(for: SpeedRoute.self) { route in
                 switch route {
                 case .detail:
                     SpeedDetailView(latency: latency, pressure: pressure)
+                        .talkiePushedPage()
                 }
             }
         }
@@ -262,7 +274,7 @@ private struct EditableNameTitle: View {
             if editing {
                 TextField("Your name".loc, text: $draft)
                     .textFieldStyle(.plain)
-                    .font(.talkieDisplay(28))
+                    .font(.talkiePageTitle)
                     .foregroundStyle(Theme.ink)
                     .focused($focused)
                     .onSubmit(commit)
@@ -274,7 +286,7 @@ private struct EditableNameTitle: View {
             } else {
                 Button(action: beginEditing) {
                     Text(displayText)
-                        .font(.talkieDisplay(28))
+                        .font(.talkiePageTitle)
                         .foregroundStyle(name.trimmingCharacters(in: .whitespaces).isEmpty
                                          ? Theme.inkTertiary : Theme.ink)
                 }

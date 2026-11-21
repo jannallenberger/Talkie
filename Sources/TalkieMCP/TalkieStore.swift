@@ -95,7 +95,7 @@ struct TalkieStore {
             kind: "vocabulary", op: "add", term: trimmed, from: nil, to: nil, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued “\(trimmed)” — it’ll appear in \(BrandMirror.displayName) with an Undo the moment you confirm it. Nothing changes your recognition until then.")
+                     ok: "Queued “\(trimmed)” — \(BrandMirror.displayName) applies it right away and shows an Undo pill (if it is closed, it applies at its next launch).")
     }
 
     /// Queue an "add this from→to replacement rule" suggestion for confirmation.
@@ -107,7 +107,7 @@ struct TalkieStore {
             kind: "replacement", op: "add", term: nil, from: f, to: t, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued “\(f)” → “\(t)” — it’ll appear in \(BrandMirror.displayName) with an Undo the moment you confirm it. Nothing changes your recognition until then.")
+                     ok: "Queued “\(f)” → “\(t)” — \(BrandMirror.displayName) applies it right away and shows an Undo pill (if it is closed, it applies at its next launch).")
     }
 
     // MARK: L15 — dictionary/jargon MANAGEMENT (edit + remove), same inbox handshake
@@ -124,7 +124,7 @@ struct TalkieStore {
             kind: "replacement", op: "removeReplacement", term: nil, from: f, to: t, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued removal of “\(f)” → “\(t)” — \(BrandMirror.displayName) will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+                     ok: "Queued removal of “\(f)” → “\(t)” — \(BrandMirror.displayName) applies it right away and shows an Undo pill (if it is closed, it applies at its next launch).")
     }
 
     /// Queue an "update this replacement rule's target" suggestion: the rule matched
@@ -139,7 +139,7 @@ struct TalkieStore {
             kind: "replacement", op: "updateReplacement", term: nil, from: f, to: t, newTo: n, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued a change to “\(f)” → “\(n)” (was “\(t)”) — \(BrandMirror.displayName) will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+                     ok: "Queued a change to “\(f)” → “\(n)” (was “\(t)”) — \(BrandMirror.displayName) applies it right away and shows an Undo pill (if it is closed, it applies at its next launch).")
     }
 
     /// Queue a "remove this vocabulary term" suggestion. Same confirm-with-Undo
@@ -151,7 +151,7 @@ struct TalkieStore {
             kind: "vocabulary", op: "removeVocabularyTerm", term: trimmed, from: nil, to: nil, newTo: nil, note: note,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued removal of “\(trimmed)” — \(BrandMirror.displayName) will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+                     ok: "Queued removal of “\(trimmed)” — \(BrandMirror.displayName) applies it right away and shows an Undo pill (if it is closed, it applies at its next launch).")
     }
 
     // MARK: L15-b — meeting-notes MANAGEMENT (retitle), same inbox handshake
@@ -170,7 +170,7 @@ struct TalkieStore {
             meetingID: mid, note: nil,
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
-                     ok: "Queued a retitle to “\(t)” — \(BrandMirror.displayName) will ask you to confirm it, with an Undo. Nothing changes until you accept.")
+                     ok: "Queued a retitle to “\(t)” — \(BrandMirror.displayName) applies it right away and shows an Undo pill (if it is closed, it applies at its next launch).")
     }
 
     /// Write one suggestion as an atomic, uuid-named JSON file. Deterministic key

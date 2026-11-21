@@ -177,7 +177,7 @@ private struct ProfileRow: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(hovering ? Theme.danger : Theme.inkTertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.talkie(.quiet, size: .small))
                 .help("Reset this app to your global settings")
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
@@ -425,8 +425,7 @@ private struct AppProfileEditor: View {
                 Spacer()
                 Button("Cancel", action: onCancel)
                 Button("Save") { onSave(profile) }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
             }
             .padding(20)
         }
