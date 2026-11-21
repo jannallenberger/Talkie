@@ -1092,7 +1092,6 @@
 "Add a word that says what it does — that one is only filler words." = "何をするかが分かる言葉を入れてください。これはつなぎの言葉だけです。";
 "After" = "後";
 "Already used by “%@” — pick another phrase." = "「%@」で使われています。別のフレーズにしてください。";
-"Also hold %@ and say a format" = "%@ も押したまま書式を言う";
 "Back to normal text" = "通常のテキストに戻す";
 "Before" = "前";
 "Change to UPPER, lower or Title case" = "大文字・小文字・単語の先頭だけ大文字に変える";
@@ -1109,11 +1108,8 @@
 "Formatting while you dictate is off. Turn it on in Options below." = "音声入力中の書式設定はオフです。下の「オプション」でオンにできます。";
 "Hold %@ and talk" = "%@ を押したまま話す";
 "Hold a second key while you dictate and say how the next words should look." = "音声入力中にもう一つのキーを押したまま、次の言葉をどう整えるかを言います。";
-"Hold the format key while you say it." = "言う間は書式キーを押したままにします。";
 "Insert a fixed text" = "決まった文章を入れる";
-"Let go and keep talking — it comes out formatted" = "離して話し続けると、書式付きで入力されます";
 "Listen for the format key during a dictation." = "音声入力中に書式キーを受け付けます。";
-"Listening for a format…" = "書式を聞いています…";
 "Make it" = "変換先";
 "Make your own" = "自分で作る";
 "Make your own command" = "自分のコマンドを作る";
@@ -1175,8 +1171,6 @@
 "Hide other languages" = "他の言語を隠す";
 "Add your own wording" = "自分の言い方を追加";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "内蔵の言い方と同じように働きます。追加した言い方は×で削除できます。";
-"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "フォーマットキーを押している間に言ったことは、どの言語でもフォーマットとして読み取られます。フォーマットが認識されなかった場合、言葉はそのままテキストとして残ります。";
-"%@ is on" = "%@はオンです";
 "No format heard · kept as text" = "フォーマットは聞き取れませんでした・テキストとして保持";
 "No format heard. Your words were kept as text." = "フォーマットは聞き取れませんでした。言葉はテキストとして保持されました。";
 
@@ -1257,3 +1251,12 @@
 /* Command key as a switch, pill hints, screen sharing (2026-11) */
 "Hide from screen sharing" = "画面共有では非表示";
 "The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it." = "ミーティングのピルとメモウインドウは自分には表示されたままですが、画面を共有または収録するときには映りません。";
+"Listening for a format. Say it, then press %@ again." = "書式を聞いています。言い終えたら %@ をもう一度押してください。";
+"Say the format, then press %@ again" = "書式を言って、%@ をもう一度押す";
+"Checking…" = "確認中…";
+"%1$@ on · press %2$@ twice to end" = "%1$@ オン・%2$@ を2回押すと終了";
+"Format: %1$@. Press %2$@ twice to end it." = "形式: %1$@。終了するには %2$@ を2回押します。";
+"Press the format key once, say a format in any of your languages, then press the key again. If no format is caught, your words are simply kept as text." = "書式キーを1回押し、使用している言語のいずれかで書式を言ってから、キーをもう一度押します。書式が聞き取れなかった場合、言葉はそのままテキストとして残ります。";
+"Press %@ once and say a format" = "%@ を1回押して書式を言う";
+"Press %@ again and keep talking — it comes out formatted" = "%@ をもう一度押して話し続けると、書式付きで入力されます";
+"Press the format key, say it, then press the key again." = "書式キーを押し、言ってから、もう一度キーを押します。";

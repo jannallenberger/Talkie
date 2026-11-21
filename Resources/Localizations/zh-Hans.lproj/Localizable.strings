@@ -1092,7 +1092,6 @@
 "Add a word that says what it does — that one is only filler words." = "请加一个说明作用的词——这些只是填充词。";
 "After" = "之后";
 "Already used by “%@” — pick another phrase." = "已被“%@”使用——请换一个短语。";
-"Also hold %@ and say a format" = "同时按住 %@ 并说出格式";
 "Back to normal text" = "恢复普通文本";
 "Before" = "之前";
 "Change to UPPER, lower or Title case" = "改为大写、小写或首字母大写";
@@ -1109,11 +1108,8 @@
 "Formatting while you dictate is off. Turn it on in Options below." = "听写时设置格式已关闭。请在下方“选项”中打开。";
 "Hold %@ and talk" = "按住 %@ 说话";
 "Hold a second key while you dictate and say how the next words should look." = "听写时按住第二个键，说出接下来的文字要变成什么样。";
-"Hold the format key while you say it." = "说的时候按住格式键。";
 "Insert a fixed text" = "插入固定文本";
-"Let go and keep talking — it comes out formatted" = "松开并继续说话——输出就带格式";
 "Listen for the format key during a dictation." = "听写时留意格式键。";
-"Listening for a format…" = "正在听格式…";
 "Make it" = "改为";
 "Make your own" = "自己创建";
 "Make your own command" = "创建自己的命令";
@@ -1175,8 +1171,6 @@
 "Hide other languages" = "隐藏其他语言";
 "Add your own wording" = "添加你自己的说法";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "它和内置说法的作用一样。你自己添加的说法可以用 × 删除。";
-"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "按住格式键时，你说的话会被当作格式来识别，可使用你的任何语言。如果没有识别到格式，你的话会原样保留为文本。";
-"%@ is on" = "%@已开启";
 "No format heard · kept as text" = "未听到格式 · 已保留为文本";
 "No format heard. Your words were kept as text." = "未听到格式。你的话已保留为文本。";
 
@@ -1257,3 +1251,12 @@
 /* Command key as a switch, pill hints, screen sharing (2026-11) */
 "Hide from screen sharing" = "屏幕共享时隐藏";
 "The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it." = "会议指示条和笔记窗口对你仍然可见，但在你共享或录制屏幕时不会出现。";
+"Listening for a format. Say it, then press %@ again." = "正在听格式。说完后再按一次 %@。";
+"Say the format, then press %@ again" = "说出格式，然后再按一次 %@";
+"Checking…" = "正在检查…";
+"%1$@ on · press %2$@ twice to end" = "%1$@已开启 · 按两次 %2$@ 结束";
+"Format: %1$@. Press %2$@ twice to end it." = "格式：%1$@。按两次 %2$@ 结束。";
+"Press the format key once, say a format in any of your languages, then press the key again. If no format is caught, your words are simply kept as text." = "按一次格式键，用你的任意一种语言说出格式，然后再按一次。如果没有识别到格式，你说的话会原样保留为文本。";
+"Press %@ once and say a format" = "按一次 %@ 并说出格式";
+"Press %@ again and keep talking — it comes out formatted" = "再按一次 %@ 并继续说话，文字会带格式输出";
+"Press the format key, say it, then press the key again." = "按格式键，说出格式，然后再按一次。";

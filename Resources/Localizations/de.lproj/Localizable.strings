@@ -1092,7 +1092,6 @@
 "Add a word that says what it does — that one is only filler words." = "Füge ein Wort hinzu, das sagt, was passiert – das sind nur Füllwörter.";
 "After" = "Danach";
 "Already used by “%@” — pick another phrase." = "Wird schon von „%@“ verwendet – wähle einen anderen Ausdruck.";
-"Also hold %@ and say a format" = "Halte zusätzlich %@ und sag ein Format";
 "Back to normal text" = "Zurück zu normalem Text";
 "Before" = "Davor";
 "Change to UPPER, lower or Title case" = "In GROSS-, klein- oder Titelschreibung ändern";
@@ -1109,11 +1108,8 @@
 "Formatting while you dictate is off. Turn it on in Options below." = "Formatieren beim Diktieren ist aus. Schalte es unten unter Optionen ein.";
 "Hold %@ and talk" = "Halte %@ und sprich";
 "Hold a second key while you dictate and say how the next words should look." = "Halte beim Diktieren eine zweite Taste und sag, wie die nächsten Worte aussehen sollen.";
-"Hold the format key while you say it." = "Halte beim Sagen die Formattaste.";
 "Insert a fixed text" = "Einen festen Text einfügen";
-"Let go and keep talking — it comes out formatted" = "Loslassen und weitersprechen – es kommt formatiert heraus";
 "Listen for the format key during a dictation." = "Beim Diktieren auf die Formattaste achten.";
-"Listening for a format…" = "Warte auf ein Format …";
 "Make it" = "Daraus wird";
 "Make your own" = "Eigenen erstellen";
 "Make your own command" = "Eigenen Befehl erstellen";
@@ -1175,8 +1171,6 @@
 "Hide other languages" = "Andere Sprachen ausblenden";
 "Add your own wording" = "Eigene Formulierung hinzufügen";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "Sie funktioniert wie die eingebauten. Eigene Formulierungen lassen sich mit dem × wieder entfernen.";
-"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Solange du die Formattaste hältst, wird das Gesagte als Format gelesen – in jeder deiner Sprachen. Wird kein Format erkannt, bleiben deine Worte einfach als Text erhalten.";
-"%@ is on" = "%@ ist an";
 "No format heard · kept as text" = "Kein Format erkannt · als Text behalten";
 "No format heard. Your words were kept as text." = "Kein Format erkannt. Deine Worte wurden als Text behalten.";
 
@@ -1257,3 +1251,12 @@
 /* Command key as a switch, pill hints, screen sharing (2026-11) */
 "Hide from screen sharing" = "Bei Bildschirmfreigabe ausblenden";
 "The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it." = "Die Meeting-Pille und das Notizfenster bleiben für dich sichtbar, fehlen aber, wenn du deinen Bildschirm teilst oder aufnimmst.";
+"Listening for a format. Say it, then press %@ again." = "Warte auf ein Format. Sag es und drück dann noch einmal %@.";
+"Say the format, then press %@ again" = "Format sagen, dann %@ noch einmal drücken";
+"Checking…" = "Wird geprüft …";
+"%1$@ on · press %2$@ twice to end" = "%1$@ an · zum Beenden zweimal %2$@";
+"Format: %1$@. Press %2$@ twice to end it." = "Format: %1$@. Zum Beenden %2$@ zweimal drücken.";
+"Press the format key once, say a format in any of your languages, then press the key again. If no format is caught, your words are simply kept as text." = "Drück die Formattaste einmal, sag ein Format in einer deiner Sprachen und drück die Taste noch einmal. Wird kein Format erkannt, bleiben deine Worte einfach als Text erhalten.";
+"Press %@ once and say a format" = "%@ einmal drücken und ein Format sagen";
+"Press %@ again and keep talking — it comes out formatted" = "%@ noch einmal drücken und weitersprechen – es kommt formatiert heraus";
+"Press the format key, say it, then press the key again." = "Formattaste drücken, es sagen, Taste noch einmal drücken.";
