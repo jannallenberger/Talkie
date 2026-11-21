@@ -341,7 +341,11 @@ actor MultiLangStreamTranscriber {
     /// Stop all lanes and return the language-routed spans (per-segment confidence
     /// vote, anchored on `anchorLocale`). Empty if nothing was transcribed. Includes
     /// every rotated-out generation's words plus the final live generation's.
-    func finish(anchorLocale: String) async -> [StreamLanguageVoter.Span] {
+    ///
+    /// `finalizeTimeout` bounds each lane's finalize (default `finalizeTimeout`, right for a
+    /// live meeting); file import passes a longer one because it feeds faster than real time.
+    func finish(anchorLocale: String, finalizeTimeout: Double = MultiLangStreamTranscriber.finalizeTimeout)
+        async -> [StreamLanguageVoter.Span] {
         inputContinuation?.finish()
         inputContinuation = nil
         await fanoutTask?.value
@@ -356,7 +360,8 @@ actor MultiLangStreamTranscriber {
             for (i, job) in jobs.enumerated() {
                 group.addTask {
                     (i, await Self.finalizeGeneration(analyzer: job.analyzer, results: job.results,
-                                                      localeID: job.localeID))
+                                                      localeID: job.localeID,
+                                                      timeout: finalizeTimeout))
                 }
             }
             var out = [[StreamLanguageVoter.TimedWord]](repeating: [], count: jobs.count)
@@ -395,10 +400,11 @@ actor MultiLangStreamTranscriber {
     private static func finalizeGeneration(
         analyzer: SpeechAnalyzer,
         results: Task<[StreamLanguageVoter.TimedWord], Never>,
-        localeID: String
+        localeID: String,
+        timeout: Double = MultiLangStreamTranscriber.finalizeTimeout
     ) async -> [StreamLanguageVoter.TimedWord] {
         let finishedInTime = await withAsyncTimeout(
-            seconds: finalizeTimeout,
+            seconds: timeout,
             operation: {
                 do {
                     try await analyzer.finalizeAndFinishThroughEndOfInput()
@@ -416,7 +422,7 @@ actor MultiLangStreamTranscriber {
             }
         )
         if !finishedInTime {
-            talkieDebugLog("meeting-lane[\(localeID)]: finalize exceeded \(Int(finalizeTimeout))s — force-cancelled, keeping the words finalized so far")
+            talkieDebugLog("meeting-lane[\(localeID)]: finalize exceeded \(Int(timeout))s — force-cancelled, keeping the words finalized so far")
         }
         return await results.value
     }

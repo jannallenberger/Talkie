@@ -334,6 +334,99 @@ final class FileImportTests: XCTestCase {
                       "the skipped duplicate is reported in the summary")
     }
 
+    /// A lone re-import of an already-imported file must say why nothing happened (the
+    /// batch summary only lists the name).
+    @MainActor
+    func testLoneDuplicateExplainsItself() async throws {
+        let (coordinator, store) = makeCoordinatorWithStore(importer: FakeImporter())
+        store.add(Meeting(
+            id: UUID(), title: "dup", startUnix: Date().timeIntervalSince1970, durationSec: 1,
+            transcript: "hello", summary: "", participants: ["Imported"],
+            source: "talkie (imported: dup.m4a)",
+            fileName: MeetingStore.fileName(for: Date(), id: UUID())))
+        coordinator.enqueue([URL(fileURLWithPath: "/tmp/dup.m4a")])
+        await waitUntil("batch finishes") { coordinator.active == nil && coordinator.queued.isEmpty }
+        XCTAssertEqual(coordinator.lastError, FileImportCoordinator.alreadyImportedMessage("dup.m4a"))
+        XCTAssertTrue((coordinator.lastError ?? "").contains("dup.m4a"))
+    }
+
+    // MARK: Coordinator — speaker diarization after save
+
+    private func diarizableResult() throws -> FileImportResult {
+        let lane = FileManager.default.temporaryDirectory
+            .appendingPathComponent("import-lane-\(UUID().uuidString).wav")
+        try Data("x".utf8).write(to: lane)
+        let segs = [MeetingSegment(speaker: "Me", start: 0, end: 2, text: "hello there"),
+                    MeetingSegment(speaker: "Me", start: 2, end: 4, text: "good morning")]
+        return FileImportResult(transcript: "hello there good morning", durationSec: 4,
+                                segments: segs, words: [nil, nil], laneAudioURL: lane)
+    }
+
+    /// The transcript is saved BEFORE diarization runs, the pass gets the single "Me" lane
+    /// with the file's segments, and its speaker count / state land on the saved meeting.
+    @MainActor
+    func testImportIsSavedBeforeDiarizationThenLabelled() async throws {
+        let fake = FakeImporter()
+        let result = try diarizableResult()
+        await fake.setResult(result)
+        let started = expectation(description: "diarization started")
+        let gate = AsyncGate()
+        let seen = ImportTestBox<(lanes: [String], segments: Int)?>(nil)
+        let (coordinator, store) = makeCoordinatorWithStore(importer: fake, diarize: { _, inputs, segments, _, transcript, _ in
+            seen.value = (inputs.map(\.lane), segments?.count ?? 0)
+            started.fulfill()
+            await gate.wait()
+            var step = MeetingRecorder.DiarizationStep(transcript: transcript)
+            step.speakerCount = 2
+            step.state = .applied
+            return step
+        })
+
+        coordinator.enqueue([URL(fileURLWithPath: "/tmp/talk.m4a")])
+        await fulfillment(of: [started], timeout: 5)
+        // Diarization is parked, yet the note is already saved and the queue is free.
+        XCTAssertEqual(store.meetings.count, 1)
+        XCTAssertEqual(store.meetings.first?.transcript, "hello there good morning")
+        XCTAssertNil(store.meetings.first?.speakerCount)
+        await waitUntil("queue idle while diarizing") { coordinator.active == nil }
+        XCTAssertEqual(seen.value?.lanes, ["Me"])
+        XCTAssertEqual(seen.value?.segments, 2)
+
+        await gate.open()
+        await waitUntil("labels land") { store.meetings.first?.speakerCount == 2 }
+        XCTAssertEqual(store.meetings.first?.diarizationState, DiarizationState.applied.rawValue)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: result.laneAudioURL!.path),
+                       "the lane audio is deleted after the pass")
+    }
+
+    /// A failed pass leaves the saved transcript untouched and records the failed state.
+    @MainActor
+    func testDiarizationFailureKeepsTranscript() async throws {
+        let fake = FakeImporter()
+        await fake.setResult(try diarizableResult())
+        let (coordinator, store) = makeCoordinatorWithStore(importer: fake, diarize: { _, _, _, _, transcript, _ in
+            var step = MeetingRecorder.DiarizationStep(transcript: transcript)
+            step.state = .failed
+            return step
+        })
+        coordinator.enqueue([URL(fileURLWithPath: "/tmp/talk2.m4a")])
+        await waitUntil("failed state recorded") { store.meetings.first?.diarizationState == DiarizationState.failed.rawValue }
+        XCTAssertEqual(store.meetings.first?.transcript, "hello there good morning")
+        XCTAssertNil(store.meetings.first?.speakerCount)
+    }
+
+    /// Lane audio that never reaches the pass (no diarizer wired) is still cleaned up.
+    @MainActor
+    func testLaneAudioDeletedWhenNoDiarizer() async throws {
+        let fake = FakeImporter()
+        let result = try diarizableResult()
+        await fake.setResult(result)
+        let (coordinator, store) = makeCoordinatorWithStore(importer: fake)
+        coordinator.enqueue([URL(fileURLWithPath: "/tmp/talk3.m4a")])
+        await waitUntil("imported") { store.meetings.count == 1 && coordinator.active == nil }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: result.laneAudioURL!.path))
+    }
+
     // MARK: Helpers
 
     @MainActor
@@ -354,7 +447,8 @@ final class FileImportTests: XCTestCase {
         isDictating: @escaping () -> Bool = { false },
         isProcessing: @escaping () -> Bool = { false },
         isRecording: @escaping () -> Bool = { false },
-        importer: FileImporting
+        importer: FileImporting,
+        diarize: FileImportCoordinator.Diarize? = nil
     ) -> (FileImportCoordinator, MeetingStore) {
         let scratch = FileManager.default.temporaryDirectory
             .appendingPathComponent("talkie-fileimport-tests-\(UUID().uuidString)", isDirectory: true)
@@ -372,7 +466,8 @@ final class FileImportTests: XCTestCase {
             importer: importer,
             // Inject a synchronous no-op summarizer so the queue tests never touch the
             // on-device model (machine-dependent + slow) — we test the queue, not the LLM.
-            summarize: { _ in "" })
+            summarize: { _ in "" },
+            diarize: diarize)
         return (coordinator, store)
     }
 
@@ -428,6 +523,8 @@ actor FakeImporter: FileImporting {
 
     func setFailing(fileName: String, error: FileImportError) { failing[fileName] = error }
     func setBlocking(fileName: String) { blockingName = fileName }
+    private var canned: FileImportResult?
+    func setResult(_ r: FileImportResult) { canned = r }
 
     /// Release a blocked import so it can return its (to-be-discarded, if cancelled) result.
     func release() {
@@ -456,6 +553,23 @@ actor FakeImporter: FileImporting {
         if let error = failing[name] { throw error }
 
         onProgress(1)
-        return FileImportResult(transcript: "transcript of \(name)", durationSec: 1)
+        return canned ?? FileImportResult(transcript: "transcript of \(name)", durationSec: 1)
     }
+}
+
+
+/// One-shot async latch for tests.
+actor AsyncGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func open() { isOpen = true; waiters.forEach { $0.resume() }; waiters = [] }
+}
+
+final class ImportTestBox<T>: @unchecked Sendable {
+    var value: T
+    init(_ v: T) { value = v }
 }

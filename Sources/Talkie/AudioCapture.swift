@@ -108,7 +108,16 @@ final class AudioFeed: @unchecked Sendable {
 /// read from a mutable property on the render thread), so start/stop on the main
 /// thread can't race the real-time callback.
 final class AudioCapture: @unchecked Sendable {
-    private let engine = AVAudioEngine()
+    /// A FRESH engine per session (see `replaceEngine()`). Never reused across a device
+    /// change: touching `inputNode` makes AVAudioEngine build a "DefaultDeviceAggregate"
+    /// from the default input + output devices *at that moment*, and a reused engine stays
+    /// bound to that stale aggregate (stuck after a device switch) while an engine whose
+    /// inputNode was touched at launch pulled a Bluetooth headset into the low-quality
+    /// hands-free profile for as long as the app was open.
+    private var engine = AVAudioEngine()
+    /// Non-nil only while `engine.inputNode` has been instantiated by `prewarm`; the
+    /// devices it was bound to, so `start()` can tell whether that engine went stale.
+    private var prewarmKey: AudioDevices.PrewarmKey?
     private var isRunning = false // touched only on the main thread (start/stop)
     private var captured: CaptureWindow?
 
@@ -190,6 +199,14 @@ final class AudioCapture: @unchecked Sendable {
     ) throws {
         guard !isRunning else { return }
 
+        // A prewarmed engine is only good while the devices it was bound to are still
+        // the current ones; otherwise throw it away and start on a clean engine.
+        if let key = prewarmKey,
+           key != AudioDevices.currentPrewarmKey(preferredUID: preferredDeviceUID) {
+            talkieDebugLog("mic: prewarmed engine is stale (audio devices changed) — discarding")
+            replaceEngine(observing: false)
+        }
+
         // Retain a rolling window of converted audio when language auto-detect is on
         // (dictation: ~90 s; meetings pass a larger window). Built once here and
         // *kept* across a hot device swap so the re-transcription window isn't lost.
@@ -223,6 +240,7 @@ final class AudioCapture: @unchecked Sendable {
             // it crashes the process instead of merely failing the next session.
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
+            replaceEngine(observing: false)
             throw error
         }
 
@@ -232,6 +250,13 @@ final class AudioCapture: @unchecked Sendable {
         // `isRunning` stays true and no error surfaces, so capture would silently go
         // dead. `queue: .main` delivers the handler on the main thread; we re-assert
         // that isolation to touch our @MainActor-confined state safely.
+        observeConfigurationChanges()
+
+        isRunning = true
+    }
+
+    private func observeConfigurationChanges() {
+        removeConfigObserver()
         configObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine,
@@ -241,8 +266,17 @@ final class AudioCapture: @unchecked Sendable {
                 self?.handleConfigurationChange()
             }
         }
+    }
 
-        isRunning = true
+    /// Swap in a brand-new `AVAudioEngine`, releasing the old one (and the input AUHAL /
+    /// default-device aggregate it built). The new engine's `inputNode` is not touched
+    /// until the next `installAndStart()`, so an idle capture holds no input device.
+    private func replaceEngine(observing: Bool) {
+        removeConfigObserver()
+        if engine.isRunning { engine.stop() }
+        engine = AVAudioEngine()
+        prewarmKey = nil
+        if observing { observeConfigurationChanges() }
     }
 
     /// Install the tap and start the engine using the retained session parameters.
@@ -330,18 +364,28 @@ final class AudioCapture: @unchecked Sendable {
         talkieDebugLog("mic: started in \(ms(started)) ms — node \(nodeMs), device \(deviceMs), prepare \(prepareMs), engine.start \(ms(started))")
     }
 
-    /// Do the expensive, mic-free part of starting capture ahead of time — resolve
-    /// the input device, instantiate the input node, prepare the engine — so the
-    /// first dictation after launch doesn't pay it while the pill waits. Never
-    /// starts the engine, so the microphone stays off (no recording indicator).
+    /// Warm the audio stack ahead of the first dictation (instantiate the input node,
+    /// bind the device, prepare the engine) — but ONLY when that cannot touch a
+    /// Bluetooth device. Instantiating `inputNode` builds an aggregate of the default
+    /// input AND default output; if either input is a Bluetooth headset, macOS drops
+    /// the whole headset to the low-quality hands-free profile for as long as the
+    /// engine lives, even with the mic "off". So with any Bluetooth input involved we
+    /// skip the prewarm entirely and the first dictation pays the cold start instead.
+    /// Never starts the engine (no recording indicator).
     func prewarm(preferredDeviceUID: String?) {
-        guard !isRunning else { return }
+        guard !isRunning, prewarmKey == nil else { return }
+        guard AudioDevices.isSafeToPrewarm(preferredUID: preferredDeviceUID) else {
+            talkieDebugLog("mic: prewarm skipped (non-built-in input involved) — idle stays off the audio hardware")
+            return
+        }
         let started = Date()
+        let key = AudioDevices.currentPrewarmKey(preferredUID: preferredDeviceUID)
         let inputNode = engine.inputNode
         if let device = AudioDevices.resolveInput(preferredUID: preferredDeviceUID) {
             try? inputNode.auAudioUnit.setDeviceID(device.id)
         }
         engine.prepare()
+        prewarmKey = key
         talkieDebugLog("mic: prewarmed in \(Int(Date().timeIntervalSince(started) * 1000)) ms (mic stays off)")
     }
 
@@ -384,11 +428,15 @@ final class AudioCapture: @unchecked Sendable {
         // before reinstalling so taps can't stack.
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        // Rebuild on a NEW engine: the old one is bound to a default-device aggregate
+        // built from the previous devices, so restarting it would stay on the old route.
+        replaceEngine(observing: true)
 
         if case .noDevice = decision {
             isRunning = false
-            removeConfigObserver()
-            onCaptureFailed?(TalkieEngineError.noInputDevice)
+            let failed = onCaptureFailed
+            releaseSession()
+            failed?(TalkieEngineError.noInputDevice)
             return
         }
 
@@ -398,11 +446,12 @@ final class AudioCapture: @unchecked Sendable {
             // No usable mic (or no compatible format) after the change. Tear the
             // capture down and surface a recoverable error rather than leaving a
             // half-dead engine that reports nothing.
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
+            // (`engine` is already the fresh replacement; don't touch its inputNode.)
             isRunning = false
-            removeConfigObserver()
-            onCaptureFailed?(error)
+            replaceEngine(observing: false)
+            let failed = onCaptureFailed
+            releaseSession()
+            failed?(error)
         }
     }
 
@@ -484,11 +533,19 @@ final class AudioCapture: @unchecked Sendable {
 
     func stop() {
         guard isRunning else { return }
-        removeConfigObserver()
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRunning = false
-        // Release retained session state (the callbacks capture caller closures).
+        // Drop the engine so an idle app holds no input AUHAL / device aggregate.
+        replaceEngine(observing: false)
+        releaseSession()
+    }
+
+    /// Release retained session state (the callbacks capture caller closures) and the
+    /// mic-alive stamp. `captured` is intentionally left intact: bufferedAudio() drains
+    /// it after stop().
+    private func releaseSession() {
+        removeConfigObserver()
         targetFormat = nil
         feed = nil
         onLevel = nil
@@ -496,11 +553,9 @@ final class AudioCapture: @unchecked Sendable {
         onCaptureFailed = nil
         currentDeviceUID = nil
         tapInputFormat = nil
-        // Clear the mic-alive stamp so a stopped capture never reads as "alive".
         bufferClockLock.lock()
         lastBufferHostTime = 0
         bufferClockLock.unlock()
-        // `captured` is intentionally left intact: bufferedAudio() drains it after stop().
     }
 
     /// Convert one PCM buffer from the hardware format to the analyzer format.

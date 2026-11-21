@@ -867,3 +867,23 @@
 "Your voice" = "あなたの声";
 "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "ミーティングであなたを識別するための小さな音声プロファイルがこの Mac に保存されています。削除すると消去され、今後のミーティングから再び学習されます。";
 "Forget my voice" = "自分の声を削除";
+
+/* Meetings page: two-pane layout */
+"Record" = "録音";
+"Today" = "今日";
+"Yesterday" = "昨日";
+"Earlier this week" = "今週";
+"%d min" = "%d分";
+"1 speaker" = "話者 1 人";
+"%d speakers" = "話者 %d 人";
+"Imported" = "読み込み済み";
+"Mic + call audio" = "マイク + 通話音声";
+"Mic only" = "マイクのみ";
+"Notes only" = "メモのみ";
+"Recovered" = "復元済み";
+"Show in Finder" = "Finderで表示";
+"Summary" = "要約";
+"Transcript" = "文字起こし";
+"%d words" = "%d 語";
+"Click a line to hear that moment" = "行をクリックするとその場面を再生します";
+"Press Record before your next call, or drop audio or video here to transcribe it." = "次の通話の前に「録音」を押すか、音声やビデオをここにドロップして文字起こしします。";

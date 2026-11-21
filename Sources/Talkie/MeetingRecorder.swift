@@ -117,6 +117,11 @@ final class MeetingRecorder: ObservableObject {
     /// (the pass runs on `summaryQueue`, before the summary). Seam for the Meetings tab's
     /// transient "Identifying speakers…" state (WP-B2); nothing reads it yet.
     @Published private(set) var diarizingMeetingIDs: Set<UUID> = []
+    #if DEBUG
+    /// Test-only seam: the UI snapshot test shows a meeting mid-summary without
+    /// running the real background pass.
+    func markSummarizingForTesting(_ id: UUID) { summarizingMeetingIDs.insert(id) }
+    #endif
     /// Chains background diarization + summaries so they run one at a time.
     private var summaryQueue: Task<Void, Never>?
     /// Where the speaker-diarization models live, or nil when unavailable (the pass is
@@ -1118,6 +1123,29 @@ final class MeetingRecorder: ObservableObject {
         guard let segments, !segments.isEmpty else { return false }
         let remap = DigestSpeakerRemap(segments: segments, source: source, sourceIndex: sourceIndex)
         return await TimeBox.run(seconds: digestRemapBudget) { await digest.remapSpeakers(remap) } ?? false
+    }
+
+    /// Diarize an imported file's single lane. Same pass as a recorded meeting's, queued
+    /// behind any summary/diarization already running (one at a time) and shown as
+    /// "identifying speakers" on the note while it waits and runs.
+    func importDiarizationStep(
+        id: UUID, inputs: [MeetingDiarizationPipeline.LaneInput], segments: [MeetingSegment]?,
+        words: [[SegmentWord]?]?, transcript: String, durationSec: Double
+    ) async -> DiarizationStep {
+        diarizingMeetingIDs.insert(id)
+        let previous = summaryQueue
+        let work = Task { @MainActor [weak self] () -> DiarizationStep in
+            await previous?.value
+            guard let self else {
+                MeetingDiarizationTemp.remove(inputs.map(\.fileURL))
+                return DiarizationStep(transcript: transcript)
+            }
+            return await self.diarizationStep(
+                id: id, inputs: inputs, segments: segments, words: words,
+                transcript: transcript, durationSec: durationSec)
+        }
+        summaryQueue = Task { _ = await work.value }
+        return await work.value
     }
 
     /// What the diarization step hands the summary.

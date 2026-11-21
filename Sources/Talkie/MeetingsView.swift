@@ -3,14 +3,18 @@ import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// The Meetings page: a fixed top bar (Record, Import, settings), an optional status
+/// line and live-recording panel under it, then two panes — the meeting list on the
+/// left and the selected meeting's detail on the right. Persistent preferences (keep
+/// audio, watched folder, where notes land) live on the Meeting settings page.
 struct MeetingsView: View {
     @ObservedObject var recorder: MeetingRecorder
     @ObservedObject var store: MeetingStore
     @ObservedObject var settings: AppSettings
-    /// L7: the optional profile picture, shown leading each in-app meeting row (only
-    /// when a photo is set — no avatar noise otherwise). In-app display only; the
-    /// image is never written into exported meeting notes. Threaded from the
-    /// composition root via `MainView`, like the other stores.
+    /// L7: the optional profile picture, shown in the detail meta line (only when a
+    /// photo is set — no avatar noise otherwise). In-app display only; the image is
+    /// never written into exported meeting notes. Threaded from the composition root
+    /// via `MainView`, like the other stores.
     @ObservedObject var profileImage: ProfileImageStore
     /// The drop-to-transcribe coordinator. Defaulted from the shared AppDelegate so
     /// call sites needn't pass it (the composition root is owned elsewhere); nil only
@@ -21,21 +25,12 @@ struct MeetingsView: View {
     /// `importer`) so call sites needn't pass it; nil only in previews/tests, where
     /// there is nothing to purge.
     var contextGraph: ContextGraphStore? = AppDelegate.shared?.contextGraph
-
-    /// The one watched-inbox folder (D6). Its own shared store (plain absolute path, no
-    /// bookmark — the app isn't sandboxed), observed so the row reflects pick/clear live.
-    /// Empty path = OFF; the watcher is never seeded with a default.
-    @ObservedObject private var inboxWatch = InboxWatchPreferences.shared
-    /// The shared export destination (L6c). Observed so the folder row reflects the
-    /// resolved destination live — where notes ACTUALLY land — instead of the old
-    /// hardcoded "~/Talkie Meetings" claim. The real control is the "Notes & export"
-    /// card in Settings (it governs dictation notes too); this row only reports.
-    @ObservedObject private var exportPrefs = ExportPreferences.shared
-    /// The Settings router (L6c), so the "Meeting settings" link can switch to the
-    /// Settings tab and deep-link the Meetings subpage via `pendingPage`. Threaded from
-    /// the composition root (`MainView.content`); nil only in previews/tests, where the
-    /// link simply doesn't render.
+    /// The Settings router (L6c), so the gear can switch to the Settings tab and
+    /// deep-link the Meetings subpage via `pendingPage`. Threaded from the composition
+    /// root (`MainView.content`); nil only in previews/tests, where the gear is hidden.
     var router: SettingsRouter? = nil
+    /// The meeting to show first, when it exists (else the newest). Snapshot tests use it.
+    var initialSelection: UUID? = nil
 
     /// Flashes the drop zone briefly when a non-audio file is rejected.
     @State private var rejectedDrop = false
@@ -44,6 +39,10 @@ struct MeetingsView: View {
     /// The meeting awaiting delete confirmation. Deleting a meeting overwrites its
     /// transcript file and forgets what the graph learned from it, so we confirm first.
     @State private var pendingDelete: Meeting?
+    /// The meeting shown in the detail pane (see `MeetingSelection`).
+    @State private var selectedID: UUID?
+    /// Keyboard focus on the list, so Delete and the arrow keys act on the selection.
+    @FocusState private var listFocused: Bool
     /// Bridges the live-notes draft (owned by `RecordingNotesEditor`, an isolated
     /// child view so per-keystroke typing doesn't republish through `recorder` and
     /// re-diff this whole page) back to the "Stop & summarize" button, so stopping
@@ -54,61 +53,43 @@ struct MeetingsView: View {
     /// `ObservableObject` — mutating `.text` is silent by design.
     @State private var notesDraftBox = NotesDraftBox()
 
+    private static let listWidth: CGFloat = 280
+    private static let pagePadding: CGFloat = 28
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.section) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Meetings")
-                        .font(.talkieDisplay(26))
-                        .foregroundStyle(Theme.ink)
-                    Text("Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.inkSecondary)
-                }
-
-                recordCard
-                if let importer { ImportControls(importer: importer) }
-                languageModeRow
-                if recorder.isRecording {
-                    RecordingNotesEditor(recorder: recorder, draftBox: notesDraftBox)
-                }
-                folderRow
-                keepAudioCard
-                watchedInboxCard
-                meetingSettingsLink
-
-                if store.meetings.isEmpty {
-                    emptyState
-                } else {
-                    // LazyVStack (rather than the plain VStack this used to be)
-                    // instantiates only the rows near the visible scroll region
-                    // instead of all ~200 retained meetings eagerly on every pass.
-                    // Paired with `.equatable()` below, a row whose `Meeting` value
-                    // hasn't changed skips its own body re-evaluation entirely, so
-                    // the 1 Hz recording tick / a notes keystroke elsewhere on this
-                    // page no longer re-lays-out (and re-word-counts) the whole list.
-                    LazyVStack(alignment: .leading, spacing: Theme.Space.section) {
-                        ForEach(store.meetings) { meeting in
-                            MeetingRow(
-                                meeting: meeting,
-                                isSummarizing: recorder.summarizingMeetingIDs.contains(meeting.id),
-                                isDiarizing: recorder.diarizingMeetingIDs.contains(meeting.id),
-                                profileImage: profileImage,
-                                folderURL: store.folderURL,
-                                onReveal: { reveal(meeting) },
-                                onCopy: { copy(meeting) },
-                                onDelete: { pendingDelete = meeting },
-                                onRegenerate: { await regenerateSummary(meeting) },
-                                onSaveTranscript: { edited in saveTranscript(meeting, edited: edited) },
-                                onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
-                            )
-                            .equatable()
-                        }
-                    }
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            topBar
+            if let importer {
+                ImportStatusLine(importer: importer)
+                    .padding(.horizontal, Self.pagePadding)
             }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if recorder.isRecording {
+                recordingPanel
+                    .padding(.horizontal, Self.pagePadding)
+                    .padding(.bottom, 14)
+            }
+            Rectangle().fill(Theme.hairline).frame(height: 1)
+            if store.meetings.isEmpty {
+                emptyState
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                HStack(spacing: 0) {
+                    meetingList
+                        .frame(width: Self.listWidth)
+                    Rectangle().fill(Theme.hairline).frame(width: 1)
+                    detailPane
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .frame(maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .onAppear {
+            selectedID = MeetingSelection.resolve(current: selectedID ?? initialSelection, old: [], new: meetingIDs)
+        }
+        .onChange(of: meetingIDs) { old, new in
+            selectedID = MeetingSelection.resolve(current: selectedID, old: old, new: new)
         }
         .dropDestination(for: URL.self) { urls, _ in handleDrop(urls) }
         isTargeted: { hovering in
@@ -153,10 +134,19 @@ struct MeetingsView: View {
         }
     }
 
+    private var meetingIDs: [UUID] { store.meetings.map(\.id) }
+
+    /// The selected meeting, falling back to the newest for the single render before
+    /// `onAppear`/`onChange` settles the selection.
+    private var selectedMeeting: Meeting? {
+        if let selectedID, let m = store.meetings.first(where: { $0.id == selectedID }) { return m }
+        return store.meetings.first
+    }
+
     /// Delete a meeting everywhere: the store overwrites-then-removes its `.md`
     /// transcript, and we purge the graph provenance the meeting's transcript produced
     /// (matched by the meeting id). Wiring the graph purge here keeps `MeetingStore`
-    /// single-purpose, per the package spec.
+    /// single-purpose, per the package spec. The neighbour is selected by `onChange`.
     private func deleteMeeting(_ meeting: Meeting) {
         store.delete(meeting)
         contextGraph?.purge(source: .meeting, sourceID: meeting.id.uuidString)
@@ -182,266 +172,216 @@ struct MeetingsView: View {
         return true
     }
 
-    // MARK: Language mode
+    // MARK: Top bar
 
-    /// Auto (multilingual) or pin transcription to one of the user's languages.
-    private var languageModeRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "globe")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.inkTertiary)
-            Text("Transcription language")
-                .font(.talkieEyebrow)
-                .foregroundStyle(Theme.inkSecondary)
-            Spacer()
-            Picker("", selection: $settings.meetingLanguageMode) {
-                Text("Auto (multilingual)").tag("auto")
-                ForEach(settings.spokenLanguages, id: \.self) { id in
-                    Text(Self.languageName(id)).tag(id)
+    private var topBar: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text("Meetings")
+                .font(.talkieDisplay(26))
+                .foregroundStyle(Theme.ink)
+            Spacer(minLength: 16)
+            languagePicker
+            recordControl
+            if let importer {
+                Button {
+                    ImportPanel.run(importer)
+                } label: {
+                    Label("Import…".loc, systemImage: "square.and.arrow.down")
                 }
+                .controlSize(.large)
+                .disabled(!FileImportEngine.isAvailable)
+                .help("…or drop audio, video, or a folder onto this tab.".loc)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .fixedSize()
+            if let router {
+                Button {
+                    router.selectedTab = .general
+                    router.pendingPage = .meetings
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .controlSize(.large)
+                .help("Meeting settings")
+                .accessibilityLabel("Meeting settings")
+            }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, Self.pagePadding)
+        .padding(.top, 22)
+        .padding(.bottom, 16)
+    }
+
+    /// Auto (multilingual) or pin transcription to one of the user's languages. Read
+    /// when a recording starts, so it sits next to Record and is locked while one runs.
+    private var languagePicker: some View {
+        Picker(selection: $settings.meetingLanguageMode) {
+            Text("Auto (multilingual)").tag("auto")
+            ForEach(settings.spokenLanguages, id: \.self) { id in
+                Text(Self.languageName(id)).tag(id)
+            }
+        } label: {
+            Image(systemName: "globe")
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+        .disabled(recorder.isRecording)
+        .help("Transcription language")
+        .accessibilityLabel("Transcription language")
     }
 
     private static func languageName(_ id: String) -> String {
         talkieLanguageCatalog.first(where: { $0.id == id })?.name ?? id
     }
 
-    // MARK: Record card
-
+    /// Record → (recording dot, elapsed, Stop & summarize) → (finishing spinner).
     @ViewBuilder
-    private var recordCard: some View {
-        HStack(spacing: 16) {
-            if recorder.isRecording {
+    private var recordControl: some View {
+        if recorder.isRecording {
+            HStack(spacing: 8) {
                 RecordingDot()
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(recorder.capturingFarEnd ? "Recording you + the call…" : "Recording (mic only)…")
-                        .font(.talkieHeading(15, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                    // Isolated into its own view so the once-a-second tick only
-                    // invalidates this one Text, not the whole page (see
-                    // `RecordingElapsedText` below).
-                    RecordingElapsedText(recorder: recorder)
-                }
-                Spacer()
-                Button("Stop & summarize") {
-                    // Flush the notes draft synchronously BEFORE stop() reads
-                    // `recorder.notes` — `stop()` reads it a few lines after
-                    // setting `isRecording = false`, with no `await` in between,
-                    // so a debounce-driven commit reacting to `isRecording`
-                    // flipping would always be too late. See `NotesDraftBox`.
-                    recorder.notes = notesDraftBox.text
-                    Task { await recorder.stop() }
-                }
-                .controlSize(.large)
-            } else if recorder.isFinishing {
+                // Isolated so the 1 Hz tick only invalidates this one Text.
+                RecordingElapsedText(recorder: recorder)
+            }
+            .padding(.horizontal, 4)
+            Button("Stop & summarize") {
+                // Flush the notes draft synchronously BEFORE stop() reads
+                // `recorder.notes` — `stop()` reads it a few lines after setting
+                // `isRecording = false`, with no `await` in between, so a
+                // debounce-driven commit reacting to `isRecording` flipping would
+                // always be too late. See `NotesDraftBox`.
+                recorder.notes = notesDraftBox.text
+                Task { await recorder.stop() }
+            }
+            .controlSize(.large)
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.featherRed)
+        } else if recorder.isFinishing {
+            HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
                 Text("Transcribing & summarizing…")
-                    .font(.talkieHeading(14, weight: .medium))
+                    .font(.talkieHeading(13, weight: .medium))
                     .foregroundStyle(Theme.inkSecondary)
-                Spacer()
-            } else {
-                ClayIcon(name: "IconMic", size: 30)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Record a meeting")
-                        .font(.talkieHeading(15, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                    Text("Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically.")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Theme.inkTertiary)
-                }
-                Spacer()
-                Button("Start recording") { Task { await recorder.start() } }
-                    .controlSize(.large)
-                    .disabled(!MeetingSummarizer.isAvailable && !TranscriptionEngine.isAvailable)
             }
-        }
-        .talkieCard()
-        .frame(maxWidth: .infinity)
-    }
-
-    // Live notes during a recording used to live here as a `notesCard` computed
-    // property bound directly to `$recorder.notes` — every keystroke published
-    // through `recorder` (an `@ObservedObject` this whole page observes), forcing
-    // a full-page re-diff per character typed. Replaced by `RecordingNotesEditor`
-    // (below `RecordingDot`), a standalone child view with its own local draft
-    // `@State`, so typing only invalidates that tiny view.
-
-    /// Honest folder row (L6c): notes route through `ExportPreferences.resolvedDestination()`
-    /// (Meeting.swift), NOT the hardcoded ~/Talkie Meetings — so the line is derived from the
-    /// chosen destination, and Reveal opens the folder notes ACTUALLY land in. When a custom
-    /// folder is unreachable, the copy states the ~/Talkie Meetings fallback honestly (the
-    /// same fallback the resolver applies), mirroring the warning on the real control.
-    private var folderRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "folder.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.inkTertiary)
-            Text(folderRowLine)
-                .font(.talkieEyebrow)
-                .foregroundStyle(Theme.inkTertiary)
-            Spacer()
-            Button("Reveal in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([resolvedNotesFolder])
+        } else {
+            Button { Task { await recorder.start() } } label: {
+                Label("Record".loc, systemImage: "record.circle")
             }
-            .buttonStyle(.link)
-            .font(.system(size: 12))
+            .controlSize(.large)
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.coral)
+            .disabled(!MeetingSummarizer.isAvailable && !TranscriptionEngine.isAvailable)
+            .help("Captures you and the other participants on the call (Zoom, Meet, Teams) — and tells each person apart automatically.")
         }
     }
 
-    /// The folder where notes actually land: a reachable custom folder, else the
-    /// ~/Talkie Meetings default (the same fallback `resolvedDestination()` applies for
-    /// the Talkie-folder choice, an empty path, or an unreachable custom folder). This
-    /// is what Reveal opens, so the button never points at a folder notes aren't in.
-    private var resolvedNotesFolder: URL {
-        if exportPrefs.destination == .folder,
-           !exportPrefs.folderPath.isEmpty, exportPrefs.folderIsAccessible {
-            return URL(fileURLWithPath: exportPrefs.folderPath)
-        }
-        return store.folderURL
-    }
+    // MARK: Live recording panel
 
-    /// The one-line "Saved to …" claim, derived from the resolved destination so it
-    /// never contradicts the chosen folder — including the unreachable-folder case,
-    /// where it honestly names the ~/Talkie Meetings fallback rather than a path that
-    /// isn't being written.
-    private var folderRowLine: String {
-        switch exportPrefs.destination {
-        case .talkieFolder:
-            return "Saved to ~/Talkie Meetings/ as markdown".loc
-        case .folder:
-            if exportPrefs.folderPath.isEmpty {
-                return "Saved to ~/Talkie Meetings/ as markdown".loc
+    /// What's being captured plus the live notes editor, as one calm panel under the
+    /// bar. The editor stays its own view so typing never re-diffs this page.
+    private var recordingPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: recorder.capturingFarEnd ? "person.2.wave.2" : "mic")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.featherRed)
+                Text(recorder.capturingFarEnd ? "Recording you + the call…" : "Recording (mic only)…")
+                    .font(.talkieHeading(14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
             }
-            if !exportPrefs.folderIsAccessible {
-                return "That folder isn’t reachable — saving to ~/Talkie Meetings/ until it’s back".loc
-            }
-            let name = URL(fileURLWithPath: exportPrefs.folderPath).lastPathComponent
-            return exportPrefs.pickedFolderIsVault
-                ? String(format: "Saved to your Obsidian vault “%@”".loc, name)
-                : String(format: "Saved to “%@” as markdown".loc, name)
+            RecordingNotesEditor(recorder: recorder, draftBox: notesDraftBox)
         }
+        .talkieCard(padding: 16)
     }
 
-    /// The "Meeting settings" link (L6c) — replaces the four settings cards that used
-    /// to live on this page. The Meetings PAGE isn't inside the Settings NavigationStack
-    /// (it's a sibling tab), so this can't be a `NavigationLink`; instead it switches to
-    /// the Settings tab and asks for the Meetings subpage via `SettingsRouter.pendingPage`
-    /// (the L6a cross-tab deep-link). Degrades gracefully: even if the push doesn't take,
-    /// setting `.general` lands the user on the tab that holds the settings. Hidden in
-    /// previews/tests where no router is threaded.
-    @ViewBuilder
-    private var meetingSettingsLink: some View {
-        if let router {
-            Button {
-                router.selectedTab = .general
-                router.pendingPage = .meetings
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Theme.coral)
-                        .frame(width: 22)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Meeting settings")
-                            .font(.talkieHeading(14, weight: .medium))
-                            .foregroundStyle(Theme.ink)
-                        Text("Auto-detect, the live pill, meeting apps, and calendar context.")
-                            .font(.talkieHeading(12, weight: .regular))
-                            .foregroundStyle(Theme.inkSecondary)
-                    }
-                    Spacer(minLength: 12)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.inkTertiary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 13)
-                .frame(maxWidth: .infinity)
-                .talkieSurface()
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
-    }
+    // MARK: List pane
 
-    /// Keep-audio toggle (D9). Default OFF — retaining raw call audio is a genuine
-    /// privacy + disk decision, so the subtitle says the cost in plain words and the
-    /// choice is snapshotted at recording start (flipping it mid-call doesn't change a
-    /// recording already underway). When on, each recording writes per-stream `.m4a`
-    /// files beside its note, and clicking a transcript line plays that exact moment.
-    @ViewBuilder
-    private var keepAudioCard: some View {
-        SettingsCard(
-            header: "Audio",
-            footer: "Off by default. Kept audio stays in ~/Talkie Meetings/ next to the note, never leaves your Mac, and is deleted with the meeting. Roughly 30 MB per hour for each side of the call. Dictation audio is never kept.".loc
-        ) {
-            SettingsToggleRow(
-                title: "Keep audio with meeting notes".loc,
-                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
-                isOn: $settings.keepMeetingAudio)
-        }
-    }
-
-    /// The watched-inbox folder (D6): pick ONE folder and any audio/video file that lands
-    /// there is transcribed into a note, then moved into a `Transcribed/` subfolder. Off
-    /// until you choose a folder (no default is ever set), and the copy says exactly what
-    /// will happen — this is a privacy-sensitive capability, so it's opt-in and explicit.
-    @ViewBuilder
-    private var watchedInboxCard: some View {
-        SettingsCard(
-            header: "Watch a folder",
-            footer: inboxWatch.folderPath.isEmpty
-                ? "Off. Pick a folder and any audio or video file that lands in it — an AirDropped voice memo, an iCloud recording — is transcribed into a note on your Mac, then moved into a “Transcribed” subfolder inside it. Talkie only reads local files and never opens a connection.".loc
-                : "Files that land here are transcribed on-device and moved into “Transcribed”. Talkie watches only this folder (not its subfolders), reads local files only, and never opens a connection.".loc
-        ) {
-            SettingsRow(
-                title: "Watched folder".loc,
-                subtitle: inboxWatch.folderPath.isEmpty
-                    ? "No folder — this feature is off".loc
-                    : inboxWatch.folderPath
-            ) {
-                HStack(spacing: 8) {
-                    Button(inboxWatch.folderPath.isEmpty ? "Choose…".loc : "Change…".loc,
-                           action: pickInboxFolder)
-                    if !inboxWatch.folderPath.isEmpty {
-                        Button("Stop watching".loc, action: stopWatchingInbox)
+    private var meetingList: some View {
+        let groups = MeetingDateBucket.group(store.meetings, date: \.date, now: Date())
+        let current = selectedMeeting?.id
+        return ScrollViewReader { proxy in
+            ScrollView {
+                // Lazy: only rows near the visible region are built, and `.equatable()`
+                // lets an unchanged row skip its body on the 1 Hz recording tick.
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(groups) { group in
+                        Text(group.bucket.title().uppercased())
+                            .font(.talkieEyebrow)
+                            .tracking(0.8)
+                            .foregroundStyle(Theme.inkTertiary)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 14)
+                            .padding(.bottom, 4)
+                        ForEach(group.items) { meeting in
+                            MeetingListRow(
+                                meeting: meeting,
+                                isSelected: meeting.id == current,
+                                isBusy: recorder.summarizingMeetingIDs.contains(meeting.id)
+                                    || recorder.diarizingMeetingIDs.contains(meeting.id),
+                                onSelect: {
+                                    selectedID = meeting.id
+                                    listFocused = true
+                                },
+                                onDelete: { pendingDelete = meeting }
+                            )
+                            .equatable()
+                            .id(meeting.id)
+                        }
                     }
                 }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 16)
             }
-            if !inboxWatch.folderPath.isEmpty, !inboxWatch.folderIsAccessible {
-                SettingsDivider(leadingInset: 0)
-                SettingsNote(
-                    text: "That folder isn’t reachable right now — nothing will be watched until it’s back.".loc,
-                    tone: Theme.warning, icon: "exclamationmark.triangle.fill")
+            .focusable()
+            .focusEffectDisabled()
+            .focused($listFocused)
+            .onDeleteCommand { requestDeleteSelected() }
+            .onKeyPress(keys: [.delete, .deleteForward]) { _ in
+                requestDeleteSelected()
+                return .handled
+            }
+            .onMoveCommand { direction in
+                switch direction {
+                case .up: selectedID = MeetingSelection.step(from: current, in: meetingIDs, by: -1)
+                case .down: selectedID = MeetingSelection.step(from: current, in: meetingIDs, by: 1)
+                default: break
+                }
+            }
+            .onChange(of: selectedID) { _, id in
+                guard let id else { return }
+                withAnimation(.easeInOut(duration: 0.15)) { proxy.scrollTo(id) }
             }
         }
     }
 
-    /// Pick the single folder to watch. Directories only; the app isn't sandboxed, so we
-    /// store the plain path (no security-scoped bookmark), matching `ExportPreferences`.
-    private func pickInboxFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Watch"
-        panel.message = "Pick a folder to watch. Audio and video files that land in it will be transcribed into notes and moved into a “Transcribed” subfolder."
-        if !inboxWatch.folderPath.isEmpty {
-            panel.directoryURL = URL(fileURLWithPath: inboxWatch.folderPath)
-        }
-        if panel.runModal() == .OK, let url = panel.url {
-            inboxWatch.folderPath = url.path
-        }
+    private func requestDeleteSelected() {
+        if let meeting = selectedMeeting { pendingDelete = meeting }
     }
 
-    /// Turn watching off by clearing the path — the watcher disarms on the next change.
-    private func stopWatchingInbox() {
-        inboxWatch.folderPath = ""
+    // MARK: Detail pane
+
+    @ViewBuilder
+    private var detailPane: some View {
+        if let meeting = selectedMeeting {
+            ScrollView {
+                MeetingDetail(
+                    meeting: meeting,
+                    isSummarizing: recorder.summarizingMeetingIDs.contains(meeting.id),
+                    isDiarizing: recorder.diarizingMeetingIDs.contains(meeting.id),
+                    profileImage: profileImage,
+                    folderURL: store.folderURL,
+                    onReveal: { reveal(meeting) },
+                    onCopy: { copy(meeting) },
+                    onDelete: { pendingDelete = meeting },
+                    onRegenerate: { await regenerateSummary(meeting) },
+                    onSaveTranscript: { edited in saveTranscript(meeting, edited: edited) },
+                    onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
+                )
+                .equatable()
+                // Fresh per-meeting state (edit draft, learn chips, playback) on switch.
+                .id(meeting.id)
+                .padding(.horizontal, Self.pagePadding)
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -452,12 +392,17 @@ struct MeetingsView: View {
             Text("No meetings yet")
                 .font(.talkieHeading(15, weight: .medium))
                 .foregroundStyle(Theme.inkSecondary)
-            Text("Hit Start recording before your next call.")
+            Text("Record a meeting; Talkie transcribes and summarizes it on-device, and saves a note you can point your AI agent at.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.inkTertiary)
+                .multilineTextAlignment(.center)
+            Text("Press Record before your next call, or drop audio or video here to transcribe it.".loc)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.inkTertiary)
+                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .frame(maxWidth: 420)
+        .padding(40)
     }
 
     private func reveal(_ meeting: Meeting) {
@@ -477,7 +422,7 @@ struct MeetingsView: View {
     /// stuck with an empty or generic summary forever. This REPLACES the whole
     /// `summary` field, which is also where the user's typed meeting notes live
     /// (fused into the prose, or verbatim under "## Your notes") — `Meeting` has
-    /// no separate notes field to preserve independently, so `MeetingRow` confirms
+    /// no separate notes field to preserve independently, so `MeetingDetail` confirms
     /// with the user before calling this whenever there's an existing, non-empty
     /// summary to lose.
     private func regenerateSummary(_ meeting: Meeting) async {
@@ -616,7 +561,7 @@ private struct RecordingNotesEditor: View {
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.ink)
                 .scrollContentBackground(.hidden)
-                .frame(minHeight: 88, maxHeight: 170)
+                .frame(minHeight: 88, maxHeight: 150)
                 .padding(8)
                 .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(alignment: .topLeading) {
@@ -631,7 +576,7 @@ private struct RecordingNotesEditor: View {
                 }
                 .focused($isFocused)
         }
-        .talkieCard()
+        // The surrounding recording panel draws the card.
         .frame(maxWidth: .infinity)
         .onAppear {
             // Seed from whatever `recorder.notes` already holds — a recording
@@ -667,19 +612,95 @@ private struct RecordingNotesEditor: View {
     }
 }
 
-/// Perf: `.equatable()` (applied at the `ForEach` call site in `MeetingsView`)
-/// lets SwiftUI skip re-evaluating a row's `body` entirely when the PARENT
-/// reconstructs it with an unchanged `Meeting` — e.g. the once-a-second
-/// recording tick or a notes keystroke elsewhere on the page, neither of which
-/// ever touches `store.meetings`. Only `meeting`/`folderURL` are compared: the
-/// closures aren't (and can't be) meaningfully compared, and `profileImage`
-/// (an `@ObservedObject`) keeps its OWN reactivity independent of this check —
-/// this only gates whether the PARENT's reconstruction forces a re-render, not
-/// the row's own internal state changes.
-private struct MeetingRow: View, Equatable {
+/// One compact row in the meeting list: title, then "date · duration · N speakers",
+/// with a small spinner while the summary or speaker pass is still running.
+///
+/// Perf: `.equatable()` (applied at the call site) lets SwiftUI skip this body when
+/// the parent re-renders with unchanged inputs — the 1 Hz recording tick or a notes
+/// keystroke never touch `store.meetings`. Closures aren't compared.
+private struct MeetingListRow: View, Equatable {
     // nonisolated: `View` is @MainActor, but `Equatable.==` must be nonisolated.
-    // Safe here — it only reads Sendable `let`s (`Meeting`, `URL`).
-    nonisolated static func == (lhs: MeetingRow, rhs: MeetingRow) -> Bool {
+    // Safe here — it only reads Sendable `let`s.
+    nonisolated static func == (lhs: MeetingListRow, rhs: MeetingListRow) -> Bool {
+        lhs.meeting.id == rhs.meeting.id && lhs.meeting.title == rhs.meeting.title
+            && lhs.meeting.startUnix == rhs.meeting.startUnix
+            && lhs.meeting.durationSec == rhs.meeting.durationSec
+            && lhs.meeting.speakerCount == rhs.meeting.speakerCount
+            && lhs.isSelected == rhs.isSelected && lhs.isBusy == rhs.isBusy
+    }
+
+    let meeting: Meeting
+    let isSelected: Bool
+    /// Summarizing or identifying speakers.
+    let isBusy: Bool
+    let onSelect: () -> Void
+    let onDelete: () -> Void
+    @State private var hovering = false
+
+    private var meta: String {
+        let date = meeting.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        return [date, MeetingMeta.duration(meeting.durationSec), MeetingMeta.speakers(meeting.speakerCount)]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(meeting.title)
+                        .font(.talkieHeading(13, weight: isSelected ? .semibold : .medium))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(meta)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if isBusy {
+                    ProgressView().controlSize(.mini)
+                        .padding(.top, 2)
+                }
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .fill(isSelected ? Theme.surfaceSunken : (hovering ? Theme.surface : Color.clear))
+            )
+            .overlay(alignment: .leading) {
+                if isSelected {
+                    Capsule()
+                        .fill(Theme.coral)
+                        .frame(width: 3)
+                        .padding(.vertical, 8)
+                        .padding(.leading, 4)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .contextMenu {
+            Button("Delete", role: .destructive, action: onDelete)
+        }
+    }
+}
+
+/// The selected meeting in full: title, meta line, one row of actions, then the
+/// summary and the always-visible transcript (click-to-play lines when audio was kept,
+/// speaker turns when diarization applied, else the plain text).
+///
+/// Perf: `.equatable()` at the call site — only `meeting`, `folderURL` and the two
+/// progress flags are compared, so the recording tick doesn't re-render this pane.
+/// `profileImage` (an `@ObservedObject`) keeps its own reactivity.
+private struct MeetingDetail: View, Equatable {
+    nonisolated static func == (lhs: MeetingDetail, rhs: MeetingDetail) -> Bool {
         lhs.meeting == rhs.meeting && lhs.folderURL == rhs.folderURL && lhs.isSummarizing == rhs.isSummarizing
             && lhs.isDiarizing == rhs.isDiarizing
     }
@@ -689,11 +710,11 @@ private struct MeetingRow: View, Equatable {
     let isSummarizing: Bool
     /// The background speaker-separation pass is still pending or running for this note.
     let isDiarizing: Bool
-    /// L7: the user's profile picture, shown leading the row header ONLY when a photo
+    /// L7: the user's profile picture, shown leading the meta line ONLY when a photo
     /// is set. In-app display only — never written into the exported note.
     @ObservedObject var profileImage: ProfileImageStore
     /// ~/Talkie Meetings/ — where this meeting's kept audio (D9) lives, so the
-    /// transcript expansion can resolve a segment's file for click-to-play.
+    /// transcript can resolve a segment's file for click-to-play.
     let folderURL: URL
     let onReveal: () -> Void
     let onCopy: () -> Void
@@ -705,8 +726,6 @@ private struct MeetingRow: View, Equatable {
     /// Returns whether a NEW rule was added (false if it was already known), so the
     /// chip can show the right confirmation.
     let onLearn: (_ from: String, _ to: String) -> Bool
-    @State private var expanded = false
-    @State private var hovering = false
     @State private var regenerating = false
     /// Gates "Regenerate summary" behind an explicit confirmation whenever there's an
     /// existing summary to lose. `regenerateSummary` replaces the WHOLE `summary`
@@ -722,158 +741,42 @@ private struct MeetingRow: View, Equatable {
     @State private var draft: String?
     /// The learn chips offered after a save, and which have been accepted/added.
     @State private var learnable: [LearnCandidate] = []
-    /// Cached so the row doesn't re-split the (potentially long) transcript on
-    /// every render — populated once on `onAppear` and refreshed only when
-    /// `meeting.transcript` actually changes (a transcript edit), not on every
-    /// body re-evaluation triggered by `hovering`/`expanded`/an unrelated parent
-    /// re-render. `wordCount` below falls back to a live count for the single
-    /// render that can happen before `onAppear` fires.
+    /// Cached so the pane doesn't re-count the (potentially long) transcript on every
+    /// render — populated once on `onAppear` and refreshed only when
+    /// `meeting.transcript` actually changes (a transcript edit).
     @State private var cachedWordCount: Int?
 
     private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; return f
+        let f = DateFormatter(); f.dateStyle = .full; f.timeStyle = .short; return f
     }()
 
     private var wordCount: Int {
         cachedWordCount ?? WordCounter.count(meeting.transcript)
     }
 
+    private var canRegenerate: Bool {
+        !meeting.transcript.isEmpty && MeetingSummarizer.isAvailable && !isSummarizing
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                // L7: the profile picture leads the row, but only when one is set —
-                // a photo-less library shows no avatar column at all (no noise).
-                if profileImage.image != nil {
-                    AvatarView(store: profileImage, size: 20)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Self.dateFormatter.string(from: meeting.date))
-                        .font(.talkieHeading(14, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                    Text("\(Int((meeting.durationSec / 60).rounded())) min · \(wordCount) words")
-                        .font(.talkieEyebrow)
-                        .foregroundStyle(Theme.inkTertiary)
-                }
-                Spacer()
-                if regenerating {
-                    ProgressView().controlSize(.small)
-                } else if hovering {
-                    if !meeting.transcript.isEmpty, MeetingSummarizer.isAvailable, !isSummarizing {
-                        Button {
-                            // Nothing to lose when the summary is already blank — skip
-                            // the confirmation and regenerate straight away (the
-                            // original "meetings stuck with an empty summary" fix).
-                            // Otherwise the existing summary may hold fused/typed notes
-                            // that a regenerate would silently replace, so confirm first.
-                            if meeting.summary.isEmpty {
-                                Task { regenerating = true; await onRegenerate(); regenerating = false }
-                            } else {
-                                confirmRegenerate = true
-                            }
-                        } label: { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.plain)
-                        .help("Regenerate summary")
-                        .accessibilityLabel("Regenerate summary")
-                    }
-                    // Edit the transcript (A8) — fixing a misrecognition here fixes the
-                    // note AND can teach the dictionary. Only for meetings that actually
-                    // have transcript text (recovered/notes-only entries have none).
-                    if !meeting.transcript.isEmpty {
-                        Button { beginEditing() } label: { Image(systemName: "pencil") }
-                            .buttonStyle(.plain)
-                            .help("Edit transcript")
-                            .accessibilityLabel("Edit transcript")
-                    }
-                    Button(action: onCopy) { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("Copy transcript")
-                        .accessibilityLabel("Copy transcript")
-                    // Timestamped exports (D3) — only when this meeting actually has
-                    // timed segments (recorded/imported after D2). Pre-D2 notes simply
-                    // don't show the menu, so there's no dead UI and no migration.
-                    if let segments = meeting.segments, !segments.isEmpty {
-                        Menu {
-                            Button("Subtitles (.srt)") { export(segments, as: .srt) }
-                            Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
-                            Button("Spreadsheet (.csv)") { export(segments, as: .csv) }
-                            Button("Data (.json)") { export(segments, as: .json) }
-                            // Chapter list (D8) — offered ONLY when the meeting shifted
-                            // topics (≥2 chapters); a lone/absent topic shows nothing.
-                            if let chapters = meeting.chapters, chapters.count >= 2 {
-                                Button("Chapters (.txt)") { exportChapters(chapters) }
-                            }
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                        .menuIndicator(.hidden)
-                        .buttonStyle(.plain)
-                        .fixedSize()
-                        .help("Export…")
-                        .accessibilityLabel("Export…")
-                    }
-                    Button(action: onReveal) { Image(systemName: "folder") }.buttonStyle(.plain).help("Reveal note in Finder")
-                        .accessibilityLabel("Reveal note in Finder")
-                }
-            }
-
-            if isDiarizing {
-                // Transient: the row's `isDiarizing` flips off when the pass finishes or
-                // fails, so this disappears on its own. Wins over the summary line
-                // because the summary waits for the pass.
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Identifying speakers…".loc)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.inkTertiary)
-                }
-                .transition(.opacity)
-            } else if isSummarizing {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Writing the summary… the transcript is already saved.".loc)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.inkSecondary)
-                }
-            }
+        VStack(alignment: .leading, spacing: 18) {
+            header
+            actions
+            status
             if !meeting.summary.isEmpty {
-                MarkdownText(markdown: meeting.summary, bulletColor: Theme.coral)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.ink)
-                    .textSelection(.enabled)
-            }
-
-            DisclosureGroup(isExpanded: $expanded) {
-                if draft != nil {
-                    transcriptEditor
-                } else if meeting.hasPlayableAudio, let segments = meeting.segments {
-                    // D9 click-to-play: the transcript becomes a list of tappable
-                    // segments, each seeking the kept audio to that exact moment, with
-                    // the playing segment highlighted. Shown ONLY when both timed
-                    // segments AND kept audio exist; otherwise the plain transcript
-                    // below is unchanged. Editing takes precedence (draft branch above)
-                    // so a fix isn't fighting a playhead.
-                    MeetingPlaybackView(segments: segments,
-                                        audioFiles: meeting.audioFiles,
-                                        folderURL: folderURL,
-                                        showsSpeakerLabels: SpeakerPresentation.showsTurns(for: meeting))
-                        .padding(.top, 4)
-                } else if SpeakerPresentation.showsTurns(for: meeting), let segments = meeting.segments {
-                    SpeakerTurnsView(segments: segments)
-                        .padding(.top, 4)
-                } else {
-                    Text(meeting.transcript)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Theme.inkSecondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Eyebrow(text: "Summary")
+                    MarkdownText(markdown: meeting.summary, bulletColor: Theme.coral)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.ink)
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .talkieCard(padding: 16)
                 }
-            } label: {
-                Text(expanded ? "Hide transcript" : "Show transcript")
-                    .font(.talkieEyebrow)
-                    .foregroundStyle(Theme.coral)
             }
+            transcriptSection
         }
-        .talkieCard(padding: 14)
-        .onHover { hovering = $0 }
+        .frame(maxWidth: 760, alignment: .leading)
         .onAppear {
             if cachedWordCount == nil { cachedWordCount = WordCounter.count(meeting.transcript) }
         }
@@ -891,6 +794,178 @@ private struct MeetingRow: View, Equatable {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone.")
+        }
+    }
+
+    // MARK: Header + actions
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(meeting.title)
+                .font(.talkieDisplay(24))
+                .foregroundStyle(Theme.ink)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                // L7: the profile picture, only when one is set.
+                if profileImage.image != nil {
+                    AvatarView(store: profileImage, size: 18)
+                }
+                Text([Self.dateFormatter.string(from: meeting.date),
+                      MeetingMeta.duration(meeting.durationSec),
+                      MeetingMeta.source(meeting.source),
+                      MeetingMeta.speakers(meeting.speakerCount)]
+                    .compactMap { $0 }
+                    .joined(separator: " · "))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+        }
+    }
+
+    /// Icon + label when the pane is wide enough; icons only (with tooltips) when not,
+    /// so a narrow window never truncates a label mid-word.
+    private var actions: some View {
+        ViewThatFits(in: .horizontal) {
+            actionButtons.labelStyle(.titleAndIcon)
+            actionButtons.labelStyle(.iconOnly)
+        }
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 8) {
+            Button(action: onCopy) { Label("Copy".loc, systemImage: "doc.on.doc") }
+                .help("Copy transcript")
+            // Timestamped exports (D3) — only when this meeting actually has timed
+            // segments (recorded/imported after D2). Pre-D2 notes simply don't show
+            // the menu, so there's no dead UI and no migration.
+            if let segments = meeting.segments, !segments.isEmpty {
+                Menu {
+                    Button("Subtitles (.srt)") { export(segments, as: .srt) }
+                    Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
+                    Button("Spreadsheet (.csv)") { export(segments, as: .csv) }
+                    Button("Data (.json)") { export(segments, as: .json) }
+                    // Chapter list (D8) — offered ONLY when the meeting shifted
+                    // topics (≥2 chapters); a lone/absent topic shows nothing.
+                    if let chapters = meeting.chapters, chapters.count >= 2 {
+                        Button("Chapters (.txt)") { exportChapters(chapters) }
+                    }
+                } label: {
+                    Label("Export…".loc, systemImage: "square.and.arrow.up")
+                }
+                .menuStyle(.button)
+                .fixedSize()
+                .help("Export…")
+            }
+            Button(action: onReveal) { Label("Show in Finder".loc, systemImage: "folder") }
+                .help("Reveal note in Finder")
+            // Edit the transcript (A8) — fixing a misrecognition here fixes the note
+            // AND can teach the dictionary. Only for meetings that actually have
+            // transcript text (recovered/notes-only entries have none).
+            if !meeting.transcript.isEmpty {
+                Button { beginEditing() } label: { Label("Edit transcript".loc, systemImage: "pencil") }
+                    .help("Edit transcript")
+                    .disabled(draft != nil)
+            }
+            if canRegenerate {
+                Button {
+                    // Nothing to lose when the summary is already blank — skip the
+                    // confirmation and regenerate straight away (the original
+                    // "meetings stuck with an empty summary" fix). Otherwise the
+                    // existing summary may hold fused/typed notes that a regenerate
+                    // would silently replace, so confirm first.
+                    if meeting.summary.isEmpty {
+                        Task { regenerating = true; await onRegenerate(); regenerating = false }
+                    } else {
+                        confirmRegenerate = true
+                    }
+                } label: {
+                    Label("Regenerate".loc, systemImage: "arrow.clockwise")
+                }
+                .help("Regenerate summary")
+                .disabled(regenerating)
+            }
+            Spacer(minLength: 12)
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete".loc, systemImage: "trash")
+                    .foregroundStyle(Theme.featherRed)
+            }
+            .help("Delete")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if regenerating {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Writing the summary… the transcript is already saved.".loc)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+        } else if isDiarizing {
+            // Transient: `isDiarizing` flips off when the pass finishes or fails, so
+            // this disappears on its own. Wins over the summary line because the
+            // summary waits for the pass.
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Identifying speakers…".loc)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .transition(.opacity)
+        } else if isSummarizing {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Writing the summary… the transcript is already saved.".loc)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+        }
+    }
+
+    // MARK: Transcript
+
+    private var transcriptSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Eyebrow(text: "Transcript")
+                if draft == nil, meeting.hasPlayableAudio, meeting.segments != nil {
+                    Text("Click a line to hear that moment".loc)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.inkTertiary)
+                }
+                Spacer()
+                Text(String(format: "%d words".loc, wordCount))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            if draft != nil {
+                transcriptEditor
+            } else if meeting.hasPlayableAudio, let segments = meeting.segments {
+                // D9 click-to-play: the transcript becomes a list of tappable
+                // segments, each seeking the kept audio to that exact moment, with the
+                // playing segment highlighted. Shown ONLY when both timed segments AND
+                // kept audio exist. Editing takes precedence (draft branch above) so a
+                // fix isn't fighting a playhead.
+                MeetingPlaybackView(segments: segments,
+                                    audioFiles: meeting.audioFiles,
+                                    folderURL: folderURL,
+                                    showsSpeakerLabels: SpeakerPresentation.showsTurns(for: meeting))
+            } else if SpeakerPresentation.showsTurns(for: meeting), let segments = meeting.segments {
+                SpeakerTurnsView(segments: segments)
+            } else {
+                Text(meeting.transcript)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.inkSecondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if draft == nil, !learnable.isEmpty {
+                learnChips
+            }
         }
     }
 
@@ -971,7 +1046,6 @@ private struct MeetingRow: View, Equatable {
     }
 
     private func beginEditing() {
-        expanded = true
         learnable = []
         draft = meeting.transcript
     }
@@ -1399,50 +1473,35 @@ struct MutedAppChip: View {
     }
 }
 
-/// The drop-to-transcribe affordances: an "Import…" button (an `NSOpenPanel` counterpart
-/// to dropping onto the tab — files or a whole folder) plus, while a batch runs, a "3 of
-/// 12" progress row with the current filename, percent, and Cancel, and a once-at-end
-/// completion summary. Observes the coordinator so progress, the "waiting for dictation to
-/// finish" state, and the summary stay live. Rendered only when the importer exists (nil in
-/// previews).
-private struct ImportControls: View {
+/// The import status line under the top bar: a "3 of 12" progress row with the current
+/// filename, percent and Cancel; the "waiting for dictation to finish" state; the
+/// once-at-end completion summary; or an error. Renders nothing when there's nothing to
+/// say. Observes the coordinator so every state stays live.
+private struct ImportStatusLine: View {
     @ObservedObject var importer: FileImportCoordinator
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Button {
-                    importViaPanel()
-                } label: {
-                    Label("Import…".loc, systemImage: "square.and.arrow.down")
+        let hasActivity = importer.active != nil || importer.waitingForSession
+        if hasActivity || importer.lastCompletion != nil || importer.lastError != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                if let active = importer.active {
+                    progressRow(fileName: active.fileName)
+                } else if importer.waitingForSession {
+                    waitingRow
                 }
-                .controlSize(.large)
-                .disabled(!FileImportEngine.isAvailable)
-
-                Text("…or drop audio, video, or a folder onto this tab.".loc)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkTertiary)
-                Spacer()
+                if let completion = importer.lastCompletion {
+                    completionRow(completion)
+                }
+                if let error = importer.lastError {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.featherRed)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-
-            if let active = importer.active {
-                progressRow(fileName: active.fileName)
-            } else if importer.waitingForSession {
-                waitingRow
-            }
-
-            if let completion = importer.lastCompletion {
-                completionRow(completion)
-            }
-
-            if let error = importer.lastError {
-                Text(error)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.featherRed)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 14)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Batch position ("3 of 12") shown only when more than one file is in play; a single
@@ -1522,11 +1581,14 @@ private struct ImportControls: View {
         }
         .talkieCard(padding: 12)
     }
+}
 
-    /// Pick audio/video files or a folder and enqueue them. Folders are shallow-enumerated
-    /// by the coordinator. On-device only — reads what the user chose; nothing leaves the
-    /// machine.
-    private func importViaPanel() {
+/// The "Import…" open panel: pick audio/video files or a folder and enqueue them.
+/// Folders are shallow-enumerated by the coordinator. On-device only — reads what the
+/// user chose; nothing leaves the machine.
+@MainActor
+private enum ImportPanel {
+    static func run(_ importer: FileImportCoordinator) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true

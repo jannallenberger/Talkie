@@ -867,3 +867,23 @@
 "Your voice" = "Sua voz";
 "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings." = "Um pequeno perfil de voz é guardado neste Mac para reconhecer você nas reuniões. Esquecê-lo o remove; ele é aprendido de novo nas próximas reuniões.";
 "Forget my voice" = "Esquecer minha voz";
+
+/* Meetings page: two-pane layout */
+"Record" = "Gravar";
+"Today" = "Hoje";
+"Yesterday" = "Ontem";
+"Earlier this week" = "No início desta semana";
+"%d min" = "%d min";
+"1 speaker" = "1 pessoa";
+"%d speakers" = "%d pessoas";
+"Imported" = "Importada";
+"Mic + call audio" = "Microfone + áudio da chamada";
+"Mic only" = "Só microfone";
+"Notes only" = "Só notas";
+"Recovered" = "Recuperada";
+"Show in Finder" = "Mostrar no Finder";
+"Summary" = "Resumo";
+"Transcript" = "Transcrição";
+"%d words" = "%d palavras";
+"Click a line to hear that moment" = "Clique em uma linha para ouvir aquele momento";
+"Press Record before your next call, or drop audio or video here to transcribe it." = "Toque em Gravar antes da próxima chamada ou solte áudio ou vídeo aqui para transcrever.";
