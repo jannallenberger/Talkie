@@ -19,6 +19,8 @@ struct OnboardingView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
     let onRetryHotKey: () -> Bool
+    /// The step to open on (snapshot tests); 0 = the welcome.
+    var initialStep = 0
     // One-time speech-model download state (macOS performs it; Talkie only reports it).
     @ObservedObject private var modelTracker = SpeechModelInstallTracker.shared
 
@@ -31,6 +33,9 @@ struct OnboardingView: View {
     private enum Step: CaseIterable { case welcome, tryIt, privacy, gesture, permissions, ready }
     private let steps = Step.allCases
     @State private var step = 0
+    /// Index of the final "You're ready" step (snapshot tests).
+    static var readyStepIndex: Int { Step.allCases.count - 1 }
+    static var permissionsStepIndex: Int { Step.allCases.firstIndex(of: .permissions) ?? 4 }
     // The final-step (`ready`) hotkey-driven try-it field (needs all permissions).
     @State private var tryText = ""
     // The speak-first (`tryIt`) step: a read-only results field + record button,
@@ -76,6 +81,7 @@ struct OnboardingView: View {
         // final-step hint and button label, and the hotkey-tap retry all stay live
         // while System Settings changes land. Idempotent; stopped when the view goes.
         .onAppear {
+            if step == 0, initialStep > 0 { step = min(initialStep, steps.count - 1) }
             permissions.refresh()
             permissions.startPolling()
         }
@@ -557,20 +563,17 @@ struct OnboardingView: View {
                 .foregroundStyle(Theme.ink)
                 .lineLimit(2...4)
                 .padding(12)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .fill(Theme.surface.opacity(0.55)))
                 .accessibilityLabel("Try dictation here")
                 .accessibilityHint("Hold your dictation key and speak; the words appear in this field.")
 
                 if !readiness.canDictate {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label(String(format: "Still off: %@".loc, missingList),
-                              systemImage: "info.circle")
-                            .font(.talkieHeading(11.5, weight: .regular))
-                            .foregroundStyle(Theme.inkTertiary)
-                            .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .center, spacing: 10) {
+                        TalkieStatusLine(text: String(format: "Still off: %@".loc, missingList), tone: .warning)
+                        Spacer(minLength: 8)
                         Button("Review permissions") { jumpToPermissions() }
-                            .buttonStyle(.talkie(.secondary))
-                            .controlSize(.small)
+                            .buttonStyle(.talkie(.secondary, size: .small))
                     }
                 }
                 if permissions.hotKeyNeedsRelaunch {
@@ -607,12 +610,12 @@ struct OnboardingView: View {
             HStack {
                 if step > 0 {
                     Button("Back") { back() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Theme.inkSecondary)
+                        .buttonStyle(.talkie(.secondary))
+                        .controlSize(.large)
                 } else {
                     Button("Skip intro") { jumpToPermissions() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Theme.inkTertiary)
+                        .buttonStyle(.talkie(.secondary))
+                        .controlSize(.large)
                         .help("Jump straight to granting permissions")
                 }
                 Spacer()
@@ -739,7 +742,7 @@ private struct TryItRecordButton: View {
     }
 }
 
-private struct OnboardPermissionRow: View {
+struct OnboardPermissionRow: View {
     let icon: String
     /// Localisation keys, looked up with `.loc` (a `String` would bypass the catalog).
     let title: String
@@ -752,6 +755,7 @@ private struct OnboardPermissionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             ClayIcon(name: icon, size: 24)
+                .frame(width: 24)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: title.loc)
@@ -765,26 +769,27 @@ private struct OnboardPermissionRow: View {
             Spacer(minLength: 8)
             switch action {
             case .granted:
+                // Shape + colour (never colour alone), sized like the buttons it replaces.
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 17))
                     .foregroundStyle(Theme.positive)
+                    .frame(minHeight: 24)
                     .accessibilityHidden(true)
             case .request:
                 Button("Grant", action: onTap)
-                    .buttonStyle(.talkie(.secondary))
-                    .controlSize(.small)
+                    .buttonStyle(.talkie(.secondary, size: .small))
             case .openSettings:
                 // The system dialog can no longer appear, so a "Grant" tap would do
                 // nothing: send the user to the matching System Settings pane.
                 Button("Open System Settings", action: onTap)
-                    .buttonStyle(.talkie(.secondary))
-                    .controlSize(.small)
+                    .buttonStyle(.talkie(.secondary, size: .small))
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+            .fill(Theme.surface.opacity(0.55)))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title.loc). \(why.loc) \(granted ? "Granted.".loc : "Not granted.".loc)")
     }

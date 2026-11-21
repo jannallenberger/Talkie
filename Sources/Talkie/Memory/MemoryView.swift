@@ -153,10 +153,11 @@ struct MemoryView: View {
             }
         }
         .help("Older dictations are deleted from this Mac after this long.".loc)
-        .alert(
+        .confirmationDialog(
             String(format: "Keep history for %@?".loc, pendingRetention?.displayName ?? ""),
             isPresented: Binding(get: { pendingRetention != nil },
                                  set: { if !$0 { pendingRetention = nil } }),
+            titleVisibility: .visible,
             presenting: pendingRetention
         ) { choice in
             Button("Delete older dictations", role: .destructive) {

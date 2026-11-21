@@ -133,8 +133,10 @@ final class MeetingRecoveryTests: XCTestCase {
         )
         let plan = MeetingRecorder.recoveryPlan(from: partial, modified: modified)
         let summary = plan?.summary ?? ""
-        XCTAssertTrue(summary.contains("## Your notes"),
-                      "typed notes must be preserved under a '## Your notes' heading")
+        XCTAssertTrue(summary.contains("**Your notes:**"),
+                      "typed notes must be preserved in their own section")
+        XCTAssertEqual(plan?.notes.map(\.text), ["decision: go with plan B", "action: email the vendor"],
+                       "a partial without note items recovers the plain notes line by line")
         XCTAssertTrue(summary.contains("decision: go with plan B"),
                       "the raw note text must survive verbatim")
         XCTAssertTrue(summary.contains("action: email the vendor"))

@@ -128,6 +128,20 @@ enum Theme {
         static let pageSide: CGFloat = 28
         /// Bottom inset under the last card of a scrolling page.
         static let pageBottom: CGFloat = 28
+        /// Inner padding of a popover (`TalkiePopover`).
+        static let popover: CGFloat = 16
+        /// Inner padding of a sheet.
+        static let sheet: CGFloat = 20
+    }
+
+    /// Fixed widths for transient surfaces, so popovers and sheets line up app-wide.
+    enum Width {
+        /// A popover holding a short form (one field, one switch).
+        static let popover: CGFloat = 320
+        /// A popover with longer help text or two columns of controls.
+        static let popoverWide: CGFloat = 360
+        static let sheet: CGFloat = 480
+        static let sheetWide: CGFloat = 560
     }
 
     // MARK: Dynamic color helper
@@ -391,6 +405,454 @@ struct TalkieMenuPicker<Value: Hashable, Options: View, MenuLabel: View>: View {
         .menuStyle(.button)
         .buttonStyle(.talkie(.secondary))
         .fixedSize()
+    }
+}
+
+/// An action menu ("Export…") that looks like the secondary button and, like
+/// `TalkieMenuPicker`, carries a chevron so it reads as a menu, not a button.
+struct TalkieMenuButton<Items: View, MenuLabel: View>: View {
+    var size: TalkieButtonSize? = nil
+    @ViewBuilder var items: Items
+    @ViewBuilder var label: MenuLabel
+
+    var body: some View {
+        Menu {
+            items
+        } label: {
+            HStack(spacing: 6) {
+                label
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Theme.inkSecondary)
+            }
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.talkie(.secondary, size: size))
+        .fixedSize()
+    }
+}
+
+// MARK: - Chips, tags, keycaps
+
+/// A clickable chip (a speaker name, a removable term): chip radius, sunken fill
+/// that darkens on hover, pressed scale. Callers add a trailing action glyph
+/// (`pencil`, `xmark`, `chevron.down`) so a chip never reads as a static tag.
+struct TalkieChipButtonStyle: ButtonStyle {
+    var isSelected = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        TalkieChipBody(configuration: configuration, isSelected: isSelected)
+    }
+}
+
+extension ButtonStyle where Self == TalkieChipButtonStyle {
+    /// `.buttonStyle(.talkieChip)`.
+    static var talkieChip: TalkieChipButtonStyle { TalkieChipButtonStyle() }
+    static func talkieChip(selected: Bool) -> TalkieChipButtonStyle { TalkieChipButtonStyle(isSelected: selected) }
+}
+
+private struct TalkieChipBody: View {
+    let configuration: ButtonStyleConfiguration
+    let isSelected: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+        configuration.label
+            .font(.talkieHeading(12, weight: .semibold))
+            .foregroundStyle(isSelected ? Theme.brand : Theme.ink)
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .frame(minHeight: 24)
+            .background(shape.fill(fill))
+            .contentShape(shape)
+            .opacity(isEnabled ? 1 : 0.45)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: hovering)
+            .onHover { hovering = $0 && isEnabled }
+    }
+
+    private var fill: Color {
+        let base = isSelected ? Theme.brandWash : Theme.surfaceSunken
+        if configuration.isPressed && isEnabled { return base.mix(with: Theme.ink, by: 0.12) }
+        return hovering ? base.mix(with: Theme.ink, by: 0.06) : base
+    }
+}
+
+// MARK: - Selectable cards
+
+/// A whole card that is one button (a grid of choices, e.g. the Commands page's
+/// format cards): the card surface and radius, a one-step fill shift on hover, the
+/// pressed scale, and — when selected — a brand ring with the brand wash, so the
+/// selection never relies on colour alone (the ring changes the outline too).
+struct TalkieCardButtonStyle: ButtonStyle {
+    var isSelected = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        TalkieCardButtonBody(configuration: configuration, isSelected: isSelected)
+    }
+}
+
+extension ButtonStyle where Self == TalkieCardButtonStyle {
+    /// `.buttonStyle(.talkieCard(selected: …))`.
+    static func talkieCard(selected: Bool) -> TalkieCardButtonStyle { TalkieCardButtonStyle(isSelected: selected) }
+}
+
+private struct TalkieCardButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let isSelected: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+        configuration.label
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(shape.fill(fill))
+            .overlay(shape.strokeBorder(Theme.brand, lineWidth: isSelected ? 2 : 0))
+            .clipShape(shape)
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
+            .contentShape(shape)
+            .opacity(isEnabled ? 1 : 0.45)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: hovering)
+            .onHover { hovering = $0 && isEnabled }
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var fill: Color {
+        let base = isSelected ? Theme.surface.mix(with: Theme.brandWash, by: 0.6) : Theme.surface
+        if configuration.isPressed && isEnabled { return base.mix(with: Theme.ink, by: 0.08) }
+        return hovering ? base.mix(with: Theme.ink, by: 0.04) : base
+    }
+}
+
+/// A static, non-interactive tag ("slower"). Capsule, no hover, no glyph — so it
+/// can never be mistaken for a chip button.
+struct TalkieTag: View {
+    let text: String
+    /// Show `text` exactly as given (spoken phrases, names) — never look it up as a
+    /// localisation key.
+    var isVerbatim = false
+
+    init(text: String) { self.text = text }
+
+    init(verbatim text: String) {
+        self.text = text
+        self.isVerbatim = true
+    }
+
+    var body: some View {
+        Group {
+            if isVerbatim { Text(verbatim: text) } else { Text(LocalizedStringKey(text)) }
+        }
+            .font(.talkieHeading(11, weight: .medium))
+            .foregroundStyle(Theme.inkSecondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule(style: .continuous).fill(Theme.surfaceSunken))
+    }
+}
+
+/// A spoken word next to the character it becomes ("colon" -> ":"). Static and never
+/// clickable: sunken chip radius for the character, quiet text for the word, so it reads
+/// as a reference entry and cannot be mistaken for a chip button.
+struct TalkieWordMark: View {
+    let word: String
+    let mark: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text(verbatim: mark)
+                .font(.talkieHeading(12, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(minWidth: 18)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                    .fill(Theme.surfaceSunken))
+            Text(verbatim: word)
+                .font(.talkieHeading(12, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(word): \(mark)"))
+    }
+}
+
+/// "Show all" / "Show fewer" under a shortened list: a small secondary button (so it
+/// has the shared hover and press feedback) with a chevron that turns when open.
+struct TalkieDisclosureButton: View {
+    @Binding var isExpanded: Bool
+    var collapsedTitle: String = "Show all".loc
+    var expandedTitle: String = "Show fewer".loc
+
+    var body: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.18)) { isExpanded.toggle() }
+        } label: {
+            HStack(spacing: 5) {
+                Text(isExpanded ? expandedTitle : collapsedTitle)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+        }
+        .buttonStyle(.talkie(.secondary, size: .small))
+        .accessibilityValue(Text(isExpanded ? "Expanded".loc : "Collapsed".loc))
+    }
+}
+
+/// One of the user's real keys drawn as a key cap (dictation key, format key).
+/// Never clickable; pair it with a separate "Change…" button.
+struct TalkieKeycap: View {
+    let text: String
+    var symbol: String? = nil
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let symbol {
+                Image(systemName: symbol).font(.talkieHeading(12, weight: .semibold))
+            }
+            Text(verbatim: text)
+        }
+        .font(.talkieHeading(13, weight: .semibold))
+        .foregroundStyle(Theme.ink)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        // A raised key (canvas + a 1pt key shadow), deliberately unlike the sunken
+        // fill of buttons and chips: a keycap shows a key, it is not clickable.
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+            .fill(Theme.canvas)
+            .shadow(color: .black.opacity(0.18), radius: 0.5, x: 0, y: 1))
+    }
+}
+
+// MARK: - Status lines & notices
+
+enum TalkieStatusTone {
+    case info, progress, success, warning, error
+}
+
+/// One inline line of status: a spinner or a tone icon, then the text. The single
+/// look for "Identifying speakers…", "Couldn't read this voice", "Still off: …".
+struct TalkieStatusLine: View {
+    let text: String
+    var tone: TalkieStatusTone = .info
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            leading
+            Text(verbatim: text)
+                .font(.talkieHeading(12, weight: .regular))
+                .foregroundStyle(tone == .error ? Theme.danger : Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var leading: some View {
+        switch tone {
+        case .progress:
+            ProgressView().controlSize(.small).scaleEffect(0.75)
+                .frame(width: 13, height: 13)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+        case .info:    icon("info.circle", Theme.inkTertiary)
+        case .success: icon("checkmark.circle.fill", Theme.positive)
+        case .warning: icon("exclamationmark.triangle.fill", Theme.warning)
+        case .error:   icon("exclamationmark.octagon.fill", Theme.danger)
+        }
+    }
+
+    private func icon(_ name: String, _ color: Color) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(color)
+            .frame(width: 13)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A dismissible inline notice on a control-radius surface: an icon, the message,
+/// optional actions, and a quiet × (e.g. the update reminder on the Dashboard).
+struct TalkieNotice<Actions: View>: View {
+    let text: String
+    var icon: String = "info.circle"
+    var onDismiss: (() -> Void)? = nil
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.inkTertiary)
+                .accessibilityHidden(true)
+            Text(verbatim: text)
+                .font(.talkieHeading(12.5, weight: .regular))
+                .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            actions
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.talkie(.quiet, size: .small))
+                .help("Dismiss".loc)
+                .accessibilityLabel("Dismiss".loc)
+            }
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 10)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .talkieSurface(cornerRadius: Theme.Radius.control)
+    }
+}
+
+// MARK: - Forms
+
+/// A labelled field for popovers and sheets: the label above, the field at full
+/// width, optional help text under it.
+struct TalkieField<Field: View>: View {
+    let label: String
+    var help: String? = nil
+    @ViewBuilder var field: Field
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(LocalizedStringKey(label))
+                .font(.talkieHeading(12, weight: .semibold))
+                .foregroundStyle(Theme.inkSecondary)
+            field
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let help {
+                Text(LocalizedStringKey(help))
+                    .font(.talkieHeading(11.5, weight: .regular))
+                    .foregroundStyle(Theme.inkTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A switch with its title and one-line subtitle (the consequence, e.g. a privacy
+/// note), switch on the right. No outer padding: `SettingsToggleRow` pads it for a
+/// card; a popover uses it as-is.
+struct TalkieSwitchRow: View {
+    let title: String
+    var subtitle: String? = nil
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: title).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let subtitle {
+                    Text(verbatim: subtitle).font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 12)
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(Theme.brand)
+        }
+        .frame(maxWidth: .infinity)
+        // The title lives beside a `.labelsHidden()` switch: fold it into the label.
+        .accessibilityElement(children: .combine)
+    }
+}
+
+extension View {
+    /// The sunken well a multi-line `TextEditor` sits in (notes, transcript edits).
+    func talkieWell() -> some View {
+        self
+            .scrollContentBackground(.hidden)
+            .padding(8)
+            .background(Theme.surfaceSunken,
+                        in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+    }
+}
+
+// MARK: - Popover / sheet scaffold
+
+/// The one popover layout: a sentence-case title (+ optional subtitle), the
+/// content, then the action row last. Fixed width from `Theme.Width`.
+struct TalkiePopover<Content: View, Actions: View>: View {
+    let title: String
+    var subtitle: String? = nil
+    var width: CGFloat = Theme.Width.popover
+    @ViewBuilder var content: Content
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(LocalizedStringKey(title))
+                    .font(.talkieHeading(15, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                if let subtitle {
+                    Text(LocalizedStringKey(subtitle))
+                        .font(.talkieHeading(12, weight: .regular))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            content
+            actions
+        }
+        .padding(Theme.Space.popover)
+        .frame(width: width, alignment: .leading)
+    }
+}
+
+extension TalkiePopover where Actions == EmptyView {
+    init(title: String, subtitle: String? = nil, width: CGFloat = Theme.Width.popover,
+         @ViewBuilder content: () -> Content) {
+        self.init(title: title, subtitle: subtitle, width: width, content: content, actions: { EmptyView() })
+    }
+}
+
+/// A full-width hairline between sections of a popover or sheet.
+struct TalkiePopoverDivider: View {
+    var body: some View {
+        Divider().overlay(Theme.hairline)
+            .padding(.horizontal, -Theme.Space.popover)
+    }
+}
+
+/// The action row at the bottom of a popover or sheet: a destructive or clearing
+/// action at the leading edge; Cancel then the primary at the trailing edge
+/// (primary rightmost, `.defaultAction`; Cancel `.cancelAction`).
+struct TalkieActionRow<Leading: View, Trailing: View>: View {
+    @ViewBuilder var leading: Leading
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 8) {
+            leading
+            Spacer(minLength: 12)
+            trailing
+        }
+        .padding(.top, 2)
+    }
+}
+
+extension TalkieActionRow where Leading == EmptyView {
+    init(@ViewBuilder trailing: () -> Trailing) {
+        self.init(leading: { EmptyView() }, trailing: trailing)
     }
 }
 

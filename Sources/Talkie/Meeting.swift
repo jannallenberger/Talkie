@@ -162,6 +162,18 @@ struct Meeting: Codable, Identifiable, Hashable {
     /// Stored as the raw string so a newer build's unknown state can't break decoding
     /// in an older one; read it through `diarization`.
     var diarizationState: String? = nil
+    /// The user's notes taken during the recording, each with the moment it was
+    /// started (W2). Also rendered into `summary`'s notes section; kept here so a
+    /// regenerated summary still carries them. Nil for meetings without notes and for
+    /// notes saved before W2 (those live only inside `summary`). Decodes an older
+    /// plain string too.
+    var notes: [MeetingNote]? = nil
+    /// Names for this meeting's speakers, keyed by the stored label ("Speaker 2",
+    /// "Them") with where each came from (conversation / voice / manual). Applied
+    /// only at presentation (`namedTranscript` …): `transcript`, `segments` and
+    /// `summary` keep their raw labels. Nil for meetings without names and for every
+    /// note saved before the feature. "Me" is never a key.
+    var speakerNames: [String: SpeakerName]? = nil
 
     var date: Date { Date(timeIntervalSince1970: startUnix) }
 }
@@ -188,6 +200,9 @@ extension Meeting {
         audioFiles = try c.decodeIfPresent([String: String].self, forKey: .audioFiles)
         speakerCount = try c.decodeIfPresent(Int.self, forKey: .speakerCount)
         diarizationState = try c.decodeIfPresent(String.self, forKey: .diarizationState)
+        notes = MeetingNote.decodeFlexible(c, forKey: .notes)
+        // A newer build's unknown source (or any malformed entry) drops the names, never the meeting.
+        speakerNames = (try? c.decodeIfPresent([String: SpeakerName].self, forKey: .speakerNames)) ?? nil
     }
 
     var diarization: DiarizationState? { diarizationState.flatMap(DiarizationState.init(rawValue:)) }
@@ -239,6 +254,18 @@ actor MeetingSummarizer {
         let secs = Int(Date().timeIntervalSince(started))
         Self.log.notice("summary: lang=\(result.language.code, privacy: .public) chunks=\(result.chunks) failed=\(result.failedChunks) ok=\(result.markdown != nil) \(secs)s errors=\(Set(result.errors).sorted().joined(separator: ","), privacy: .public)")
         return (result.markdown, result.condensed)
+    }
+
+    /// The recorded-meeting path (W2): the user's notes go in as first-class content
+    /// and the live pass's chunk extractions are reused. Always returns the user's
+    /// notes in the markdown, even when the model is unavailable or fails.
+    func summarizeMeeting(_ transcript: String, segments: [MeetingSegment]?, notes: [MeetingNote],
+                          live: MeetingSummaryPipeline.LiveReuse?) async -> MeetingSummaryResult {
+        let started = Date()
+        let result = await pipeline.run(transcript: transcript, segments: segments, notes: notes, live: live)
+        let secs = Int(Date().timeIntervalSince(started))
+        Self.log.notice("summary: lang=\(result.language.code, privacy: .public) chunks=\(result.chunks) reused=\(result.reusedChunks) live=\(result.usedLive) failed=\(result.failedChunks) notes=\(notes.count) ok=\(result.markdown != nil) \(secs)s errors=\(Set(result.errors).sorted().joined(separator: ","), privacy: .public)")
+        return result
     }
 
     /// Greedily pack lines into chunks, sized so the whole text fits in at
@@ -371,8 +398,13 @@ final class MeetingStore: ObservableObject {
     /// Monotonic save token; the writer drops any write older than the newest.
     private var saveGeneration = 0
 
+    /// Per-meeting diarized voices (owner-only sidecar files beside the index). Deleted
+    /// with the meeting, by the retention cap, and swept for meetings no longer indexed.
+    let voiceSidecar: MeetingVoiceSidecar
+
     init(supportDirectory: URL = AppPaths.supportDirectory(),
          meetingsDirectory: URL = AppPaths.meetingsDirectory()) {
+        voiceSidecar = MeetingVoiceSidecar(directory: supportDirectory.appendingPathComponent("meeting-voices", isDirectory: true))
         let url = supportDirectory.appendingPathComponent("meetings.json")
         indexURL = url
         meetingsDirectoryURL = meetingsDirectory
@@ -397,6 +429,8 @@ final class MeetingStore: ObservableObject {
         // the caller (MeetingsView) so this store stays single-purpose.
         let url = meetingsDirectoryURL.appendingPathComponent(meeting.fileName)
         FileShredder.shred(url)
+        // Its diarized voices go with it.
+        voiceSidecar.remove(meeting.id)
         // Delete honesty (D9): a meeting that kept its audio beside the note must not
         // leave that audio behind when the note is deleted — the whole point of the
         // feature is user-owned files, so removing the meeting removes ALL of them.
@@ -442,6 +476,20 @@ final class MeetingStore: ObservableObject {
         return (meetings[index].id, old)
     }
 
+    /// Name (or, with nil/blank, un-name) one speaker of a meeting by hand. Applies to
+    /// every turn of that label; a manual name overrides automatic ones. Returns the
+    /// updated names, or nil when the meeting is gone or the label is "Me".
+    @discardableResult
+    func setSpeakerName(_ name: String?, label: String, meetingID: UUID) -> [String: SpeakerName]? {
+        guard SpeakerNames.isNameable(label),
+              let index = meetings.firstIndex(where: { $0.id == meetingID }) else { return nil }
+        let updated = SpeakerNames.settingManual(name, for: label, in: meetings[index].speakerNames)
+        meetings[index].speakerNames = updated.isEmpty ? nil : updated
+        writeMarkdown(meetings[index])
+        save()
+        return updated
+    }
+
     /// Restore a meeting's title — the Undo of `retitle`. No-op if the meeting is gone.
     func restoreTitle(id: UUID, to oldTitle: String) {
         guard let index = meetings.firstIndex(where: { $0.id == id }) else { return }
@@ -456,6 +504,8 @@ final class MeetingStore: ObservableObject {
     private func enforceRetentionCap() {
         meetings.sort { $0.startUnix > $1.startUnix } // newest first
         if meetings.count > Self.maxRetainedMeetings {
+            // Evicted meetings keep their .md, but never their voices.
+            for m in meetings.suffix(meetings.count - Self.maxRetainedMeetings) { voiceSidecar.remove(m.id) }
             meetings.removeLast(meetings.count - Self.maxRetainedMeetings)
         }
     }
@@ -480,13 +530,13 @@ final class MeetingStore: ObservableObject {
         // destination value it returns is `Sendable`, so the blocking disk write is
         // handed off to a detached task and never touches @MainActor state.
         let minutes = Int((m.durationSec / 60).rounded())
-        let summary = m.summary.isEmpty ? "_(no summary)_" : m.summary
+        let summary = m.summary.isEmpty ? "_(no summary)_" : m.namedSummary
         // Insert a "## Chapters" section between Summary and Transcript, but only when
         // the meeting actually shifted topics (≥2 chapters) — a lone chapter is noise.
         let chaptersSection = Meeting.chaptersMarkdown(m.chapters)
         let body = chaptersSection.isEmpty
-            ? "## Summary\n\n\(summary)\n\n## Transcript\n\n\(m.transcript)"
-            : "## Summary\n\n\(summary)\n\n\(chaptersSection)\n\n## Transcript\n\n\(m.transcript)"
+            ? "## Summary\n\n\(summary)\n\n## Transcript\n\n\(m.namedTranscript)"
+            : "## Summary\n\n\(summary)\n\n\(chaptersSection)\n\n## Transcript\n\n\(m.namedTranscript)"
         let note = ExportableNote(
             kind: .meeting,
             title: m.title,
@@ -494,7 +544,7 @@ final class MeetingStore: ObservableObject {
             bodyMarkdown: body,
             frontMatter: [
                 "duration_min": "\(minutes)",
-                "participants": "[\(m.participants.joined(separator: ", "))]",
+                "participants": "[\(m.namedParticipants.joined(separator: ", "))]",
                 "source": m.source,
             ],
             suggestedFileName: m.fileName
@@ -545,6 +595,8 @@ final class MeetingStore: ObservableObject {
         }
         meetings = decoded
         enforceRetentionCap()
+        // Voices of meetings removed while the app was not running (or by an older build).
+        voiceSidecar.sweep(keeping: Set(meetings.map(\.id)))
     }
 
     /// Best-effort self-heal: scan `directory` for `*.md` meeting notes and rebuild

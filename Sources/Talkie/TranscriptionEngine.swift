@@ -96,6 +96,10 @@ enum TalkieEngineError: LocalizedError {
     case modelInstallFailed(String)
     case noCompatibleAudioFormat
     case noInputDevice
+    /// Session setup did not come back within its bound (see `SpeechStartRecovery`).
+    case startTimedOut
+    /// macOS speech recognition could not be reached, even after one rebuild.
+    case speechServiceUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -109,6 +113,8 @@ enum TalkieEngineError: LocalizedError {
             return String(format: "%@ couldn't get audio from that microphone. Pick a different mic under Settings → Input device, then try again.".loc, Brand.displayName)
         case .noInputDevice:
             return String(format: "%@ couldn't find a microphone. Check your input device in System Settings → Sound, then try again.".loc, Brand.displayName)
+        case .startTimedOut, .speechServiceUnavailable:
+            return String(format: "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@.".loc, Brand.displayName, Brand.displayName)
         }
     }
 }
@@ -283,6 +289,16 @@ actor TranscriptionEngine {
 
     /// The live session's transcript so far (committed + still-changing tail), for
     /// the mid-dictation text vote. Reading it costs nothing — no re-decode.
+    /// The timed segments of the most recent re-transcription per locale id (memory
+    /// only). Taking them clears the store, so no transcript lingers past the stop.
+    private var reTranscribedSegments: [String: [TimedSegment]] = [:]
+
+    func takeReTranscribedSegments(localeID: String) -> [TimedSegment] {
+        let segments = reTranscribedSegments[localeID] ?? []
+        reTranscribedSegments = [:]
+        return segments
+    }
+
     func liveTranscript() -> String {
         volatileText.isEmpty ? finalizedText : finalizedText + " " + volatileText
     }
@@ -387,6 +403,10 @@ actor TranscriptionEngine {
             await SpeechModelInstallTracker.shared.markInstalled()
         } catch {
             await SpeechModelInstallTracker.shared.markFailed()
+            // A dead speech-service connection is not a download problem: keep its
+            // identity so the start path can rebuild and retry (and so the user is not
+            // told to check their internet connection).
+            if SpeechStartRecovery.isStaleConnection(error) { throw error }
             throw TalkieEngineError.modelInstallFailed(error.localizedDescription)
         }
     }
@@ -547,6 +567,7 @@ actor TranscriptionEngine {
         textTarget: String? = nil,
         liveConfidence: Double? = nil
     ) async -> LanguageDetector.LanguageCandidate? {
+        reTranscribedSegments = [:]   // only this decision's re-transcriptions are kept
         func score(probe: Double?) async -> [LanguageDetector.LanguageCandidate] {
             let scored = await transcribeCandidates(buffers, localeIdentifiers: ids, installIfNeeded: true,
                                                     model: model, probeSeconds: probe)
@@ -598,6 +619,51 @@ actor TranscriptionEngine {
         return LanguageDetector.LanguageCandidate(localeID: best.localeID, text: whole.text, confidence: best.confidence)
     }
 
+    /// "Format while you dictate" across languages: re-recognise ONE command span's
+    /// audio (a second or two) in each of `ids`, so a command said in another enabled
+    /// language than the running recognizer's still reads as itself. Sequential inside
+    /// the actor (the audio is non-`Sendable`), and bounded: no new pass starts once
+    /// `budgetSeconds` have passed. Never installs a model inline. Returns the texts
+    /// it got (possibly fewer than `ids`).
+    func recognizeSpan(
+        _ buffers: [AVAudioPCMBuffer],
+        start: Double, end: Double,
+        localeIdentifiers ids: [String],
+        model: RecognizerModel,
+        budgetSeconds: Double
+    ) async -> [String] {
+        let slice = Self.slice(buffers, from: start - FormatCrossLanguage.audioPadding,
+                               to: end + FormatCrossLanguage.audioPadding)
+        guard !slice.isEmpty else { return [] }
+        let began = Date()
+        var out: [String] = []
+        for id in ids {
+            guard Date().timeIntervalSince(began) < budgetSeconds else {
+                talkieDebugLog("format: span re-recognition stopped at the \(budgetSeconds) s budget")
+                break
+            }
+            var effective = model
+            if model == .dictation,
+               await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: id)) == nil {
+                effective = .speech
+            }
+            if let scored = await transcribeScored(slice, localeIdentifier: id, installIfNeeded: false,
+                                                   model: effective, keepSegments: false) {
+                out.append(scored.text)
+            }
+        }
+        return out
+    }
+
+    /// The buffers covering `from…to` seconds of the capture (whole buffers; the
+    /// capture's first buffer is time 0).
+    nonisolated static func slice(_ buffers: [AVAudioPCMBuffer], from: Double, to: Double) -> [AVAudioPCMBuffer] {
+        guard let rate = buffers.first?.format.sampleRate, rate > 0 else { return [] }
+        let range = FormatCrossLanguage.bufferRange(frameCounts: buffers.map { Int($0.frameLength) },
+                                                    sampleRate: rate, from: from, to: to)
+        return Array(buffers[range])
+    }
+
     /// One-shot re-transcription of already-captured audio in a locale, returning
     /// just the text (used by the meeting language-correction shim). Returns nil
     /// when the language can't be transcribed at all.
@@ -637,7 +703,8 @@ actor TranscriptionEngine {
         _ buffers: [AVAudioPCMBuffer],
         localeIdentifier id: String,
         installIfNeeded: Bool = false,
-        model: RecognizerModel = .speech
+        model: RecognizerModel = .speech,
+        keepSegments: Bool = true
     ) async -> (text: String, confidence: Double)? {
         guard SpeechTranscriber.isAvailable, !buffers.isEmpty else {
             talkieDebugLog("reTx[\(id)]: bail — unavailable or no buffers (\(buffers.count))")
@@ -697,14 +764,25 @@ actor TranscriptionEngine {
         // (text:confidence per run) is diagnostic — it shows whether confidence
         // separates right-vs-wrong model per word (the prerequisite for future
         // per-segment code-switch routing).
-        let reader = Task { () -> (text: String, confSum: Double, confCount: Int, words: [(String, Double)]) in
+        let reader = Task { () -> (text: String, confSum: Double, confCount: Int, words: [(String, Double)],
+                                   timed: [TimedSegment]) in
             var text = ""
             var confSum = 0.0
             var confCount = 0
             var words: [(String, Double)] = []
+            // The same results' audio-clock spans + word timings, kept in memory only
+            // so "format while you dictate" can place its command spans in a
+            // re-transcribed dictation (see `takeReTranscribedSegments`).
+            var timed: [TimedSegment] = []
             do {
                 for try await result in Self.recognizedResults(of: transcriber) where result.isFinal {
                     text = appendCommitted(text, String(result.text.characters))
+                    let segText = HesitationMarkers.strip(String(result.text.characters))
+                    if !segText.isEmpty, result.start.isFinite {
+                        timed.append(TimedSegment(text: segText, start: result.start,
+                                                  end: result.end.isFinite ? result.end : result.start,
+                                                  words: result.words))
+                    }
                     for run in result.text.runs {
                         if let c = run.transcriptionConfidence {
                             confSum += c
@@ -715,7 +793,7 @@ actor TranscriptionEngine {
                     }
                 }
             } catch {}
-            return (text, confSum, confCount, words)
+            return (text, confSum, confCount, words, timed)
         }
 
         do {
@@ -738,6 +816,7 @@ actor TranscriptionEngine {
             return nil
         }
         let confidence = collected.confCount > 0 ? collected.confSum / Double(collected.confCount) : 0
+        if keepSegments { reTranscribedSegments[id] = collected.timed }
         // Per-word text is dictated content — never log it, even when the sink
         // is enabled. The min/max spread (vs. the mean above) is what actually
         // showed whether confidence separates right-vs-wrong model per word;
@@ -811,7 +890,15 @@ actor TranscriptionEngine {
         isFinishing = false
         liveEpoch += 1
 
+        // Each await below is Apple's; a start that was abandoned by its timeout (and
+        // superseded by a retry) may wake up late. It must not install state over the
+        // newer session, so it re-checks its generation after every suspension.
+        func stillCurrent() throws {
+            if generation != sessionGeneration { throw CancellationError() }
+        }
+
         var (effectiveModel, loc) = try await resolvedModelAndLocale(preferring: model)
+        try stillCurrent()
         var transcriber = makeModule(effectiveModel, locale: loc)
         do {
             try await ensureModelInstalled(for: transcriber)
@@ -824,12 +911,14 @@ actor TranscriptionEngine {
             transcriber = makeModule(.speech, locale: loc)
             try await ensureModelInstalled(for: transcriber)
         }
+        try stillCurrent()
         self.transcriber = transcriber
         self.sessionModel = effectiveModel
 
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
             throw TalkieEngineError.noCompatibleAudioFormat
         }
+        try stillCurrent()
 
         // Build the analyzer and its input stream.
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
@@ -843,6 +932,11 @@ actor TranscriptionEngine {
             let ctx = AnalysisContext()
             ctx.contextualStrings = [.general: contextualStrings]
             try await analyzer.setContext(ctx)
+        }
+        if generation != sessionGeneration {
+            // Superseded while suspended: release OUR analyzer only, never `self`'s.
+            await analyzer.cancelAndFinishNow()
+            throw CancellationError()
         }
 
         // Consume results as they stream in.
@@ -1209,6 +1303,24 @@ actor TranscriptionEngine {
     func cancelSession(ifGeneration generation: Int) async {
         guard generation == sessionGeneration else { return }
         await cancelSession()
+    }
+
+    /// Throw away everything bound to the system speech service and invalidate any
+    /// in-flight `beginSessionTracked` (its generation no longer matches, so it aborts
+    /// instead of installing state). Used by the start-failure retry and after wake.
+    /// Then re-reserve the locale's assets (best effort, bounded): a restarted speech
+    /// daemon forgets this process's reservations, which the log shows as "Cannot use
+    /// modules with unallocated locales". Callers must only use this when no live
+    /// session may be disturbed (idle after wake) or the session is already dead.
+    func resetSpeechService() async {
+        sessionGeneration += 1
+        await cancelSession()
+        let target = locale
+        _ = try? await SpeechStartRecovery.bounded(seconds: 3) {
+            let supported = await SpeechTranscriber.supportedLocale(equivalentTo: target)
+            guard let loc = supported else { return false }
+            return (try? await AssetInventory.reserve(locale: loc)) ?? false
+        }
     }
 
     // MARK: Buffer re-sampling (for cross-locale re-transcription)

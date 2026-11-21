@@ -204,8 +204,44 @@ struct TalkieStore {
         var participants: [String]?
         var source: String?
         var fileName: String
+        /// Mirrors `Meeting.speakerNames` (label -> name + source). Source is a plain
+        /// string so a newer value never breaks decoding here.
+        var speakerNames: [String: SpeakerNameMirror]?
         var date: Date { Date(timeIntervalSince1970: startUnix) }
+
+        /// The meeting with speaker names applied the way the app shows them: transcript
+        /// line prefixes, "Speaker N" tokens and "- Them:" owners in the summary, and
+        /// participants. Stored labels are untouched on disk. "Me" is never renamed.
+        var named: Meeting {
+            let names = (speakerNames ?? [:]).filter { $0.key != "Me" && !$0.value.name.isEmpty }
+            guard !names.isEmpty else { return self }
+            var m = self
+            var transcript = self.transcript
+            for (label, v) in names {
+                let pattern = "^(\\[[0-9:]+\\][ \\t]*)?" + NSRegularExpression.escapedPattern(for: label) + ":"
+                guard let re = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else { continue }
+                transcript = re.stringByReplacingMatches(in: transcript, range: NSRange(transcript.startIndex..., in: transcript),
+                                                         withTemplate: "$1" + NSRegularExpression.escapedTemplate(for: v.name) + ":")
+            }
+            m.transcript = transcript
+            var summary = self.summary
+            for (label, v) in names {
+                let template = NSRegularExpression.escapedTemplate(for: v.name)
+                let isNumbered = label.hasPrefix("Speaker ") && Int(label.dropFirst(8)) != nil
+                let pattern = isNumbered
+                    ? "(?<![\\p{L}\\p{N}])" + NSRegularExpression.escapedPattern(for: label) + "(?![\\p{L}\\p{N}])"
+                    : "^(\\s*[-*]\\s+)" + NSRegularExpression.escapedPattern(for: label) + ":"
+                guard let re = try? NSRegularExpression(pattern: pattern, options: isNumbered ? [] : [.anchorsMatchLines]) else { continue }
+                summary = re.stringByReplacingMatches(in: summary, range: NSRange(summary.startIndex..., in: summary),
+                                                      withTemplate: isNumbered ? template : "$1" + template + ":")
+            }
+            m.summary = summary
+            var seen = Set<String>()
+            m.participants = participants?.map { names[$0]?.name ?? $0 }.filter { seen.insert($0).inserted }
+            return m
+        }
     }
+    struct SpeakerNameMirror: Codable { var name: String; var source: String? }
     struct EntityID: Codable { var kind: String; var key: String }
     struct Provenance: Codable { var source: String; var sourceID: String?; var dateUnix: Double; var snippet: String? }
     struct Entity: Codable {
@@ -289,7 +325,7 @@ struct TalkieStore {
     private var dictionaryFile: URL { supportDir.appendingPathComponent("dictionary.json") }
     private var scratchpadFile: URL { supportDir.appendingPathComponent("scratchpad.json") }
 
-    func meetings() -> [Meeting] { (decode(meetingsFile) ?? []) }
+    func meetings() -> [Meeting] { (decode(meetingsFile) ?? [Meeting]()).map(\.named) }
     func entities() -> [Entity] { (decode(entitiesFile) ?? []) }
     func history() -> [DictationEntry] { (decode(historyFile) ?? []) }
     func brief() -> Brief? { decode(supportDir.appendingPathComponent("context_summary.json")) }

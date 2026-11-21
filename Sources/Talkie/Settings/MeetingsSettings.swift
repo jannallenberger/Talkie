@@ -32,6 +32,8 @@ struct MeetingsSettings: View {
     /// Whether a locally learned voice profile exists (read once on appear; presence
     /// only — the profile's contents are never shown or logged).
     @State private var hasVoiceProfile = false
+    /// Voices the user chose to recognise (names only are shown; never the prints).
+    @State private var knownVoices: [KnownVoice] = []
 
     /// Pops this pushed subpage back to the Settings root, where the "Notes & export"
     /// card lives inline. Used by the destination reference button, alongside a tab
@@ -56,9 +58,21 @@ struct MeetingsSettings: View {
 
                 destinationReferenceRow
                 if hasVoiceProfile { voiceProfileCard }
+                if !knownVoices.isEmpty {
+                    KnownVoicesCard(voices: knownVoices, onDelete: { id in
+                        KnownVoiceStore.shared.remove(id: id)
+                        knownVoices = KnownVoiceStore.shared.all()
+                    }, onForgetAll: {
+                        KnownVoiceStore.shared.removeAll()
+                        knownVoices = []
+                    })
+                }
             }
         }
-        .onAppear { hasVoiceProfile = OwnVoiceProfileStore.shared.exists }
+        .onAppear {
+            hasVoiceProfile = OwnVoiceProfileStore.shared.exists
+            knownVoices = KnownVoiceStore.shared.all()
+        }
     }
 
     // MARK: Voice profile (privacy control, shown only when one exists)
@@ -355,6 +369,7 @@ struct MeetingsSettingsLinkRow: View {
 /// Internal so the opt-in UI snapshot test can render it standalone.
 struct VoiceProfileCard: View {
     let onForget: () -> Void
+    @State private var confirm = false
 
     var body: some View {
         SettingsCard {
@@ -362,9 +377,99 @@ struct VoiceProfileCard: View {
                 title: "Your voice".loc,
                 subtitle: "A small voice profile is kept on this Mac to recognise you in meetings. Forgetting it removes it; it is learned again from future meetings.".loc
             ) {
-                Button("Forget my voice".loc, action: onForget)
+                Button("Forget my voice".loc) { confirm = true }
                     .buttonStyle(.talkie(.destructive))
             }
+        }
+        .confirmationDialog(VoiceDeletionConfirm.ownVoice.title, isPresented: $confirm, titleVisibility: .visible) {
+            Button(VoiceDeletionConfirm.ownVoice.verb, role: .destructive, action: onForget)
+            Button("Cancel".loc, role: .cancel) {}
+        } message: {
+            Text(VoiceDeletionConfirm.ownVoice.message)
+        }
+    }
+}
+
+/// What a confirmation before deleting voice data says. Pure, so the copy and the
+/// presence of each confirmation are tested without a view.
+enum VoiceDeletionConfirm: Equatable {
+    case ownVoice
+    case person(name: String)
+    case allKnownVoices
+
+    var title: String {
+        switch self {
+        case .ownVoice: return "Forget your voice?".loc
+        case .person(let name): return String(format: "Delete %@’s voice?".loc, name)
+        case .allKnownVoices: return "Forget all known voices?".loc
+        }
+    }
+    var message: String {
+        switch self {
+        case .ownVoice:
+            return "Your voice profile is removed from this Mac. It is learned again from future meetings.".loc
+        case .person:
+            return "This voice print is removed from this Mac. Speakers already named keep their names.".loc
+        case .allKnownVoices:
+            return "Every voice print you chose to keep is removed from this Mac. Speakers already named keep their names.".loc
+        }
+    }
+    var verb: String {
+        switch self {
+        case .ownVoice: return "Forget my voice".loc
+        case .person: return "Delete".loc
+        case .allKnownVoices: return "Forget all".loc
+        }
+    }
+}
+
+/// "Known voices": the people the user chose to recognise in future meetings, how many
+/// meetings each profile was built from, per-person delete and Forget all — each behind
+/// a confirmation. Shown only when at least one is stored.
+struct KnownVoicesCard: View {
+    let voices: [KnownVoice]
+    let onDelete: (UUID) -> Void
+    let onForgetAll: () -> Void
+    @State private var pendingDelete: KnownVoice?
+    @State private var confirmForgetAll = false
+
+    static func subtitle(_ v: KnownVoice) -> String {
+        v.meetingCount == 1 ? "Built from 1 meeting".loc : String(format: "Built from %d meetings".loc, v.meetingCount)
+    }
+
+    var body: some View {
+        SettingsCard(header: "Known voices".loc,
+                     footer: "Voice prints of the people you chose to recognise in meetings. They are stored on this Mac only; deleting one removes it for good.".loc) {
+            ForEach(Array(voices.sorted { $0.createdUnix < $1.createdUnix }.enumerated()), id: \.element.id) { i, v in
+                if i > 0 { SettingsDivider() }
+                SettingsRow(title: v.name, subtitle: Self.subtitle(v)) {
+                    Button("Delete".loc) { pendingDelete = v }
+                        .buttonStyle(.talkie(.destructive, size: .small))
+                }
+            }
+            SettingsDivider()
+            SettingsRow(title: "Forget all known voices".loc) {
+                Button("Forget all".loc) { confirmForgetAll = true }
+                    .buttonStyle(.talkie(.destructive))
+            }
+        }
+        .confirmationDialog(VoiceDeletionConfirm.person(name: pendingDelete?.name ?? "").title,
+                            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible) {
+            Button(VoiceDeletionConfirm.person(name: "").verb, role: .destructive) {
+                if let v = pendingDelete { onDelete(v.id) }
+                pendingDelete = nil
+            }
+            Button("Cancel".loc, role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text(VoiceDeletionConfirm.person(name: "").message)
+        }
+        .confirmationDialog(VoiceDeletionConfirm.allKnownVoices.title, isPresented: $confirmForgetAll,
+                            titleVisibility: .visible) {
+            Button(VoiceDeletionConfirm.allKnownVoices.verb, role: .destructive, action: onForgetAll)
+            Button("Cancel".loc, role: .cancel) {}
+        } message: {
+            Text(VoiceDeletionConfirm.allKnownVoices.message)
         }
     }
 }

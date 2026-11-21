@@ -55,25 +55,15 @@ struct UpdateReminderLine: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text(String(format: "This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you.".loc, days))
-                .font(.talkieHeading(12, weight: .regular))
-                .foregroundStyle(Theme.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
+        TalkieNotice(
+            text: String(format: "This version of Talkie is %d days old. Talkie never goes online, so it cannot check for you.".loc, days),
+            icon: "clock.arrow.circlepath",
+            onDismiss: onDismiss
+        ) {
             if Brand.repoURL != nil {
                 Button("See the latest version".loc) { UpdateReminder.openLatestRelease() }
-                    .buttonStyle(.talkie(.secondary))
-                    .controlSize(.small)
+                    .buttonStyle(.talkie(.secondary, size: .small))
             }
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
-            .buttonStyle(.talkie(.quiet, size: .small))
-            .help("Dismiss".loc)
-            .accessibilityLabel("Dismiss".loc)
         }
     }
 }
@@ -91,7 +81,7 @@ struct VersionRow: View {
     }
 
     var body: some View {
-        SettingsCard {
+        SettingsCard(header: "Version") {
             SettingsRow(title: info, subtitle: "Talkie never goes online, so it cannot check for updates.".loc) {
                 if Brand.repoURL != nil {
                     Button("See the latest version".loc) { UpdateReminder.openLatestRelease() }

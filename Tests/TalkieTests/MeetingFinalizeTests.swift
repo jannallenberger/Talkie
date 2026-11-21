@@ -44,59 +44,22 @@ final class MeetingFinalizeTests: XCTestCase {
 
     // MARK: P2-01 — typed notes are never silently discarded
 
-    func testComposeSummaryUsesFusedWhenPresent() {
-        let out = MeetingRecorder.composeSummary(
-            userNotes: "buy milk",
-            transcriptSummary: "transcript-derived summary",
-            fused: "FUSED BODY"
-        )
-        XCTAssertEqual(out, "FUSED BODY")
+    func testNotesSummaryKeepsEveryNoteWithItsTime() {
+        let notes = [MeetingNote(text: "decide on Q3 budget", secondsIntoMeeting: 75),
+                     MeetingNote(text: "ping Sam re: contract", secondsIntoMeeting: nil)]
+        let out = MeetingRecorder.notesSummary(notes, transcript: "We talk about the budget for the third quarter today.")
+        XCTAssertTrue(out.contains("**Your notes:**"), out)
+        XCTAssertTrue(out.contains("- [01:15] decide on Q3 budget"), out)
+        XCTAssertTrue(out.contains("- ping Sam re: contract"), out)
     }
 
-    func testComposeSummaryPreservesRawNotesWhenFusionUnavailable() {
-        let notes = "decide on Q3 budget; ping Sam re: contract"
-        let out = MeetingRecorder.composeSummary(
-            userNotes: notes,
-            transcriptSummary: "the transcript summary",
-            fused: nil
-        )
-        XCTAssertTrue(out.contains(notes), "raw notes must survive: \(out)")
-        XCTAssertTrue(out.lowercased().contains("unavailable"),
-                      "must carry the fusion-unavailable notice: \(out)")
-        XCTAssertTrue(out.contains("## Your notes"), "must label the preserved notes: \(out)")
-        XCTAssertTrue(out.contains("the transcript summary"),
-                      "the plain transcript summary should still be included: \(out)")
+    func testNotesSummaryIsEmptyWithoutNotes() {
+        XCTAssertEqual(MeetingRecorder.notesSummary([], transcript: "anything"), "")
     }
 
-    func testComposeSummaryPreservesNotesEvenWithEmptyTranscriptSummary() {
-        let notes = "standalone jotted note"
-        let out = MeetingRecorder.composeSummary(
-            userNotes: notes,
-            transcriptSummary: "",
-            fused: nil
-        )
-        XCTAssertTrue(out.contains(notes), "notes-only meeting must keep its notes: \(out)")
-        XCTAssertTrue(out.lowercased().contains("unavailable"))
-    }
-
-    func testComposeSummaryFallsBackToTranscriptSummaryWhenNoNotes() {
-        let out = MeetingRecorder.composeSummary(
-            userNotes: "",
-            transcriptSummary: "just the summary",
-            fused: nil
-        )
-        XCTAssertEqual(out, "just the summary")
-    }
-
-    func testComposeSummaryTreatsBlankFusedAsUnavailable() {
-        let notes = "keep me"
-        let out = MeetingRecorder.composeSummary(
-            userNotes: notes,
-            transcriptSummary: "s",
-            fused: "   \n  "
-        )
-        // A blank fused result must not silently erase the notes.
-        XCTAssertTrue(out.contains(notes), "blank fused must not wipe notes: \(out)")
+    func testNotesSummaryOfANotesOnlyMeetingUsesTheNotesLanguage() {
+        let notes = [MeetingNote(text: "Wir entscheiden uns für den kleineren Stand in Halle drei", secondsIntoMeeting: 10)]
+        XCTAssertTrue(MeetingRecorder.notesSummary(notes, transcript: "").contains("**Deine Notizen:**"))
     }
 
     // MARK: D2 — segments are additive, back-compat

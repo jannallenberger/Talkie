@@ -117,6 +117,10 @@ final class HUDModel: ObservableObject {
     /// let go of the key and it keeps recording until you tap once to stop. Only
     /// meaningful during the capture phases; reset when a session ends.
     @Published var handsFreeLocked: Bool = false
+    /// "Format while you dictate": what the capture pill shows for the format key
+    /// (blue while it's held, the active format's chip, "Not recognised"). The pure
+    /// `PillFormatState`; reset when a session ends.
+    @Published var formatState = PillFormatState()
     /// The live transcript's *finalized* portion — segments the recognizer has
     /// committed and won't revise — rendered firmly (higher opacity) as the head of
     /// the capture-pill's one-line tail (C1). Empty renders nothing, i.e. today's
@@ -400,6 +404,7 @@ final class HUDController {
         cancelHide()
         resetLevels()
         model.handsFreeLocked = false   // fresh session starts un-locked
+        resetFormatState()              // and in normal text, with no format feedback
         model.isHoveringPill = false    // nor a stale hover carried in from a prior pill
         model.silenceCountingDown = false   // and never inherits a stale auto-stop countdown
         model.latchArmedTick &+= 1      // (re)start the hold-to-lock progress fill from empty
@@ -812,6 +817,38 @@ final class HUDController {
     /// Flip the listening pill's hands-free lock glyph on/off. Called when a tap-tap
     /// locks (on) and when the session ends (off). Purely presentational — the pill
     /// must already be in a capture phase for the glyph to be visible.
+    /// "Format while you dictate": feed the pill's format state one event (key down,
+    /// released, resolved …). A confirming / "not recognised" flash clears itself.
+    func formatEvent(_ event: PillFormatState.Event) {
+        let before = model.formatState
+        model.formatState.handle(event)
+        let after = model.formatState
+        guard after.flash != before.flash || event == .keyDown else { return }
+        formatFlashTask?.cancel()
+        guard let seconds = after.flashSeconds else { return }
+        switch after.flash {
+        case .none:
+            return
+        case .confirmed(let name):
+            announce(String(format: "Format: %@".loc, name))
+        case .notRecognised:
+            announce("No format heard. Your words were kept as text.".loc)
+        case .ended:
+            announce("Back to normal text".loc)
+        }
+        formatFlashTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            self?.model.formatState.handle(.flashExpired)
+        }
+    }
+
+    private func resetFormatState() {
+        formatFlashTask?.cancel()
+        model.formatState = PillFormatState()
+    }
+    private var formatFlashTask: Task<Void, Never>?
+
     func setHandsFreeLocked(_ locked: Bool) {
         model.handsFreeLocked = locked
     }
@@ -998,6 +1035,7 @@ final class HUDController {
     private func finishHide() {
         panel?.ignoresMouseEvents = true
         model.handsFreeLocked = false     // never carry a lock glyph into the next session
+        resetFormatState()                // nor a format chip / notice
         model.silenceCountingDown = false // nor a stale auto-stop countdown
         model.isHoveringPill = false      // nor a stale hover (which would freeze the next timer)
         model.countdownProgress = 1
@@ -1110,7 +1148,7 @@ enum GestureHint {
 /// and the learned-correction ring so they all trace the exact same rounded rect.
 private let hudPillRadius: CGFloat = 17
 
-private struct HUDView: View {
+struct HUDView: View {
     @ObservedObject var model: HUDModel
     let pillFrame: PillFrameBox
     /// Whether the live transcript renders as flowing text below the waveform (growing
@@ -1180,6 +1218,122 @@ private struct HUDView: View {
         }
     }
 
+    /// "Format while you dictate", in the capture pill: "Listening for a format…" in
+    /// blue while the format key is held (and while its words are checked); the
+    /// active format as a blue chip — with a tick for a moment right after it is
+    /// recognised; "Not recognised" as its own brief state. Nothing in normal dictation.
+    @ViewBuilder
+    private var formatChipView: some View {
+        let size: CGFloat = model.highContrast ? 12 : 11
+        switch model.formatState.statusLine {
+        case .listening:
+            HStack(spacing: 4) {
+                Image(systemName: "keyboard")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("Listening for a format…".loc)
+                    .font(.system(size: size, weight: .semibold))
+            }
+            .foregroundStyle(Self.formatBlue)
+            .lineLimit(1)
+            .fixedSize()
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+        case .confirmed(let name):
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: size - 1, weight: .bold))
+                    .transition(.scale.combined(with: .opacity))
+                    .accessibilityHidden(true)
+                Text(verbatim: name)
+                    .font(.system(size: size, weight: .semibold))
+            }
+            .foregroundStyle(Self.formatBlue)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Self.formatBlue.opacity(PillPalette.confirmingChipFillOpacity)))
+            .transition(.scale.combined(with: .opacity))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(format: "Format: %@".loc, name))
+        case .active(let name):
+            // Quiet and persistent: the format is still on until it is ended.
+            HStack(spacing: 4) {
+                Image(systemName: "textformat")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text(String(format: "%@ is on".loc, name))
+                    .font(.system(size: size, weight: .medium))
+            }
+            .foregroundStyle(Self.formatBlue)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Self.formatBlue.opacity(PillPalette.chipFillOpacity)))
+            .transition(.opacity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(format: "Format: %@".loc, name))
+        case .notRecognised:
+            // Neutral warning tone (not red — it is not an error): the words stay as text.
+            HStack(spacing: 4) {
+                Image(systemName: "text.alignleft")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("No format heard · kept as text".loc)
+                    .font(.system(size: size, weight: .semibold))
+            }
+            .foregroundStyle(Self.warningTone)
+            .lineLimit(1)
+            .fixedSize()
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+        case .ended:
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("Back to normal text".loc)
+                    .font(.system(size: size, weight: .medium))
+            }
+            .foregroundStyle(ink(0.78))
+            .lineLimit(1)
+            .fixedSize()
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+        case nil:
+            EmptyView()
+        }
+    }
+
+    /// The pill's warning tone for "No format heard": `Theme.warning` dark value at
+    /// full strength (the pill is black in both appearances).
+    static let warningTone = Color(.sRGB, red: PillPalette.warning.r / 255,
+                                   green: PillPalette.warning.g / 255,
+                                   blue: PillPalette.warning.b / 255, opacity: 1)
+
+    /// The pill's format blue: the brand blue's dark-surface value (`Theme.coral` dark,
+    /// #4AA0E6) at full strength, fixed — the pill is black in either appearance, so
+    /// the light-mode blue would read as dim navy. See `PillPalette` (contrast-tested).
+    static let formatBlue = Color(.sRGB, red: PillPalette.formatBlue.r / 255,
+                                  green: PillPalette.formatBlue.g / 255,
+                                  blue: PillPalette.formatBlue.b / 255, opacity: 1)
+
+    /// Whether the format status line (below the waveform) has anything to show.
+    private var hasFormatStatus: Bool {
+        model.formatState.statusLine != nil
+    }
+
+    /// The format status on its own line, centred under the waveform row — never
+    /// beside it, so the row keeps its position when a format state appears.
+    private var formatStatusLine: some View {
+        HStack(spacing: 8) { formatChipView }
+            .fixedSize()
+            .layoutValue(key: PillCentred.self, value: true)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
     /// C1 — the live tail as a WRAPPING block below the waveform. `PillColumnLayout`
     /// offers it at most `liveTailWidth`, and it takes only the width its words need
     /// (so a few words keep the pill compact); a line cap stops it past a few lines;
@@ -1201,12 +1355,14 @@ private struct HUDView: View {
     /// word spacing. Colors flow through `ink(_:)` so high-contrast lifts them too.
     private var liveTailString: AttributedString {
         var attributed = AttributedString(model.text)
-        attributed.foregroundColor = ink(model.highContrast ? 0.95 : 0.85)
+        // While the format key is held the words turn the format blue with the waveform.
+        let blue = model.formatState.textIsBlue
+        attributed.foregroundColor = blue ? Self.formatBlue : ink(model.highContrast ? 0.95 : 0.85)
         let volatile = model.volatileText
         if !volatile.isEmpty {
             let joiner = model.text.isEmpty ? "" : " "
             var tail = AttributedString(joiner + volatile)
-            tail.foregroundColor = ink(model.highContrast ? 0.7 : 0.5)
+            tail.foregroundColor = blue ? Self.formatBlue : ink(model.highContrast ? 0.7 : 0.5)
             attributed.append(tail)
         }
         return attributed
@@ -1333,16 +1489,21 @@ private struct HUDView: View {
             // "not yet recording" ring stays legible; the live red is already a
             // saturated feather color, left as-is.
             let tint = recording ? Theme.featherRed : ink(model.highContrast ? 0.9 : 0.55)
+            // "Format while you dictate": the waves turn blue while a format is active.
+            let formatBlueWave = recording && model.formatState.waveformIsBlue
+            let waveTint = formatBlueWave ? Self.formatBlue : tint
             Group {
                 if model.silenceCountingDown {
                     // B5: the auto-stop countdown owns the row (and hides the live tail).
+                    VStack(spacing: 5) {
                     HStack(spacing: 8) {
                         StatusDot(color: tint, filled: recording)
                             .animation(.easeInOut(duration: 0.25), value: recording)
                         // A red waveform: equal-width bars whose heights move with your
                         // voice. A one-shot wave of opacity sweeps across it the instant
                         // recording starts, then it settles to steady red.
-                        Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
+                        Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID,
+                                 fullStrength: formatBlueWave)
                             .accessibilityHidden(true)
                         lockGlyph
                         // Feature 14: the active cleanup style/level, tappable to cycle —
@@ -1359,6 +1520,8 @@ private struct HUDView: View {
                             .fixedSize(horizontal: true, vertical: false)
                             .transition(.blurReplace)
                     }
+                    if hasFormatStatus { formatStatusLine }
+                    }
                 } else {
                     // The pill hugs its content: as wide as the status row needs, growing
                     // sideways only as far as the live words below need (they wrap at
@@ -1371,7 +1534,8 @@ private struct HUDView: View {
                             // A red waveform: equal-width bars whose heights move with your
                             // voice. A one-shot wave of opacity sweeps across it the instant
                             // recording starts, then it settles to steady red.
-                            Waveform(levels: model.levels, tint: tint, sweepTrigger: model.recordStartID)
+                            Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID,
+                                 fullStrength: formatBlueWave)
                                 .accessibilityHidden(true)
                             HStack(spacing: 8) {
                                 lockGlyph
@@ -1381,6 +1545,9 @@ private struct HUDView: View {
                                 CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
                             }
                         }
+                        // "Format while you dictate": its status sits on its own line,
+                        // centred directly below the waveform row (never beside it).
+                        if hasFormatStatus { formatStatusLine }
                         // C1: the live tail of what's being heard flows BELOW the waveform
                         // as wrapping text. Gated by the Settings toggle; absent until there
                         // are words — so the bare pill is just the compact status row.
@@ -1391,6 +1558,7 @@ private struct HUDView: View {
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.handsFreeLocked)
+            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.formatState)
             .animation(.easeInOut(duration: 0.2), value: model.silenceCountingDown)
             .transition(.blurReplace)
             // The dot + waveform are one status glyph to VoiceOver: state it plainly
@@ -2199,6 +2367,8 @@ private struct Waveform: View {
     let levels: [CGFloat]          // 0…1, newest last
     var tint: Color
     var sweepTrigger: Int          // bumped once when audio goes live
+    /// Format state: every bar at full opacity (no sweep dimming).
+    var fullStrength = false
 
     @State private var opacities = Array(repeating: 0.5, count: HUDModel.barCount)
 
@@ -2213,7 +2383,7 @@ private struct Waveform: View {
                 Capsule(style: .continuous)
                     .fill(tint)
                     .frame(width: barWidth, height: floor + level * (maxHeight - floor))
-                    .opacity(idx < opacities.count ? opacities[idx] : 1)
+                    .opacity(fullStrength ? 1 : (idx < opacities.count ? opacities[idx] : 1))
             }
         }
         .frame(height: maxHeight)
@@ -2247,7 +2417,10 @@ struct PillColumnLayout: Layout {
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = columnWidth(subviews)
-        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+        let heights = subviews.map {
+            $0[PillCentred.self] ? $0.sizeThatFits(.unspecified).height
+                                 : $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+        }
         return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(max(0, heights.count - 1)))
     }
 
@@ -2255,6 +2428,14 @@ struct PillColumnLayout: Layout {
         let width = columnWidth(subviews)
         var y = bounds.minY
         for subview in subviews {
+            if subview[PillCentred.self] {
+                // A centred line (the format status): its own width, centred.
+                let size = subview.sizeThatFits(.unspecified)
+                subview.place(at: CGPoint(x: bounds.minX + (width - size.width) / 2, y: y), anchor: .topLeading,
+                              proposal: ProposedViewSize(size))
+                y += size.height + spacing
+                continue
+            }
             let height = subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
             subview.place(at: CGPoint(x: bounds.minX, y: y), anchor: .topLeading,
                           proposal: ProposedViewSize(width: width, height: height))
@@ -2266,10 +2447,17 @@ struct PillColumnLayout: Layout {
         guard let row = subviews.first else { return 0 }
         var width = row.sizeThatFits(.unspecified).width
         for below in subviews.dropFirst() {
-            width = max(width, below.sizeThatFits(ProposedViewSize(width: maxTailWidth, height: nil)).width)
+            let w = below[PillCentred.self] ? below.sizeThatFits(.unspecified).width
+                : below.sizeThatFits(ProposedViewSize(width: maxTailWidth, height: nil)).width
+            width = max(width, w)
         }
         return ceil(width)
     }
+}
+
+/// Marks a `PillColumnLayout` line that is centred at its own width (the format status).
+struct PillCentred: LayoutValueKey {
+    static let defaultValue = false
 }
 
 /// A three-part row — leading, centre, trailing — that puts the centre view dead
@@ -2325,7 +2513,7 @@ struct CenteredRowLayout: Layout {
 /// top-left coordinates within the panel) so the hosting view knows where the only
 /// clickable region is. Only ever touched on the main thread (SwiftUI layout +
 /// AppKit hit-testing both run there), so `@unchecked Sendable` is accurate.
-private final class PillFrameBox: @unchecked Sendable {
+final class PillFrameBox: @unchecked Sendable {
     /// `.null` until the pill has laid out — until then nothing is claimed, which
     /// is the safe default (clicks pass straight through).
     var rect: CGRect = .null

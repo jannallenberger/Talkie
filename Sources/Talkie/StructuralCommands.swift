@@ -77,14 +77,17 @@ enum StructuralCommands {
     ///     for `"de"`; English phrases fire for `"en"` and for `nil`/unknown,
     ///     because the app is English-primary and the English phrases are
     ///     distinctive enough to be safe as the default.
-    static func apply(_ text: String, languageCode: String?) -> String {
+    static func apply(_ text: String, languageCode: String?, anyLanguage: Bool = false) -> String {
         guard !text.isEmpty else { return text }
 
-        let allowGerman = (languageCode == "de")
+        // `anyLanguage` (the spoken-punctuation switch): the owner mixes German and English
+        // in one dictation, so both phrase sets fire whatever the language. The both-sides
+        // punctuation rule below is what keeps a sentence ("in einer neuen Zeile …") literal.
+        let allowGerman = anyLanguage || (languageCode == "de")
         // English is the default for nil/unknown; German is additive when the
         // language is actually German. (In practice a transcript is one language,
         // so the two phrase sets never collide.)
-        let allowEnglish = !allowGerman || languageCode == "en"
+        let allowEnglish = anyLanguage || !allowGerman || languageCode == "en"
 
         let (gaps, words) = tokenize(text)
         guard !words.isEmpty else { return text }
@@ -179,9 +182,10 @@ enum StructuralCommands {
             // "neue Zeile" (and the case the recognizer might hand back "neuer
             // Zeile"); "neuer Absatz". Match the adjective loosely on its stem so a
             // declension variant still lands, but keep the noun exact.
-            let neu = (w0 == "neue" || w0 == "neuer" || w0 == "neues")
-            if neu && w1 == "zeile" { return Match(kind: .line, wordCount: 2) }
-            if neu && w1 == "absatz" { return Match(kind: .paragraph, wordCount: 2) }
+            // Citation form only: "neue Zeile", "neuer Absatz". An inflected form
+            // ("in einer neuen Zeile", "neuer Zeile") is a sentence, never a command.
+            if w0 == "neue" && w1 == "zeile" { return Match(kind: .line, wordCount: 2) }
+            if w0 == "neuer" && w1 == "absatz" { return Match(kind: .paragraph, wordCount: 2) }
         }
         return nil
     }

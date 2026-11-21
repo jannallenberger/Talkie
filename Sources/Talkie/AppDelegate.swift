@@ -135,6 +135,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// HotKeyMonitor owns the real lock state; this mirrors it so begin/end can
     /// reset the pill's lock glyph. Reset on every begin and end.
     private var handsFreeLocked = false
+    /// "Format while you dictate": this session's command-key marks (audio time),
+    /// collected while recording and consumed by `endDictation`. Empty unless the
+    /// command key was used — then the normal pipeline runs unchanged.
+    private var sessionFormatMarks: [FormatMark] = []
+    /// System uptime when this session's audio went live — maps key times (uptime) to
+    /// the recognizer's audio clock. Nil until live.
+    private var audioStartUptime: TimeInterval?
+    /// The live transcript at the last clean command-key press, for the pill preview.
+    private var formatPressSnapshot: Task<String, Never>?
+    /// Per command span (in order): what the live preview matched at release — the
+    /// last fallback when a re-transcribed span is empty or unmatched.
+    private var sessionLiveCommands: [FormatCommand?] = []
+    /// Per command span (in order): the span's audio re-recognised in the other
+    /// enabled languages (nil with one language). See `FormatCrossLanguage`.
+    private var sessionSpanAlternatives: [Task<[String], Never>?] = []
+    /// Keeps the matcher's phrase book in step with the snippets.
+    private var macrosObservation: AnyCancellable?
     /// True from key-release until the transcript has been polished + inserted.
     /// Blocks a new session from overlapping the in-flight one (which shares the
     /// engine + audio); a re-press during this window just nudges the pill.
@@ -267,6 +284,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// is done by the time you release the key. Built per session when cleanup
     /// is enabled; consumed (or discarded) in `endDictation`.
     private var currentStreaming: StreamingCleanup?
+    /// Whether `currentStreaming` converts spoken punctuation before its model call (the
+    /// switch as it was when the session began). See `SpokenPunctuationPipeline`.
+    private var currentStreamingPunctuates = false
     /// The project file index snapshot to apply to the current dictation (vibe coding).
     private var currentVibeSnapshot: ProjectIndexSnapshot = .empty
     /// A discoverable project root behind the editor/terminal being dictated into,
@@ -333,6 +353,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentLocaleID = settings.spokenLanguages.first ?? settings.localeIdentifier
         engine = PrivacyWall.assertLocal(TranscriptionEngine(localeIdentifier: currentLocaleID))
         meetingRecorder = MeetingRecorder(engine: engine, store: meetingStore)
+        meetingRecorder.speakerVocabulary = SpeakerVocabularyAdder(dictionary: dictionary, hud: hud)
         meetingRecorder.isDictating = { [weak self] in self?.isDictating == true }
         meetingRecorder.isProcessingDictation = { [weak self] in self?.isProcessing == true }
         meetingRecorder.primaryLocale = { [weak self] in
@@ -419,6 +440,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         permissions.refresh()
         observeSettings()
+        observePowerEvents()
 
         // The always-on floating bird, if the user keeps it on.
         if settings.showBirdBuddy { birdBuddy.show() }
@@ -784,7 +806,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Hotkey
 
-    private enum DictationEvent: Sendable { case begin, end, lock }
+    private enum DictationEvent: Sendable { case begin, end, lock, format(FormatKeyGesture.Output) }
     private var eventTask: Task<Void, Never>?
     /// The dictation event stream's continuation. Hoisted from a `setupHotKey` local
     /// to a property (B5) so the silence auto-stop watchdog can yield `.end` into the
@@ -808,11 +830,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .begin: self.beginDictation()
                 case .end: self.endDictation()
                 case .lock: self.lockDictation()
+                case .format(let output): self.handleFormatKey(output)
                 }
             }
         }
 
-        let config = HotKeyMonitor.Config(key: settings.activationKey)
+        let config = hotKeyConfig
         let monitor = HotKeyMonitor(
             config: config,
             onActivate: { continuation.yield(.begin) },
@@ -820,7 +843,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onLock: { continuation.yield(.lock) },
             onPasteLast: { [weak self] in
                 Task { @MainActor in self?.pasteLastTranscript() }
-            }
+            },
+            // Through the same ordered stream, so a command span always lands before
+            // the `.end` of the session it belongs to.
+            onFormatKey: { continuation.yield(.format($0)) }
         )
         _ = monitor.start()
         hotKey = monitor
@@ -831,6 +857,157 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ActivationRecordingGate.shared.setHandler { [weak monitor] suspend in
             monitor?.setSuspended(suspend)
         }
+    }
+
+    /// The tap's binding: the dictation key, plus the command key when "format while
+    /// you dictate" is on.
+    private var hotKeyConfig: HotKeyMonitor.Config {
+        HotKeyMonitor.Config(key: settings.activationKey,
+                             commandKey: settings.formatCommandsEnabled ? settings.effectiveFormatCommandKey : nil)
+    }
+
+    // MARK: Format while you dictate
+
+    /// A command-key event from the tap (only sent while a dictation is active).
+    /// Records the mark in audio time and updates the pill: chip + blue waveform for a
+    /// recognised format, "format not recognised" otherwise. The pasted text is
+    /// decided later from real word timings; this is the live preview.
+    private func handleFormatKey(_ output: FormatKeyGesture.Output) {
+        guard isDictating, settings.formatCommandsEnabled else { return }
+        let myID = sessionID
+        switch output {
+        case .pressed:
+            // Blue the instant the key goes down — before anything is heard.
+            hud.formatEvent(.keyDown)
+            let engine = self.engine!
+            formatPressSnapshot = Task { await engine.liveTranscript() }
+        case .cancelled:
+            formatPressSnapshot = nil
+            hud.formatEvent(.keyCancelled)
+        case .tap(let at):
+            formatPressSnapshot = nil
+            sessionFormatMarks.append(.endTap(at: audioTime(forUptime: at)))
+            hud.formatEvent(.tapped)
+        case .span(let start, let end):
+            let spanStart = audioTime(forUptime: start)
+            let spanEnd = audioTime(forUptime: end)
+            sessionFormatMarks.append(.span(start: spanStart, end: spanEnd))
+            hud.formatEvent(.spanReleased)
+            let spanNumber = sessionLiveCommands.count
+            sessionLiveCommands.append(nil)
+            let alternatives = startSpanRecognition(start: spanStart, end: spanEnd, sessionID: myID)
+            sessionSpanAlternatives.append(alternatives)
+            let before = formatPressSnapshot
+            formatPressSnapshot = nil
+            Task { @MainActor [weak self] in
+                // Give the recognizer a moment to emit the words said just before
+                // release; a slow recognizer gets two more looks before "nothing said".
+                var heard = ""
+                let earlier = await before?.value ?? ""
+                for _ in 0..<3 {
+                    try? await Task.sleep(for: .milliseconds(600))
+                    guard let self, self.isDictating, self.sessionID == myID else { return }
+                    let now = await self.engine.liveTranscript()
+                    heard = FormatLivePreview.addedWords(before: earlier, after: now)
+                    if !heard.isEmpty { break }
+                }
+                guard let self, self.isDictating, self.sessionID == myID else { return }
+                var resolution = FormatLivePreview.resolve(heard)
+                var saidAnything = !heard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                // The live recognizer may be in another language than the command:
+                // when it didn't read as one, ask the other languages' readings.
+                let unresolved: Bool = {
+                    if case .notRecognised = resolution { return true }
+                    return heard.isEmpty
+                }()
+                if unresolved, let alternatives {
+                    let others = await FormatCrossLanguage.value(
+                        of: alternatives, within: FormatCrossLanguage.spanBudgetSeconds + 0.5) ?? []
+                    guard self.isDictating, self.sessionID == myID else { return }
+                    if !others.isEmpty {
+                        resolution = FormatLivePreview.resolve(heard, alternatives: others)
+                        saidAnything = saidAnything || others.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    }
+                }
+                if spanNumber < self.sessionLiveCommands.count {
+                    switch resolution {
+                    case .applied(let preset): self.sessionLiveCommands[spanNumber] = .apply(preset)
+                    case .appliedUser(let c), .inserted(let c): self.sessionLiveCommands[spanNumber] = .user(c)
+                    case .ended: self.sessionLiveCommands[spanNumber] = .end
+                    case .notRecognised: break
+                    }
+                }
+                // Held the key and said nothing: no flash, nothing to report.
+                self.hud.formatEvent(.resolved(!saidAnything ? .emptyHold : PillFormatState.resolution(resolution)))
+            }
+        }
+    }
+
+    /// With more than one dictation language: re-recognise this span's audio in the
+    /// other enabled languages, in the background (see `FormatCrossLanguage`). Nil
+    /// with one language, or when the capture window no longer starts at time 0.
+    private func startSpanRecognition(start: Double, end: Double, sessionID myID: Int) -> Task<[String], Never>? {
+        guard FormatCrossLanguage.shouldRecognise(spokenLanguages: settings.spokenLanguages),
+              audio.bufferedAudioIsComplete else { return nil }
+        let others = FormatCrossLanguage.otherLanguages(spokenLanguages: settings.spokenLanguages,
+                                                        currentLocaleID: currentLocaleID)
+        guard !others.isEmpty else { return nil }
+        return Task { @MainActor [weak self] in
+            // Let the last syllables reach the capture window.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard let self, self.sessionID == myID else { return [] }
+            let buffers = self.audio.bufferedAudioSnapshot()
+            guard !buffers.isEmpty else { return [] }
+            let model = await self.engine.lastSessionModel()
+            return await self.engine.recognizeSpan(buffers, start: start, end: end, localeIdentifiers: others,
+                                                   model: model,
+                                                   budgetSeconds: FormatCrossLanguage.spanBudgetSeconds)
+        }
+    }
+
+    /// Keep the matcher's phrase book (synonyms, on/off, user-made commands) current.
+    private func refreshFormatPhraseBook() {
+        FormatPhraseBook.current = UserCommandLibrary.book(settings: settings, macros: macros)
+    }
+
+    /// Run the format assembly for a dictation with command spans (see
+    /// `FormatDictationAssembler`). `style` nil = cleanup off. Formatted text gets the
+    /// deterministic number + dictionary pass; normal text gets the full chain later.
+    nonisolated private static func formatPlan(
+        segments: [TimedSegment], marks: [FormatMark], words: [FormatWord]?,
+        fallbackCommands: [FormatCommand?], alternatives: [[String]], refineByPhrase: Bool,
+        cleanup: CleanupEngine, style: CleanupStyle?, languageCode: String?, replacements: [Replacement],
+        stripEnglishFillers: Bool, userName: String, spokenPunctuation: Bool
+    ) async -> FormatDictationAssembler.Plan {
+        var clean: FormatDictationAssembler.Cleaner?
+        if let style, CleanupEngine.isAvailable {
+            if spokenPunctuation {
+                // Decide on the region's recognizer text, then clean (SpokenPunctuationPipeline).
+                clean = { text in
+                    await SpokenPunctuation.aroundModel(text, languageCode: languageCode, structural: false) {
+                        await cleanup.clean($0, style: style, languageCode: languageCode)
+                    }
+                }
+            } else {
+                clean = { text in await cleanup.clean(text, style: style, languageCode: languageCode) }
+            }
+        }
+        // Without a model the formatted text is converted here, after the dictionary.
+        let punctuateAfter = spokenPunctuation && clean == nil
+        let post: @Sendable (String) -> String = { text in
+            let processed = TextProcessor.apply(replacements: replacements, removeFillers: stripEnglishFillers,
+                                                autoCapitalize: false, to: NumberNormalizer.normalize(text)).text
+            return punctuateAfter ? SpokenPunctuation.apply(processed, languageCode: languageCode) : processed
+        }
+        return await FormatDictationAssembler.assemble(
+            segments: segments, marks: marks, words: words, fallbackCommands: fallbackCommands,
+            alternatives: alternatives, refineByPhrase: refineByPhrase, clean: clean, postProcessFormatted: post,
+            languageCode: languageCode, userName: userName)
+    }
+
+    private func audioTime(forUptime t: TimeInterval) -> Double {
+        guard let start = audioStartUptime else { return 0 }
+        return max(0, t - start)
     }
 
     // MARK: Hands-free auto-stop (B5)
@@ -914,12 +1091,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func observeSettings() {
+        refreshFormatPhraseBook()
+        macrosObservation = macros.$macros.dropFirst().sink { [weak self] _ in
+            // `@Published` fires before the value is stored: rebuild on the next turn.
+            Task { @MainActor in self?.refreshFormatPhraseBook() }
+        }
         // Re-bind the hotkey + sound prefs when settings change.
         settingsObservation = Task { @MainActor [weak self] in
             for await _ in NotificationCenter.default.notifications(named: .talkieSettingsChanged) {
                 guard let self else { return }
+                self.refreshFormatPhraseBook()
                 Feedback.enabled = self.settings.playSounds
-                self.hotKey?.update(config: .init(key: self.settings.activationKey))
+                self.hotKey?.update(config: self.hotKeyConfig)
                 self.updateStatusUI()
 
                 // Show/hide the floating bird live when its toggle flips.
@@ -1119,6 +1302,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await cleanup.prewarm(style: style) }
     }
 
+    // MARK: Sleep / wake
+
+    private var powerObservers: [NSObjectProtocol] = []
+    private var wakeRecoveryTask: Task<Void, Never>?
+
+    /// After the Mac sleeps for hours the system speech service connection is dead and
+    /// idle audio/engine state is stale (see `SpeechStartRecovery`). On sleep release
+    /// the prewarmed mic; on wake rebuild idle speech state — only when nothing is in
+    /// use, so an active dictation or meeting is never disturbed.
+    private func observePowerEvents() {
+        guard powerObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        let pairs: [(Notification.Name, PowerEvent)] = [
+            (NSWorkspace.willSleepNotification, .willSleep),
+            (NSWorkspace.didWakeNotification, .didWake),
+            (NSWorkspace.screensDidWakeNotification, .screensDidWake),
+        ]
+        for (name, event) in pairs {
+            let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.handlePowerEvent(event) }
+            }
+            powerObservers.append(token)
+        }
+    }
+
+    private var currentActivity: WakeRecovery.Activity {
+        WakeRecovery.Activity(dictating: isDictating, processing: isProcessing,
+                              meetingBusy: meetingRecorder?.blocksDictation == true)
+    }
+
+    private func handlePowerEvent(_ event: PowerEvent) {
+        talkieDebugLog("power: \(event)")
+        if event == .willSleep {
+            perform(WakeRecovery.actions(for: event, activity: currentActivity))
+            return
+        }
+        // Let audio devices reappear first, then decide against the state AT THAT TIME
+        // (the user may have started dictating in between).
+        wakeRecoveryTask?.cancel()
+        wakeRecoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(WakeRecovery.wakeSettleSeconds))
+            guard let self, !Task.isCancelled else { return }
+            self.perform(WakeRecovery.actions(for: event, activity: self.currentActivity))
+        }
+    }
+
+    private func perform(_ actions: [WakeAction]) {
+        for action in actions {
+            switch action {
+            case .releasePrewarmedMic:
+                audio.discardIdleEngine()
+            case .resetSpeechService:
+                let engine = self.engine!
+                Task { await engine.resetSpeechService() }
+            case .rewarmSpeechModels:
+                for lang in settings.spokenLanguages {
+                    Task { try? await engine.warmUp(localeIdentifier: lang) }
+                    if settings.dictationModel == .dictation {
+                        Task { try? await engine.warmUp(localeIdentifier: lang, model: .dictation) }
+                    }
+                }
+            case .reprewarmMic:
+                audio.prewarm(preferredDeviceUID: settings.preferredInputDeviceUID)
+            }
+        }
+    }
+
     func beginDictation() {
         guard !isDictating else { return }
         // A previous dictation is still being polished/inserted. Starting now
@@ -1159,6 +1409,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isDictating = true
         handsFreeLocked = false
         sessionLive = false
+        sessionFormatMarks = []
+        sessionLiveCommands = []
+        sessionSpanAlternatives = []
+        audioStartUptime = nil
+        formatPressSnapshot = nil
         sessionID += 1
         let myID = sessionID
         updateStatusUI()
@@ -1358,9 +1613,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // path only survives when no language switch happens, so the baseline is
         // the right language for it) so the model can't translate it.
         let beginLangCode = LanguageDetector.languageCode(of: currentLocaleID)
+        // Spoken punctuation is decided on the recognizer's segment BEFORE the model
+        // rewrites it (SpokenPunctuationPipeline); the model only sees the characters.
+        let punctuateStream = settings.spokenPunctuation
         let cleanOne: @Sendable (String) async -> String? = { text in
-            await cleanupEngine.clean(text, style: style, languageCode: beginLangCode)
+            guard punctuateStream else {
+                return await cleanupEngine.clean(text, style: style, languageCode: beginLangCode)
+            }
+            return await SpokenPunctuation.aroundModel(text, languageCode: beginLangCode, structural: true) {
+                await cleanupEngine.clean($0, style: style, languageCode: beginLangCode)
+            }
         }
+        currentStreamingPunctuates = punctuateStream
         let streaming = (cleanupEnabled && CleanupEngine.isAvailable)
             ? StreamingCleanup(enabled: true, cleanOne: cleanOne)
             : nil
@@ -1414,50 +1678,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // pins it to the primary) or a prior dictation's language switch,
                 // and `currentLocaleID` is the self-consistency baseline below — so
                 // they must agree at the start of every session.
-                await engine.setLocaleIdentifier(self.currentLocaleID)
-                await engine.setContextualStrings(phrases)
-                let session = try await engine.beginSessionTracked(segmentHandler: segmentHandler,
-                                                                   model: settings.dictationModel)
-                capturedGeneration = session.generation
-                self.currentSessionGeneration = session.generation
-                let sessionReadyMs = Int(Date().timeIntervalSince(keyDown) * 1000)
-                // Re-check after the (async) model load / session setup.
-                guard self.isDictating, self.sessionID == myID else {
-                    streaming?.cancel()
-                    await engine.cancelSession(ifGeneration: session.generation)
-                    self.clearTryItSinks() // H5: abandoned try-it — reset its sink/UI.
-                    return
-                }
-                try audio.start(
-                    targetFormat: session.format,
-                    continuation: session.continuation,
-                    preferredDeviceUID: self.settings.preferredInputDeviceUID,
-                    bufferAudio: multiLang,
-                    // The whole dictation must fit: a language re-decode of a window
-                    // that rolled over loses the opening (~38 MB at the 10 min cap).
-                    bufferSeconds: 600,
-                    onLevel: { [weak self] level in
-                        Task { @MainActor in
-                            AppDelegate.sharedHUD?.updateLevel(level)
-                            self?.birdBuddy.updateLevel(level)
-                            // B5: feed the same normalized level to the hands-free
-                            // auto-stop watchdog. Non-nil only for a locked session, so
-                            // a held session is never watched. A level above the floor
-                            // (speech) cancels a running countdown; sustained sub-floor
-                            // level is the silence that arms + eventually stops.
-                            self?.silenceWatchdog?.observe(level: level)
+                //
+                // The whole setup (session + mic) runs under `SpeechStartRecovery.run`:
+                // a stale speech-service connection (or a dead audio unit) after a long
+                // sleep/idle gets ONE automatic rebuild-and-retry within this key press,
+                // and each wait on Apple's speech objects is bounded so the pill can
+                // never sit in "arming" forever. The mic opens only after the session
+                // is ready, so speech before that point (the setup time, plus the retry)
+                // is not captured — the same trade-off a normal start already makes.
+                let localeID = self.currentLocaleID
+                let engine = self.engine!
+                let dictationModel = self.settings.dictationModel
+                let timeout = SpeechStartRecovery.attemptTimeout(
+                    modelKnownInstalled: SpeechModelInstallTracker.shared.phase == .installed)
+                let started: StartedDictation? = try await SpeechStartRecovery.run(
+                    attempt: { _ in
+                        capturedGeneration = nil
+                        let beginResult = try await SpeechStartRecovery.bounded(seconds: timeout) {
+                                if Dev.consumeSimulatedStaleStart() { throw Dev.simulatedStaleError }
+                                await engine.setLocaleIdentifier(localeID)
+                                await engine.setContextualStrings(phrases)
+                                return UncheckedSendableBox(try await engine.beginSessionTracked(
+                                    segmentHandler: segmentHandler, model: dictationModel))
+                            }
+                        let session = beginResult.value
+                        capturedGeneration = session.generation
+                        self.currentSessionGeneration = session.generation
+                        // Re-check after the (async) model load / session setup.
+                        guard self.isDictating, self.sessionID == myID else {
+                            streaming?.cancel()
+                            await engine.cancelSession(ifGeneration: session.generation)
+                            self.clearTryItSinks() // H5: abandoned try-it — reset its sink/UI.
+                            return nil
                         }
+                        try audio.start(
+                            targetFormat: session.format,
+                            continuation: session.continuation,
+                            preferredDeviceUID: self.settings.preferredInputDeviceUID,
+                            bufferAudio: multiLang,
+                            // The whole dictation must fit: a language re-decode of a window
+                            // that rolled over loses the opening (~38 MB at the 10 min cap).
+                            bufferSeconds: 600,
+                            onLevel: { [weak self] level in
+                                Task { @MainActor in
+                                    AppDelegate.sharedHUD?.updateLevel(level)
+                                    self?.birdBuddy.updateLevel(level)
+                                    // B5: feed the same normalized level to the hands-free
+                                    // auto-stop watchdog. Non-nil only for a locked session, so
+                                    // a held session is never watched. A level above the floor
+                                    // (speech) cancels a running countdown; sustained sub-floor
+                                    // level is the silence that arms + eventually stops.
+                                    self?.silenceWatchdog?.observe(level: level)
+                                }
+                            },
+                            onCaptureFailed: { error in
+                                // The active mic vanished mid-session and none remains. Route
+                                // to the same error/HUD path as a start-time failure, ending
+                                // the dictation cleanly instead of capturing silence.
+                                Task { @MainActor [weak self] in
+                                    self?.handleCaptureFailure(error, sessionID: myID)
+                                }
+                            }
+                        )
+                        return StartedDictation(generation: session.generation)
                     },
-                    onCaptureFailed: { error in
-                        // The active mic vanished mid-session and none remains. Route
-                        // to the same error/HUD path as a start-time failure, ending
-                        // the dictation cleanly instead of capturing silence.
-                        Task { @MainActor [weak self] in
-                            self?.handleCaptureFailure(error, sessionID: myID)
-                        }
+                    rebuild: { error in
+                        // Fresh objects for the retry: drop the dead session/analyzer (and
+                        // invalidate a start that may still be hung), and the mic engine
+                        // if the audio unit is what failed.
+                        let plan = SpeechStartRecovery.rebuildPlan(for: error)
+                        if plan.speech { await engine.resetSpeechService() }
+                        if plan.mic { self.audio.discardIdleEngine() }
+                        capturedGeneration = nil
                     }
                 )
+                guard let session = started else { return }
+                let sessionReadyMs = Int(Date().timeIntervalSince(keyDown) * 1000)
                 self.sessionLive = true
+                self.audioStartUptime = ProcessInfo.processInfo.systemUptime
                 self.recordingStartedAt = Date()
                 talkieDebugLog("dictationStart: session ready \(sessionReadyMs) ms, mic live \(Int(Date().timeIntervalSince(keyDown) * 1000)) ms after key-down")
                 if multiLang {
@@ -1496,6 +1794,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.birdBuddy.setActive(false)
                 self.hud.showError(error.localizedDescription)
                 streaming?.cancel()
+                if let engineError = error as? TalkieEngineError, case .speechServiceUnavailable = engineError {
+                    // Gave up after the retry: leave the engine clean so the NEXT key
+                    // press starts from scratch (and a still-hung start is invalidated).
+                    await engine.resetSpeechService()
+                }
                 if let capturedGeneration {
                     await engine.cancelSession(ifGeneration: capturedGeneration)
                 } else {
@@ -1703,6 +2006,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.showProcessing()
 
         let replacements = dictionary.replacementsSnapshot()
+        let spokenPunctuation = settings.spokenPunctuation
         // The jargon fed to the post-hoc niche corrector below: the hand-curated
         // Dictionary vocabulary UNIONED with the self-learned niche terms that have
         // graduated (confidence-boosted AND guard-safe). Snapshotted here on the main
@@ -1875,7 +2179,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // is off). Consumed below, or discarded if a language switch re-wrote the
         // whole transcript.
         let streaming = currentStreaming
+        let streamingPunctuates = currentStreamingPunctuates
         currentStreaming = nil
+        // "Format while you dictate": the command-key marks of this session. Without a
+        // command span (`needsAssembly` false) every branch below is exactly as before.
+        let formatMarks = settings.formatCommandsEnabled ? sessionFormatMarks : []
+        let formatLiveCommands = sessionLiveCommands
+        let formatSpanAlternatives = sessionSpanAlternatives
+        sessionFormatMarks = []
+        sessionLiveCommands = []
+        sessionSpanAlternatives = []
+        formatPressSnapshot = nil
+        let hasFormatSpans = FormatAssembly.needsAssembly(formatMarks)
+        let formatUserName = settings.userName
 
         Task {
             // Always release the processing latch when this task finishes — even
@@ -1893,7 +2209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.sessionLiveSwitched = false
             let liveVerdict = self.liveAcousticVerdict
             self.liveAcousticVerdict = nil
-            let (raw, segments, _, wordConfidences) = await engine.finishSessionDetailed()
+            let (raw, segments, timedSegments, wordConfidences) = await engine.finishSessionDetailed()
             trace.stage("finalize")
             Self.pipelineTrace("raw", raw, detail: "segments=\(segments.count) locale=\(self.currentLocaleID)")
 
@@ -1907,6 +2223,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // recognition confidence). This beats language-ID of the text, which
             // leaks because wrong-model gibberish still contains real words of the
             // wrong (current) language. Short utterances are skipped — nothing to gain.
+            // "Format while you dictate": the words a re-decode produced, laid out for the
+            // command spans (which are in audio time and so survive re-transcription).
+            var formatWords: [FormatWord]?
+            var formatWordsEstimated = false
             if spokenLanguages.count > 1, !raw.isEmpty, LanguageDetector.canScore(raw) {
                 talkieDebugLog("--- dictation: raw(\(self.currentLocaleID))='\(raw)'")
                 // Re-decoding a window that lost its opening would REPLACE the whole
@@ -1945,6 +2265,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         : wordConfidences.map { Double($0.confidence) }.reduce(0, +) / Double(wordConfidences.count)) {
                     finalRaw = best.text
                     languageSwitched = true
+                    if hasFormatSpans {
+                        let reSegments = await self.engine.takeReTranscribedSegments(localeID: best.localeID)
+                        let laid = FormatRetranscription.words(
+                            retranscribed: reSegments, text: best.text,
+                            original: FormatTimeline.words(from: timedSegments), duration: totalSeconds)
+                        formatWords = laid.words
+                        formatWordsEstimated = laid.proportional
+                        talkieDebugLog("format: re-transcribed → \(laid.words.count) words, estimated=\(laid.proportional)")
+                    }
                     self.currentLocaleID = best.localeID
                     await self.engine.setLocaleIdentifier(best.localeID) // stick to it next time
                     talkieDebugLog("switched → \(best.localeID)")
@@ -2002,15 +2331,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                // watch e.g. German swap to English. The translated final is inserted
                // once, cleanly, below.
                outputLanguageCode == nil, !outputLanguageAdaptive,
+               // A dictation with a format command pastes once, at the end.
+               !hasFormatSpans,
                !finalRaw.isEmpty, CleanupEngine.isAvailable {
                 // The instant preview must not carry Apple's pause-induced periods
                 // (a thinking pause finalizes a segment ending in "."), or the user
                 // sees "I. Want to…" flash in before the swap. De-seam it the same
                 // deterministic way the no-AI final path does, so even the un-polished
                 // preview reads as one flowing thought.
-                let interimBase = (segments.count > 1)
+                var interimBase = (segments.count > 1)
                     ? SentenceFlow.mergeContinuations(segments)
                     : finalRaw
+                if spokenPunctuation {
+                    interimBase = SpokenPunctuation.beforeModel(interimBase, languageCode: cleanupLangCode,
+                                                                structural: true)
+                }
                 let interimProcessed = TextProcessor.apply(
                     replacements: replacements, removeFillers: stripEnglishFillers,
                     autoCapitalize: autoCap, to: interimBase
@@ -2048,7 +2383,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.pipelineTrace("deseam", deseamed)
             var cleaned = finalRaw
             var usedStreaming = false
-            if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
+            // Spoken punctuation / structural commands already decided on the recognizer's
+            // text before a model ran (SpokenPunctuationPipeline): then they must NOT run
+            // again on the model's text below.
+            var punctuatedBeforeModel = false
+            var structuralBeforeModel = false
+            // "Format while you dictate": split by audio time into regions, clean each
+            // the usual way, format the formatted ones after cleaning. The normal text
+            // (with placeholders for the formatted pieces) runs the chain below; the
+            // pieces are put back just before insertion.
+            var formatPlan: FormatDictationAssembler.Plan?
+            if hasFormatSpans {
+                streaming?.cancel()
+                // Other readings of each span: its re-recognition in the other enabled
+                // languages (waiting at most `pasteWaitSeconds` in total for any still
+                // running), plus the original transcript's words after a language switch.
+                let waitStarted = Date()
+                var spanAlternatives: [[String]] = []
+                for task in formatSpanAlternatives {
+                    guard let task else { spanAlternatives.append([]); continue }
+                    let left = FormatCrossLanguage.pasteWaitSeconds - Date().timeIntervalSince(waitStarted)
+                    spanAlternatives.append(await FormatCrossLanguage.value(of: task, within: left) ?? [])
+                }
+                if languageSwitched {
+                    let original = FormatTimeline.spanTexts(words: FormatTimeline.words(from: timedSegments),
+                                                            marks: formatMarks)
+                    for (n, text) in original.enumerated() where !text.isEmpty {
+                        while spanAlternatives.count <= n { spanAlternatives.append([]) }
+                        spanAlternatives[n].append(text)
+                    }
+                }
+                let plan = await Self.formatPlan(
+                    segments: timedSegments, marks: formatMarks, words: formatWords,
+                    fallbackCommands: FormatRetranscription.fallbackCommands(
+                        original: FormatTimeline.words(from: timedSegments), marks: formatMarks,
+                        live: formatLiveCommands),
+                    alternatives: spanAlternatives,
+                    refineByPhrase: formatWordsEstimated, cleanup: cleanupEngine,
+                    style: cleanupEnabled ? style : nil, languageCode: cleanupLangCode,
+                    replacements: replacements, stripEnglishFillers: stripEnglishFillers,
+                    userName: formatUserName, spokenPunctuation: spokenPunctuation)
+                formatPlan = plan
+                // With a model, `formatPlan` converted each region before cleaning it
+                // (marks only; the new-line commands keep their place below).
+                punctuatedBeforeModel = spokenPunctuation && cleanupEnabled && CleanupEngine.isAvailable
+                finalRaw = plan.plainRaw
+                cleaned = plan.normalStream
+                talkieDebugLog("format: \(plan.resolutions.count) command(s), \(plan.parts.count) part(s), modelFallback=\(plan.modelFallback)")
+            } else if cleanupEnabled, !finalRaw.isEmpty, CleanupEngine.isAvailable {
                 // Single-segment (no pause): the streamed result equals a whole
                 // pass, so use it — it's already done. Multi-segment (you paused):
                 // fall through to the whole-transcript pass so the model punctuates
@@ -2059,18 +2441,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let streaming, !languageSwitched, !liveSwitched, !styleWasOverridden, streaming.segmentCount <= 1 {
                     cleaned = await streaming.finishCleaned()
                     usedStreaming = true
+                    punctuatedBeforeModel = streamingPunctuates
+                    structuralBeforeModel = streamingPunctuates
                     // Never insert empty when we actually have a transcript (e.g.
                     // a degenerate session that emitted no usable segments).
                     if cleaned.isEmpty { cleaned = finalRaw }
                 } else {
                     streaming?.cancel()
+                    // Decide spoken punctuation on the whole de-seamed recognizer text
+                    // first; each model call is then only checked to keep the characters.
+                    let modelInput = spokenPunctuation
+                        ? SpokenPunctuation.beforeModel(deseamed, languageCode: cleanupLangCode, structural: true)
+                        : deseamed
+                    let marks = SpokenPunctuation.inserted(raw: deseamed, converted: modelInput)
+                    punctuatedBeforeModel = spokenPunctuation
+                    structuralBeforeModel = spokenPunctuation
                     let cleanOne: @Sendable (String) async -> String? = { text in
-                        await cleanupEngine.clean(text, style: style, languageCode: cleanupLangCode)
+                        await SpokenPunctuation.guardedModel(text, marks: marks) {
+                            await cleanupEngine.clean($0, style: style, languageCode: cleanupLangCode)
+                        }
                     }
-                    if deseamed.count <= Self.wholeCleanupCharLimit {
-                        cleaned = (await cleanOne(deseamed)) ?? deseamed
+                    if modelInput.count <= Self.wholeCleanupCharLimit {
+                        cleaned = (await cleanOne(modelInput)) ?? modelInput
                     } else {
-                        cleaned = await Self.cleanInBatches(deseamed, cleanOne)
+                        cleaned = await Self.cleanInBatches(modelInput, cleanOne)
                     }
                 }
             } else {
@@ -2137,7 +2531,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Vocabulary snap: only words the recognizer itself was unsure about may
             // become one of the user's terms. Skipped after a language switch — the
             // confidences then belong to the discarded first decode.
-            if !snapTerms.isEmpty, !languageSwitched {
+            if !snapTerms.isEmpty, !languageSwitched, !hasFormatSpans {
                 let snapped = VocabularySnap.apply(to: cleaned, confidences: wordConfidences, terms: snapTerms,
                                                    isOrdinaryWord: DictionaryStore.isOrdinaryDictionaryWord)
                 if !snapped.fixes.isEmpty {
@@ -2210,8 +2604,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ON PURPOSE: a user dictionary rule that targets "new line" runs first
             // and consumes the phrase, so a custom mapping still wins — that's the
             // escape hatch. Running structural ahead of the dictionary would break it.
-            finalText = StructuralCommands.apply(finalText, languageCode: cleanupLangCode)
+            if !structuralBeforeModel {
+                finalText = StructuralCommands.apply(finalText, languageCode: cleanupLangCode,
+                                                     anyLanguage: spokenPunctuation)
+            }
             Self.pipelineTrace("structural", finalText)
+            // Spoken punctuation ("Doppelpunkt", "slash", "Klammer auf" …): German + English
+            // whatever the dictation language. Without a model it runs here: after the
+            // dictionary (your own spellings win) and after structural commands (their
+            // line breaks are already in), before vibe file matching. With a model it ran
+            // BEFORE the model on the recognizer's text and must not re-decide on the
+            // model's rewrite (SpokenPunctuationPipeline). A word that is part of a
+            // sentence stays a word.
+            if spokenPunctuation, !punctuatedBeforeModel {
+                finalText = SpokenPunctuation.apply(finalText, languageCode: cleanupLangCode)
+                Self.pipelineTrace("punctuation", finalText)
+            }
 
             // Vibe coding: snap spoken filenames to the real files in your project
             // ("exercise library dot tsx" → "ExerciseLibrary.tsx").
@@ -2225,6 +2633,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 fileFixes = hits
                 Self.pipelineTrace("vibe", finalText, detail: "fileFixes=\(hits)")
             }
+
+            // "Format while you dictate": put the formatted pieces back in.
+            if let formatPlan {
+                finalText = FormatAssembly.substitute(processed: finalText, parts: formatPlan.parts)
+                Self.pipelineTrace("format", finalText)
+            }
+            // Whole-utterance voice commands ("note this …", "scratch that", "replace X
+            // with Y", macros, "make this a list" …) still run when nothing ended up
+            // formatted (e.g. the only command span was unrecognised or empty): then
+            // `finalText` is plain normal text, exactly like any dictation. They are
+            // skipped only when formatted text is present, because each of them matches
+            // the WHOLE utterance and would replace or discard the formatted part.
+            let hasFormattedText = formatPlan?.parts.contains {
+                if case .formatted = $0 { return true } else { return false }
+            } ?? false
 
             guard !finalText.isEmpty else {
                 // H5: an empty try-it (nothing intelligible said) still ends cleanly —
@@ -2277,7 +2700,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // is unchanged. A bare "note this" files the PREVIOUS dictation:
             // `history.add` for THIS utterance runs further below, so
             // `history.entries.first` here is still the prior entry.
-            if optimistic == nil, let match = NoteComposers.triggerMatch(for: finalText) {
+            if optimistic == nil, !hasFormattedText, let match = NoteComposers.triggerMatch(for: finalText) {
                 let noteBody: String?
                 switch match {
                 case .body(let body):
@@ -2337,7 +2760,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // (`replace X with Y` is an edit only if X literally occurs, word-bounded,
             // in that text); anything that isn't a byte-exact edit command falls through
             // and dictates literally.
-            if optimistic == nil,
+            if optimistic == nil, !hasFormattedText,
                let editTarget = ImplicitSelectionGate.eligible(
                    lastEntry: self.history.entries.first, now: Date(), currentTarget: target
                ),
@@ -2360,7 +2783,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // off by default — a cross-surface request over your meetings, runs
             // the command INSTEAD of inserting as dictation. Conservative: normal
             // speech falls straight through to the dictation path below.
-            if optimistic == nil, let intent = self.commandRouter.intent(
+            if optimistic == nil, !hasFormattedText, let intent = self.commandRouter.intent(
                 for: finalText,
                 meetings: MeetingSnapshot(meetings: self.meetingStore.meetings),
                 crossSurfaceEnabled: self.settings.crossSurfaceCommandsEnabled
@@ -2750,6 +3173,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // `.inserted`). Detection already happened in the stores above; this
                 // just picks the single highest-priority record and displays it.
                 self.maybeShowRecordChip(brokenRecords)
+                // A model format (e-mail, formal …) couldn't run: the plain cleaned text
+                // was pasted instead — say so once the insert pill has been seen.
+                if formatPlan?.modelFallback == true {
+                    Task { @MainActor [weak self] in
+                        try? await Task.sleep(for: .milliseconds(1400))
+                        guard let self, !self.isDictating else { return }
+                        self.hud.showSaved("Pasted as plain text — the on-device model couldn't format it.".loc)
+                    }
+                }
                 // FIX 2 (bugs-dictation-2): release the processing latch NOW — the
                 // insert outcome is fully handled above. The self-heal verify below
                 // polls up to ~1s (4×250ms) with no early exit in AX-unreadable apps

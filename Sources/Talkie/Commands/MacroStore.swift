@@ -3,10 +3,48 @@ import Foundation
 /// A user-defined voice macro: say the trigger, insert the expansion. Matched
 /// **whole-utterance** (no fuzzy / substring matching) so it never fires inside
 /// normal dictation — the roadmap's resolution to the command-false-positive risk.
+///
+/// On the Commands page a macro is a user-made "insert a fixed text" command: it
+/// also works said with the format key held, mid-dictation. `name`, `synonyms` and
+/// `enabled` were added later and are optional, so every existing macros.json
+/// decodes unchanged (nil = no name / no synonyms / on).
 struct Macro: Codable, Identifiable, Hashable {
     var id = UUID()
     var trigger: String
     var expansion: String
+    var name: String?
+    var synonyms: [String]?
+    var enabled: Bool?
+
+    var isEnabled: Bool { enabled ?? true }
+    /// Every phrase that triggers it: the trigger first, then the synonyms.
+    var phrases: [String] { [trigger] + (synonyms ?? []) }
+    var displayName: String {
+        let n = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return n.isEmpty ? trigger : n
+    }
+
+    /// The user-made command this macro is on the Commands page.
+    var userCommand: UserCommand {
+        UserCommand(id: id, name: displayName, phrases: phrases, action: .insert(text: expansion),
+                    enabled: isEnabled)
+    }
+
+    /// A fixed-text user command stored as a macro (same id, so edits keep it).
+    init(_ command: UserCommand) {
+        id = command.id
+        trigger = command.phrases.first ?? command.name
+        if case .insert(let text) = command.action { expansion = text } else { expansion = "" }
+        name = command.name
+        synonyms = Array(command.phrases.dropFirst())
+        enabled = command.enabled
+    }
+
+    init(id: UUID = UUID(), trigger: String, expansion: String) {
+        self.id = id
+        self.trigger = trigger
+        self.expansion = expansion
+    }
 }
 
 /// Stores voice macros and resolves a spoken phrase to its expansion. On-device
@@ -28,7 +66,9 @@ final class MacroStore: ObservableObject {
     func match(_ spoken: String, now: Date = Date()) -> String? {
         let key = Self.normalize(spoken)
         guard !key.isEmpty,
-              let macro = macros.first(where: { Self.normalize($0.trigger) == key }) else { return nil }
+              let macro = macros.first(where: { m in
+                  m.isEnabled && m.phrases.contains { Self.normalize($0) == key }
+              }) else { return nil }
         return resolveTokens(macro.expansion, now: now)
     }
 
@@ -37,6 +77,21 @@ final class MacroStore: ObservableObject {
         let e = expansion.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty, !e.isEmpty else { return }
         macros.append(Macro(trigger: t, expansion: e))
+        save()
+    }
+
+    /// Insert or replace (by id) — the Commands page's create/edit of a fixed-text command.
+    func upsert(_ macro: Macro) {
+        if let i = macros.firstIndex(where: { $0.id == macro.id }) {
+            macros[i] = macro
+        } else {
+            macros.append(macro)
+        }
+        save()
+    }
+
+    func delete(id: UUID) {
+        macros.removeAll { $0.id == id }
         save()
     }
 

@@ -15,6 +15,9 @@ import CoreGraphics
 final class HotKeyMonitor: @unchecked Sendable {
     struct Config: Sendable, Equatable {
         var key: ActivationKey
+        /// The "format while you dictate" command key, or nil when the feature is off.
+        /// Only observed while a dictation is active; never the dictation key.
+        var commandKey: ActivationKey? = nil
     }
 
     private let onActivate: @Sendable () -> Void
@@ -30,6 +33,10 @@ final class HotKeyMonitor: @unchecked Sendable {
     /// swallowed (it still reaches the focused app, which is harmless — text fields
     /// don't bind these chords).
     private let onPasteLast: @Sendable () -> Void
+    /// "Format while you dictate": what the command key did during an active dictation
+    /// (a clean span, a tap, or a cancelled hold). Decided by the pure
+    /// `FormatKeyGesture` on this same listen-only tap — the key is never swallowed.
+    private let onFormatKey: @Sendable (FormatKeyGesture.Output) -> Void
 
     /// `kVK_ANSI_V` — the key code for the paste-last chord (⌥⌘ + V).
     private static let pasteLastKeyCode: Int64 = 9
@@ -53,6 +60,9 @@ final class HotKeyMonitor: @unchecked Sendable {
     /// and the hold ends as a plain push-to-talk press. Rearmed on each new hold,
     /// cancelled on release or lock. Guarded by `lock`.
     private var deferTimer: DispatchSourceTimer?
+    /// The command-key machine. Fed only while `gesture.isActive` (a dictation is
+    /// running) and `config.commandKey` is set; reset otherwise. Guarded by `lock`.
+    private var formatGesture = FormatKeyGesture()
     // -----------------------------
 
     private var healthTimer: DispatchSourceTimer?
@@ -62,13 +72,15 @@ final class HotKeyMonitor: @unchecked Sendable {
         onActivate: @escaping @Sendable () -> Void,
         onDeactivate: @escaping @Sendable () -> Void,
         onLock: @escaping @Sendable () -> Void = {},
-        onPasteLast: @escaping @Sendable () -> Void = {}
+        onPasteLast: @escaping @Sendable () -> Void = {},
+        onFormatKey: @escaping @Sendable (FormatKeyGesture.Output) -> Void = { _ in }
     ) {
         self.config = config
         self.onActivate = onActivate
         self.onDeactivate = onDeactivate
         self.onLock = onLock
         self.onPasteLast = onPasteLast
+        self.onFormatKey = onFormatKey
     }
 
     deinit {
@@ -95,13 +107,17 @@ final class HotKeyMonitor: @unchecked Sendable {
         // `otherMouseDown`/`otherMouseUp` carry the side buttons (button 4/5) so a
         // mouse-button `ActivationKey` can drive the same gesture machine; the tap
         // is still listen-only, so the button keeps performing its native app
-        // action (e.g. browser back).
+        // action (e.g. browser back). Left/right mouse-downs are observed only so a
+        // click during a held command key can cancel that command (the accident
+        // guard of "format while you dictate"); they never drive the dictation key.
         let mask: CGEventMask =
             (1 << CGEventType.flagsChanged.rawValue) |
             (1 << CGEventType.keyDown.rawValue) |
             (1 << CGEventType.keyUp.rawValue) |
             (1 << CGEventType.otherMouseDown.rawValue) |
-            (1 << CGEventType.otherMouseUp.rawValue)
+            (1 << CGEventType.otherMouseUp.rawValue) |
+            (1 << CGEventType.leftMouseDown.rawValue) |
+            (1 << CGEventType.rightMouseDown.rawValue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -157,6 +173,7 @@ final class HotKeyMonitor: @unchecked Sendable {
         self.deferTimer?.cancel()
         self.deferTimer = nil
         self.gesture.reset()
+        self.formatGesture.reset()
         lock.unlock()
 
         if let tap {
@@ -175,7 +192,10 @@ final class HotKeyMonitor: @unchecked Sendable {
     /// deliberately emits no action so it can't double-fire).
     func update(config newConfig: Config) {
         lock.lock()
-        let changed = newConfig != self.config
+        // Only a change of the DICTATION key tears down an in-flight session; a
+        // command-key change just drops any half-done command hold.
+        let changed = newConfig.key != self.config.key
+        if newConfig.commandKey != self.config.commandKey { formatGesture.reset() }
         self.config = newConfig
         var wasActive = false
         if changed {
@@ -200,6 +220,7 @@ final class HotKeyMonitor: @unchecked Sendable {
             deferTimer?.cancel()
             deferTimer = nil
             wasActive = gesture.reset()
+            formatGesture.reset()
         }
         lock.unlock()
         if wasActive { onDeactivate() }
@@ -242,6 +263,18 @@ final class HotKeyMonitor: @unchecked Sendable {
         lock.unlock()
         if isSuspended { return }
 
+        // Left/right clicks are observed for one thing only: a click during a held
+        // format key cancels that command. Unless a dictation is active AND a hold is
+        // in progress they return here untouched — no field of the click is read,
+        // nothing is stored or logged. During a hold the only effect is that hold's
+        // "spoiled" flag.
+        if type == .leftMouseDown || type == .rightMouseDown {
+            lock.lock()
+            if gesture.isActive, formatGesture.isHeld { formatGesture.otherInput() }
+            lock.unlock()
+            return
+        }
+
         // A global ⌘+(Control|Option)+V chord re-pastes the last transcript. The
         // second modifier is whichever one the activation key does NOT use, so the
         // chord can never also arm dictation. Detected here on the shared listen-only
@@ -279,25 +312,42 @@ final class HotKeyMonitor: @unchecked Sendable {
         }
 
         lock.lock()
-        guard let down = config.key.edge(for: observed) else { lock.unlock(); return }
-        feedEdgeLocked(down: down)
+        // The command key is looked at FIRST so a command that a dictation-key edge
+        // interrupts reports (cancelled) before that edge ends the session.
+        let formatOutput = formatStepLocked(observed, rawFlags: event.flags.rawValue)
+        guard let down = config.key.edge(for: observed) else {
+            lock.unlock()
+            if let formatOutput { onFormatKey(formatOutput) }
+            return
+        }
+        let fire = feedEdgeLockedReturningFire(down: down)
+        lock.unlock()
+        if let formatOutput { onFormatKey(formatOutput) }
+        fire?()
     }
 
-    /// Feed one down/up edge into the pure gesture machine and fire whatever it
-    /// decides. **Must be called with `lock` already held** (the tap thread must
-    /// not race the latch / health timers); it unlocks before invoking the
+    /// One step of the "format while you dictate" command key. **Must be called with
+    /// `lock` held.** The decision is the pure `FormatKeyGesture.step` (unit-tested
+    /// with synthetic events); this only supplies the live state and clock.
+    private func formatStepLocked(_ observed: ActivationKey.Event, rawFlags: UInt64) -> FormatKeyGesture.Output? {
+        formatGesture.step(observed, rawFlags: rawFlags, commandKey: config.commandKey,
+                           dictationKey: config.key, dictationActive: gesture.isActive,
+                           now: ProcessInfo.processInfo.systemUptime)
+    }
+
+    /// Feed one down/up edge into the pure gesture machine and return the callback it
+    /// decides on. **Must be called with `lock` already held** (the tap thread must
+    /// not race the latch / health timers); the caller unlocks before invoking the
     /// callback so no app code runs under the tap-thread lock. Shared by the
     /// keyboard-modifier and mouse-button paths so both drive the identical machine.
-    private func feedEdgeLocked(down: Bool) {
+    private func feedEdgeLockedReturningFire(down: Bool) -> (@Sendable () -> Void)? {
         // One monotonic seconds clock for edges AND the latch timer, so the
         // pure machine can compare an edge's timestamp against the timer's fire
         // timestamp. (The event's own timestamp is in different units; using uptime
         // for both keeps them commensurable.)
         let now = ProcessInfo.processInfo.systemUptime
         let action = down ? gesture.keyDown(at: now) : gesture.keyUp(at: now)
-        let fire = applyLocked(action)
-        lock.unlock()
-        fire?()
+        return applyLocked(action)
     }
 
     /// Translate a gesture `Action` into the callback to fire (or nil), performing
@@ -361,6 +411,15 @@ final class HotKeyMonitor: @unchecked Sendable {
     /// session has no key down (ending it here would kill the lock), and idle has
     /// no session to end at all. So we gate strictly on `gesture.isHeld`.
     private func reconcileLiveState() {
+        // A dropped command-key release must not leave a command hold stuck open
+        // (it would swallow the next press). Drop it silently — no span is reported.
+        lock.lock()
+        if formatGesture.isHeld, let ck = config.commandKey,
+           !ck.isPhysicallyDown(sessionState: .combinedSessionState) {
+            formatGesture.reset()
+        }
+        lock.unlock()
+
         lock.lock()
         let cfg = config
         let held = gesture.isHeld

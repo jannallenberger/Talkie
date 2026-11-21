@@ -168,6 +168,49 @@ final class AppSettings: ObservableObject {
     @Published var activationKey: ActivationKey {
         didSet { defaults.set(activationKey.rawValue, forKey: Keys.activationKey); notifyChanged() }
     }
+    /// The second key for "format while you dictate": hold it during a dictation, say a
+    /// format, let go. Default Left Control. Read `effectiveFormatCommandKey`, which
+    /// is never the dictation key.
+    @Published var formatCommandKey: ActivationKey {
+        didSet { defaults.set(formatCommandKey.rawValue, forKey: Keys.formatCommandKey); notifyChanged() }
+    }
+    /// "Format while you dictate" on/off (default on). Off = the command key is ignored.
+    @Published var formatCommandsEnabled: Bool {
+        didSet { defaults.set(formatCommandsEnabled, forKey: Keys.formatCommandsEnabled); notifyChanged() }
+    }
+    /// "Punctuation you can say" on/off (default on): spoken words like "Doppelpunkt" or
+    /// "slash", said on their own, become the character. See `SpokenPunctuation`.
+    @Published var spokenPunctuation: Bool {
+        didSet { defaults.set(spokenPunctuation, forKey: Keys.spokenPunctuation); notifyChanged() }
+    }
+    /// User-added phrases per built-in format ("bulletList" → ["dot points"]); the
+    /// matcher treats them exactly like built-in phrases.
+    @Published var formatSynonyms: [String: [String]] {
+        didSet { Self.store(formatSynonyms, Keys.formatSynonyms, defaults); notifyChanged() }
+    }
+    /// Built-in formats the user switched off (their rawValues).
+    @Published var disabledFormatPresets: [String] {
+        didSet { defaults.set(disabledFormatPresets, forKey: Keys.disabledFormatPresets); notifyChanged() }
+    }
+    /// User-made commands other than fixed text (those are snippets in `MacroStore`).
+    @Published var userFormatCommands: [UserCommand] {
+        didSet { Self.store(userFormatCommands, Keys.userFormatCommands, defaults); notifyChanged() }
+    }
+    var disabledPresetSet: Set<FormatPreset> {
+        Set(disabledFormatPresets.compactMap(FormatPreset.init(rawValue:)))
+    }
+
+    private static func store<T: Encodable>(_ value: T, _ key: String, _ d: UserDefaults) {
+        if let data = try? JSONEncoder().encode(value) { d.set(data, forKey: key) }
+    }
+
+    private static func load<T: Decodable>(_ type: T.Type, _ key: String, _ d: UserDefaults) -> T? {
+        d.data(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
+    }
+
+    var effectiveFormatCommandKey: ActivationKey {
+        FormatCommandKey.effective(stored: formatCommandKey, dictationKey: activationKey)
+    }
     @Published var localeIdentifier: String {
         didSet { defaults.set(localeIdentifier, forKey: Keys.localeIdentifier) }
     }
@@ -429,6 +472,9 @@ final class AppSettings: ObservableObject {
         let d = UserDefaults.standard
         d.register(defaults: [
             Keys.activationKey: ActivationKey.rightOption.rawValue,
+            Keys.formatCommandKey: FormatCommandKey.defaultKey.rawValue,
+            Keys.formatCommandsEnabled: true,
+            Keys.spokenPunctuation: true,
             Keys.localeIdentifier: canonicalLocaleID(Locale.current.identifier),
             Keys.learnFromEdits: true,
             Keys.historyRetentionDays: 7,
@@ -459,6 +505,13 @@ final class AppSettings: ObservableObject {
             Keys.autoStopOnSilence: true,
         ])
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
+        formatCommandKey = ActivationKey(rawValue: d.string(forKey: Keys.formatCommandKey) ?? "")
+            ?? FormatCommandKey.defaultKey
+        formatCommandsEnabled = d.bool(forKey: Keys.formatCommandsEnabled)
+        spokenPunctuation = d.bool(forKey: Keys.spokenPunctuation)
+        formatSynonyms = Self.load([String: [String]].self, Keys.formatSynonyms, d) ?? [:]
+        disabledFormatPresets = d.stringArray(forKey: Keys.disabledFormatPresets) ?? []
+        userFormatCommands = Self.load([UserCommand].self, Keys.userFormatCommands, d) ?? []
         // B4 migration: the Hold/Toggle Mode picker is gone — every user now gets the
         // one gesture family (hold to talk, tap twice to lock, tap to stop), so there
         // is no mode to persist. Silently drop the stale scalar so it doesn't linger
@@ -654,6 +707,12 @@ final class AppSettings: ObservableObject {
 
     private enum Keys {
         static let activationKey = "activationKey"
+        static let formatCommandKey = "formatCommandKey"
+        static let formatCommandsEnabled = "formatCommandsEnabled"
+        static let spokenPunctuation = "spokenPunctuation"
+        static let formatSynonyms = "formatSynonyms"
+        static let disabledFormatPresets = "disabledFormatPresets"
+        static let userFormatCommands = "userFormatCommands"
         /// Legacy key — the Hold/Toggle Mode picker was removed in B4 (one unified
         /// gesture family). Retained only so `init` can `removeObject` the stale
         /// value from existing installs.

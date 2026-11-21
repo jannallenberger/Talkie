@@ -298,6 +298,118 @@ final class MeetingDiarizationIntegrationTests: XCTestCase {
         }
     }
 
+    /// Evidence for `KnownVoiceMatcher` (W2): enrol nine synthetic voices from one
+    /// recording each, then probe with SEPARATE recordings (clean and through a degraded
+    /// laptop channel). "Enrolled" probes should match their own voice; leave-one-out
+    /// probes (the probe's own voice removed from the known list) must match nobody.
+    /// Prints a threshold sweep; asserts the shipped 0.70 / 0.15 makes no wrong or
+    /// false match on this set. The 20 s speech floor is a separate rule and is held
+    /// constant here (candidates are given 30 s) so only threshold and margin vary.
+    func testKnownVoiceThresholdEvidence() async throws {
+        let models = try modelsRoot()
+        let voices = ["Daniel", "Samantha", "Ralph", "Fred", "Karen", "Kathy", "Tara", "Reed", "Rishi"]
+        var known: [KnownVoice] = []
+        var probes: [(voice: String, sample: MicSpeakerCandidate)] = []
+        for v in voices {
+            let ref = try await voiceSample(v, lines: [0, 1, 2, 3], models: models)
+            known.append(KnownVoice(name: v, embedding: ref.embedding, speechSeconds: ref.speechSeconds, createdUnix: 0))
+            probes.append((v, try await voiceSample(v, lines: [4, 5, 6, 7], models: models)))
+            probes.append((v, try await voiceSample(v, lines: [4, 5, 6, 7], models: models,
+                                                    channel: { self.throughLaptopSpeakers($0, gain: 0.6) })))
+        }
+        func sweep(_ t: Double, _ margin: Double) -> (right: Int, missed: Int, wrong: Int, falseAccept: Int) {
+            var right = 0, missed = 0, wrong = 0, fa = 0
+            func decide(_ c: MicSpeakerCandidate, _ list: [KnownVoice]) -> String? {
+                var best: (String, Double)?, second = -1.0
+                for k in list {
+                    let sim = SpeakerLabelling.cosine(OwnVoiceProfile.normalised(c.embedding)!, OwnVoiceProfile.normalised(k.samples[0].embedding)!)
+                    if best == nil || sim > best!.1 { if let b = best { second = max(second, b.1) }; best = (k.name, sim) }
+                    else { second = max(second, sim) }
+                }
+                guard let best, best.1 >= t, best.1 - second >= margin else { return nil }
+                return best.0
+            }
+            for p in probes {
+                let c = MicSpeakerCandidate(cluster: 0, embedding: p.sample.embedding, speechSeconds: 30)
+                switch decide(c, known) { case p.voice: right += 1; case nil: missed += 1; default: wrong += 1 }
+                if decide(c, known.filter { $0.name != p.voice }) != nil { fa += 1 }
+            }
+            return (right, missed, wrong, fa)
+        }
+        print("[known] speech per probe: \(probes.map { String(format: "%.1fs", $0.sample.speechSeconds) }.joined(separator: " "))")
+        for t in [0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85] {
+            let r = sweep(t, KnownVoiceMatcher.margin)
+            print(String(format: "[known] threshold %.2f margin %.2f: right %d missed %d wrong %d falseAccept(leave-one-out) %d of %d",
+                         t, KnownVoiceMatcher.margin, r.right, r.missed, r.wrong, r.falseAccept, probes.count))
+        }
+        // The shipped matcher itself, with all nine known.
+        var shippedRight = 0
+        for p in probes {
+            let c = MicSpeakerCandidate(cluster: 0, embedding: p.sample.embedding, speechSeconds: 30)
+            if KnownVoiceMatcher.match(candidates: ["Speaker 1": c], known: known)["Speaker 1"] == p.voice { shippedRight += 1 }
+        }
+        print("[known] shipped matcher right: \(shippedRight) of \(probes.count)")
+        let shipped = sweep(KnownVoiceMatcher.threshold, KnownVoiceMatcher.margin)
+        XCTAssertEqual(shipped.wrong, 0)
+        XCTAssertEqual(shipped.falseAccept, 0)
+        XCTAssertEqual(shippedRight, shipped.right)
+    }
+
+    /// Evidence for `KnownVoiceMatcher.aggregation` (multi-sample profiles): each of nine
+    /// synthetic voices is enrolled from TWO meetings (a clean recording and one through a
+    /// degraded laptop channel, different lines), then probed with separate clean and
+    /// degraded recordings. Compares scoring a person by their best sample vs the mean of
+    /// their samples at the shipped threshold/margin, plus leave-one-out false accepts.
+    func testKnownVoiceMultiSampleEvidence() async throws {
+        let models = try modelsRoot()
+        let voices = ["Daniel", "Samantha", "Ralph", "Fred", "Karen", "Kathy", "Tara", "Reed", "Rishi"]
+        var known: [KnownVoice] = []
+        var probes: [(voice: String, sample: MicSpeakerCandidate)] = []
+        func sample(_ c: MicSpeakerCandidate) -> VoiceSample {
+            VoiceSample(embedding: c.embedding, speechSeconds: c.speechSeconds, createdUnix: 0)
+        }
+        for v in voices {
+            let a = try await voiceSample(v, lines: [0, 1, 2, 3], models: models)
+            let b = try await voiceSample(v, lines: [8, 9, 0, 1], models: models,
+                                          channel: { self.throughLaptopSpeakers($0, gain: 0.5) })
+            known.append(KnownVoice(name: v, samples: [sample(a), sample(b)]))
+            probes.append((v, try await voiceSample(v, lines: [4, 5, 6, 7], models: models)))
+            probes.append((v, try await voiceSample(v, lines: [4, 5, 6, 7], models: models,
+                                                    channel: { self.throughLaptopSpeakers($0, gain: 0.6) })))
+        }
+        var results: [KnownVoiceMatcher.Aggregation: (right: Int, wrong: Int, fa: Int)] = [:]
+        for how in [KnownVoiceMatcher.Aggregation.best, .mean] {
+            var right = 0, wrong = 0, fa = 0
+            for p in probes {
+                let c = MicSpeakerCandidate(cluster: 0, embedding: p.sample.embedding, speechSeconds: 30)
+                switch KnownVoiceMatcher.match(candidates: ["S": c], known: known, aggregation: how)["S"] {
+                case p.voice?: right += 1
+                case nil: break
+                default: wrong += 1
+                }
+                if KnownVoiceMatcher.match(candidates: ["S": c], known: known.filter { $0.name != p.voice },
+                                           aggregation: how)["S"] != nil { fa += 1 }
+            }
+            // Headroom: the lowest own-person score vs the highest other-person score.
+            var own: [Double] = [], others: [Double] = []
+            for p in probes {
+                let u = OwnVoiceProfile.normalised(p.sample.embedding)!
+                for k in known {
+                    guard let sc = KnownVoiceMatcher.score(u, k, how) else { continue }
+                    if k.name == p.voice { own.append(sc) } else { others.append(sc) }
+                }
+            }
+            print(String(format: "[known-multi] %@: own min %.3f mean %.3f | other max %.3f mean %.3f",
+                         "\(how)", own.min()!, own.reduce(0, +) / Double(own.count), others.max()!,
+                         others.reduce(0, +) / Double(others.count)))
+            results[how] = (right, wrong, fa)
+            print("[known-multi] \(how): right \(right) wrong \(wrong) falseAccept(leave-one-out) \(fa) of \(probes.count)")
+        }
+        let shipped = results[KnownVoiceMatcher.aggregation]!
+        XCTAssertEqual(shipped.wrong, 0)
+        XCTAssertEqual(shipped.fa, 0)
+    }
+
     // MARK: own-voice learning + recognition (WP-C)
 
     private func laneOfLines(_ script: [(voice: String, line: Int)]) throws -> Lane {

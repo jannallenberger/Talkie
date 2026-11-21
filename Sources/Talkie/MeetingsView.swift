@@ -66,7 +66,7 @@ struct MeetingsView: View {
                     .padding(.horizontal, Self.pagePadding)
             }
             if recorder.isRecording {
-                recordingPanel
+                MeetingRecordingPanel(recorder: recorder, draftBox: notesDraftBox)
                     .padding(.horizontal, Self.pagePadding)
                     .padding(.bottom, 14)
             }
@@ -208,37 +208,17 @@ struct MeetingsView: View {
                 .help("Meeting settings")
                 .accessibilityLabel("Meeting settings")
                 .popover(isPresented: $showQuickSettings, arrowEdge: .bottom) {
-                    quickSettings(router: router)
+                    MeetingQuickSettingsPopover(settings: settings) {
+                        showQuickSettings = false
+                        router.selectedTab = .general
+                        router.pendingPage = .meetings
+                    }
                 }
             }
         }
         .padding(.top, Theme.Space.pageTop)
         .padding(.horizontal, Self.pagePadding)
         .padding(.bottom, 18)
-    }
-
-    /// The gear's popover: the one meeting preference worth flipping from here (keep
-    /// audio — the same `AppSettings.keepMeetingAudio` the Settings page binds, so
-    /// there is one source of truth) and the deep link to the full Meeting settings.
-    private func quickSettings(router: SettingsRouter) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsToggleRow(
-                title: "Keep audio with meeting notes".loc,
-                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
-                isOn: $settings.keepMeetingAudio)
-            HStack {
-                Spacer()
-                Button("All meeting settings…") {
-                    showQuickSettings = false
-                    router.selectedTab = .general
-                    router.pendingPage = .meetings
-                }
-                .buttonStyle(.talkie(.secondary, size: .small))
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
-        }
-        .frame(width: 340)
     }
 
     /// Auto (multilingual) or pin transcription to one of the user's languages. Read
@@ -286,16 +266,12 @@ struct MeetingsView: View {
                 // debounce-driven commit reacting to `isRecording` flipping would
                 // always be too late. See `NotesDraftBox`.
                 recorder.notes = notesDraftBox.text
+                recorder.noteLines = notesDraftBox.lines
                 Task { await recorder.stop() }
             }
             .buttonStyle(.talkie(.primary, tint: Theme.featherRed))
         } else if recorder.isFinishing {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Transcribing & summarizing…")
-                    .font(.talkieHeading(13, weight: .medium))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
+            TalkieStatusLine(text: "Transcribing & summarizing…".loc, tone: .progress)
         } else {
             Button { Task { await recorder.start() } } label: {
                 Label("Record".loc, systemImage: "record.circle")
@@ -308,23 +284,6 @@ struct MeetingsView: View {
 
     // MARK: Live recording panel
 
-    /// What's being captured plus the live notes editor, as one calm panel under the
-    /// bar. The editor stays its own view so typing never re-diffs this page.
-    private var recordingPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: recorder.capturingFarEnd ? "person.2.wave.2" : "mic")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.featherRed)
-                Text(recorder.capturingFarEnd ? "Recording you + the call…" : "Recording (mic only)…")
-                    .font(.talkieHeading(14, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-            }
-            RecordingNotesEditor(recorder: recorder, draftBox: notesDraftBox)
-        }
-        .talkieCard(padding: 16)
-    }
-
     // MARK: List pane
 
     private var meetingList: some View {
@@ -336,10 +295,7 @@ struct MeetingsView: View {
                 // lets an unchanged row skip its body on the 1 Hz recording tick.
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(groups) { group in
-                        Text(group.bucket.title().uppercased())
-                            .font(.talkieEyebrow)
-                            .tracking(0.8)
-                            .foregroundStyle(Theme.inkTertiary)
+                        Eyebrow(text: group.bucket.title())
                             .padding(.horizontal, 12)
                             .padding(.top, 14)
                             .padding(.bottom, 4)
@@ -406,11 +362,14 @@ struct MeetingsView: View {
                     onReveal: { reveal(meeting) },
                     onCopy: { copy(meeting) },
                     onDelete: { pendingDelete = meeting },
-                    onRegenerate: { await regenerateSummary(meeting) },
+                    onRegenerate: { recorder.regenerateSummary(id: meeting.id) },
                     onSaveTranscript: { edited in saveTranscript(meeting, edited: edited) },
                     onLearn: { from, to in learnCorrection(from: from, to: to, in: meeting) }
                 )
                 .equatable()
+                // Speaker labels in this pane show names and open the naming popover.
+                .environment(\.speakerNaming, SpeakerNamingContext(
+                    meetingID: meeting.id, names: meeting.speakerNames ?? [:], recorder: recorder))
                 // Fresh per-meeting state (edit draft, learn chips, playback) on switch.
                 .id(meeting.id)
                 .padding(.leading, 4)
@@ -424,9 +383,9 @@ struct MeetingsView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "person.2.wave.2")
-                .font(.system(size: 28))
+            ClayIcon(name: "IconWaveform", size: 44, fallback: "person.2.wave.2")
                 .foregroundStyle(Theme.inkTertiary)
+                .accessibilityHidden(true)
             Text("No meetings yet")
                 .font(.talkieHeading(15, weight: .medium))
                 .foregroundStyle(Theme.inkSecondary)
@@ -451,23 +410,7 @@ struct MeetingsView: View {
     private func copy(_ meeting: Meeting) {
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.setString(meeting.transcript, forType: .string)
-    }
-
-    /// Re-runs on-device summarization for one past meeting and persists the
-    /// result — the fix for meetings recorded before the map-reduce change (or
-    /// while the on-device model briefly wasn't ready), which are otherwise
-    /// stuck with an empty or generic summary forever. This REPLACES the whole
-    /// `summary` field, which is also where the user's typed meeting notes live
-    /// (fused into the prose, or verbatim under "## Your notes") — `Meeting` has
-    /// no separate notes field to preserve independently, so `MeetingDetail` confirms
-    /// with the user before calling this whenever there's an existing, non-empty
-    /// summary to lose.
-    private func regenerateSummary(_ meeting: Meeting) async {
-        guard let summary = await MeetingSummarizer().summarize(meeting.transcript, segments: meeting.segments) else { return }
-        var updated = meeting
-        updated.summary = summary
-        store.update(updated)
+        pb.setString(meeting.namedTranscript, forType: .string)
     }
 
     /// Persist a hand-edited transcript back into the meeting (A8). `store.update`
@@ -505,6 +448,55 @@ struct MeetingsView: View {
                                    snippet: String(meeting.transcript.prefix(120)))
         )
         return added
+    }
+}
+
+/// The gear's popover: the one meeting preference worth flipping from here (keep
+/// audio — the same `AppSettings.keepMeetingAudio` the Settings page binds, so
+/// there is one source of truth) and the deep link to the full Meeting settings.
+struct MeetingQuickSettingsPopover: View {
+    @ObservedObject var settings: AppSettings
+    let onOpenAll: () -> Void
+
+    var body: some View {
+        TalkiePopover(title: "Meeting settings", width: Theme.Width.popoverWide) {
+            TalkieSwitchRow(
+                title: "Keep audio with meeting notes".loc,
+                subtitle: "Save each recording’s audio so you can click any line of the transcript to hear that exact moment.".loc,
+                isOn: $settings.keepMeetingAudio)
+            TalkiePopoverDivider()
+        } actions: {
+            TalkieActionRow {
+                Button("All meeting settings…") { onOpenAll() }
+                    .buttonStyle(.talkie(.secondary))
+            }
+        }
+    }
+}
+
+/// What's being captured plus the live notes editor and the provisional "So far"
+/// list, as one calm panel under the bar. Both are their own views: typing never
+/// re-diffs this page, and a live summary update re-renders only its list.
+struct MeetingRecordingPanel: View {
+    @ObservedObject var recorder: MeetingRecorder
+    let draftBox: NotesDraftBox
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: recorder.capturingFarEnd ? "person.2.wave.2" : "mic")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.featherRed)
+                Text(recorder.capturingFarEnd ? "Recording you + the call…" : "Recording (mic only)…")
+                    .font(.talkieHeading(14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+            }
+            HStack(alignment: .top, spacing: 16) {
+                RecordingNotesEditor(recorder: recorder, draftBox: draftBox)
+                LiveSoFarView(state: recorder.liveSummary)
+            }
+        }
+        .talkieCard(padding: 16)
     }
 }
 
@@ -548,12 +540,16 @@ private struct RecordingElapsedText: View {
 /// synchronously right before calling `recorder.stop()`, so the very last
 /// keystroke — which may still be sitting in the debounce below — is never lost
 /// to a stop triggered from the in-app button.
-private final class NotesDraftBox {
+final class NotesDraftBox {
     var text: String = ""
+    /// Per line, the meeting time it was started (kept in step with `text`).
+    var lines: [MeetingNoteStamper.Line] = []
 }
 
-/// Live notes during a recording — fused with the transcript on stop (the
-/// "Granola magic"). Jot sparse points; Talkie expands them from what was said.
+/// Live notes during a recording. Every line keeps the meeting time at which it was
+/// started; "Mark this moment" adds a time-stamped line to write into later. On stop
+/// the notes go into the summary word for word, with their times, and each one
+/// points the summary at what was said around its moment.
 ///
 /// Used to be a `TextEditor` bound directly to `$recorder.notes` inline in
 /// `MeetingsView.body`; every keystroke published through `recorder` (an
@@ -565,7 +561,7 @@ private final class NotesDraftBox {
 /// crash-recovery flush stays reasonably fresh), on blur, and when this view
 /// disappears (recording stopped via a path other than the in-app button, or the
 /// user switches tabs mid-recording) — never silently dropped.
-private struct RecordingNotesEditor: View {
+struct RecordingNotesEditor: View {
     @ObservedObject var recorder: MeetingRecorder
     let draftBox: NotesDraftBox
 
@@ -583,28 +579,26 @@ private struct RecordingNotesEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkTertiary)
-                Text("Your notes")
-                    .font(.talkieEyebrow)
-                    .foregroundStyle(Theme.inkSecondary)
+            HStack(alignment: .center, spacing: 8) {
+                Eyebrow(text: "Your notes")
                 Spacer()
-                Text("Fused with the transcript when you stop")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.inkTertiary)
+                Button {
+                    draft = MeetingNoteStamper.appendingMarker(to: draft, at: recorder.elapsed)
+                    isFocused = true
+                } label: {
+                    Label("Mark this moment".loc, systemImage: "bookmark")
+                }
+                .buttonStyle(.talkie(.secondary, size: .small))
+                .help("Adds a time-stamped line to your notes".loc)
             }
             TextEditor(text: $draft)
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.ink)
-                .scrollContentBackground(.hidden)
                 .frame(minHeight: 88, maxHeight: 150)
-                .padding(8)
-                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                .talkieWell()
                 .overlay(alignment: .topLeading) {
                     if draft.isEmpty {
-                        Text("Jot key points — Talkie expands them with the transcript…")
+                        Text("Jot key points — each line keeps the moment you started it…".loc)
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.inkTertiary)
                             .padding(.horizontal, 13)
@@ -613,6 +607,9 @@ private struct RecordingNotesEditor: View {
                     }
                 }
                 .focused($isFocused)
+            Text("Kept word for word in the summary, with times".loc)
+                .font(.talkieHeading(11.5, weight: .regular))
+                .foregroundStyle(Theme.inkTertiary)
         }
         // The surrounding recording panel draws the card.
         .frame(maxWidth: .infinity)
@@ -621,11 +618,17 @@ private struct RecordingNotesEditor: View {
             // started before this page was opened, or recovered mid-flight —
             // so re-opening the Meetings tab never shows a blank editor over
             // real notes.
+            // Lines first, so seeding the text doesn't re-stamp them as new.
+            draftBox.lines = recorder.noteLines.map(\.text) == recorder.notes.components(separatedBy: "\n")
+                ? recorder.noteLines
+                : MeetingNoteStamper.lines(text: recorder.notes, notes: recorder.noteItems)
             draft = recorder.notes
             draftBox.text = draft
         }
         .onChange(of: draft) { _, newValue in
             draftBox.text = newValue
+            // A line gets the meeting time at which the user started it.
+            draftBox.lines = MeetingNoteStamper.restamp(draftBox.lines, text: newValue, now: recorder.elapsed)
             scheduleCommit(newValue)
         }
         .onChange(of: isFocused) { _, focused in
@@ -639,6 +642,7 @@ private struct RecordingNotesEditor: View {
         commitTask = Task {
             try? await Task.sleep(for: Self.commitDebounce)
             guard !Task.isCancelled else { return }
+            recorder.noteLines = draftBox.lines
             recorder.notes = text
         }
     }
@@ -646,7 +650,82 @@ private struct RecordingNotesEditor: View {
     private func commitNow() {
         commitTask?.cancel()
         commitTask = nil
+        recorder.noteLines = draftBox.lines
         recorder.notes = draft
+    }
+}
+
+/// The provisional "So far" list beside the notes while recording: the topics,
+/// decisions and action items the live summary has extracted from the settled part
+/// of the conversation. Observes only `LiveSummaryState`, which publishes when a pass
+/// lands (about once a minute), so it never re-renders on the 1 Hz tick.
+struct LiveSoFarView: View {
+    @ObservedObject var state: LiveSummaryState
+
+    var body: some View {
+        if state.phase != .off {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
+                    Eyebrow(text: "So far")
+                    Spacer()
+                    TalkieTag(text: "Provisional".loc)
+                }
+                .frame(minHeight: 24)
+                if state.snapshot.isEmpty {
+                    TalkieStatusLine(text: waitingText, tone: .progress)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 10) {
+                            group("Topics".loc, state.snapshot.topics)
+                            group("Decisions".loc, state.snapshot.decisions)
+                            group("Action items".loc, state.snapshot.actions)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 150)
+                    Text(footerText)
+                        .font(.talkieHeading(11.5, weight: .regular))
+                        .foregroundStyle(Theme.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(width: 300, alignment: .topLeading)
+        }
+    }
+
+    private var multilingual: Bool { state.multilingual }
+
+    private var waitingText: String {
+        multilingual
+            ? "With several languages, the text settles every 10 minutes — the first items appear then.".loc
+            : "Topics, decisions and tasks appear here after a few minutes of conversation.".loc
+    }
+
+    private var footerText: String {
+        multilingual
+            ? "Updates every 10 minutes, when the languages settle. The final summary is written when you stop.".loc
+            : "Updates every minute. The final summary is written when you stop.".loc
+    }
+
+    @ViewBuilder
+    private func group(_ title: String, _ items: [String]) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(verbatim: title)
+                    .font(.talkieHeading(12, weight: .semibold))
+                    .foregroundStyle(Theme.inkSecondary)
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Circle().fill(Theme.brand).frame(width: 4, height: 4)
+                            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                        Text(verbatim: item)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -748,14 +827,14 @@ private struct MeetingDetail: View, Equatable {
     let onReveal: () -> Void
     let onCopy: () -> Void
     let onDelete: () -> Void
-    let onRegenerate: () async -> Void
+    /// Queues the regeneration on the recorder (it outlives this view).
+    let onRegenerate: () -> Void
     /// Persist a hand-edited transcript (A8). Called on Save with the new text.
     let onSaveTranscript: (String) -> Void
     /// Accept a learn chip: add the dictionary rule + record the niche confirmation.
     /// Returns whether a NEW rule was added (false if it was already known), so the
     /// chip can show the right confirmation.
     let onLearn: (_ from: String, _ to: String) -> Bool
-    @State private var regenerating = false
     /// Gates "Regenerate summary" behind an explicit confirmation whenever there's an
     /// existing summary to lose. `regenerateSummary` replaces the WHOLE `summary`
     /// field with a fresh transcript-only pass — and that field is also where the
@@ -795,7 +874,7 @@ private struct MeetingDetail: View, Equatable {
             if !meeting.summary.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Eyebrow(text: "Summary")
-                    MarkdownText(markdown: meeting.summary, bulletColor: Theme.coral)
+                    MarkdownText(markdown: meeting.namedSummary, bulletColor: Theme.coral)
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.ink)
                         .textSelection(.enabled)
@@ -818,11 +897,15 @@ private struct MeetingDetail: View, Equatable {
             titleVisibility: .visible
         ) {
             Button("Regenerate", role: .destructive) {
-                Task { regenerating = true; await onRegenerate(); regenerating = false }
+                onRegenerate()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone.")
+            if meeting.notes?.isEmpty == false {
+                Text("This replaces the summary with a fresh one. Your notes are kept. This can't be undone.".loc)
+            } else {
+                Text("This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone.")
+            }
         }
     }
 
@@ -849,6 +932,8 @@ private struct MeetingDetail: View, Equatable {
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.inkSecondary)
             }
+            SpeakersRow(meeting: meeting)
+                .padding(.top, 2)
         }
     }
 
@@ -873,7 +958,7 @@ private struct MeetingDetail: View, Equatable {
                 audioFiles: meeting.audioFiles, baseName: exportBaseName,
                 fileExists: { FileManager.default.fileExists(atPath: folderURL.appendingPathComponent($0).path) })
             if !segments.isEmpty || !audioItems.isEmpty {
-                Menu {
+                TalkieMenuButton(size: .small) {
                     if !segments.isEmpty {
                         Button("Subtitles (.srt)") { export(segments, as: .srt) }
                         Button("Subtitles (.vtt)") { export(segments, as: .vtt) }
@@ -898,8 +983,6 @@ private struct MeetingDetail: View, Equatable {
                 } label: {
                     Label("Export…".loc, systemImage: "square.and.arrow.up")
                 }
-                .menuStyle(.button)
-                .fixedSize()
                 .help("Export…")
             }
             Button(action: onReveal) { Label("Show in Finder".loc, systemImage: "folder") }
@@ -920,7 +1003,7 @@ private struct MeetingDetail: View, Equatable {
                     // existing summary may hold fused/typed notes that a regenerate
                     // would silently replace, so confirm first.
                     if meeting.summary.isEmpty {
-                        Task { regenerating = true; await onRegenerate(); regenerating = false }
+                        onRegenerate()
                     } else {
                         confirmRegenerate = true
                     }
@@ -928,7 +1011,6 @@ private struct MeetingDetail: View, Equatable {
                     Label("Regenerate".loc, systemImage: "arrow.clockwise")
                 }
                 .help("Regenerate summary")
-                .disabled(regenerating)
             }
             Spacer(minLength: 12)
             Button(role: .destructive, action: onDelete) {
@@ -942,31 +1024,14 @@ private struct MeetingDetail: View, Equatable {
 
     @ViewBuilder
     private var status: some View {
-        if regenerating {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Writing the summary… the transcript is already saved.".loc)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
-        } else if isDiarizing {
+        if isDiarizing {
             // Transient: `isDiarizing` flips off when the pass finishes or fails, so
             // this disappears on its own. Wins over the summary line because the
             // summary waits for the pass.
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Identifying speakers…".loc)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkTertiary)
-            }
-            .transition(.opacity)
+            TalkieStatusLine(text: "Identifying speakers…".loc, tone: .progress)
+                .transition(.opacity)
         } else if isSummarizing {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Writing the summary… the transcript is already saved.".loc)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.inkSecondary)
-            }
+            TalkieStatusLine(text: "Writing the summary… the transcript is already saved.".loc, tone: .progress)
         }
     }
 
@@ -1011,7 +1076,7 @@ private struct MeetingDetail: View, Equatable {
             } else if SpeakerPresentation.showsTurns(for: meeting), let segments = meeting.segments {
                 SpeakerTurnsView(segments: segments)
             } else {
-                Text(meeting.transcript)
+                Text(meeting.namedTranscript)
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.inkSecondary)
                     .textSelection(.enabled)
@@ -1039,8 +1104,7 @@ private struct MeetingDetail: View, Equatable {
                 .foregroundStyle(Theme.ink)
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 120, maxHeight: 320)
-                .padding(8)
-                .background(Theme.surfaceSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                .talkieWell()
                 .onExitCommand { cancelEditing() }
 
             HStack(spacing: 8) {
@@ -1429,11 +1493,15 @@ struct MeetingPlaybackView: View {
     }
 }
 
-/// A small speaker name above a turn: tinted by the speaker's stable accent slot. Reads
-/// as a caption — no pill, no fill — so it aids scanning without decorating.
+/// The speaker above a turn: the speaker's colour dot and name. Inside the meeting
+/// detail a renameable speaker is a chip (with a pencil) that opens the naming popover;
+/// everywhere else, and for "Me", it is plain text.
 struct SpeakerLabel: View {
     let speaker: String
     let slot: Int
+    /// Set only inside the meeting detail: names + the naming popover.
+    @Environment(\.speakerNaming) private var naming
+    @State private var editing = false
 
     static func color(slot: Int) -> Color {
         let palette: [Color] = [Theme.coral, Theme.featherGold, Theme.featherGreen,
@@ -1442,10 +1510,18 @@ struct SpeakerLabel: View {
     }
 
     var body: some View {
-        Text(SpeakerPresentation.displayName(for: speaker))
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Self.color(slot: slot))
-            .accessibilityAddTraits(.isHeader)
+        let named = naming?.names[speaker]
+        let title = SpeakerNames.name(for: speaker, in: naming?.names) ?? SpeakerPresentation.displayName(for: speaker)
+        if let naming, SpeakerNames.isNameable(speaker) {
+            SpeakerNameButton(title: title, slot: slot, voiceDerived: named?.source == .voice) { editing = true }
+                .accessibilityAddTraits(.isHeader)
+                .popover(isPresented: $editing, arrowEdge: .bottom) {
+                    SpeakerNamePopover(label: speaker, context: naming)
+                }
+        } else {
+            SpeakerNameText(title: title, slot: slot, voiceDerived: named?.source == .voice)
+                .accessibilityAddTraits(.isHeader)
+        }
     }
 }
 
@@ -1458,7 +1534,7 @@ struct SpeakerTurnsView: View {
         let slots = SpeakerPresentation.colorIndices(for: segments.map(\.speaker))
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(SpeakerPresentation.turns(segments).enumerated()), id: \.offset) { _, turn in
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 3) {
                     SpeakerLabel(speaker: turn.speaker, slot: slots[turn.speaker] ?? 0)
                     Text(turn.text)
                         .font(.system(size: 12.5))
