@@ -4,34 +4,51 @@ import Foundation
 /// `ActivationGesture`: no timers, no clocks, no I/O — `HotKeyMonitor` feeds it
 /// timestamped edges from its listen-only tap, but ONLY while a dictation is active.
 ///
+/// The key is a switch: press it once and command listening is on, press it again
+/// and it is off. How long either press is held does not matter, and nothing has
+/// to stay held while the command is spoken.
+///
 /// Rules (the accident guards — in hands-free latch mode the user may be typing
 /// shortcuts in other apps while recording, and Control is part of many of them):
-///   - A hold counts as a command span only if the command key was pressed ALONE for
-///     the whole hold: another modifier already down at the press, or any other key or
-///     mouse button during the hold, cancels it (the speech stays normal text). The
-///     dictation key itself is exempt — holding it for push-to-talk is expected.
-///   - A clean hold must last at least `minimumHold` (250 ms) to be a span.
-///   - A clean press shorter than that is a TAP, which ends the active format.
+///   - A press counts only if the command key was pressed ALONE: another modifier
+///     already down at the press, or any other key or mouse button while it is
+///     down, makes it a shortcut chord. A chord on the first press starts nothing;
+///     a chord on the second press leaves listening on. The dictation key itself is
+///     exempt — holding it for push-to-talk is expected.
+///   - Listening starts the moment the first press goes down (so the pill answers
+///     at once) and ends at the moment the second press went down; the second
+///     press is reported when it is released, once it is known to be clean.
+///   - Two presses closer together than `minimumSpan` cannot hold a command: that
+///     double press is a TAP, which ends the active format.
 struct FormatKeyGesture: Sendable, Equatable {
-    static let minimumHold: TimeInterval = 0.25
+    static let minimumSpan: TimeInterval = 0.25
 
     enum Output: Sendable, Equatable {
-        /// The command key went down cleanly (the live pill may start listening).
+        /// The first press went down cleanly: command listening is on.
         case pressed(at: TimeInterval)
-        /// A valid command span from `start` to `end` (same clock as the inputs).
+        /// Listening was switched off again: the command was said between `start`
+        /// and `end` (same clock as the inputs).
         case span(start: TimeInterval, end: TimeInterval)
-        /// A short clean tap: end the active format.
+        /// A quick double press with no room for words: end the active format.
         case tap(at: TimeInterval)
-        /// The hold was spoiled by another key/button: ignore it entirely.
+        /// The first press turned out to be a shortcut chord: ignore it entirely.
         case cancelled
     }
 
+    /// The key is physically down since this time.
     private var downAt: TimeInterval?
+    /// The press in progress is (part of) a shortcut chord.
     private var spoiled = false
+    /// Command listening is on since this time (the first press's key-down).
+    private var listeningSince: TimeInterval?
+    /// The press in progress is the one that switches listening off.
+    private var closing = false
 
     init() {}
 
     var isHeld: Bool { downAt != nil }
+    /// Command listening is on (between the two presses).
+    var isListening: Bool { listeningSince != nil }
 
     /// The command key went down. `othersHeld` = another modifier (not the dictation
     /// key) was already down, which makes this a shortcut chord, not a command.
@@ -39,28 +56,55 @@ struct FormatKeyGesture: Sendable, Equatable {
         guard downAt == nil else { return nil }   // duplicate down (dropped up) — stay put
         downAt = t
         spoiled = othersHeld
-        return othersHeld ? nil : .pressed(at: t)
+        if listeningSince != nil {
+            closing = true
+            return nil
+        }
+        closing = false
+        guard !othersHeld else { return nil }
+        listeningSince = t
+        return .pressed(at: t)
     }
 
     /// Any other key or mouse button went down (or another modifier changed) while the
-    /// command key may be held. Spoils the current hold; a no-op when not held.
+    /// command key is down. Spoils that press; a no-op when the key is not down.
     mutating func otherInput() {
         if downAt != nil { spoiled = true }
     }
 
     /// The command key went up.
     mutating func keyUp(at t: TimeInterval) -> Output? {
-        guard let start = downAt else { return nil }
+        guard let down = downAt else { return nil }
         downAt = nil
-        defer { spoiled = false }
-        if spoiled { return .cancelled }
-        if t - start < Self.minimumHold { return .tap(at: t) }
-        return .span(start: start, end: t)
+        defer {
+            spoiled = false
+            closing = false
+        }
+        if !closing {
+            // The first press: clean = listening stays on with the key released.
+            guard spoiled else { return nil }
+            listeningSince = nil
+            return .cancelled
+        }
+        // The second press: a chord leaves listening on.
+        guard !spoiled, let start = listeningSince else { return nil }
+        listeningSince = nil
+        if down - start < Self.minimumSpan { return .tap(at: down) }
+        return .span(start: start, end: down)
+    }
+
+    /// A key-up was lost (the tap was re-enabled): the key is no longer down. The
+    /// press is forgotten; listening stays as it was.
+    mutating func releaseLost() {
+        guard downAt != nil else { return }
+        downAt = nil
+        spoiled = false
+        closing = false
     }
 
     /// Feed one observed tap event. Inert (and reset) unless a dictation is active and
     /// a command key is configured. The command key's own edges drive the machine; any
-    /// OTHER key, modifier or mouse button spoils a hold in progress — except the
+    /// OTHER key, modifier or mouse button spoils a press in progress — except the
     /// dictation key, which push-to-talk keeps held on purpose, and the command key's
     /// own auto-repeat.
     mutating func step(_ event: ActivationKey.Event, rawFlags: UInt64, commandKey: ActivationKey?,
@@ -85,12 +129,15 @@ struct FormatKeyGesture: Sendable, Equatable {
         return nil
     }
 
-    /// Drop any in-flight hold without output (dictation ended, rebind, suspend).
+    /// Drop any press and switch listening off without output (dictation ended,
+    /// rebind, suspend).
     @discardableResult
     mutating func reset() -> Bool {
-        let was = downAt != nil
+        let was = downAt != nil || listeningSince != nil
         downAt = nil
         spoiled = false
+        listeningSince = nil
+        closing = false
         return was
     }
 }

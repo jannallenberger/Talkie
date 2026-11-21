@@ -411,12 +411,13 @@ final class HotKeyMonitor: @unchecked Sendable {
     /// session has no key down (ending it here would kill the lock), and idle has
     /// no session to end at all. So we gate strictly on `gesture.isHeld`.
     private func reconcileLiveState() {
-        // A dropped command-key release must not leave a command hold stuck open
-        // (it would swallow the next press). Drop it silently — no span is reported.
+        // A dropped command-key release must not leave the key "down" in the machine
+        // (it would swallow the next press). Forget that press; command listening
+        // stays as it was.
         lock.lock()
         if formatGesture.isHeld, let ck = config.commandKey,
            !ck.isPhysicallyDown(sessionState: .combinedSessionState) {
-            formatGesture.reset()
+            formatGesture.releaseLost()
         }
         lock.unlock()
 

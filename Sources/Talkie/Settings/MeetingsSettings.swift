@@ -107,11 +107,21 @@ struct MeetingsSettings: View {
     /// progress (AppDelegate's mid-recording observer).
     @ViewBuilder
     private var livePillCard: some View {
-        SettingsCard(header: "Live pill") {
+        SettingsCard(header: "While recording") {
             SettingsToggleRow(
                 title: "Show the meeting pill".loc,
                 subtitle: "A small indicator under the camera while recording, with a live timer and the current topic when Talkie is confident.".loc,
                 isOn: $settings.showMeetingPill)
+            SettingsDivider()
+            SettingsToggleRow(
+                title: "Open the notes window when recording starts".loc,
+                subtitle: "A small window beside the call for your notes, with what has been said so far. It stays closed while the main window is in front.".loc,
+                isOn: $settings.openMeetingNotesWindow)
+            SettingsDivider()
+            SettingsToggleRow(
+                title: "Hide from screen sharing".loc,
+                subtitle: "The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it.".loc,
+                isOn: $settings.hideMeetingWindowsFromScreenSharing)
         }
     }
 

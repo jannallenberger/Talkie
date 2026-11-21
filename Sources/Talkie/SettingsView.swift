@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import Combine
 
 #if TALKIE_DEV_TOOLS
 import TalkieUpdater
@@ -38,6 +39,9 @@ enum SettingsTab: Hashable, CaseIterable {
         case .general:     return "gearshape.fill"
         }
     }
+
+    /// The step this tab turns the backdrop gradient by (see `TalkieBackdrop`).
+    var backdropTurn: Int { Self.allCases.firstIndex(of: self) ?? 0 }
 
     /// Per-item macaw-feather tint for the sidebar (v2). Feature tabs wear a
     /// feather hue; Settings rides the brand blue.
@@ -78,6 +82,8 @@ enum SettingsPage: Hashable {
     case privacy
     /// Developer — dev-only tools (shown only when `showDeveloperSection`).
     case developer
+    /// Profile & appearance — photo and name, colours, backdrop, glass.
+    case appearance
 
     // ── Nested / deep-link destinations ──────────────────────────────────
     /// The full "All languages" picker (the Languages subpage shows a strip).
@@ -230,7 +236,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         // Kills the gray titlebar hairline that otherwise survives the transparent
         // titlebar in both windowed and full-screen.
         window.titlebarSeparatorStyle = .none
-        window.isMovableByWindowBackground = true
+        // The window moves by its titlebar/toolbar strip only. "Movable by the
+        // background" also grabbed drags that belong to controls on glass cards:
+        // moving a slider or selecting text dragged the whole window.
+        window.isMovableByWindowBackground = false
         // Opaque v2 canvas; NavigationSplitView supplies the Liquid Glass sidebar.
         window.backgroundColor = NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
@@ -251,6 +260,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         // is retained by `AppDelegate`, so reopening reuses the same instance.
         window.delegate = self
     }
+
+    /// The main window is on screen and the one being typed in.
+    var isInFront: Bool { window.isVisible && window.isKeyWindow && NSApp.isActive }
 
     func show(tab: SettingsTab) {
         router.selectedTab = tab
@@ -291,35 +303,40 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 }
 
 struct MainView: View {
+    // Perf: MainView observes ONLY what its own body reads — `settings.hasOnboarded`,
+    // `router.selectedTab`, and `permissions` for the sidebar badge. Every store is
+    // forwarded as a plain reference; each page observes the stores it displays.
+    // Observing all of them here re-ran this whole body (split view, sidebar, page
+    // switch) on any change anywhere — every second while a meeting records, after
+    // every dictation, on each latency sample.
     @ObservedObject var settings: AppSettings
-    @ObservedObject var dictionary: DictionaryStore
+    let dictionary: DictionaryStore
     @ObservedObject var permissions: PermissionsModel
-    @ObservedObject var history: HistoryStore
-    @ObservedObject var stats: StatsStore
-    @ObservedObject var appUsage: AppUsageStore
-    @ObservedObject var activity: ActivityStore
-    @ObservedObject var wordFreq: WordFrequencyStore
+    let history: HistoryStore
+    let stats: StatsStore
+    let appUsage: AppUsageStore
+    let activity: ActivityStore
+    let wordFreq: WordFrequencyStore
     /// L5-b: the on-device invented job title, shown on the Milestones page.
-    @ObservedObject var jobTitle: JobTitleStore
-    @ObservedObject var latency: LatencyStore
-    @ObservedObject var systemPressure: SystemPressure
-    @ObservedObject var scratchpad: ScratchpadStore
+    let jobTitle: JobTitleStore
+    let latency: LatencyStore
+    let systemPressure: SystemPressure
+    let scratchpad: ScratchpadStore
     /// L7: the optional profile picture, forwarded to the dashboard header, the
     /// meeting rows, and `MemoryView` (whose "Clear everything" clears it too).
-    @ObservedObject var profileImage: ProfileImageStore
+    let profileImage: ProfileImageStore
     /// L2-b (LOG-ONLY): forwarded to `MemoryView` only so its true-delete cascade can
-    /// purge the AI-auto-add calibration log. Not `@ObservedObject` — this log drives
-    /// no UI, so nothing here should redraw when it changes.
+    /// purge the AI-auto-add calibration log.
     let autoAddPreviewLog: AutoAddPreviewLog
-    @ObservedObject var projectIndex: ProjectIndexStore
-    @ObservedObject var contextSummary: ContextSummaryStore
-    @ObservedObject var meetingRecorder: MeetingRecorder
-    @ObservedObject var meetingStore: MeetingStore
-    @ObservedObject var contextGraph: ContextGraphStore
-    @ObservedObject var macros: MacroStore
-    @ObservedObject var profiles: AppProfileStore
-    @ObservedObject var searchEngine: SearchEngine
-    @ObservedObject var nicheVocab: NicheVocabStore
+    let projectIndex: ProjectIndexStore
+    let contextSummary: ContextSummaryStore
+    let meetingRecorder: MeetingRecorder
+    let meetingStore: MeetingStore
+    let contextGraph: ContextGraphStore
+    let macros: MacroStore
+    let profiles: AppProfileStore
+    let searchEngine: SearchEngine
+    let nicheVocab: NicheVocabStore
     let commandRouter: CommandRouter
     let hud: HUDController
     @ObservedObject var router: SettingsRouter
@@ -330,6 +347,8 @@ struct MainView: View {
             if settings.hasOnboarded {
                 NavigationSplitView {
                     SidebarList(router: router, settings: settings, permissions: permissions)
+                        // The sidebar's own glass samples the backdrop behind it.
+                        .scrollContentBackground(.hidden)
                 } detail: {
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -338,7 +357,6 @@ struct MainView: View {
                         // (`Theme.Space.pageTop`, measured from the window's top
                         // edge). The sidebar keeps its native safe areas.
                         .ignoresSafeArea(.container, edges: .top)
-                        .background(Theme.canvas.ignoresSafeArea())
                         // No toolbar strip in windowed or fullscreen mode: the
                         // toolbar stays (sidebar toggle, native sidebar look) but
                         // draws no background of its own.
@@ -351,6 +369,12 @@ struct MainView: View {
                         // "pill" it produced was removed app-wide (each page already
                         // carries its own in-content header), so nothing bridges to the
                         // window toolbar here anymore.
+                }
+                // One backdrop behind the sidebar and every page: the logo-colour
+                // gradient, turned a step per tab. Pages are see-through over it.
+                .background {
+                    TalkieBackdrop(turn: router.selectedTab.backdropTurn)
+                        .animation(.easeInOut(duration: 0.45), value: router.selectedTab)
                 }
                 .transition(.opacity)
             } else {
@@ -396,7 +420,8 @@ struct MainView: View {
         case .general:
             SettingsHome(settings: settings, permissions: permissions,
                          profiles: profiles,
-                         history: history, router: router, onRetryHotKey: onRetryHotKey)
+                         history: history, profileImage: profileImage,
+                         router: router, onRetryHotKey: onRetryHotKey)
         }
     }
 }
@@ -464,6 +489,7 @@ private struct SettingsHome: View {
     @ObservedObject var permissions: PermissionsModel
     @ObservedObject var profiles: AppProfileStore
     @ObservedObject var history: HistoryStore
+    let profileImage: ProfileImageStore
     @ObservedObject var router: SettingsRouter
     let onRetryHotKey: () -> Bool
 
@@ -481,6 +507,11 @@ private struct SettingsHome: View {
                     // below. It carries the same page header as every other tab.
                     TalkiePageHeader(title: "Settings")
                         .padding(.bottom, 6)
+                    // 0. Profile & appearance — who you are and how Talkie looks.
+                    SettingsIndexRow(icon: "IconPalette", fallback: "paintpalette.fill",
+                                     title: "Profile & appearance",
+                                     subtitle: "Your photo and name, plus colors, backdrop and glass.",
+                                     page: .appearance)
                     //
                     // 1. Dictation — activation key, insertion, and the mic.
                     SettingsIndexRow(icon: "IconWaveform", fallback: "waveform",
@@ -583,6 +614,8 @@ private struct SettingsHome: View {
                         PrivacyAndPermissionsSettings(settings: settings, permissions: permissions,
                                                       history: history, onRetryHotKey: onRetryHotKey)
                     }
+                case .appearance:
+                    AppearanceSettings(settings: settings, profileImage: profileImage)
                 case .developer:
                     SubPage(title: "Developer",
                             subtitle: "Tools that ship only in development builds.") {
@@ -1251,7 +1284,7 @@ private struct BugBundlePreviewSheet: View {
         }
         .padding(20)
         .frame(width: 560, height: 520)
-        .background(Theme.canvas)
+        .background { TalkieBackdrop() }
     }
 
     /// The one and only write to the pasteboard in this feature — reached only from
@@ -1903,11 +1936,32 @@ struct DictionarySettings: View {
 
     /// The self-learned terms that have graduated into the live corrector — the ones
     /// currently rescuing close misses without a hand-curated Dictionary entry.
-    private var learnedTerms: [String] {
-        nicheVocab.snapshot()
-            .correctorTerms(forNiche: NicheID.default.key, limit: 60)
-            // Don't repeat terms the user has already curated by hand above.
-            .filter { term in !dictionary.vocabulary.contains { $0.lowercased() == term.lowercased() } }
+    /// nil until the first background computation lands (see `refreshLearnedTerms`).
+    ///
+    /// Perf: this used to be a computed property, so EVERY render of the page —
+    /// including each keystroke in "Add a word" — re-ran the corrector selection,
+    /// whose false-boost guard edit-distance-checks every candidate against the
+    /// whole common-word list. Now it is computed off the main actor when the niche
+    /// terms or the curated vocabulary change, and cached here.
+    @State private var learnedTerms: [String]?
+
+    /// Recompute `learnedTerms` from a snapshot, off the main actor.
+    private func refreshLearnedTerms() async {
+        let snapshot = nicheVocab.snapshot()
+        let curated = Set(dictionary.vocabulary.map { $0.lowercased() })
+        let terms = await Task.detached(priority: .userInitiated) {
+            snapshot.correctorTerms(forNiche: NicheID.default.key, limit: 60)
+                // Don't repeat terms the user has already curated by hand above.
+                .filter { !curated.contains($0.lowercased()) }
+        }.value
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: 0.16)) { learnedTerms = terms }
+    }
+
+    /// Whether the learned card may appear at all — cheap: are there any niche terms?
+    /// Used to hold the card's place with a skeleton only when it can actually show.
+    private var mayHaveLearnedTerms: Bool {
+        !(nicheVocab.terms[NicheID.default.key]?.isEmpty ?? true)
     }
 
     // Import/export (.talkiepack). The preview is computed BEFORE anything is
@@ -1991,7 +2045,7 @@ struct DictionarySettings: View {
                 // Learned vocabulary — jargon Talkie picked up from what you say and
                 // confirm, now correcting close misses on its own. Read-only; stays
                 // hidden until something has graduated, so it never adds noise.
-                if !learnedTerms.isEmpty {
+                if let learnedTerms, !learnedTerms.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         Eyebrow(text: "Learned vocabulary")
                         Text("Words Talkie picked up from what you dictate and correct. They now fix close misses on their own, no rule needed. Remove one to tell Talkie it got that wrong.")
@@ -2004,6 +2058,21 @@ struct DictionarySettings: View {
                         }
                     }
                     .talkieCard()
+                    .transition(.opacity)
+                } else if learnedTerms == nil, mayHaveLearnedTerms {
+                    // First computation still running: hold the card's place so the
+                    // Replacements card below doesn't jump when it lands.
+                    VStack(alignment: .leading, spacing: 14) {
+                        Eyebrow(text: "Learned vocabulary")
+                        TalkieSkeletonGroup {
+                            VStack(alignment: .leading, spacing: 14) {
+                                TalkieSkeletonText(lines: 2, textSize: 13, lastLineFraction: 0.45)
+                                TalkieSkeletonChips(count: 9)
+                            }
+                        }
+                    }
+                    .talkieCard()
+                    .transition(.opacity)
                 }
 
                 // Replacements.
@@ -2025,7 +2094,11 @@ struct DictionarySettings: View {
                             .font(.talkieHeading(13, weight: .regular))
                             .foregroundStyle(Theme.inkTertiary)
                     } else {
-                        VStack(spacing: 10) {
+                        // Lazy: every rule is two native text fields, and building all
+                        // of them up front (92 rules → 184 fields) was most of the half
+                        // second the Dictionary page took to open. Only rows near the
+                        // visible part of the page's scroll view are built now.
+                        LazyVStack(spacing: 10) {
                             ForEach($dictionary.replacements) { $rule in
                                 ReplacementRow(rule: $rule) { removeRule(rule) }
                             }
@@ -2034,20 +2107,23 @@ struct DictionarySettings: View {
                 }
                 .talkieCard()
         }
-        .background(
-            // A calm brand wash confirms a valid drag is over the pane.
-            Theme.canvas.overlay(
-                isTargetedForDrop
-                    ? Theme.coral.opacity(0.06)
-                    : Color.clear
-            )
-        )
+        // A calm brand wash confirms a valid drag is over the pane.
+        .background(isTargetedForDrop ? Theme.coral.opacity(0.08) : Color.clear)
         .onChange(of: dictionary.replacements) { _, _ in dictionary.save() }
         .onChange(of: dictionary.vocabulary) { _, _ in dictionary.save() }
         // A7 — check which other dictation apps have a dictionary on disk so the
         // "Import from another app" menu can offer them directly. Cheap fileExists
         // checks only; runs when the pane appears.
         .onAppear { detectedApps = CompetitorDictionaryImport.detectInstalledApps() }
+        // Learned terms: computed once on appear, then again (debounced) whenever the
+        // niche terms or the curated vocabulary change — never per render.
+        .task { await refreshLearnedTerms() }
+        .onReceive(nicheVocab.$terms.dropFirst().debounce(for: .milliseconds(250), scheduler: RunLoop.main)) { _ in
+            Task { await refreshLearnedTerms() }
+        }
+        .onChange(of: dictionary.vocabulary) { _, _ in
+            Task { await refreshLearnedTerms() }
+        }
         // Drag a .talkiepack onto the Dictionary tab to import it.
         .onDrop(of: [.fileURL], isTargeted: $isTargetedForDrop) { providers in
             loadDroppedPack(providers)
@@ -2466,7 +2542,7 @@ private struct ImportPreviewSheet: View {
             footer
         }
         .frame(width: 460, height: 540)
-        .background(Theme.canvas)
+        .background { TalkieBackdrop() }
     }
 
     private var header: some View {

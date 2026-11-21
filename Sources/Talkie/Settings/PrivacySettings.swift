@@ -543,7 +543,7 @@ private struct VerifyRow: View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.talkieHeading(12, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.onBrand)
                 .frame(width: 20, height: 20)
                 .background(Circle().fill(Theme.coral))
             VStack(alignment: .leading, spacing: 4) {

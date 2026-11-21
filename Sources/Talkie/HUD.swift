@@ -121,6 +121,9 @@ final class HUDModel: ObservableObject {
     /// (blue while it's held, the active format's chip, "Not recognised"). The pure
     /// `PillFormatState`; reset when a session ends.
     @Published var formatState = PillFormatState()
+    /// The command key in short ("⌃", "F5"), named in the format status line so it
+    /// says which key to press next.
+    @Published var formatKeyName: String = FormatCommandKey.defaultKey.shortName
     /// The live transcript's *finalized* portion — segments the recognizer has
     /// committed and won't revise — rendered firmly (higher opacity) as the head of
     /// the capture-pill's one-line tail (C1). Empty renders nothing, i.e. today's
@@ -129,6 +132,13 @@ final class HUDModel: ObservableObject {
     /// The live transcript's *volatile* tail — the still-changing words — rendered
     /// faintly after `text`, so you can watch words firm up as they finalize (C1).
     @Published var volatileText: String = ""
+    /// `volatileText` continues `text` exactly as it is (it may start inside a line,
+    /// with a closing mark or a line break): no space is put between them. Set while
+    /// the pill shows formatted text, whose firm part can end anywhere.
+    @Published var volatileContinues = false
+    /// The active format is written by the on-device model when the dictation stops,
+    /// so the pill shows its words as heard — and says so.
+    @Published var formatAppliedAtEnd = false
     /// Rolling history of recent mic levels (newest last) driving the waveform.
     @Published var levels: [CGFloat] = Array(repeating: 0, count: HUDModel.barCount)
     /// Bumped to flash the pill when the key is pressed again mid-processing.
@@ -448,7 +458,7 @@ final class HUDController {
     /// the pill can render the volatile words fainter and let them firm up as they
     /// finalize. Display only: the transcript still goes to the focused app; this
     /// merely mirrors the tail so there's no "is it even hearing me?" dead air.
-    func updateTranscribing(finalized: String, volatile: String) {
+    func updateTranscribing(finalized: String, volatile: String, volatileContinues: Bool = false) {
         // Only meaningful while still capturing — a late partial must never
         // resurrect the pill out of processing/inserting/hidden.
         switch model.phase {
@@ -459,6 +469,7 @@ final class HUDController {
         if model.phase != .transcribing { model.phase = .transcribing }
         model.text = finalized
         model.volatileText = volatile
+        if model.volatileContinues != volatileContinues { model.volatileContinues = volatileContinues }
     }
 
     func showProcessing() {
@@ -823,6 +834,9 @@ final class HUDController {
         let before = model.formatState
         model.formatState.handle(event)
         let after = model.formatState
+        if event == .keyDown {
+            announce(String(format: "Listening for a format. Say it, then press %@ again.".loc, model.formatKeyName))
+        }
         guard after.flash != before.flash || event == .keyDown else { return }
         formatFlashTask?.cancel()
         guard let seconds = after.flashSeconds else { return }
@@ -843,9 +857,22 @@ final class HUDController {
         }
     }
 
+    /// Which key the format status line names (the user's command key, in short).
+    func setFormatKeyName(_ name: String) {
+        if model.formatKeyName != name { model.formatKeyName = name }
+    }
+
+    /// Whether the active format only takes effect when the dictation stops (it
+    /// needs the on-device model), so the pill cannot show it while you speak.
+    func setFormatAppliedAtEnd(_ atEnd: Bool) {
+        if model.formatAppliedAtEnd != atEnd { model.formatAppliedAtEnd = atEnd }
+    }
+
     private func resetFormatState() {
         formatFlashTask?.cancel()
         model.formatState = PillFormatState()
+        model.formatAppliedAtEnd = false
+        model.volatileContinues = false
     }
     private var formatFlashTask: Task<Void, Never>?
 
@@ -1102,7 +1129,7 @@ private struct CorrectionPopover: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .fill(Theme.surface)
+                .fill(Theme.surfaceSolid)
                 .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
         )
         .frame(width: 320)
@@ -1218,10 +1245,11 @@ struct HUDView: View {
         }
     }
 
-    /// "Format while you dictate", in the capture pill: "Listening for a format…" in
-    /// blue while the format key is held (and while its words are checked); the
-    /// active format as a blue chip — with a tick for a moment right after it is
-    /// recognised; "Not recognised" as its own brief state. Nothing in normal dictation.
+    /// "Format while you dictate", in the capture pill. Every state says what happens
+    /// next: after the first press "Say the format, then press ⌃ again" in blue;
+    /// "Checking…" while the words are matched; the active format as a blue chip that
+    /// also says how to end it — with a tick for a moment right after it is recognised;
+    /// "No format heard" as its own brief state. Nothing in normal dictation.
     @ViewBuilder
     private var formatChipView: some View {
         let size: CGFloat = model.highContrast ? 12 : 11
@@ -1231,7 +1259,20 @@ struct HUDView: View {
                 Image(systemName: "keyboard")
                     .font(.system(size: size - 1, weight: .semibold))
                     .accessibilityHidden(true)
-                Text("Listening for a format…".loc)
+                Text(String(format: "Say the format, then press %@ again".loc, model.formatKeyName))
+                    .font(.system(size: size, weight: .semibold))
+            }
+            .foregroundStyle(Self.formatBlue)
+            .lineLimit(1)
+            .fixedSize()
+            .transition(.opacity)
+            .accessibilityElement(children: .combine)
+        case .checking:
+            HStack(spacing: 4) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: size - 1, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("Checking…".loc)
                     .font(.system(size: size, weight: .semibold))
             }
             .foregroundStyle(Self.formatBlue)
@@ -1263,7 +1304,10 @@ struct HUDView: View {
                 Image(systemName: "textformat")
                     .font(.system(size: size - 1, weight: .semibold))
                     .accessibilityHidden(true)
-                Text(String(format: "%@ is on".loc, name))
+                // A format the model writes cannot be shown while you speak: say so.
+                Text(String(format: (model.formatAppliedAtEnd
+                                     ? "%1$@ on · applied when you stop · %2$@ twice ends it"
+                                     : "%1$@ on · press %2$@ twice to end").loc, name, model.formatKeyName))
                     .font(.system(size: size, weight: .medium))
             }
             .foregroundStyle(Self.formatBlue)
@@ -1274,7 +1318,7 @@ struct HUDView: View {
             .background(Capsule().fill(Self.formatBlue.opacity(PillPalette.chipFillOpacity)))
             .transition(.opacity)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(String(format: "Format: %@".loc, name))
+            .accessibilityLabel(String(format: "Format: %1$@. Press %2$@ twice to end it.".loc, name, model.formatKeyName))
         case .notRecognised:
             // Neutral warning tone (not red — it is not an error): the words stay as text.
             HStack(spacing: 4) {
@@ -1336,31 +1380,27 @@ struct HUDView: View {
 
     /// C1 — the live tail as a WRAPPING block below the waveform. `PillColumnLayout`
     /// offers it at most `liveTailWidth`, and it takes only the width its words need
-    /// (so a few words keep the pill compact); a line cap stops it past a few lines;
-    /// head-truncation keeps the newest words visible once it's full.
+    /// (so a few words keep the pill compact). It grows to a few lines; after that
+    /// the newest lines stay and the older ones roll out at the top (`PillLiveTail`).
     @ViewBuilder
     private var liveTailBlock: some View {
-        Text(liveTailString)
-            .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
-            .multilineTextAlignment(.leading)
-            .lineLimit(5)
-            .truncationMode(.head)
-            .accessibilityHidden(true)
+        PillLiveTail(text: liveTailString, fontSize: model.highContrast ? 12 : 11)
     }
 
     /// The two-tone attributed tail: a firm finalized head + a dimmer volatile tail,
-    /// as ONE `AttributedString` so the `Text` truncates as a single line (SwiftUI
-    /// can't head-truncate a `Text` built from `+`-concatenated runs). A single space
+    /// as ONE `AttributedString` so it wraps as one paragraph. A single space
     /// joins head and tail only when both are present, so the seam reads as normal
     /// word spacing. Colors flow through `ink(_:)` so high-contrast lifts them too.
     private var liveTailString: AttributedString {
-        var attributed = AttributedString(model.text)
-        // While the format key is held the words turn the format blue with the waveform.
+        // Only the newest part of a very long dictation is laid out (see `PillLiveText`).
+        let head = PillLiveText.window(model.text)
+        var attributed = AttributedString(head)
+        // While a command is listened for the words turn the format blue with the waveform.
         let blue = model.formatState.textIsBlue
         attributed.foregroundColor = blue ? Self.formatBlue : ink(model.highContrast ? 0.95 : 0.85)
         let volatile = model.volatileText
         if !volatile.isEmpty {
-            let joiner = model.text.isEmpty ? "" : " "
+            let joiner = head.isEmpty || model.volatileContinues ? "" : " "
             var tail = AttributedString(joiner + volatile)
             tail.foregroundColor = blue ? Self.formatBlue : ink(model.highContrast ? 0.7 : 0.5)
             attributed.append(tail)

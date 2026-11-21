@@ -253,7 +253,11 @@ struct ProjectIndexSnapshot: Sendable {
 
 @MainActor
 final class ProjectIndexStore: ObservableObject {
-    @Published private(set) var data = ProjectIndexData()
+    @Published private(set) var data = ProjectIndexData() {
+        // Any change can alter a root's bucket, so the cached scoped snapshots built
+        // from the old buckets go; the next rebuild prewarms them again off-main.
+        didSet { invalidateRootSnapshots() }
+    }
     @Published private(set) var isScanning = false
     /// Rebuilt whenever `data` changes; handed to the formatter each dictation.
     @Published private(set) var snapshot = ProjectIndexSnapshot.empty
@@ -289,7 +293,12 @@ final class ProjectIndexStore: ObservableObject {
     init(fileURL: URL? = nil) {
         self.fileURL = fileURL ?? AppPaths.supportDirectory().appendingPathComponent("project_index.json")
         load()
-        rebuildSnapshot()
+        // Perf: the launch build runs off the main actor. Deriving spoken keys + the
+        // guarded corrector terms for every indexed file took ~0.7 s of main-thread
+        // time at launch with a real three-project index. Until it lands `snapshot`
+        // is `.empty` — exactly the state before a first scan, which every caller
+        // already handles. Any later synchronous rebuild supersedes it.
+        rebuildSnapshotInBackground()
         // G10 migration: a legacy pre-A10 `project_index.json` stored a flat merged
         // `filePaths` with NO per-root structure, so we can't derive repo-relative paths
         // from it — `mergedRelativeFilePaths` skips the legacy blob by design. If we loaded
@@ -442,15 +451,65 @@ final class ProjectIndexStore: ObservableObject {
     /// the checkout the terminal is actually in; when it returns nil (unknown/ambiguous
     /// root, or a brand-new root still scanning) the caller falls back to the merged
     /// global `snapshot` — never a wrong-repo scope.
+    ///
+    /// Served from `rootSnapshots`, which `prewarmRootSnapshots` fills off the main actor
+    /// after every index change, so a dictation start is a dictionary lookup. A miss (a
+    /// dictation in the moment between an index change and its prewarm) builds the
+    /// snapshot here, exactly as before the cache, and keeps it.
     func snapshot(for root: URL) -> ProjectIndexSnapshot? {
-        guard let bucket = data.roots[root.standardizedFileURL.path] else { return nil }
-        // G10: derive this root's basename→relative-path map so a terminal target can
-        // insert the repo-relative path. Scoped to THIS checkout, so the relative paths are
-        // unambiguous (no cross-root first-wins needed here).
-        return SpokenFileMatcher.buildSnapshot(files: bucket.files, symbols: bucket.symbols,
-                                               docTerms: bucket.docTerms,
-                                               filePaths: bucket.relativeFilePaths(root: root))
+        let path = root.standardizedFileURL.path
+        if let cached = rootSnapshots[path] { return cached }
+        guard let bucket = data.roots[path] else { return nil }
+        let built = Self.makeRootSnapshot(path: path, bucket: bucket)
+        rootSnapshots[path] = built
+        return built
     }
+
+    /// One root's scoped snapshot. G10: derive this root's basename→relative-path map so
+    /// a terminal target can insert the repo-relative path. Scoped to THIS checkout, so
+    /// the relative paths are unambiguous (no cross-root first-wins needed here).
+    nonisolated private static func makeRootSnapshot(path: String, bucket: ProjectRootIndex) -> ProjectIndexSnapshot {
+        SpokenFileMatcher.buildSnapshot(files: bucket.files, symbols: bucket.symbols,
+                                        docTerms: bucket.docTerms,
+                                        filePaths: bucket.relativeFilePaths(root: URL(fileURLWithPath: path)))
+    }
+
+    /// Scoped snapshots by standardized root path. Building one costs 15–90 ms on a real
+    /// 200–1,000-file root (release), and `beginDictation` reads one on every dictation
+    /// into an editor or terminal, so they are built once per index change instead.
+    private var rootSnapshots: [String: ProjectIndexSnapshot] = [:]
+    /// Bumped whenever `rootSnapshots` is cleared, so a prewarm that read an older index
+    /// drops its result instead of caching stale buckets.
+    private var rootSnapshotsGeneration = 0
+
+    private func invalidateRootSnapshots() {
+        rootSnapshots.removeAll()
+        rootSnapshotsGeneration += 1
+    }
+
+    /// Build every indexed root's scoped snapshot off the main actor, so the next
+    /// dictation in any of them finds it cached.
+    private func prewarmRootSnapshots() {
+        let generation = rootSnapshotsGeneration
+        let pending = data.roots.filter { rootSnapshots[$0.key] == nil }
+        guard !pending.isEmpty else { return }
+        Task { [weak self] in
+            let built = await Task.detached(priority: .userInitiated) {
+                pending.reduce(into: [String: ProjectIndexSnapshot]()) { out, entry in
+                    out[entry.key] = Self.makeRootSnapshot(path: entry.key, bucket: entry.value)
+                }
+            }.value
+            guard let self, generation == self.rootSnapshotsGeneration else { return }
+            for (path, snapshot) in built where self.rootSnapshots[path] == nil {
+                self.rootSnapshots[path] = snapshot
+            }
+        }
+    }
+
+    #if DEBUG
+    /// Whether `snapshot(for:)` would be served from the cache, for tests.
+    func hasCachedSnapshot(for root: URL) -> Bool { rootSnapshots[root.standardizedFileURL.path] != nil }
+    #endif
 
     /// Index a detected-but-unpinned root in the background (A10 index-on-first-sight), so a
     /// worktree Jann just spun up is scoped within a dictation or two WITHOUT him having to
@@ -485,7 +544,11 @@ final class ProjectIndexStore: ObservableObject {
             self.touchAutoRoot(path)
             self.evictAutoRootsIfNeeded()
             // Auto roots are NOT persisted — `save()` strips them — so no disk write here.
-            self.rebuildSnapshot()
+            // This lands moments after a dictation started in the new root, often while
+            // it is still recording or pasting, so the merged rebuild (~150 ms on a real
+            // index) runs off the main actor. Until it lands the merged snapshot simply
+            // lacks this root, as it did during the walk.
+            self.rebuildSnapshotInBackground()
         }
     }
 
@@ -506,13 +569,37 @@ final class ProjectIndexStore: ObservableObject {
         }
     }
 
+    /// Bumped by every snapshot rebuild, so a background build that finishes after a
+    /// newer (synchronous) one is dropped instead of overwriting it.
+    private var snapshotGeneration = 0
+
     private func rebuildSnapshot() {
+        snapshotGeneration += 1
+        snapshot = Self.makeSnapshot(from: data)
+        prewarmRootSnapshots()
+    }
+
+    /// The same build as `rebuildSnapshot`, off the main actor (used at launch and when a
+    /// first-sight scan lands).
+    private func rebuildSnapshotInBackground() {
+        snapshotGeneration += 1
+        let generation = snapshotGeneration
+        prewarmRootSnapshots()
+        let data = self.data
+        Task { [weak self] in
+            let built = await Task.detached(priority: .userInitiated) { Self.makeSnapshot(from: data) }.value
+            guard let self, generation == self.snapshotGeneration else { return }
+            self.snapshot = built
+        }
+    }
+
+    nonisolated private static func makeSnapshot(from data: ProjectIndexData) -> ProjectIndexSnapshot {
         // G10: the merged fallback snapshot also carries repo-relative paths (first-folder-
         // wins across roots, each file stripped against its own root), so a terminal still
         // gets paths when we couldn't resolve which checkout you're in.
-        snapshot = SpokenFileMatcher.buildSnapshot(files: data.mergedFiles, symbols: data.mergedSymbols,
-                                                   docTerms: data.mergedDocTerms,
-                                                   filePaths: data.mergedRelativeFilePaths)
+        SpokenFileMatcher.buildSnapshot(files: data.mergedFiles, symbols: data.mergedSymbols,
+                                        docTerms: data.mergedDocTerms,
+                                        filePaths: data.mergedRelativeFilePaths)
     }
 
     private func load() {

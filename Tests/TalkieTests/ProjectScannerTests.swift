@@ -416,6 +416,76 @@ final class ProjectScannerTests: XCTestCase {
         XCTAssertTrue(reopened.hasFolders, "a pinned (promoted) root must persist to disk")
     }
 
+    /// After a scan the scoped snapshots are built off the main actor, so the next
+    /// dictation start in either root is a cache hit, and the cached snapshot behaves
+    /// exactly like a freshly built one.
+    @MainActor
+    func testScopedSnapshotsArePrewarmedAfterAScan() async throws {
+        let a = root.appendingPathComponent("prewarmA")
+        let b = root.appendingPathComponent("prewarmB")
+        try FileManager.default.createDirectory(at: a, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: b, withIntermediateDirectories: true)
+        try touch("AlphaWidget.tsx", in: a)
+        try touch("BetaWidget.tsx", in: b)
+
+        let store = ProjectIndexStore(fileURL: root.appendingPathComponent("index-prewarm.json"))
+        store.addFolders([a, b])
+        try await waitUntil { store.hasCachedSnapshot(for: a) && store.hasCachedSnapshot(for: b) }
+
+        let (out, reps) = SpokenFileMatcher.format("alpha widget dot tsx",
+                                                   snapshot: try XCTUnwrap(store.snapshot(for: a)))
+        XCTAssertEqual(reps, 1, out)
+        let (miss, missReps) = SpokenFileMatcher.format("beta widget dot tsx",
+                                                        snapshot: try XCTUnwrap(store.snapshot(for: a)))
+        XCTAssertEqual(missReps, 0, "a cached root A snapshot must still be scoped to A: \(miss)")
+    }
+
+    /// A rescan that finds a new file must not serve the old cached snapshot.
+    @MainActor
+    func testRescanReplacesACachedScopedSnapshot() async throws {
+        let a = root.appendingPathComponent("rescanA")
+        try FileManager.default.createDirectory(at: a, withIntermediateDirectories: true)
+        try touch("AlphaWidget.tsx", in: a)
+
+        let store = ProjectIndexStore(fileURL: root.appendingPathComponent("index-rescan.json"))
+        store.addFolders([a])
+        try await waitUntil { !store.isScanning && store.snapshot(for: a) != nil }
+        XCTAssertTrue(store.hasCachedSnapshot(for: a))
+        let (_, before) = SpokenFileMatcher.format("gamma panel dot tsx", snapshot: store.snapshot(for: a)!)
+        XCTAssertEqual(before, 0)
+
+        try touch("GammaPanel.tsx", in: a)
+        await store.rescan()
+        let (out, after) = SpokenFileMatcher.format("gamma panel dot tsx",
+                                                    snapshot: try XCTUnwrap(store.snapshot(for: a)))
+        XCTAssertEqual(after, 1, "the rescan's new file must be in the scoped snapshot: \(out)")
+    }
+
+    /// Clearing the index, or unpinning a root, drops its cached scoped snapshot.
+    @MainActor
+    func testClearAndRemoveDropCachedScopedSnapshots() async throws {
+        let a = root.appendingPathComponent("dropA")
+        let b = root.appendingPathComponent("dropB")
+        try FileManager.default.createDirectory(at: a, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: b, withIntermediateDirectories: true)
+        try touch("AlphaWidget.tsx", in: a)
+        try touch("BetaWidget.tsx", in: b)
+
+        let store = ProjectIndexStore(fileURL: root.appendingPathComponent("index-drop.json"))
+        store.addFolders([a, b])
+        try await waitUntil { store.hasCachedSnapshot(for: a) && store.hasCachedSnapshot(for: b) }
+
+        // removeFolder rescans in the background; until that lands b's bucket is still in
+        // the index. Once it lands, a stale cache would keep serving b forever.
+        store.removeFolder(b.standardizedFileURL.path)
+        try await waitUntil { store.snapshot(for: b) == nil }
+        XCTAssertNotNil(store.snapshot(for: a))
+
+        store.clear()
+        XCTAssertFalse(store.hasCachedSnapshot(for: a))
+        XCTAssertNil(store.snapshot(for: a), "clear() must drop every cached scoped snapshot")
+    }
+
     /// Poll a main-actor condition with a timeout — the background scan is async, so tests
     /// wait for it to settle rather than sleeping a fixed duration.
     @MainActor

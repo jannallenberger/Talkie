@@ -240,6 +240,20 @@ final class AppSettings: ObservableObject {
     @Published var showMeetingPill: Bool {
         didSet { defaults.set(showMeetingPill, forKey: Keys.showMeetingPill); notifyChanged() }
     }
+    /// Open the small meeting-notes window when a recording starts while the main
+    /// window is not in front (a call picked up from the banner, a shortcut).
+    @Published var openMeetingNotesWindow: Bool {
+        didSet { defaults.set(openMeetingNotesWindow, forKey: Keys.openMeetingNotesWindow) }
+    }
+    /// Keep the meeting pill, the meeting banner and the notes window out of screen
+    /// sharing and recordings (they stay visible to you). Default on: your notes and
+    /// the live transcript are not for the other people in the call.
+    @Published var hideMeetingWindowsFromScreenSharing: Bool {
+        didSet {
+            defaults.set(hideMeetingWindowsFromScreenSharing, forKey: Keys.hideMeetingWindowsFromScreenSharing)
+            ScreenShareVisibility.refresh()
+        }
+    }
     /// Keep each recorded meeting's raw audio in ~/Talkie Meetings/ (D9), so clicking
     /// a transcript line plays that exact moment. Default **OFF**: retaining raw call
     /// audio is a real privacy + disk decision (~30 MB/hour per captured stream), so
@@ -490,6 +504,8 @@ final class AppSettings: ObservableObject {
             Keys.meetingLanguageMode: "auto",
             Keys.autoDetectMeetings: true,
             Keys.showMeetingPill: true,
+            Keys.openMeetingNotesWindow: true,
+            Keys.hideMeetingWindowsFromScreenSharing: true,
             Keys.keepMeetingAudio: false,
             Keys.contextAwareness: true,
             Keys.vibeCoding: false,
@@ -558,6 +574,8 @@ final class AppSettings: ObservableObject {
         meetingLanguageMode = d.string(forKey: Keys.meetingLanguageMode) ?? "auto"
         autoDetectMeetings = d.bool(forKey: Keys.autoDetectMeetings)
         showMeetingPill = d.bool(forKey: Keys.showMeetingPill)
+        openMeetingNotesWindow = d.bool(forKey: Keys.openMeetingNotesWindow)
+        hideMeetingWindowsFromScreenSharing = d.bool(forKey: Keys.hideMeetingWindowsFromScreenSharing)
         keepMeetingAudio = d.bool(forKey: Keys.keepMeetingAudio)
         meetingAllowlist = AppSettings.decodeAllowlist(d.data(forKey: Keys.meetingAllowlist))
         mutedMeetingApps = d.stringArray(forKey: Keys.mutedMeetingApps) ?? []
@@ -750,6 +768,8 @@ final class AppSettings: ObservableObject {
         static let meetingLanguageMode = "meetingLanguageMode"
         static let autoDetectMeetings = "autoDetectMeetings"
         static let showMeetingPill = "showMeetingPill"
+        static let openMeetingNotesWindow = "openMeetingNotesWindow"
+        static let hideMeetingWindowsFromScreenSharing = ScreenShareVisibility.defaultsKey
         /// Legacy key — the standalone "show the live topic" toggle was folded into
         /// `showMeetingPill` in H1 (one switch governs the pill and its live-topic
         /// display). Chapters are NOT governed by it: D8 decoupled chapter computation

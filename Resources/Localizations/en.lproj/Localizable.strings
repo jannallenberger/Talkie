@@ -1103,7 +1103,6 @@
 "Add a word that says what it does — that one is only filler words." = "Add a word that says what it does — that one is only filler words.";
 "After" = "After";
 "Already used by “%@” — pick another phrase." = "Already used by “%@” — pick another phrase.";
-"Also hold %@ and say a format" = "Also hold %@ and say a format";
 "Back to normal text" = "Back to normal text";
 "Before" = "Before";
 "Change to UPPER, lower or Title case" = "Change to UPPER, lower or Title case";
@@ -1120,11 +1119,8 @@
 "Formatting while you dictate is off. Turn it on in Options below." = "Formatting while you dictate is off. Turn it on in Options below.";
 "Hold %@ and talk" = "Hold %@ and talk";
 "Hold a second key while you dictate and say how the next words should look." = "Hold a second key while you dictate and say how the next words should look.";
-"Hold the format key while you say it." = "Hold the format key while you say it.";
 "Insert a fixed text" = "Insert a fixed text";
-"Let go and keep talking — it comes out formatted" = "Let go and keep talking — it comes out formatted";
 "Listen for the format key during a dictation." = "Listen for the format key during a dictation.";
-"Listening for a format…" = "Listening for a format…";
 "Make it" = "Make it";
 "Make your own" = "Make your own";
 "Make your own command" = "Make your own command";
@@ -1163,6 +1159,10 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@.";
+
+// MARK: - Skeleton loading (accessibility labels)
+"Loading…" = "Loading…";
+"Searching…" = "Searching…";
 /* Spoken punctuation (Commands page) */
 "Punctuation you can say" = "Punctuation you can say";
 "Say punctuation" = "Say punctuation";
@@ -1182,8 +1182,6 @@
 "Hide other languages" = "Hide other languages";
 "Add your own wording" = "Add your own wording";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "It works like the built-in ones. Your own words can be removed again with the ×.";
-"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text.";
-"%@ is on" = "%@ is on";
 "No format heard · kept as text" = "No format heard · kept as text";
 "No format heard. Your words were kept as text." = "No format heard. Your words were kept as text.";
 
@@ -1192,3 +1190,85 @@
 "Dictation keeps working normally." = "Dictation keeps working normally.";
 "Your own wording" = "Your own wording";
 "+%d more" = "+%d more";
+
+// MARK: - Appearance (logo backdrop, glass), profile photo, meeting-notes window
+"Match the Mac" = "Match the Mac";
+"Light (appearance)" = "Light";
+"Dark (appearance)" = "Dark";
+"Blue" = "Blue";
+"Red" = "Red";
+"Gold" = "Gold";
+"Green" = "Green";
+"Plum" = "Plum";
+"Macaw" = "Macaw";
+"Ember" = "Ember";
+"Lagoon" = "Lagoon";
+"Dusk" = "Dusk";
+"Plain" = "Plain";
+"Clear (glass)" = "Clear";
+"Frosted" = "Frosted";
+"Solid" = "Solid";
+"Profile & appearance" = "Profile & appearance";
+"Your photo and name, plus colors, backdrop and glass." = "Your photo and name, plus colors, backdrop and glass.";
+"Reset appearance" = "Reset appearance";
+"Shown on the dashboard." = "Shown on the dashboard.";
+"Colors" = "Colors";
+"Appearance" = "Appearance";
+"Accent color" = "Accent color";
+"Leads buttons, selection and links." = "Leads buttons, selection and links.";
+"Backdrop" = "Backdrop";
+"Strength" = "Strength";
+"Soft" = "Soft";
+"Vivid" = "Vivid";
+"Direction" = "Direction";
+"Turn it on every page" = "Turn it on every page";
+"Each page shows the gradient from a different angle." = "Each page shows the gradient from a different angle.";
+"Glass" = "Glass";
+"With Reduce Transparency on in System Settings, cards are always solid." = "With Reduce Transparency on in System Settings, cards are always solid.";
+"Cards" = "Cards";
+"How much of the backdrop shows through." = "How much of the backdrop shows through.";
+"Change photo…" = "Change photo…";
+"That file couldn’t be read as a picture." = "That file couldn’t be read as a picture.";
+"Or drop a picture onto the circle. It is centered on your face and stays on this Mac." = "Or drop a picture onto the circle. It is centered on your face and stays on this Mac.";
+"Your photo" = "Your photo";
+"Open the notes window" = "Open the notes window";
+"Meeting notes" = "Meeting notes";
+"Recording (mic only)" = "Recording (mic only)";
+"Stays on top of other windows" = "Stays on top of other windows";
+"Keep on top of other windows" = "Keep on top of other windows";
+"Said just now" = "Said just now";
+"Current topic: %@" = "Current topic: %@";
+"Notes for your next meeting" = "Notes for your next meeting";
+"Start recording, then write here. Every line keeps the moment you wrote it and goes into the summary word for word." = "Start recording, then write here. Every line keeps the moment you wrote it and goes into the summary word for word.";
+"A running summary isn’t available for this recording. The full summary is written when you stop." = "A running summary isn’t available for this recording. The full summary is written when you stop.";
+"What is said appears here a few seconds after it is spoken." = "What is said appears here a few seconds after it is spoken.";
+"Provisional. The final summary is written when you stop." = "Provisional. The final summary is written when you stop.";
+"Open the notes window when recording starts" = "Open the notes window when recording starts";
+"A small window beside the call for your notes, with what has been said so far. It stays closed while the main window is in front." = "A small window beside the call for your notes, with what has been said so far. It stays closed while the main window is in front.";
+"While recording" = "While recording";
+
+// MARK: - Dashboard grid (tiles, compact scratchpad, charts tuned to the backdrop)
+"Total words" = "Total words";
+"Fixes" = "Fixes";
+"Speed" = "Speed";
+"%@ in the last 7 days" = "%@ in the last 7 days";
+"%@ dictations" = "%@ dictations";
+"%@ a day when you dictate" = "%@ a day when you dictate";
+"After a few dictations" = "After a few dictations";
+"%d open" = "%d open";
+"Jot notes and tasks — type “- ” for a checkbox. Anything that can’t be pasted lands here too." = "Jot notes and tasks — type “- ” for a checkbox. Anything that can’t be pasted lands here too.";
+"The gradient is mixed from the colors of the logo and sits behind every page. Charts and buttons take their colors from it." = "The gradient is mixed from the colors of the logo and sits behind every page. Charts and buttons take their colors from it.";
+
+/* Command key as a switch, pill hints, screen sharing (2026-11) */
+"Hide from screen sharing" = "Hide from screen sharing";
+"The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it." = "The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it.";
+"Listening for a format. Say it, then press %@ again." = "Listening for a format. Say it, then press %@ again.";
+"Say the format, then press %@ again" = "Say the format, then press %@ again";
+"Checking…" = "Checking…";
+"%1$@ on · press %2$@ twice to end" = "%1$@ on · press %2$@ twice to end";
+"Format: %1$@. Press %2$@ twice to end it." = "Format: %1$@. Press %2$@ twice to end it.";
+"Press the format key once, say a format in any of your languages, then press the key again. If no format is caught, your words are simply kept as text." = "Press the format key once, say a format in any of your languages, then press the key again. If no format is caught, your words are simply kept as text.";
+"Press %@ once and say a format" = "Press %@ once and say a format";
+"Press %@ again and keep talking — it comes out formatted" = "Press %@ again and keep talking — it comes out formatted";
+"Press the format key, say it, then press the key again." = "Press the format key, say it, then press the key again.";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@ on · applied when you stop · %2$@ twice ends it";

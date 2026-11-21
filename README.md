@@ -2,8 +2,9 @@
 
 A fast, private, on-device dictation app for macOS — your own free **Wispr Flow**.
 Hold a key, talk, release; Talkie transcribes locally and pastes the text into
-whatever app you're using. No subscription, no cloud, no account. Your voice
-never leaves your Mac.
+whatever app you're using. It also records meetings: a transcript with speakers,
+a summary and your own notes, all made on your Mac. No subscription, no cloud, no
+account. Your voice never leaves your Mac.
 
 Built natively on Apple's newest on-device model (macOS 26's `SpeechAnalyzer` /
 `SpeechTranscriber` engine) — see [BENCHMARKS.md](BENCHMARKS.md) for measured
@@ -26,14 +27,16 @@ cd ~/Talkie
 
 Starting from nothing? One command clones and builds for you — `curl -fsSL https://raw.githubusercontent.com/jannallenberger/Talkie/main/scripts/install.sh | sh` (it may trigger Apple's multi-GB Command Line Tools download; read the ~60-line [script](scripts/install.sh) first, and see [docs/INSTALL.md](docs/INSTALL.md)).
 
-A **microphone icon appears in your menu bar**. First launch opens a setup
-window asking for three permissions (see below). Grant them, then:
+Talkie opens its window and puts a **microphone icon in your menu bar**. First
+launch asks for three permissions (see below). Grant them, then:
 
 - **Hold the Right ⌥ Option key**, speak, and **release**. The text is inserted
   where your cursor is.
+- **Keep holding** a moment and recording locks hands-free; tap the key once to
+  stop and insert.
 
 That's the default. You can change the key and everything else in
-**Settings** (menu-bar icon → Settings).
+**Settings**.
 
 ## Permissions (one-time)
 
@@ -55,26 +58,69 @@ deep-links you to the exact System Settings pane.
 
 ## Settings
 
-- **Dictation key** — Right/Left Option, Right Control, or Fn (🌐).
-- **Mode** — *Hold to talk* (hold/release) or *Toggle* (tap to start, tap to stop).
+- **Dictation key** — a modifier key (left or right side), a function key, or an
+  extra mouse button. One gesture for everyone: hold to talk, keep holding to lock.
 - **Insertion** — *Paste* (fast, default) or *Type character-by-character* (when
   you don't want the clipboard touched).
-- **Capitalize the first letter**, **Play sounds**, **Open at login**.
-- **Language** — locale identifier (e.g. `en-US`, `de-DE`). Changing it applies
-  after you reopen Talkie.
+- **Cleanup style** — how much the on-device model polishes what you said, per
+  kind of app: Off, Faithful, Neutral, Friendly, Professional, Concise or Prompt.
+  Off inserts your words as heard.
+- **Languages** — the languages you speak; with more than one, Talkie works out
+  which one you used. The app itself is translated into ten languages.
+- **Profile & appearance** — light or dark, accent colour, the gradient behind
+  every page, how glassy the cards are, and your profile photo.
+- **Privacy** — what is kept, for how long, and which apps are private (no
+  history, nothing learned).
+
+The live pill under the camera shows what Talkie hears while you speak. A thinking
+pause does not end your sentence: the full stops the recognizer puts at pauses are
+settled by grammar before the text is inserted.
 
 ## Dictionary
 
 The **Dictionary** tab does two things:
 
 1. **Custom Vocabulary** — names, brands, jargon ("Coralate", "Nemo", "LiDAR").
-   These are fed to the recognizer as *contextual strings* so it spells them
-   right in the first place.
+   When the recognizer was unsure about a word that sounds like one of your
+   terms, your spelling wins. Words it was sure about are left alone.
 2. **Replacements** — rewrite what was heard into what you meant, e.g.
    `correlate → Coralate`, `api → API`. Each rule can be whole-word and/or
    case-sensitive. Applied to the final transcript.
 
 Everything is stored locally in `~/Library/Application Support/Talkie/`.
+
+## Commands: format while you dictate
+
+Press the **format key** (Left ⌃ Control by default) once, say a format, and
+press it again; what you say next comes out in that format. For example
+*"bullet points"*, *"all caps"* or a command you made yourself on the
+**Commands** tab. The pill tells you the next step and shows the text in its
+format while you speak. Press the key twice in a row to go back to normal text.
+If no format was caught, your words are simply kept as text.
+
+## Meetings
+
+Talkie can record a call (your microphone and the other side's audio) and turn
+it into a note, entirely on-device:
+
+- **It offers, it never starts on its own.** When a call app begins using your
+  microphone, a small banner offers to record.
+- **Transcript with speakers.** After you stop, voices are told apart on your Mac
+  and each line is labelled, also when only one person spoke. You can name the
+  speakers.
+- **Summary and your notes.** A summary is written by the on-device model. A
+  small **notes window** sits beside the call for your own notes and shows what
+  has been said so far.
+- **Not in your screen share.** The meeting pill and the notes window stay
+  visible to you but are left out when you share or record your screen
+  (Settings ▸ Meetings ▸ While recording).
+- **Optional audio.** Keep the recording to click any transcript line and hear
+  that moment; off by default.
+- **Files too.** Import an audio file, or watch a folder, to get the same
+  transcript and summary.
+
+Notes are saved as Markdown in `~/Talkie Meetings/`. See
+[docs/MEETING_MODE.md](docs/MEETING_MODE.md).
 
 ## Dashboard
 
@@ -95,19 +141,19 @@ all computed on-device:
 
 When enabled (Settings → Context awareness), Talkie reads the names already on
 screen in the app you're dictating into — who you're messaging, the file you have
-open — and biases recognition toward them, so it spells them right the first
-time. It's local and read-only; nothing is sent anywhere.
+open — and uses them as context for what you dictate there. It's local and
+read-only; nothing is sent anywhere, and apps you mark Private are never read.
 
 ## Vibe coding
 
 Point Talkie at a project folder (the **Vibe Coding** tab) and it indexes your
 filenames. Then, when you dictate a filename, it snaps to the real file — say
 *"exercise library dot t-s-x"* and Talkie inserts `ExerciseLibrary.tsx`,
-correctly cased. Your project's filenames also bias recognition. Only filenames
-are read, never file contents.
+correctly cased. Only filenames are read, never file contents.
 
-> Talkie's look follows a small brand system — the layered-clay scarlet macaw on
-> a clean native macOS 26 canvas with macaw-blue chrome. See [docs/BRAND.md](docs/BRAND.md), and
+> Talkie's look follows a small brand system — the layered-clay scarlet macaw,
+> its colours as a calm gradient behind every page, and Liquid Glass cards on top.
+> See [docs/BRAND.md](docs/BRAND.md), and
 > [docs/CLAUDE_DESIGN_PROMPT.md](docs/CLAUDE_DESIGN_PROMPT.md) for a ready-to-use
 > prompt to redesign the app with Claude.
 >
@@ -170,8 +216,9 @@ export TALKIE_NOTARY_PROFILE="talkie-notary"
 ```
 
 This produces a notarized **`Talkie.zip`** they can download and open normally.
-They still grant the three permissions on their own machine (Apple requires that
-per-device).
+For a disk image instead, `./scripts/make_dmg.sh` (same two variables) builds,
+signs, notarizes and staples **`Talkie-<version>.dmg`**. They still grant the
+three permissions on their own machine (Apple requires that per-device).
 
 > Tip for your own daily use: ad-hoc signatures change every rebuild, so macOS
 > may re-ask for permissions after a rebuild. To avoid that, sign with your
@@ -220,9 +267,9 @@ Right ⌥ held ──▶ HotKeyMonitor ──▶ AudioCapture ──▶ Transcri
 
 ## Troubleshooting
 
-- **No menu-bar icon** — it's an accessory app (no Dock icon by design). Look
-  near the clock. If it's not there, run `./scripts/run.sh` again and check for
-  a crash with `ls ~/Library/Logs/DiagnosticReports/Talkie*`.
+- **No window or menu-bar icon** — Talkie shows in the Dock and near the clock.
+  If neither is there, run `./scripts/run.sh` again and check for a crash with
+  `ls ~/Library/Logs/DiagnosticReports/Talkie*`.
 - **Key does nothing** — grant **Input Monitoring**, then click the Talkie menu
   (it re-arms the key when you return to the app). The Right-Option key still
   works normally elsewhere; Talkie only *observes* it.
@@ -234,6 +281,8 @@ Right ⌥ held ──▶ HotKeyMonitor ──▶ AudioCapture ──▶ Transcri
 
 ## Privacy
 
-100% on-device. Audio is processed by Apple's local speech model and discarded;
-nothing is uploaded. The dictionary and settings live only in your
-`~/Library/Application Support/Talkie/` folder and `UserDefaults`.
+100% on-device. Audio is processed by Apple's local speech model and discarded
+(meeting audio is kept only if you switch that on); nothing is uploaded. The
+dictionary and settings live only in your `~/Library/Application Support/Talkie/`
+folder and `UserDefaults`; meeting notes in `~/Talkie Meetings/`. More in
+[docs/PRIVACY.md](docs/PRIVACY.md).

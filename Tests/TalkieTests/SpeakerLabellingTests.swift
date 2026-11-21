@@ -263,6 +263,49 @@ final class SpeakerLabellingTests: XCTestCase {
         XCTAssertEqual(MeetingTranscriptRenderer.render(segments: segments), "a b")
     }
 
+    /// A recorded meeting says who spoke even when only one person did.
+    func testSoloTranscriptIsLabelledWhenAsked() {
+        let turns: [TurnLog.Turn] = [
+            .init(elapsed: 0.6, speaker: .me, text: "this is my voice", endSec: 9),
+            .init(elapsed: 9, speaker: .me, text: "and still me", endSec: 26),
+            .init(elapsed: 80, speaker: .me, text: "after a long pause", endSec: 84),
+        ]
+        XCTAssertEqual(MeetingTranscriptRenderer.render(turns), "this is my voice and still me after a long pause")
+        let labelled = MeetingTranscriptRenderer.render(turns, labelSolo: true)
+        XCTAssertEqual(labelled, "[00:00] Me: this is my voice and still me\n[01:20] Me: after a long pause")
+        // Segments built from the same turns render to the same labelled text.
+        let segments = MeetingTranscriptRenderer.segments(from: turns)!
+        XCTAssertEqual(MeetingTranscriptRenderer.render(segments: segments, labelSolo: true), labelled)
+        // Two speakers: the flag changes nothing.
+        let both = turns + [.init(elapsed: 90, speaker: .them, text: "hi", endSec: 91)]
+        XCTAssertEqual(MeetingTranscriptRenderer.render(both, labelSolo: true), MeetingTranscriptRenderer.render(both))
+        XCTAssertEqual(MeetingTranscriptRenderer.render([], labelSolo: true), "")
+    }
+
+    func testLabelledLayoutDetection() {
+        XCTAssertTrue(MeetingTranscriptRenderer.isLabelled("[00:00] Me: hello\n[00:09] Them: hi"))
+        XCTAssertTrue(MeetingTranscriptRenderer.isLabelled("[1:02:03] Speaker 2: hello"))
+        XCTAssertFalse(MeetingTranscriptRenderer.isLabelled("hello there. This is prose: with a colon"))
+        XCTAssertFalse(MeetingTranscriptRenderer.isLabelled("[note] Me: hello"))
+        XCTAssertFalse(MeetingTranscriptRenderer.isLabelled("[00:00] no label here"))
+        XCTAssertFalse(MeetingTranscriptRenderer.isLabelled(""))
+    }
+
+    /// Relabelling keeps the layout the note was saved in.
+    func testApplyKeepsALabelledSoloLayout() {
+        let segments = [seg("Me", 0, 3, "a"), seg("Me", 4, 6, "b")]
+        let labelled = Meeting(title: "t", startUnix: 1, durationSec: 10,
+                               transcript: MeetingTranscriptRenderer.render(segments: segments, labelSolo: true),
+                               summary: "", participants: ["Me"], source: "s", fileName: "f.md", segments: segments)
+        let relabelled = [seg("Speaker 1", 0, 3, "a"), seg("Speaker 1", 4, 6, "b")]
+        let result = SpeakerLabelling.Result(segments: relabelled, sourceIndex: [0, 1], participants: ["Speaker 1"],
+                                            speakerCount: 1, changed: true)
+        XCTAssertEqual(MeetingDiarizationPipeline.apply(result, to: labelled).transcript, "[00:00] Speaker 1: a b")
+        var prose = labelled
+        prose.transcript = "a b"
+        XCTAssertEqual(MeetingDiarizationPipeline.apply(result, to: prose).transcript, "a b")
+    }
+
     func testGenericLabelDetection() {
         for g in ["Me", "Them", "Speaker 1", "Speaker 12"] { XCTAssertTrue(SpeakerLabels.isGeneric(g), g) }
         for n in ["Alice", "Speaker", "Speaker X", "Speakers 1", "Me too"] { XCTAssertFalse(SpeakerLabels.isGeneric(n), n) }

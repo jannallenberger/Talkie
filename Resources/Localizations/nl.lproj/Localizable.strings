@@ -1092,7 +1092,6 @@
 "Add a word that says what it does — that one is only filler words." = "Voeg een woord toe dat zegt wat het doet – dit zijn alleen opvulwoorden.";
 "After" = "Erna";
 "Already used by “%@” — pick another phrase." = "Wordt al gebruikt door ‘%@’ – kies een andere zin.";
-"Also hold %@ and say a format" = "Houd ook %@ ingedrukt en zeg een opmaak";
 "Back to normal text" = "Terug naar gewone tekst";
 "Before" = "Ervoor";
 "Change to UPPER, lower or Title case" = "Wijzigen naar HOOFDLETTERS, kleine letters of Titelstijl";
@@ -1109,11 +1108,8 @@
 "Formatting while you dictate is off. Turn it on in Options below." = "Opmaken tijdens dicteren staat uit. Zet het hieronder aan bij Opties.";
 "Hold %@ and talk" = "Houd %@ ingedrukt en praat";
 "Hold a second key while you dictate and say how the next words should look." = "Houd tijdens het dicteren een tweede toets ingedrukt en zeg hoe de volgende woorden eruit moeten zien.";
-"Hold the format key while you say it." = "Houd de opmaaktoets ingedrukt terwijl je het zegt.";
 "Insert a fixed text" = "Een vaste tekst invoegen";
-"Let go and keep talking — it comes out formatted" = "Laat los en praat verder – het komt opgemaakt uit";
 "Listen for the format key during a dictation." = "Tijdens het dicteren op de opmaaktoets letten.";
-"Listening for a format…" = "Luistert naar een opmaak…";
 "Make it" = "Maak het";
 "Make your own" = "Maak je eigen";
 "Make your own command" = "Maak je eigen opdracht";
@@ -1152,6 +1148,10 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ kon de spraakherkenning van macOS niet bereiken. Druk de toets nog een keer in – blijft het gebeuren, sluit %@ dan af en open het opnieuw.";
+
+// MARK: - Skeleton loading (accessibility labels)
+"Loading…" = "Laden…";
+"Searching…" = "Zoeken…";
 /* Spoken punctuation (Commands page) */
 "Punctuation you can say" = "Leestekens die je kunt zeggen";
 "Say punctuation" = "Leestekens uitspreken";
@@ -1171,8 +1171,6 @@
 "Hide other languages" = "Andere talen verbergen";
 "Add your own wording" = "Voeg je eigen formulering toe";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "Werkt net als de ingebouwde. Je eigen woorden kun je weer verwijderen met de ×.";
-"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Zolang je de formaattoets ingedrukt houdt, wordt wat je zegt als formaat gelezen, in elk van je talen. Wordt er geen formaat herkend, dan blijven je woorden gewoon als tekst staan.";
-"%@ is on" = "%@ staat aan";
 "No format heard · kept as text" = "Geen formaat gehoord · als tekst bewaard";
 "No format heard. Your words were kept as text." = "Geen formaat gehoord. Je woorden zijn als tekst bewaard.";
 
@@ -1181,3 +1179,85 @@
 "Dictation keeps working normally." = "Dicteren werkt gewoon door.";
 "Your own wording" = "Je eigen formulering";
 "+%d more" = "+%d meer";
+
+// MARK: - Appearance (logo backdrop, glass), profile photo, meeting-notes window
+"Match the Mac" = "Zoals de Mac";
+"Light (appearance)" = "Licht";
+"Dark (appearance)" = "Donker";
+"Blue" = "Blauw";
+"Red" = "Rood";
+"Gold" = "Goud";
+"Green" = "Groen";
+"Plum" = "Pruim";
+"Macaw" = "Ara";
+"Ember" = "Gloed";
+"Lagoon" = "Lagune";
+"Dusk" = "Schemering";
+"Plain" = "Effen";
+"Clear (glass)" = "Helder";
+"Frosted" = "Matglas";
+"Solid" = "Dekkend";
+"Profile & appearance" = "Profiel en weergave";
+"Your photo and name, plus colors, backdrop and glass." = "Je foto en naam, plus kleuren, achtergrond en glas.";
+"Reset appearance" = "Weergave herstellen";
+"Shown on the dashboard." = "Wordt op het dashboard getoond.";
+"Colors" = "Kleuren";
+"Appearance" = "Weergave";
+"Accent color" = "Accentkleur";
+"Leads buttons, selection and links." = "Voor knoppen, selectie en links.";
+"Backdrop" = "Achtergrond";
+"Strength" = "Sterkte";
+"Soft" = "Zacht";
+"Vivid" = "Levendig";
+"Direction" = "Richting";
+"Turn it on every page" = "Op elke pagina draaien";
+"Each page shows the gradient from a different angle." = "Elke pagina toont het verloop vanuit een andere hoek.";
+"Glass" = "Glas";
+"With Reduce Transparency on in System Settings, cards are always solid." = "Als Verminder doorzichtigheid aanstaat in Systeeminstellingen, zijn kaarten altijd dekkend.";
+"Cards" = "Kaarten";
+"How much of the backdrop shows through." = "Hoeveel van de achtergrond erdoorheen te zien is.";
+"Change photo…" = "Foto wijzigen…";
+"That file couldn’t be read as a picture." = "Dat bestand kon niet als afbeelding worden gelezen.";
+"Or drop a picture onto the circle. It is centered on your face and stays on this Mac." = "Of sleep een afbeelding op de cirkel. Die wordt op je gezicht gecentreerd en blijft op deze Mac.";
+"Your photo" = "Je foto";
+"Open the notes window" = "Notitievenster openen";
+"Meeting notes" = "Vergadernotities";
+"Recording (mic only)" = "Opname (alleen microfoon)";
+"Stays on top of other windows" = "Blijft boven andere vensters";
+"Keep on top of other windows" = "Boven andere vensters houden";
+"Said just now" = "Zojuist gezegd";
+"Current topic: %@" = "Huidig onderwerp: %@";
+"Notes for your next meeting" = "Notities voor je volgende vergadering";
+"Start recording, then write here. Every line keeps the moment you wrote it and goes into the summary word for word." = "Start de opname en schrijf hier. Elke regel onthoudt het moment waarop je hem schreef en komt woord voor woord in de samenvatting.";
+"A running summary isn’t available for this recording. The full summary is written when you stop." = "Voor deze opname is geen lopende samenvatting beschikbaar. De volledige samenvatting wordt geschreven wanneer je stopt.";
+"What is said appears here a few seconds after it is spoken." = "Wat er gezegd wordt, verschijnt hier na een paar seconden.";
+"Provisional. The final summary is written when you stop." = "Voorlopig. De definitieve samenvatting wordt geschreven wanneer je stopt.";
+"Open the notes window when recording starts" = "Notitievenster openen wanneer de opname start";
+"A small window beside the call for your notes, with what has been said so far. It stays closed while the main window is in front." = "Een klein venster naast het gesprek voor je notities, met wat er tot nu toe is gezegd. Het blijft dicht zolang het hoofdvenster vooraan staat.";
+"While recording" = "Tijdens de opname";
+
+// MARK: - Dashboard grid (tiles, compact scratchpad, charts tuned to the backdrop)
+"Total words" = "Woorden totaal";
+"Fixes" = "Correcties";
+"Speed" = "Snelheid";
+"%@ in the last 7 days" = "%@ in de laatste 7 dagen";
+"%@ dictations" = "%@ dictaten";
+"%@ a day when you dictate" = "%@ per dag waarop je dicteert";
+"After a few dictations" = "Na een paar dictaten";
+"%d open" = "%d open";
+"Jot notes and tasks — type “- ” for a checkbox. Anything that can’t be pasted lands here too." = "Noteer notities en taken — typ “- ” voor een selectievakje. Wat niet geplakt kan worden, komt ook hier terecht.";
+"The gradient is mixed from the colors of the logo and sits behind every page. Charts and buttons take their colors from it." = "Het verloop is gemengd uit de kleuren van het logo en staat achter elke pagina. Grafieken en knoppen nemen de kleuren ervan over.";
+
+/* Command key as a switch, pill hints, screen sharing (2026-11) */
+"Hide from screen sharing" = "Verbergen bij schermdeling";
+"The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it." = "De vergaderpil en het notitievenster blijven voor jou zichtbaar, maar ontbreken wanneer je je scherm deelt of opneemt.";
+"Listening for a format. Say it, then press %@ again." = "Luistert naar een opmaak. Zeg het en druk daarna nog een keer op %@.";
+"Say the format, then press %@ again" = "Zeg de opmaak en druk nog een keer op %@";
+"Checking…" = "Controleren…";
+"%1$@ on · press %2$@ twice to end" = "%1$@ aan · druk twee keer op %2$@ om te stoppen";
+"Format: %1$@. Press %2$@ twice to end it." = "Opmaak: %1$@. Druk twee keer op %2$@ om te stoppen.";
+"Press the format key once, say a format in any of your languages, then press the key again. If no format is caught, your words are simply kept as text." = "Druk één keer op de opmaaktoets, zeg een opmaak in een van je talen en druk nog een keer op de toets. Wordt er geen opmaak herkend, dan blijven je woorden gewoon als tekst staan.";
+"Press %@ once and say a format" = "Druk één keer op %@ en zeg een opmaak";
+"Press %@ again and keep talking — it comes out formatted" = "Druk nog een keer op %@ en praat verder – het komt er opgemaakt uit";
+"Press the format key, say it, then press the key again." = "Druk op de opmaaktoets, zeg het en druk nog een keer op de toets.";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@ aan · toegepast als je stopt · twee keer %2$@ stopt het";

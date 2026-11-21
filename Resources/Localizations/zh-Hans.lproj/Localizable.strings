@@ -1092,7 +1092,6 @@
 "Add a word that says what it does — that one is only filler words." = "请加一个说明作用的词——这些只是填充词。";
 "After" = "之后";
 "Already used by “%@” — pick another phrase." = "已被“%@”使用——请换一个短语。";
-"Also hold %@ and say a format" = "同时按住 %@ 并说出格式";
 "Back to normal text" = "恢复普通文本";
 "Before" = "之前";
 "Change to UPPER, lower or Title case" = "改为大写、小写或首字母大写";
@@ -1109,11 +1108,8 @@
 "Formatting while you dictate is off. Turn it on in Options below." = "听写时设置格式已关闭。请在下方“选项”中打开。";
 "Hold %@ and talk" = "按住 %@ 说话";
 "Hold a second key while you dictate and say how the next words should look." = "听写时按住第二个键，说出接下来的文字要变成什么样。";
-"Hold the format key while you say it." = "说的时候按住格式键。";
 "Insert a fixed text" = "插入固定文本";
-"Let go and keep talking — it comes out formatted" = "松开并继续说话——输出就带格式";
 "Listen for the format key during a dictation." = "听写时留意格式键。";
-"Listening for a format…" = "正在听格式…";
 "Make it" = "改为";
 "Make your own" = "自己创建";
 "Make your own command" = "创建自己的命令";
@@ -1152,6 +1148,10 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ 无法连接到 macOS 语音识别。请再按一次按键；如果问题持续，请退出并重新打开 %@。";
+
+// MARK: - Skeleton loading (accessibility labels)
+"Loading…" = "正在载入…";
+"Searching…" = "正在搜索…";
 /* Spoken punctuation (Commands page) */
 "Punctuation you can say" = "可以说出的标点";
 "Say punctuation" = "说出标点";
@@ -1171,8 +1171,6 @@
 "Hide other languages" = "隐藏其他语言";
 "Add your own wording" = "添加你自己的说法";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "它和内置说法的作用一样。你自己添加的说法可以用 × 删除。";
-"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "按住格式键时，你说的话会被当作格式来识别，可使用你的任何语言。如果没有识别到格式，你的话会原样保留为文本。";
-"%@ is on" = "%@已开启";
 "No format heard · kept as text" = "未听到格式 · 已保留为文本";
 "No format heard. Your words were kept as text." = "未听到格式。你的话已保留为文本。";
 
@@ -1181,3 +1179,85 @@
 "Dictation keeps working normally." = "听写照常工作。";
 "Your own wording" = "你自己的说法";
 "+%d more" = "另有%d个";
+
+// MARK: - Appearance (logo backdrop, glass), profile photo, meeting-notes window
+"Match the Mac" = "跟随 Mac";
+"Light (appearance)" = "浅色";
+"Dark (appearance)" = "深色";
+"Blue" = "蓝色";
+"Red" = "红色";
+"Gold" = "金色";
+"Green" = "绿色";
+"Plum" = "梅紫色";
+"Macaw" = "金刚鹦鹉";
+"Ember" = "余烬";
+"Lagoon" = "潟湖";
+"Dusk" = "暮色";
+"Plain" = "纯色";
+"Clear (glass)" = "通透";
+"Frosted" = "磨砂";
+"Solid" = "不透明";
+"Profile & appearance" = "个人资料与外观";
+"Your photo and name, plus colors, backdrop and glass." = "你的照片和名字，以及颜色、背景和玻璃效果。";
+"Reset appearance" = "重置外观";
+"Shown on the dashboard." = "显示在仪表盘上。";
+"Colors" = "颜色";
+"Appearance" = "外观";
+"Accent color" = "强调色";
+"Leads buttons, selection and links." = "用于按钮、选中状态和链接。";
+"Backdrop" = "背景";
+"Strength" = "强度";
+"Soft" = "柔和";
+"Vivid" = "鲜艳";
+"Direction" = "方向";
+"Turn it on every page" = "每个页面旋转一点";
+"Each page shows the gradient from a different angle." = "每个页面以不同的角度显示渐变。";
+"Glass" = "玻璃";
+"With Reduce Transparency on in System Settings, cards are always solid." = "在系统设置中开启“降低透明度”时，卡片始终不透明。";
+"Cards" = "卡片";
+"How much of the backdrop shows through." = "背景透出的程度。";
+"Change photo…" = "更换照片…";
+"That file couldn’t be read as a picture." = "无法将该文件读取为图片。";
+"Or drop a picture onto the circle. It is centered on your face and stays on this Mac." = "或将图片拖到圆圈上。它会以你的脸为中心裁剪，并只保存在这台 Mac 上。";
+"Your photo" = "你的照片";
+"Open the notes window" = "打开笔记窗口";
+"Meeting notes" = "会议笔记";
+"Recording (mic only)" = "正在录音（仅麦克风）";
+"Stays on top of other windows" = "保持在其他窗口之上";
+"Keep on top of other windows" = "保持在其他窗口之上";
+"Said just now" = "刚刚说的";
+"Current topic: %@" = "当前话题：%@";
+"Notes for your next meeting" = "为下一次会议做笔记";
+"Start recording, then write here. Every line keeps the moment you wrote it and goes into the summary word for word." = "开始录音后在这里书写。每一行都会记下你写它的时刻，并原样写入摘要。";
+"A running summary isn’t available for this recording. The full summary is written when you stop." = "此录音无法提供实时摘要。完整摘要会在你停止时生成。";
+"What is said appears here a few seconds after it is spoken." = "所说的内容会在几秒后显示在这里。";
+"Provisional. The final summary is written when you stop." = "暂定内容。最终摘要会在你停止时生成。";
+"Open the notes window when recording starts" = "开始录音时打开笔记窗口";
+"A small window beside the call for your notes, with what has been said so far. It stays closed while the main window is in front." = "通话旁的小窗口，用来记笔记，并显示目前说过的内容。主窗口在前台时它不会打开。";
+"While recording" = "录音时";
+
+// MARK: - Dashboard grid (tiles, compact scratchpad, charts tuned to the backdrop)
+"Total words" = "总字数";
+"Fixes" = "修正";
+"Speed" = "速度";
+"%@ in the last 7 days" = "最近 7 天 %@";
+"%@ dictations" = "%@ 次听写";
+"%@ a day when you dictate" = "听写的日子里每天 %@";
+"After a few dictations" = "听写几次后显示";
+"%d open" = "%d 项未完成";
+"Jot notes and tasks — type “- ” for a checkbox. Anything that can’t be pasted lands here too." = "记下笔记和任务——输入“- ”可创建复选框。无法粘贴的内容也会落在这里。";
+"The gradient is mixed from the colors of the logo and sits behind every page. Charts and buttons take their colors from it." = "渐变由标志的颜色调和而成，位于每个页面的背后。图表和按钮也采用它的颜色。";
+
+/* Command key as a switch, pill hints, screen sharing (2026-11) */
+"Hide from screen sharing" = "屏幕共享时隐藏";
+"The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it." = "会议指示条和笔记窗口对你仍然可见，但在你共享或录制屏幕时不会出现。";
+"Listening for a format. Say it, then press %@ again." = "正在听格式。说完后再按一次 %@。";
+"Say the format, then press %@ again" = "说出格式，然后再按一次 %@";
+"Checking…" = "正在检查…";
+"%1$@ on · press %2$@ twice to end" = "%1$@已开启 · 按两次 %2$@ 结束";
+"Format: %1$@. Press %2$@ twice to end it." = "格式：%1$@。按两次 %2$@ 结束。";
+"Press the format key once, say a format in any of your languages, then press the key again. If no format is caught, your words are simply kept as text." = "按一次格式键，用你的任意一种语言说出格式，然后再按一次。如果没有识别到格式，你说的话会原样保留为文本。";
+"Press %@ once and say a format" = "按一次 %@ 并说出格式";
+"Press %@ again and keep talking — it comes out formatted" = "再按一次 %@ 并继续说话，文字会带格式输出";
+"Press the format key, say it, then press the key again." = "按格式键，说出格式，然后再按一次。";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@已开启 · 停止时应用 · 按两次 %2$@ 结束";

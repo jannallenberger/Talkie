@@ -89,6 +89,16 @@ final class TurnLog: @unchecked Sendable {
         lock.withLock { turns.isEmpty }
     }
 
+    /// How many turns there are and the last `limit` of them, in one lock (the
+    /// notes window's "said just now" list asks every second and copies nothing
+    /// when the count has not moved).
+    func tail(_ limit: Int, ifCountDiffersFrom known: Int) -> (count: Int, turns: [Turn])? {
+        lock.withLock {
+            guard turns.count != known else { return nil }
+            return (turns.count, Array(turns.suffix(max(0, limit))))
+        }
+    }
+
     /// All turns for one speaker (drives per-stream language correction).
     func turns(for speaker: MeetingSpeaker) -> [Turn] {
         lock.withLock { turns.filter { $0.speaker == speaker } }
@@ -136,39 +146,55 @@ final class TurnLog: @unchecked Sendable {
 /// derived separately from the *capture* state, not from who happened to speak, so
 /// a captured-but-silent far end is still reported honestly.)
 enum MeetingTranscriptRenderer {
-    /// When only one speaker is present (mic-only / solo recording, or a call where
-    /// the far end stayed silent) the transcript is rendered plainly, exactly like
-    /// Phase 1. When both sides spoke, it's interleaved and speaker-labeled:
+    /// When both sides spoke, the transcript is interleaved and speaker-labeled:
     /// `[mm:ss] Me: …` / `[mm:ss] Them: …`, coalescing consecutive same-speaker
-    /// turns into one line.
-    static func render(_ turns: [TurnLog.Turn], duration: TimeInterval? = nil) -> String {
+    /// turns into one line. With only one speaker (mic-only / solo recording, or a
+    /// call where the far end stayed silent) it is labelled the same way when
+    /// `labelSolo` is set — a recorded meeting always says who spoke — and is plain
+    /// joined prose otherwise (imports, whose single lane is not known to be "Me").
+    static func render(_ turns: [TurnLog.Turn], duration: TimeInterval? = nil, labelSolo: Bool = false) -> String {
         let prepared = duration.map { decollapse(turns, duration: $0) } ?? turns
         let sorted = prepared.sorted { $0.elapsed < $1.elapsed }
-        return renderLines(sorted.map { (elapsed: $0.elapsed, label: $0.speaker.rawValue, text: $0.text) })
+        return renderLines(sorted.map { (elapsed: $0.elapsed, label: $0.speaker.rawValue, text: $0.text) },
+                           labelSolo: labelSolo)
     }
 
     /// Re-render a transcript from persisted segments whose speaker labels may be
     /// diarized people ("Speaker 2") rather than the two lane names. Same layout rules
-    /// as `render` (labels appear once at least two distinct speakers exist; same
-    /// coalescing), so for Me/Them segments built by `segments(from:)` it returns the
-    /// identical string. Segments are already de-collapsed, so no `duration` is needed.
-    static func render(segments: [MeetingSegment]) -> String {
+    /// as `render` (same `labelSolo` rule; same coalescing), so for Me/Them segments
+    /// built by `segments(from:)` it returns the identical string. Segments are
+    /// already de-collapsed, so no `duration` is needed.
+    static func render(segments: [MeetingSegment], labelSolo: Bool = false) -> String {
         // Index tiebreak: segments are already in transcript order, so equal starts keep it.
         let sorted = segments.enumerated()
             .sorted { $0.element.start != $1.element.start ? $0.element.start < $1.element.start : $0.offset < $1.offset }
             .map(\.element)
-        return renderLines(sorted.map { (elapsed: $0.start, label: $0.speaker, text: $0.text) })
+        return renderLines(sorted.map { (elapsed: $0.start, label: $0.speaker, text: $0.text) }, labelSolo: labelSolo)
+    }
+
+    /// Whether `transcript` is in the labelled layout (`[mm:ss] Label: text` lines).
+    /// A note being re-rendered keeps the layout it was saved in.
+    static func isLabelled(_ transcript: String) -> Bool {
+        let first = transcript.prefix { $0 != "\n" }
+        guard first.hasPrefix("["), let close = first.firstIndex(of: "]") else { return false }
+        let stamp = first[first.index(after: first.startIndex)..<close]
+        guard !stamp.isEmpty, stamp.allSatisfy({ $0.isNumber || $0 == ":" }) else { return false }
+        let rest = first[first.index(after: close)...]
+        guard rest.hasPrefix(" "), let colon = rest.firstIndex(of: ":") else { return false }
+        return colon > rest.index(after: rest.startIndex)
     }
 
     /// The shared layout core: items must already be sorted by `elapsed`.
-    private static func renderLines(_ sorted: [(elapsed: TimeInterval, label: String, text: String)]) -> String {
+    private static func renderLines(_ sorted: [(elapsed: TimeInterval, label: String, text: String)],
+                                    labelSolo: Bool) -> String {
         guard !sorted.isEmpty else { return "" }
 
         var speakers: [String] = []
         for turn in sorted where !speakers.contains(turn.label) { speakers.append(turn.label) }
 
-        // Solo (only one side spoke) → plain joined transcript (Phase 1 output shape).
-        if speakers.count <= 1 {
+        // Solo (only one side spoke) and not asked to label it → plain joined
+        // transcript (Phase 1 output shape).
+        if speakers.count <= 1, !labelSolo {
             return sorted.map(\.text).joined(separator: " ")
         }
 

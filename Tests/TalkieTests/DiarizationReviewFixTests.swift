@@ -46,11 +46,32 @@ final class DiarizationReviewFixTests: XCTestCase {
         XCTAssertTrue(SpeakerPresentation.showsTurns(for: m))
         m.transcript = rendered + " (edited by hand)"
         XCTAssertFalse(SpeakerPresentation.showsTurns(for: m), "a hand-edited transcript shows the user's text")
-        for state in [DiarizationState.unchanged, .failed, .timedOut] {
+        for state in [DiarizationState.failed, .timedOut] {
             m.transcript = rendered
             m.diarizationState = state.rawValue
             XCTAssertFalse(SpeakerPresentation.showsTurns(for: m), "\(state)")
         }
+        // The pass ran to the end and confirmed the labels: that is speaker detection too.
+        m.diarizationState = DiarizationState.unchanged.rawValue
+        XCTAssertTrue(SpeakerPresentation.showsTurns(for: m))
+    }
+
+    /// A recorded meeting with one speaker is labelled, and shows as a speaker turn
+    /// once the pass confirmed it; a solo note saved as plain prose stays plain.
+    func testF1SoloMeetingShowsItsSpeaker() {
+        let segs = [seg("Me", 0, 4, "hello"), seg("Me", 5, 9, "it is only me")]
+        var m = Meeting(title: "t", startUnix: 1, durationSec: 10,
+                        transcript: MeetingTranscriptRenderer.render(segments: segs, labelSolo: true), summary: "",
+                        participants: ["Me"], source: "s", fileName: "f.md", segments: segs)
+        XCTAssertEqual(m.transcript, "[00:00] Me: hello it is only me")
+        XCTAssertFalse(SpeakerPresentation.showsTurns(for: m), "no speaker pass yet")
+        m.diarizationState = DiarizationState.unchanged.rawValue
+        XCTAssertTrue(SpeakerPresentation.showsTurns(for: m))
+        XCTAssertEqual(SpeakerPresentation.turns(segs).map(\.speaker), ["Me"])
+
+        m.transcript = MeetingTranscriptRenderer.render(segments: segs)
+        XCTAssertEqual(m.transcript, "hello it is only me")
+        XCTAssertFalse(SpeakerPresentation.showsTurns(for: m), "saved as prose: stays prose")
     }
 
     func testF1OldMeThemMeetingKeepsTimecodedTranscript() {

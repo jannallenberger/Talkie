@@ -351,7 +351,10 @@ enum MeetingDiarizationPipeline {
             return m
         }
         m.segments = result.segments
-        m.transcript = MeetingTranscriptRenderer.render(segments: result.segments)
+        // Keep the layout the note was saved in: a recorded meeting is labelled even
+        // with one speaker, an import with one speaker is plain prose.
+        m.transcript = MeetingTranscriptRenderer.render(
+            segments: result.segments, labelSolo: MeetingTranscriptRenderer.isLabelled(m.transcript))
         m.participants = result.participants
         m.diarizationState = DiarizationState.applied.rawValue
         return m

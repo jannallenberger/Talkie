@@ -29,6 +29,7 @@ enum NotchPanel {
         panel.ignoresMouseEvents = !interactive
         // Sit above full-screen meeting windows and follow across Spaces, like the HUD.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        ScreenShareVisibility.register(panel)
         return panel
     }
 

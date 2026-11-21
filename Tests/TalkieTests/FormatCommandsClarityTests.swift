@@ -188,9 +188,18 @@ final class PillFormatStatusTests: XCTestCase {
         XCTAssertNil(PillFormatState().statusLine)
     }
 
-    func testKeyHeldListensForAFormat() {
+    func testFirstPressListensAndSecondPressChecks() {
         XCTAssertEqual(state([.keyDown]).statusLine, .listening)
-        XCTAssertEqual(state([.keyDown, .spanReleased]).statusLine, .listening)   // still checking
+        XCTAssertEqual(state([.keyDown, .spanReleased]).statusLine, .checking)
+        XCTAssertTrue(state([.keyDown, .spanReleased]).textIsBlue)
+    }
+
+    func testCommandKeyShortNames() {
+        XCTAssertEqual(FormatCommandKey.defaultKey.shortName, "⌃")
+        XCTAssertEqual(ActivationKey.leftOption.shortName, "⌥")
+        XCTAssertEqual(ActivationKey.rightControl.shortName, "⌃")
+        XCTAssertEqual(ActivationKey(kind: .function, code: 96).shortName, "F5")
+        XCTAssertEqual(ActivationKey.mouseButton4.shortName, ActivationKey.mouseButton4.displayName)
     }
 
     func testRecognisedConfirmsThenStaysActive() {

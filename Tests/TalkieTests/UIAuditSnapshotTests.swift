@@ -81,6 +81,22 @@ final class UIAuditSnapshotTests: XCTestCase {
             s.activity.record(words: 300 + i * 40, at: Date().addingTimeInterval(-Double(i) * 86_400))
         }
         s.stats.recordFixes(dictionary: 12, fillers: 48, aiWords: 9)
+        // Real-window shots only: a lived-in dashboard (apps, speed, scratchpad).
+        guard ProcessInfo.processInfo.environment["TALKIE_REAL_SHOT_DIR"] != nil else { return }
+        let apps: [(String, String, AppCategory, Int)] = [
+            ("com.apple.Notes", "Notes", .notes, 5200), ("com.apple.mail", "Mail", .mail, 3100),
+            ("com.tinyspeck.slackmacgap", "Slack", .chat, 2300), ("com.apple.dt.Xcode", "Xcode", .coding, 1400),
+            ("com.apple.Safari", "Safari", .browser, 800), ("com.apple.Terminal", "Terminal", .terminal, 300),
+        ]
+        for a in apps { s.appUsage.record(target: TargetApp(bundleID: a.0, name: a.1, category: a.2), words: a.3) }
+        for i in 0..<12 {
+            s.latency.record(totalMs: 380 + Double(i * 9), finalizeMs: 120, reTxMs: 0, cleanupMs: 200, insertMs: 40,
+                             chars: 180, streamed: false, optimistic: false, coldStart: false, mode: "paste", outcome: "inserted")
+        }
+        if s.scratchpad.lines.isEmpty {
+            for line in ["- Send the revised budget to Dana", "- Book the room for Thursday", "Idea: a weekly digest of decisions",
+                         "- Reply to the hiring thread"] { s.scratchpad.addLine(line) }
+        }
     }
 
     private func makeWindow(_ s: Stores, size: NSSize, appearance: NSAppearance)
@@ -102,7 +118,7 @@ final class UIAuditSnapshotTests: XCTestCase {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false
         window.backgroundColor = NSColor(name: nil) { a in
             a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(hex: 0x000000) : NSColor(hex: 0xFFFFFF)
         }
@@ -184,6 +200,137 @@ final class UIAuditSnapshotTests: XCTestCase {
                 if d < 9 { v.subviews.forEach { walk($0, d + 1) } }
             }
             walk(frame, 0)
+        }
+    }
+
+    /// Opt-in REAL-window shots (Liquid Glass and materials only composite in a window
+    /// the window server draws; `cacheDisplay` shows them flat). Puts the real titled
+    /// window behind everything on screen and grabs it with `screencapture -l`.
+    /// TALKIE_REAL_SHOT_DIR=<dir> [TALKIE_REAL_SHOT_TABS=dashboard,meetings,…]
+    /// [TALKIE_REAL_SHOT_SCHEMES=light,dark] [TALKIE_LOOK=backdrop:glass:accent:intensity:angle]
+    func testRealWindowShots() throws {
+        guard let path = ProcessInfo.processInfo.environment["TALKIE_REAL_SHOT_DIR"], !path.isEmpty else {
+            throw XCTSkip("set TALKIE_REAL_SHOT_DIR")
+        }
+        let env = ProcessInfo.processInfo.environment
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.accessory)
+        let dir = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let s = try Stores()
+        defer { try? FileManager.default.removeItem(at: s.tmp) }
+        seed(s)
+        if let look = env["TALKIE_LOOK"]?.split(separator: ":", omittingEmptySubsequences: false).map(String.init) {
+            AppearanceStore.shared.update { l in
+                if look.count > 0, let v = TalkieBackdropStyle(rawValue: look[0]) { l.backdrop = v }
+                if look.count > 1, let v = TalkieGlassStyle(rawValue: look[1]) { l.glass = v }
+                if look.count > 2, let v = TalkieAccent(rawValue: look[2]) { l.accent = v }
+                if look.count > 3, let v = Double(look[3]) { l.intensity = v }
+                if look.count > 4, let v = Double(look[4]) { l.angle = v }
+            }
+        }
+        let all: [(String, SettingsTab, SettingsPage?)] = [
+            ("dashboard", .dashboard, nil), ("memory", .memory, nil), ("meetings", .meetings, nil),
+            ("dictionary", .dictionary, nil), ("commands", .commands, nil), ("vibecoding", .vibeCoding, nil),
+            ("settings-index", .general, nil), ("settings-dictation", .general, .dictation),
+            ("settings-cleanup", .general, .cleanupStyle), ("settings-languages", .general, .languages),
+            ("settings-meetings", .general, .meetings), ("settings-notes", .general, .notesBehavior),
+            ("settings-privacy", .general, .privacy), ("settings-appearance", .general, .appearance),
+            ("onboarding", .dashboard, nil),
+        ]
+        if let photo = env["TALKIE_REAL_SHOT_PHOTO"] { _ = s.profileImage.setImage(fromFile: URL(fileURLWithPath: photo)) }
+        defer { s.profileImage.clear() }
+        let wanted = env["TALKIE_REAL_SHOT_TABS"].map { Set($0.split(separator: ",").map(String.init)) }
+        let schemes = (env["TALKIE_REAL_SHOT_SCHEMES"] ?? "light,dark").split(separator: ",").map(String.init)
+        let scroll = env["TALKIE_REAL_SHOT_SCROLL"].flatMap(Double.init) ?? 0
+        for (name, tab, page) in all where wanted?.contains(name) ?? true {
+            for scheme in schemes {
+                s.settings.hasOnboarded = name != "onboarding"
+                defer { s.settings.hasOnboarded = true }
+                s.router.selectedTab = tab
+                s.router.pendingPage = page
+                let appearance = NSAppearance(named: scheme == "dark" ? .darkAqua : .aqua)!
+                let (window, hc) = makeWindow(s, size: NSSize(width: 1100, height: 720), appearance: appearance)
+                window.setFrameOrigin(NSPoint(x: 40, y: 40))
+                window.orderBack(nil)
+                for _ in 0..<10 { hc.view.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.15)) }
+                if scroll > 0 { Self.scrollFirstScrollView(in: hc.view, by: scroll) }
+                RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+                let out = dir.appendingPathComponent("\(name)-\(scheme).png")
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                task.arguments = ["-x", "-o", "-l", String(window.windowNumber), out.path]
+                try task.run()
+                task.waitUntilExit()
+                log.append("[\(name)-\(scheme)] screencapture exit=\(task.terminationStatus)")
+                window.orderOut(nil); window.close()
+            }
+        }
+        try log.joined(separator: "\n").write(to: dir.appendingPathComponent("shots.txt"), atomically: true, encoding: .utf8)
+    }
+
+    /// Scrolls the tallest scroll view under `root` down by `points` (for the edge fades).
+    private static func scrollFirstScrollView(in root: NSView, by points: Double) {
+        var best: NSScrollView?
+        func walk(_ v: NSView) {
+            if let sv = v as? NSScrollView, sv.frame.height > (best?.frame.height ?? 0),
+               (sv.documentView?.frame.height ?? 0) > sv.frame.height { best = sv }
+            v.subviews.forEach(walk)
+        }
+        walk(root)
+        guard let sv = best else { return }
+        sv.contentView.scroll(to: NSPoint(x: 0, y: points))
+        sv.reflectScrolledClipView(sv.contentView)
+    }
+
+    /// Opt-in REAL-window shot of the small meeting-notes window, mid-recording and idle.
+    func testRealNotesWindowShots() throws {
+        guard let path = ProcessInfo.processInfo.environment["TALKIE_REAL_SHOT_DIR"], !path.isEmpty else {
+            throw XCTSkip("set TALKIE_REAL_SHOT_DIR")
+        }
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.accessory)
+        let dir = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let s = try Stores()
+        defer { try? FileManager.default.removeItem(at: s.tmp) }
+        seed(s)
+        let subtopic = MeetingSubtopicModel()
+        let tab = ProcessInfo.processInfo.environment["TALKIE_NOTES_TAB"] ?? "soFar"
+        UserDefaults.standard.set(tab, forKey: "meetingNotesWindowContextTab")
+        for state in ["idle", "recording"] {
+            if state == "recording" {
+                s.meetingRecorder.stageRecordingForTesting(
+                    elapsed: 14 * 60 + 7, farEnd: true,
+                    notes: "Pricing page goes live on the 3rd\n[09:12] Ask Dana about the migration window\nBudget: keep the pilot under 40k")
+                subtopic.current = "Launch timeline"
+                subtopic.currentGloss = "Agreeing the launch date and who signs off the pricing page"
+                s.meetingRecorder.liveSummary.reset(.listening)
+                s.meetingRecorder.liveSummary.update(LiveSummarySnapshot(
+                    topics: ["Launch timeline for the pricing page", "Pilot budget and scope"],
+                    decisions: ["Pricing page goes live on the 3rd"],
+                    actions: ["Dana: confirm the migration window", "Alex: send the pilot budget by Friday"], chunks: 3))
+                s.meetingRecorder.liveTail.stageForTesting([
+                    .init(elapsed: 801, speaker: .them, text: "So if the pricing page is ready, I would rather not wait for the next sprint."),
+                    .init(elapsed: 809, speaker: .me, text: "Agreed. We can go live on the third if legal signs off this week."),
+                    .init(elapsed: 822, speaker: .them, text: "I will check the migration window with Dana and come back to you tomorrow."),
+                    .init(elapsed: 835, speaker: .me, text: "Good. And the pilot stays under forty thousand, that was the condition."),
+                ])
+            }
+            for scheme in ["light", "dark"] {
+                let controller = MeetingNotesWindowController(recorder: s.meetingRecorder, subtopic: subtopic,
+                                                              settings: s.settings, onOpenMeetings: {})
+                controller.show(automatic: true)
+                controller.setAppearanceForTesting(NSAppearance(named: scheme == "dark" ? .darkAqua : .aqua)!)
+                RunLoop.main.run(until: Date().addingTimeInterval(1.6))
+                let out = dir.appendingPathComponent("notes-\(state)-\(tab)-\(scheme).png")
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                task.arguments = ["-x", "-o", "-l", String(controller.windowNumberForTesting ?? 0), out.path]
+                try task.run()
+                task.waitUntilExit()
+                controller.close()
+            }
         }
     }
 

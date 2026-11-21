@@ -14,7 +14,7 @@ import AppKit
 ///   • The final panel is an **accessible try-it**: it adapts to hold vs. toggle,
 ///     and confirms visually (the words land in the field), not by sound alone.
 ///   • Motion + transparency defer to the system accessibility settings — handled
-///     by `LiveBackground` and `GlassCard`.
+///     by `TalkieBackdrop` and `GlassCard`.
 struct OnboardingView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var permissions: PermissionsModel
@@ -64,7 +64,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            LiveBackground(mood: .hero)
+            TalkieBackdrop(turn: 0)
 
             VStack(spacing: 22) {
                 Spacer(minLength: 16)

@@ -56,10 +56,6 @@ struct DashboardView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// L7: true while the pointer is over the welcome header. Drives the reveal of the
-    /// "Add a photo" affordance when no photo is set (a set photo shows regardless).
-    @State private var headerHovered = false
-
     /// Update reminder: last dismissal (epoch seconds, 0 = never). Evaluated once per
     /// appearance; no timers, no network.
     @AppStorage("updateReminderDismissedAt") private var updateDismissedAt: Double = 0
@@ -70,16 +66,11 @@ struct DashboardView: View {
     /// A raw threshold value (0 = none celebrated yet); we compare tiers by index.
     @AppStorage("milestoneCelebratedThreshold") private var celebratedThreshold = 0
 
-    // Adaptive columns reflow with the window width — no fixed widths to overflow.
-    // 220 lets the three metric cards sit 3-up at the default width and fall to
-    // 2-up / 1-up as the window narrows; the wide row goes 2-up → 1-up.
-    private let metricCols = [GridItem(.adaptive(minimum: 220), spacing: Theme.Space.gridGap)]
-    private let wideCols   = [GridItem(.adaptive(minimum: 330), spacing: Theme.Space.gridGap)]
-
     var body: some View {
         NavigationStack {
-            TalkieScrollPage(spacing: Theme.Space.section, background: .ambient) {
+            TalkieScrollPage(spacing: Theme.Space.gridGap, background: .ambient) {
                     header
+                        .padding(.bottom, 6)
 
                     if case .show(let days) = updateDecision {
                         UpdateReminderLine(days: days) {
@@ -96,41 +87,12 @@ struct DashboardView: View {
                         )
                     }
 
-                    ScratchpadCard(scratchpad: scratchpad)
-
-                    // L-bento: the hero band — a slim WPM gauge leading, the wide
-                    // words-per-day chart filling the rest. Reflows to a stack when the
-                    // window is too narrow to seat both side by side.
-                    heroBand
-
-                    // Equal-height cards take two cooperating pieces: the outer
-                    // `.frame(maxHeight: .infinity, alignment: .top)` top-aligns
-                    // each LazyVGrid cell wrapper (so a short card sits at the top
-                    // of its row rather than vertically centered), while the inner
-                    // `talkieCard(fill: true)` stretches the *painted* surface to
-                    // fill that wrapper's height — so every card's background paints
-                    // to the same height as its tallest row neighbor.
-                    LazyVGrid(columns: metricCols, alignment: .leading, spacing: Theme.Space.gridGap) {
-                        // K9: each read-only stat card reads as ONE combined VoiceOver
-                        // element (its eyebrow + values as a single phrase) instead of
-                        // a stream of disconnected fragments. (The WPM gauge moved up
-                        // into the hero band, so this grid starts at Speed.)
-                        SpeedCard(latency: latency).frame(maxHeight: .infinity, alignment: .top)
-                            .accessibilityElement(children: .combine)
-                        FixesCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
-                            .accessibilityElement(children: .combine)
-                        WordsCard(stats: stats, history: history).frame(maxHeight: .infinity, alignment: .top)
-                            .accessibilityElement(children: .combine)
-                        RecordsCard(stats: stats, activity: activity).frame(maxHeight: .infinity, alignment: .top)
-                            .accessibilityElement(children: .combine)
-                    }
-
-                    LazyVGrid(columns: wideCols, alignment: .leading, spacing: Theme.Space.gridGap) {
-                        UsageCard(appUsage: appUsage).frame(maxHeight: .infinity, alignment: .top)
-                            .accessibilityElement(children: .combine)
-                        StreakCard(activity: activity).frame(maxHeight: .infinity, alignment: .top)
-                            .accessibilityElement(children: .combine)
-                        MilestoneEntryCard(stats: stats).frame(maxHeight: .infinity, alignment: .top)
+                    // The bento: four rows on one grid, every card filling its cell,
+                    // so nothing is orphaned on a row of its own. A window too narrow
+                    // for the grid gets the same cards in a single column.
+                    ViewThatFits(in: .horizontal) {
+                        wideBento
+                        narrowBento
                     }
             }
             .onAppear {
@@ -170,14 +132,12 @@ struct DashboardView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: headerAvatarSpacing) {
-            // L7: the profile picture leads the welcome title. When a photo is set it
-            // always shows; when none is set the slot collapses to zero width at rest —
-            // so the header is pixel-identical to pre-L7 — and only reveals a dashed
-            // "Add a photo" affordance when the header is hovered. This control IS the
-            // setting (photo menu on click + drag-drop); there is no Settings row.
-            DashboardAvatar(profileImage: profileImage, headerHovered: headerHovered)
-                .padding(.top, 4)
+        HStack(alignment: .top, spacing: 14) {
+            // The profile picture leads the welcome title: the photo, or the user's
+            // initial until one is set. Click it to choose, change or remove the
+            // photo (the same control lives in Settings ▸ Profile & appearance).
+            DashboardAvatar(profileImage: profileImage, name: settings.userName)
+                .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
                 // H1: the dedicated Settings ▸ Profile "Name" field is gone. The
                 // dashboard title IS the name editor now — click it to type your name
@@ -197,17 +157,6 @@ struct DashboardView: View {
             Spacer()
             Wordmark()
         }
-        // Hovering anywhere on the header reveals the "Add a photo" affordance when no
-        // photo is set; a set photo ignores this (it's always shown).
-        .onHover { headerHovered = $0 }
-        .animation(.easeInOut(duration: 0.15), value: headerHovered)
-    }
-
-    /// The leading gap before the title: 14 pt once the avatar slot is occupying
-    /// space (photo set, or the affordance is revealed), and 0 when the slot is
-    /// collapsed — so an empty header sits exactly where it did before L7.
-    private var headerAvatarSpacing: CGFloat {
-        (profileImage.image != nil || headerHovered) ? 14 : 0
     }
 
     private var greeting: String {
@@ -216,38 +165,142 @@ struct DashboardView: View {
         return "\(total.formatted()) words dictated, all on-device."
     }
 
-    // MARK: Hero band
+    // MARK: Bento
 
-    /// The bento hero: a slim WPM gauge leading and the wide words-per-day chart
-    /// filling the rest. `ViewThatFits` seats them side by side when there's room
-    /// (the common case) and stacks them when the window narrows, so neither the
-    /// gauge nor the chart is ever crushed. `heroHeight` pins both to one height in
-    /// the side-by-side layout so their surfaces paint level, like the grid rows.
-    private var heroBand: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: Theme.Space.gridGap) {
-                GaugeCard(stats: stats)
-                    .frame(width: 236)
+    private var gap: CGFloat { Theme.Space.gridGap }
+
+    /// The grid at normal widths. Row heights are fixed, so the cards of a row are
+    /// level and the page is short: speed and the daily chart, four figures, the
+    /// scratchpad beside the streak, then apps beside milestones and records.
+    private var wideBento: some View {
+        VStack(spacing: gap) {
+            BentoRow(spacing: gap) {
+                GaugeCard(stats: stats).bentoWeight(4)
                     .accessibilityElement(children: .combine)
-                WordsPerDayCard(activity: activity)
-                    .frame(minWidth: 320, maxWidth: .infinity)
+                WordsPerDayCard(activity: activity).bentoWeight(8)
                     .accessibilityElement(children: .combine)
             }
-            .frame(height: heroHeight)
-            VStack(spacing: Theme.Space.gridGap) {
-                GaugeCard(stats: stats)
-                    .accessibilityElement(children: .combine)
-                WordsPerDayCard(activity: activity)
-                    .frame(height: heroHeight)
+            .frame(height: 206)
+            tiles
+                .frame(height: 116)
+            BentoRow(spacing: gap) {
+                ScratchpadCard(scratchpad: scratchpad).bentoWeight(5)
+                StreakCard(activity: activity).bentoWeight(7)
                     .accessibilityElement(children: .combine)
             }
+            .frame(height: 214)
+            BentoRow(spacing: gap) {
+                UsageCard(appUsage: appUsage).bentoWeight(7)
+                    .accessibilityElement(children: .combine)
+                VStack(spacing: gap) {
+                    MilestoneEntryCard(stats: stats)
+                        .frame(height: 88)
+                    RecordsCard(stats: stats, activity: activity)
+                        .accessibilityElement(children: .combine)
+                }
+                .bentoWeight(5)
+            }
+            .frame(height: 214)
+        }
+        .frame(minWidth: BentoRow.minimumGridWidth, maxWidth: .infinity)
+    }
+
+    /// The four figures: total words, fixes, dictation speed, time spoken.
+    private var tiles: some View {
+        BentoRow(spacing: gap) {
+            WordsTile(stats: stats, history: history)
+                .accessibilityElement(children: .combine)
+            FixesTile(stats: stats)
+                .accessibilityElement(children: .combine)
+            SpeedCard(latency: latency, compact: true)
+                .accessibilityElement(children: .combine)
+            TimeTile(stats: stats)
+                .accessibilityElement(children: .combine)
         }
     }
 
-    /// The side-by-side hero height — tall enough to seat the gauge's arc plus its
-    /// two comparison lines, and the chart's number plus its bars, without crushing
-    /// either. Tuned to the gauge card's natural height so nothing compresses.
-    private let heroHeight: CGFloat = 236
+    /// The same cards in one column, for a window too narrow for the grid.
+    private var narrowBento: some View {
+        VStack(spacing: gap) {
+            GaugeCard(stats: stats).frame(height: 206)
+                .accessibilityElement(children: .combine)
+            WordsPerDayCard(activity: activity).frame(height: 206)
+                .accessibilityElement(children: .combine)
+            BentoRow(spacing: gap) {
+                WordsTile(stats: stats, history: history).accessibilityElement(children: .combine)
+                FixesTile(stats: stats).accessibilityElement(children: .combine)
+            }
+            .frame(height: 116)
+            BentoRow(spacing: gap) {
+                SpeedCard(latency: latency, compact: true).accessibilityElement(children: .combine)
+                TimeTile(stats: stats).accessibilityElement(children: .combine)
+            }
+            .frame(height: 116)
+            ScratchpadCard(scratchpad: scratchpad).frame(height: 214)
+            StreakCard(activity: activity).frame(height: 214)
+                .accessibilityElement(children: .combine)
+            UsageCard(appUsage: appUsage).frame(height: 214)
+                .accessibilityElement(children: .combine)
+            MilestoneEntryCard(stats: stats).frame(height: 88)
+            RecordsCard(stats: stats, activity: activity).frame(height: 112)
+                .accessibilityElement(children: .combine)
+        }
+    }
+}
+
+// MARK: - Bento row layout
+
+private struct BentoWeightKey: LayoutValueKey {
+    static let defaultValue: Double = 1
+}
+
+extension View {
+    /// This card's share of a `BentoRow`'s width (default 1).
+    func bentoWeight(_ weight: Double) -> some View {
+        layoutValue(key: BentoWeightKey.self, value: weight)
+    }
+}
+
+/// One row of the dashboard grid: the children share the width by weight (a 4 and
+/// an 8 are a third and two thirds) and every one is given the row's full height,
+/// so the cards of a row are always level.
+struct BentoRow: Layout {
+    var spacing: CGFloat = Theme.Space.gridGap
+
+    /// Below this the grid's narrowest cards cannot hold their content.
+    static let minimumGridWidth: CGFloat = 540
+
+    /// The cell widths for `total` points shared by `weights`. Pure, unit-tested.
+    static func widths(total: CGFloat, weights: [Double], spacing: CGFloat) -> [CGFloat] {
+        guard !weights.isEmpty else { return [] }
+        let usable = max(0, total - spacing * CGFloat(weights.count - 1))
+        let sum = weights.reduce(0, +)
+        guard sum > 0 else { return weights.map { _ in usable / CGFloat(weights.count) } }
+        return weights.map { usable * CGFloat($0 / sum) }
+    }
+
+    private func widths(_ total: CGFloat, _ subviews: Subviews) -> [CGFloat] {
+        Self.widths(total: total, weights: subviews.map { $0[BentoWeightKey.self] }, spacing: spacing)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? Self.minimumGridWidth
+        if let height = proposal.height { return CGSize(width: width, height: height) }
+        let cells = widths(width, subviews)
+        let height = zip(subviews, cells)
+            .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }
+            .max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        for (subview, width) in zip(subviews, widths(bounds.width, subviews)) {
+            subview.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width + spacing
+        }
+    }
 }
 
 /// The dashboard's serif title, doubling as the inline editor for `userName`
@@ -384,122 +437,54 @@ private struct Wordmark: View {
     }
 }
 
-// MARK: - Dashboard profile avatar (opt-in, photo-only)
+// MARK: - Dashboard profile avatar
 
-/// L7 — the profile-picture control in the dashboard header. This IS the entire
-/// profile-photo setting (no Settings row, per the post-H1 IA + no-new-toggles rule):
-///
-///   • Photo set   → a 34-pt `AvatarView`, always visible; click opens a menu with
-///                   "Choose photo…" and "Remove photo".
-///   • No photo    → nothing at rest (the header looks identical to pre-L7); on hover
-///                   a dashed "Add a photo" circle fades in. Click opens the picker.
-///   • Either way  → dropping an image file onto the control sets the photo.
-///
-/// The picker is a plain `NSOpenPanel` restricted to `[.image]` — deliberately NOT a
-/// PhotosPicker, so there is zero photo-library permission surface; the panel grants
-/// exactly the one file the user chooses.
+/// The profile-picture control in the dashboard header: the photo (or the user's
+/// initial) in a 40-pt circle, always visible. Click it for a popover that chooses,
+/// changes or removes the photo; an image file can also be dropped straight on it.
 private struct DashboardAvatar: View {
     @ObservedObject var profileImage: ProfileImageStore
-    /// Whether the pointer is over the header (owned by `DashboardView`). When no photo
-    /// is set, the "Add a photo" affordance only appears while this is true; otherwise
-    /// the slot collapses to zero width so the header matches its pre-L7 layout.
-    let headerHovered: Bool
+    let name: String
+
+    @State private var showEditor = false
     @State private var dropTargeting = false
+    @State private var hovering = false
 
-    private let size: CGFloat = 34
-
-    /// Whether the affordance should be shown when no photo is set (hovering the header
-    /// or a drag hovering the slot). A set photo ignores this — it's always shown.
-    private var revealed: Bool { headerHovered || dropTargeting }
+    private let size: CGFloat = 40
 
     var body: some View {
-        control
-            // Collapse to zero width when there's no photo and nothing to reveal, so the
-            // title sits exactly where it did before L7; otherwise reserve the avatar.
-            .frame(width: (profileImage.image != nil || revealed) ? size : 0, height: size)
-            .contentShape(Circle())
-            .dropDestination(for: URL.self) { urls, _ in
-                guard let url = urls.first(where: Self.isImageFile) else { return false }
-                return profileImage.setImage(fromFile: url)
-            } isTargeted: { dropTargeting = $0 }
-            .animation(.easeInOut(duration: 0.15), value: revealed)
-            .animation(.easeInOut(duration: 0.15), value: dropTargeting)
-    }
-
-    @ViewBuilder
-    private var control: some View {
-        if profileImage.image != nil {
-            // A set photo sits in the SAME circular slot the "+" affordance occupies —
-            // a sunken fill + a solid ring — with the photo matted a few points inside
-            // it, so a set photo reads as "in the slot" rather than a bare cut-out.
-            // Click opens a menu to replace or remove it.
-            Menu {
-                Button("Choose photo…".loc, action: choosePhoto)
-                Button("Remove photo".loc, role: .destructive) { profileImage.clear() }
-            } label: {
-                Circle()
-                    .fill(Theme.surfaceSunken.opacity(0.6))
-                    .overlay(AvatarView(store: profileImage, size: size - 6))
-                    .overlay(
-                        Circle().strokeBorder(
-                            dropTargeting ? Theme.coral : Theme.hairline,
-                            lineWidth: 1.5
-                        )
-                    )
-                    .frame(width: size, height: size)
-            }
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .menuStyle(.borderlessButton)
-            .help("Change your photo".loc)
-            .accessibilityLabel(Text("Change your photo".loc))
-        } else {
-            // No photo: an "add a photo" affordance revealed while the header is hovered
-            // (or while a drag is over the slot). Clicking opens the picker directly —
-            // there's nothing to remove yet, so no menu.
-            Button(action: choosePhoto) {
-                Circle()
-                    .strokeBorder(
-                        revealed ? Theme.coral : Theme.hairline,
-                        style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
-                    )
-                    .background(Circle().fill(Theme.surfaceSunken.opacity(0.6)))
-                    .overlay(
-                        Image(systemName: "plus")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(revealed ? Theme.coral : Theme.inkTertiary)
-                    )
-                    .opacity(revealed ? 1 : 0)
-            }
-            .buttonStyle(.plain)
-            .help("Add a photo".loc)
-            .accessibilityLabel(Text("Add a photo".loc))
-            // Keep the affordance reachable/clipped to the reserved circle even as the
-            // enclosing frame animates between 0 and full width.
-            .frame(width: size, height: size)
-            .clipped()
+        Button { showEditor.toggle() } label: {
+            AvatarView(store: profileImage, size: size, showsPlaceholder: true, name: name)
+                .overlay(alignment: .bottomTrailing) {
+                    // The edit badge says "this is a control" without hiding the photo.
+                    Image(systemName: profileImage.image == nil ? "plus" : "pencil")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                        .frame(width: 15, height: 15)
+                        .background(Circle().fill(Theme.keycap)
+                            .shadow(color: .black.opacity(0.2), radius: 1, x: 0, y: 0.5))
+                        .offset(x: 2, y: 2)
+                        .opacity(hovering || profileImage.image == nil ? 1 : 0)
+                }
+                .overlay(Circle().strokeBorder(Theme.brand, lineWidth: 2).opacity(dropTargeting ? 1 : 0))
+                .scaleEffect(hovering ? 1.04 : 1)
+                .animation(.easeOut(duration: 0.12), value: hovering)
+                .animation(.easeOut(duration: 0.12), value: dropTargeting)
         }
-    }
-
-    /// Open a file picker restricted to images, and import the chosen file. Runs on
-    /// the main actor; `NSOpenPanel` is modal so the result is available synchronously.
-    private func choosePhoto() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.prompt = "Choose".loc
-        panel.message = "Choose a photo".loc
-        if panel.runModal() == .OK, let url = panel.url {
-            profileImage.setImage(fromFile: url)
+        .buttonStyle(.plain)
+        .contentShape(Circle())
+        .onHover { hovering = $0 }
+        .help(profileImage.image == nil ? "Add a photo".loc : "Change your photo".loc)
+        .accessibilityLabel(Text(profileImage.image == nil ? "Add a photo".loc : "Change your photo".loc))
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: ProfileImageStore.isImageFile) else { return false }
+            return profileImage.setImage(fromFile: url)
+        } isTargeted: { dropTargeting = $0 }
+        .popover(isPresented: $showEditor, arrowEdge: .bottom) {
+            TalkiePopover(title: "Your photo", width: Theme.Width.popoverWide) {
+                ProfilePhotoEditor(store: profileImage, name: name, avatarSize: 84)
+            }
         }
-    }
-
-    /// Whether a dropped URL is an image file we can take (extension → UTType).
-    private static func isImageFile(_ url: URL) -> Bool {
-        guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
-        return type.conforms(to: .image)
     }
 }
 
@@ -522,49 +507,51 @@ private struct MilestoneEntryCard: View {
 
     var body: some View {
         NavigationLink(value: MilestoneRoute.plumage) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Eyebrow(text: "Milestones")
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.inkTertiary)
-                }
-                HStack(spacing: 9) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
                     Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Theme.featherCoral)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.dataColor(series: 1))
                     Text(tierName)
-                        .font(.talkieHeading(17, weight: .semibold))
+                        .font(.talkieHeading(15, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                    Spacer(minLength: 6)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.inkTertiary)
                 }
-
+                Spacer(minLength: 0)
                 if let next = MilestoneLadder.next(after: stats.totalWords) {
+                    Text(String(format: "%1$@ / %2$@ words".loc,
+                                stats.totalWords.formatted(), next.threshold.formatted()))
+                        .font(.talkieHeading(11.5, weight: .medium))
+                        .foregroundStyle(Theme.inkSecondary)
+                        .monospacedDigit()
+                        .lineLimit(1)
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule().fill(Theme.surfaceSunken)
-                            Capsule().fill(Theme.featherCoral)
+                            Capsule()
+                                .fill(LinearGradient(gradient: Theme.dataRamp, startPoint: .leading, endPoint: .trailing))
                                 .frame(width: max(6, geo.size.width * next.progress))
                         }
                     }
-                    .frame(height: 7)
-                    Text(String(format: "%1$@ / %2$@ words".loc,
-                                stats.totalWords.formatted(), next.threshold.formatted()))
-                        .font(.talkieHeading(12, weight: .medium))
-                        .foregroundStyle(Theme.inkSecondary)
-                        .monospacedDigit()
+                    .frame(height: 6)
                 } else {
                     Text("Top of the ladder — see your plumage".loc)
                         .font(.talkieHeading(12, weight: .medium))
                         .foregroundStyle(Theme.inkSecondary)
+                        .lineLimit(1)
                 }
             }
-            .talkieCard(fill: true)
+            .talkieCard(padding: 16, fill: true)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text("Milestones".loc))
+        .accessibilityValue(Text(verbatim: tierName))
     }
 }
 
@@ -622,13 +609,13 @@ private struct MilestoneCelebrationBanner: View {
         }
         .padding(Theme.Space.card)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .fill(LinearGradient(gradient: Theme.emberRamp, startPoint: .leading, endPoint: .trailing))
+                .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
         )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-        .shadow(color: .black.opacity(0.07), radius: 20, x: 0, y: 10)
         .opacity(appeared || reduceMotion ? 1 : 0)
         .onAppear {
             guard !reduceMotion else { return }
@@ -646,31 +633,30 @@ private struct GaugeCard: View {
     private var hasData: Bool { avg > 0 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 8) {
             Eyebrow(text: "Words per minute")
             ZStack(alignment: .bottom) {
                 Gauge(fraction: min(1, avg / SpeedBenchmark.worldRecord))
-                    .frame(height: 104)
+                    .frame(height: 86)
                 VStack(spacing: 0) {
                     Text(hasData ? "\(Int(avg.rounded()))" : "—")
-                        .font(.talkieMetric(42))
+                        .font(.talkieMetric(36))
                         .foregroundStyle(Theme.ink)
                     Text(LocalizedStringKey(hasData ? "avg wpm" : "no data yet"))
                         .font(.talkieHeading(11, weight: .medium))
                         .foregroundStyle(Theme.inkSecondary)
                 }
-                .padding(.bottom, 2)
             }
             .frame(maxWidth: .infinity)
 
-            Divider().overlay(Theme.hairline)
+            Spacer(minLength: 0)
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 4) {
                 ComparisonLine(symbol: "person.fill", text: officeComparison)
                 ComparisonLine(symbol: "trophy.fill", text: recordComparison)
             }
         }
-        .talkieCard(fill: true)
+        .talkieCard(padding: 16, fill: true)
     }
 
     private var officeComparison: String {
@@ -694,41 +680,50 @@ private struct ComparisonLine: View {
         HStack(spacing: 7) {
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.featherCoral)
+                .foregroundStyle(Theme.dataColor(series: 1))
                 .frame(width: 14)
             Text(text)
                 .font(.talkieHeading(12, weight: .medium))
                 .foregroundStyle(Theme.inkSecondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.75)
         }
     }
 }
 
 /// A top-half speedometer arc, sized to its frame (no fixed geometry → can't
-/// overflow the card). Track in the sunken tone, value swept along the shared
-/// ember ramp (gold → coral), matching the words-per-day bars.
+/// overflow the card). Track in the sunken tone, value swept along the data ramp
+/// (the backdrop's colours), ending in a small lit knob.
 private struct Gauge: View {
     let fraction: Double
-    private let lineWidth: CGFloat = 15
+    private let lineWidth: CGFloat = 12
 
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
             let r = max(8, min((w - lineWidth) / 2, h - lineWidth / 2))
             let center = CGPoint(x: w / 2, y: h - lineWidth / 2)
+            let swept = max(0.001, min(1, fraction))
             ZStack {
                 arc(center: center, radius: r, to: 1)
                     .stroke(Theme.surfaceSunken, style: stroke)
-                arc(center: center, radius: r, to: max(0.001, fraction))
+                arc(center: center, radius: r, to: swept)
                     .stroke(
                         AngularGradient(
-                            gradient: Theme.emberRamp,
-                            center: .center,
+                            gradient: Theme.dataRamp,
+                            center: UnitPoint(x: center.x / max(1, w), y: center.y / max(1, h)),
                             startAngle: .degrees(180), endAngle: .degrees(360)
                         ),
                         style: stroke
                     )
+                if fraction > 0 {
+                    let angle = Double.pi * (1 + swept)
+                    Circle()
+                        .fill(.white)
+                        .frame(width: lineWidth - 4, height: lineWidth - 4)
+                        .shadow(color: .black.opacity(0.25), radius: 1.5, x: 0, y: 0.5)
+                        .position(x: center.x + r * CGFloat(cos(angle)), y: center.y + r * CGFloat(sin(angle)))
+                }
             }
         }
     }
@@ -745,14 +740,15 @@ private struct Gauge: View {
     }
 }
 
-// MARK: - Words-per-day chart card (bento hero, right)
+// MARK: - Words-per-day chart card
 
-/// L-bento — the playful hero chart: one rounded bar per day for the last two
-/// weeks, its height set by that day's word count and tinted along the feather
-/// ramp (gold at the foot → macaw red at the crest). Honest by construction — it
-/// reads the same on-device `ActivityStore.days` tally as the streak heatmap, so a
-/// day with no dictation is a real gap (a faint stub), never a fabricated point.
-/// Bars grow from the baseline on first appear unless Reduce Motion is on.
+/// The daily chart: one rounded bar per day for the last two weeks, each in its
+/// place along the data ramp (so the row runs through the backdrop's colours), the
+/// weekday under it, today marked, and a dashed line at the average of the days
+/// you dictated. Honest by construction — it reads the same on-device
+/// `ActivityStore.days` tally as the streak heatmap, so a day with no dictation is
+/// a real gap (a faint stub), never a fabricated point. Bars grow from the baseline
+/// on first appear unless Reduce Motion is on.
 private struct WordsPerDayCard: View {
     @ObservedObject var activity: ActivityStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -760,16 +756,18 @@ private struct WordsPerDayCard: View {
     /// Two weeks reads as a clean rhythm at hero width without crowding the bars.
     private let dayCount = 14
 
-    /// Drives the grow-from-baseline entrance; flipped once on appear.
-    @State private var grown = false
-
-    private var series: [(date: Date, words: Int)] { activity.dailyWords(days: dayCount) }
-    private var maxWords: Int { max(1, series.map(\.words).max() ?? 0) }
-    private var total: Int { series.reduce(0) { $0 + $1.words } }
-    private var hasData: Bool { total > 0 }
+    /// Drives the grow-from-baseline entrance; flipped once on appear. Starts grown
+    /// once the entrance has played in this launch: any running SwiftUI animation
+    /// makes every frame re-diff the whole dashboard, so the rise is a first-visit
+    /// flourish, not a toll on every tab switch.
+    @State private var grown = WordsPerDayCard.entrancePlayed
+    @MainActor private static var entrancePlayed = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        // Derived once per render: `dailyWords` walks the activity log.
+        let series = activity.dailyWords(days: dayCount)
+        let total = series.reduce(0) { $0 + $1.words }
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Eyebrow(text: "Words per day")
                 Spacer()
@@ -778,47 +776,97 @@ private struct WordsPerDayCard: View {
                     .foregroundStyle(Theme.inkTertiary)
             }
 
-            if hasData {
-                Text(total.formatted())
-                    .font(.talkieMetric(34))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                chart
+            if total > 0 {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(total.formatted())
+                        .font(.talkieMetric(30))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    if let average = DashboardChartMath.activeDayAverage(series.map(\.words)) {
+                        Text(String(format: "%@ a day when you dictate".loc, average.formatted()))
+                            .font(.talkieHeading(12, weight: .regular))
+                            .foregroundStyle(Theme.inkSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                }
+                chart(series, total: total)
             } else {
                 EmptyHint(icon: "chart.bar.xaxis",
                           text: "Dictate and your daily words chart here.")
+                Spacer(minLength: 0)
             }
         }
-        .talkieCard(fill: true)
+        .talkieCard(padding: 16, fill: true)
         .onAppear {
+            guard !grown else { return }
+            Self.entrancePlayed = true
             guard !reduceMotion else { grown = true; return }
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.78)) { grown = true }
+            // A finite ease-out with a little overshoot (the old spring's look) instead
+            // of the spring itself, whose settling tail kept SwiftUI re-rendering the
+            // whole dashboard for ~2 s after every visit.
+            withAnimation(.timingCurve(0.34, 1.35, 0.64, 1, duration: 0.6)) { grown = true }
         }
     }
 
-    /// The bar row, sized to fill whatever height the card gives it below the
-    /// number. Each bar is a squircle capsule; zero-word days collapse to a faint
-    /// baseline stub so the two-week axis stays continuous.
-    private var chart: some View {
-        GeometryReader { geo in
+    private static let labelHeight: CGFloat = 15
+
+    private func chart(_ series: [(date: Date, words: Int)], total: Int) -> some View {
+        let maxWords = max(1, series.map(\.words).max() ?? 0)
+        let average = DashboardChartMath.activeDayAverage(series.map(\.words))
+        let calendar = Calendar.current
+        return GeometryReader { geo in
             let n = max(series.count, 1)
-            let gap: CGFloat = 5
+            let gap: CGFloat = n > 10 ? 6 : 8
             let barW = max(3, (geo.size.width - gap * CGFloat(n - 1)) / CGFloat(n))
-            HStack(alignment: .bottom, spacing: gap) {
-                ForEach(Array(series.enumerated()), id: \.offset) { _, day in
-                    let frac = CGFloat(Double(day.words) / Double(maxWords))
-                    Capsule(style: .continuous)
-                        .fill(day.words == 0
-                              ? AnyShapeStyle(Theme.surfaceSunken)
-                              : AnyShapeStyle(LinearGradient(
-                                    gradient: Theme.emberRamp,
-                                    startPoint: .top, endPoint: .bottom)))
-                        .frame(width: barW,
-                               height: barHeight(frac: frac, full: geo.size.height, empty: day.words == 0))
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                        .help(dayHelp(day))
+            let plotH = max(8, geo.size.height - Self.labelHeight)
+            VStack(spacing: 0) {
+                ZStack(alignment: .bottomLeading) {
+                    HStack(alignment: .bottom, spacing: gap) {
+                        ForEach(Array(series.enumerated()), id: \.offset) { index, day in
+                            let frac = CGFloat(Double(day.words) / Double(maxWords))
+                            let color = Theme.dataColor(at: Double(index) / Double(max(1, n - 1)))
+                            RoundedRectangle(cornerRadius: min(barW / 2, 6), style: .continuous)
+                                .fill(day.words == 0
+                                      ? AnyShapeStyle(Theme.surfaceSunken)
+                                      : AnyShapeStyle(LinearGradient(
+                                            colors: [color.mix(with: .white, by: 0.22), color],
+                                            startPoint: .top, endPoint: .bottom)))
+                                .frame(width: barW, height: day.words == 0 ? 3 : max(5, plotH * frac))
+                                .frame(maxHeight: .infinity, alignment: .bottom)
+                                .help(dayHelp(day))
+                        }
+                    }
+                    // Entrance: the bars rise from the baseline. A vertical scale is a
+                    // render-only transform; animating each bar's HEIGHT re-ran layout
+                    // for the whole window on every frame.
+                    .scaleEffect(x: 1, y: grown ? 1 : 0.001, anchor: .bottom)
+
+                    if let average, average < maxWords {
+                        // The average of the days with dictation, as a quiet guide.
+                        Path { p in
+                            p.move(to: CGPoint(x: 0, y: 0.5))
+                            p.addLine(to: CGPoint(x: geo.size.width, y: 0.5))
+                        }
+                        .stroke(Theme.ink.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .frame(height: 1)
+                        .offset(y: -plotH * CGFloat(Double(average) / Double(maxWords)))
+                        .opacity(grown ? 1 : 0)
+                    }
                 }
+                .frame(height: plotH)
+
+                HStack(spacing: gap) {
+                    ForEach(Array(series.enumerated()), id: \.offset) { _, day in
+                        let today = calendar.isDateInToday(day.date)
+                        Text(day.date.formatted(.dateTime.weekday(.narrow)))
+                            .font(.system(size: 9, weight: today ? .bold : .medium))
+                            .foregroundStyle(today ? Theme.ink : Theme.inkTertiary)
+                            .frame(width: barW)
+                    }
+                }
+                .frame(height: Self.labelHeight, alignment: .bottom)
             }
         }
         .frame(maxHeight: .infinity)
@@ -830,15 +878,6 @@ private struct WordsPerDayCard: View {
         .accessibilityValue(DashboardChartSummary.wordsPerDay(series: series, total: total))
     }
 
-    /// A bar's drawn height: a faint 3-pt stub for an empty day; otherwise the
-    /// day's share of the busiest day scaled to the chart height — or `0` before
-    /// the entrance animation runs, so the bars spring up from the baseline.
-    private func barHeight(frac: CGFloat, full: CGFloat, empty: Bool) -> CGFloat {
-        if empty { return 3 }
-        guard grown else { return 0 }
-        return max(4, full * frac)
-    }
-
     /// Tooltip: "N words · Mon 3" for an active day, empty for a quiet one.
     private func dayHelp(_ day: (date: Date, words: Int)) -> String {
         guard day.words > 0 else { return "" }
@@ -847,73 +886,142 @@ private struct WordsPerDayCard: View {
     }
 }
 
-// MARK: - Fixes card
+/// Small sums behind the dashboard charts. Pure, unit-tested.
+enum DashboardChartMath {
+    /// The mean of the days that have any words (a quiet day is not a zero score),
+    /// or nil when fewer than two days have words — one day is not an average.
+    static func activeDayAverage(_ words: [Int]) -> Int? {
+        let active = words.filter { $0 > 0 }
+        guard active.count >= 2 else { return nil }
+        return Int((Double(active.reduce(0, +)) / Double(active.count)).rounded())
+    }
 
-private struct FixesCard: View {
-    @ObservedObject var stats: StatsStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Eyebrow(text: "Fixes by Talkie")
-            Text(stats.totalFixes.formatted())
-                .font(.talkieMetric(42))
-                .foregroundStyle(Theme.ink)
-
-            Divider().overlay(Theme.hairline).padding(.vertical, 2)
-
-            FixRow(label: "words polished", value: stats.wordsCorrected, color: Theme.featherCoral)
-            FixRow(label: "dictionary fixes", value: stats.dictionaryFixes, color: Theme.featherBlue)
-            FixRow(label: "fillers removed", value: stats.fillersRemoved, color: Theme.featherGold)
-        }
-        .talkieCard(fill: true)
+    /// Each part's share of the whole as a fraction (0 for an empty whole).
+    static func shares(_ parts: [Int]) -> [Double] {
+        let total = parts.reduce(0) { $0 + max(0, $1) }
+        guard total > 0 else { return parts.map { _ in 0 } }
+        return parts.map { Double(max(0, $0)) / Double(total) }
     }
 }
 
-private struct FixRow: View {
-    let label: String
-    let value: Int
-    let color: Color
+// MARK: - Figure tiles
+
+/// One figure of the dashboard's tile row: a tinted glyph and label, the number in
+/// the serif, and one line (or a small bar) of detail under it.
+struct DashboardTile<Detail: View>: View {
+    let title: String
+    let value: String
+    let symbol: String
+    /// Which colour of the data palette the glyph wears.
+    let series: Int
+    /// A chevron in the corner: the tile opens a page.
+    var opens = false
+    @ViewBuilder var detail: Detail
+
     var body: some View {
-        HStack(spacing: 8) {
-            Circle().fill(color).frame(width: 7, height: 7)
-            Text(value.formatted())
-                .font(.talkieHeading(13, weight: .semibold))
+        let tint = Theme.dataColor(series: series)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(tint)
+                    .frame(width: 20, height: 20)
+                    .background(Circle().fill(tint.opacity(0.16)))
+                    .accessibilityHidden(true)
+                Text(title.loc.uppercased())
+                    .font(.talkieEyebrow)
+                    .tracking(0.6)
+                    .foregroundStyle(Theme.inkSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
+                if opens {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.inkTertiary)
+                        .accessibilityHidden(true)
+                }
+            }
+            Text(verbatim: value)
+                .font(.talkieMetric(28))
                 .foregroundStyle(Theme.ink)
-                .monospacedDigit()
-            Text(LocalizedStringKey(label))
-                .font(.talkieHeading(13, weight: .regular))
-                .foregroundStyle(Theme.inkSecondary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.55)
             Spacer(minLength: 0)
+            detail
         }
+        .talkieCard(padding: 14, fill: true)
     }
 }
 
-// MARK: - Words card
+/// The quiet line under a tile's number.
+struct DashboardTileNote: View {
+    let text: String
+    var body: some View {
+        Text(verbatim: text)
+            .font(.talkieHeading(11.5, weight: .regular))
+            .foregroundStyle(Theme.inkSecondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+    }
+}
 
-private struct WordsCard: View {
+private struct WordsTile: View {
     @ObservedObject var stats: StatsStore
     @ObservedObject var history: HistoryStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Eyebrow(text: "Total words dictated")
-            Text(stats.totalWords.formatted())
-                .font(.talkieMetric(42))
-                .foregroundStyle(Theme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-
-            Divider().overlay(Theme.hairline).padding(.vertical, 2)
-
-            MiniStat(icon: "calendar", label: "Last 7 days",
-                     value: history.wordsLast7Days.formatted() + " words")
-            MiniStat(icon: "mic.fill", label: "Dictations",
-                     value: stats.totalDictations.formatted())
-            MiniStat(icon: "clock.fill", label: "Time spoken",
-                     value: formatDuration(stats.totalDurationSec))
+        DashboardTile(title: "Total words", value: stats.totalWords.formatted(), symbol: "text.word.spacing", series: 0) {
+            DashboardTileNote(text: String(format: "%@ in the last 7 days".loc, history.wordsLast7Days.formatted()))
         }
-        .talkieCard(fill: true)
+    }
+}
+
+private struct TimeTile: View {
+    @ObservedObject var stats: StatsStore
+
+    var body: some View {
+        DashboardTile(title: "Time spoken", value: formatDuration(stats.totalDurationSec), symbol: "clock.fill", series: 3) {
+            DashboardTileNote(text: String(format: "%@ dictations".loc, stats.totalDictations.formatted()))
+        }
+    }
+}
+
+/// Fixes: the total, and a bar split into what was polished, what the dictionary
+/// corrected and what fillers were removed.
+private struct FixesTile: View {
+    @ObservedObject var stats: StatsStore
+
+    private var parts: [(label: String, value: Int)] {
+        [("words polished", stats.wordsCorrected), ("dictionary fixes", stats.dictionaryFixes),
+         ("fillers removed", stats.fillersRemoved)]
+    }
+
+    private var breakdown: String {
+        parts.map { "\($0.value.formatted()) \($0.label.loc)" }.joined(separator: " · ")
+    }
+
+    var body: some View {
+        DashboardTile(title: "Fixes", value: stats.totalFixes.formatted(), symbol: "wand.and.stars", series: 1) {
+            let shares = DashboardChartMath.shares(parts.map(\.value))
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    ForEach(Array(shares.enumerated()), id: \.offset) { index, share in
+                        if share > 0 {
+                            Rectangle()
+                                .fill(Theme.dataColor(series: index))
+                                .frame(width: max(3, (geo.size.width - 4) * share))
+                        }
+                    }
+                    if stats.totalFixes == 0 { Rectangle().fill(Theme.surfaceSunken) }
+                }
+                .clipShape(Capsule(style: .continuous))
+            }
+            .frame(height: 6)
+            .padding(.bottom, 3)
+            .help(breakdown)
+        }
+        .accessibilityValue(Text(verbatim: breakdown))
     }
 }
 
@@ -928,19 +1036,21 @@ private struct RecordsCard: View {
     @ObservedObject var activity: ActivityStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
             Eyebrow(text: "Personal records")
-
-            MiniStat(icon: "speedometer", label: "Fastest speed",
-                     value: stats.bestWPM > 0 ? "\(Int(stats.bestWPM.rounded())) WPM" : "—")
-            MiniStat(icon: "text.alignleft", label: "Longest dictation",
-                     value: longestDictationValue)
-            MiniStat(icon: "calendar", label: "Biggest word day",
-                     value: activity.biggestWordDay > 0
-                         ? activity.biggestWordDay.formatted() + " words"
-                         : "—")
+            Spacer(minLength: 6)
+            VStack(spacing: 5) {
+                MiniStat(icon: "speedometer", label: "Fastest speed",
+                         value: stats.bestWPM > 0 ? "\(Int(stats.bestWPM.rounded())) WPM" : "—")
+                MiniStat(icon: "text.alignleft", label: "Longest dictation",
+                         value: longestDictationValue)
+                MiniStat(icon: "calendar", label: "Biggest word day",
+                         value: activity.biggestWordDay > 0
+                             ? activity.biggestWordDay.formatted() + " words"
+                             : "—")
+            }
         }
-        .talkieCard(fill: true)
+        .talkieCard(padding: 16, fill: true)
     }
 
     /// "N words (M:SS)" once there's a real longest dictation, else an em dash.
@@ -961,28 +1071,33 @@ private struct MiniStat: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(Theme.inkTertiary)
                 .frame(width: 16)
             Text(LocalizedStringKey(label))
-                .font(.talkieHeading(13, weight: .regular))
+                .font(.talkieHeading(12.5, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
+                .lineLimit(1)
             Spacer(minLength: 4)
             Text(value)
-                .font(.talkieHeading(13, weight: .semibold))
+                .font(.talkieHeading(12.5, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
     }
 }
 
 // MARK: - Usage breakdown card
 
+/// Where the words go: one bar split by app (each app a colour of the data
+/// palette), then the apps as a legend with their share.
 private struct UsageCard: View {
     @ObservedObject var appUsage: AppUsageStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let slices = appUsage.topApps(limit: 5)
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Eyebrow(text: "Where your words go")
                 Spacer()
@@ -993,61 +1108,67 @@ private struct UsageCard: View {
                 }
             }
 
-            let slices = appUsage.topApps(limit: 6)
             if slices.isEmpty {
                 EmptyHint(icon: "app.dashed",
                           text: "Dictate into your apps and they'll show up here.")
+                Spacer(minLength: 0)
             } else {
-                VStack(spacing: 11) {
-                    ForEach(slices, id: \.id) { slice in
-                        UsageRow(slice: slice)
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(Array(slices.enumerated()), id: \.element.id) { index, slice in
+                            Rectangle()
+                                .fill(Theme.dataColor(series: index))
+                                .frame(width: max(3, (geo.size.width - 2 * CGFloat(slices.count)) * slice.fraction))
+                                .help("\(slice.name) · \(Int((slice.fraction * 100).rounded()))%")
+                        }
+                        // Everything outside the top apps.
+                        Rectangle().fill(Theme.surfaceSunken)
+                    }
+                    .clipShape(Capsule(style: .continuous))
+                }
+                .frame(height: 10)
+
+                VStack(spacing: 6) {
+                    ForEach(Array(slices.enumerated()), id: \.element.id) { index, slice in
+                        UsageRow(slice: slice, color: Theme.dataColor(series: index))
                     }
                 }
+                Spacer(minLength: 0)
             }
         }
-        .talkieCard(fill: true)
+        .talkieCard(padding: 16, fill: true)
     }
 }
 
 private struct UsageRow: View {
     let slice: UsageSlice
+    let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                Group {
-                    // `slice.id` is the app's bundle id when one was captured
-                    // (the common case); older records fall back to the app
-                    // name, which won't resolve — the category symbol below
-                    // covers that gracefully.
-                    if let icon = AppIconLookup.icon(forBundleID: slice.id) {
-                        Image(nsImage: icon).resizable().scaledToFit()
-                    } else {
-                        Image(systemName: slice.category.symbol)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.inkTertiary)
-                    }
-                }
-                .frame(width: 16, height: 16)
-                Text(slice.name)
-                    .font(.talkieHeading(13, weight: .medium))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(1)
-                Spacer()
-                Text("\(Int((slice.fraction * 100).rounded()))%")
-                    .font(.talkieHeading(12, weight: .semibold))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .monospacedDigit()
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.surfaceSunken)
-                    Capsule()
-                        .fill(LinearGradient(gradient: Theme.emberRamp, startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(6, geo.size.width * slice.fraction))
+        HStack(spacing: 8) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Group {
+                // `slice.id` is the app's bundle id when one was captured (the common
+                // case); older records fall back to the app name, which won't
+                // resolve — the category symbol below covers that gracefully.
+                if let icon = AppIconLookup.icon(forBundleID: slice.id) {
+                    Image(nsImage: icon).resizable().scaledToFit()
+                } else {
+                    Image(systemName: slice.category.symbol)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.inkTertiary)
                 }
             }
-            .frame(height: 7)
+            .frame(width: 16, height: 16)
+            Text(slice.name)
+                .font(.talkieHeading(12.5, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+            Spacer(minLength: 6)
+            Text("\(Int((slice.fraction * 100).rounded()))%")
+                .font(.talkieHeading(12, weight: .semibold))
+                .foregroundStyle(Theme.inkSecondary)
+                .monospacedDigit()
         }
     }
 }
@@ -1060,8 +1181,12 @@ private struct StreakCard: View {
     private let gap: CGFloat = 3
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.brand)
+                    .accessibilityHidden(true)
                 Eyebrow(text: "\(activity.currentStreak)-day streak")
                 Spacer()
                 Text("Longest \(activity.longestStreak)")
@@ -1076,6 +1201,8 @@ private struct StreakCard: View {
             }
             .frame(height: 7 * cell + 6 * gap + 16)
 
+            Spacer(minLength: 0)
+
             HStack(spacing: 6) {
                 Text("Less").font(.system(size: 10)).foregroundStyle(Theme.inkTertiary)
                 ForEach(0..<5) { lvl in
@@ -1087,7 +1214,7 @@ private struct StreakCard: View {
                 Spacer()
             }
         }
-        .talkieCard(fill: true)
+        .talkieCard(padding: 16, fill: true)
     }
 }
 

@@ -1092,7 +1092,6 @@
 "Add a word that says what it does — that one is only filler words." = "Ajoutez un mot qui dit ce que ça fait : ce ne sont que des mots de remplissage.";
 "After" = "Après";
 "Already used by “%@” — pick another phrase." = "Déjà utilisé par « %@ » : choisissez une autre expression.";
-"Also hold %@ and say a format" = "Maintenez aussi %@ et dites un format";
 "Back to normal text" = "Retour au texte normal";
 "Before" = "Avant";
 "Change to UPPER, lower or Title case" = "Passer en MAJUSCULES, minuscules ou Casse De Titre";
@@ -1109,11 +1108,8 @@
 "Formatting while you dictate is off. Turn it on in Options below." = "La mise en forme pendant la dictée est désactivée. Activez-la ci-dessous dans Options.";
 "Hold %@ and talk" = "Maintenez %@ et parlez";
 "Hold a second key while you dictate and say how the next words should look." = "Maintenez une seconde touche pendant la dictée et dites à quoi doivent ressembler les mots suivants.";
-"Hold the format key while you say it." = "Maintenez la touche de format pendant que vous le dites.";
 "Insert a fixed text" = "Insérer un texte fixe";
-"Let go and keep talking — it comes out formatted" = "Relâchez et continuez à parler : le texte sort mis en forme";
 "Listen for the format key during a dictation." = "Écouter la touche de format pendant une dictée.";
-"Listening for a format…" = "À l'écoute d'un format…";
 "Make it" = "Mettre en";
 "Make your own" = "Créez la vôtre";
 "Make your own command" = "Créez votre propre commande";
@@ -1152,6 +1148,10 @@
 
 // MARK: - Speech service recovery (wake / stale connection)
 "%@ couldn't reach macOS speech recognition. Press the key again — if it keeps happening, quit and reopen %@." = "%@ n’a pas pu joindre la reconnaissance vocale de macOS. Appuie à nouveau sur la touche – si le problème persiste, quitte %@ et rouvre-le.";
+
+// MARK: - Skeleton loading (accessibility labels)
+"Loading…" = "Chargement…";
+"Searching…" = "Recherche…";
 /* Spoken punctuation (Commands page) */
 "Punctuation you can say" = "Ponctuation à dire à voix haute";
 "Say punctuation" = "Dire la ponctuation";
@@ -1171,8 +1171,6 @@
 "Hide other languages" = "Masquer les autres langues";
 "Add your own wording" = "Ajouter ta propre formulation";
 "It works like the built-in ones. Your own words can be removed again with the ×." = "Elle fonctionne comme les formulations intégrées. Tu peux retirer les tiennes avec la ×.";
-"While you hold the format key, what you say is read as a format, in any of your languages. If no format is caught, your words are simply kept as text." = "Tant que tu maintiens la touche de format, ce que tu dis est lu comme un format, dans n’importe laquelle de tes langues. Si aucun format n’est reconnu, tes mots sont simplement conservés comme texte.";
-"%@ is on" = "%@ est activé";
 "No format heard · kept as text" = "Aucun format entendu · conservé comme texte";
 "No format heard. Your words were kept as text." = "Aucun format entendu. Tes mots ont été conservés comme texte.";
 
@@ -1181,3 +1179,85 @@
 "Dictation keeps working normally." = "La dictée fonctionne normalement.";
 "Your own wording" = "Ta formulation";
 "+%d more" = "+%d de plus";
+
+// MARK: - Appearance (logo backdrop, glass), profile photo, meeting-notes window
+"Match the Mac" = "Comme le Mac";
+"Light (appearance)" = "Clair";
+"Dark (appearance)" = "Sombre";
+"Blue" = "Bleu";
+"Red" = "Rouge";
+"Gold" = "Or";
+"Green" = "Vert";
+"Plum" = "Prune";
+"Macaw" = "Ara";
+"Ember" = "Braise";
+"Lagoon" = "Lagon";
+"Dusk" = "Crépuscule";
+"Plain" = "Uni";
+"Clear (glass)" = "Transparent";
+"Frosted" = "Dépoli";
+"Solid" = "Opaque";
+"Profile & appearance" = "Profil et apparence";
+"Your photo and name, plus colors, backdrop and glass." = "Votre photo et votre nom, ainsi que les couleurs, le fond et le verre.";
+"Reset appearance" = "Réinitialiser l’apparence";
+"Shown on the dashboard." = "Affiché sur le tableau de bord.";
+"Colors" = "Couleurs";
+"Appearance" = "Apparence";
+"Accent color" = "Couleur d’accentuation";
+"Leads buttons, selection and links." = "Pour les boutons, la sélection et les liens.";
+"Backdrop" = "Fond";
+"Strength" = "Intensité";
+"Soft" = "Doux";
+"Vivid" = "Vif";
+"Direction" = "Direction";
+"Turn it on every page" = "Le faire pivoter à chaque page";
+"Each page shows the gradient from a different angle." = "Chaque page montre le dégradé sous un angle différent.";
+"Glass" = "Verre";
+"With Reduce Transparency on in System Settings, cards are always solid." = "Si Réduire la transparence est activé dans Réglages Système, les cartes sont toujours opaques.";
+"Cards" = "Cartes";
+"How much of the backdrop shows through." = "La part du fond visible à travers.";
+"Change photo…" = "Changer de photo…";
+"That file couldn’t be read as a picture." = "Ce fichier n’a pas pu être lu comme une image.";
+"Or drop a picture onto the circle. It is centered on your face and stays on this Mac." = "Ou déposez une image sur le cercle. Elle est centrée sur votre visage et reste sur ce Mac.";
+"Your photo" = "Votre photo";
+"Open the notes window" = "Ouvrir la fenêtre de notes";
+"Meeting notes" = "Notes de réunion";
+"Recording (mic only)" = "Enregistrement (micro seul)";
+"Stays on top of other windows" = "Reste au-dessus des autres fenêtres";
+"Keep on top of other windows" = "Garder au-dessus des autres fenêtres";
+"Said just now" = "Dit à l’instant";
+"Current topic: %@" = "Sujet actuel : %@";
+"Notes for your next meeting" = "Des notes pour votre prochaine réunion";
+"Start recording, then write here. Every line keeps the moment you wrote it and goes into the summary word for word." = "Lancez l’enregistrement, puis écrivez ici. Chaque ligne garde le moment où vous l’avez écrite et entre mot pour mot dans le résumé.";
+"A running summary isn’t available for this recording. The full summary is written when you stop." = "Aucun résumé en cours n’est disponible pour cet enregistrement. Le résumé complet est rédigé à l’arrêt.";
+"What is said appears here a few seconds after it is spoken." = "Ce qui est dit apparaît ici quelques secondes plus tard.";
+"Provisional. The final summary is written when you stop." = "Provisoire. Le résumé final est rédigé à l’arrêt.";
+"Open the notes window when recording starts" = "Ouvrir la fenêtre de notes au début de l’enregistrement";
+"A small window beside the call for your notes, with what has been said so far. It stays closed while the main window is in front." = "Une petite fenêtre à côté de l’appel pour vos notes, avec ce qui a été dit jusqu’ici. Elle reste fermée tant que la fenêtre principale est au premier plan.";
+"While recording" = "Pendant l’enregistrement";
+
+// MARK: - Dashboard grid (tiles, compact scratchpad, charts tuned to the backdrop)
+"Total words" = "Mots au total";
+"Fixes" = "Corrections";
+"Speed" = "Vitesse";
+"%@ in the last 7 days" = "%@ ces 7 derniers jours";
+"%@ dictations" = "%@ dictées";
+"%@ a day when you dictate" = "%@ par jour de dictée";
+"After a few dictations" = "Après quelques dictées";
+"%d open" = "%d à faire";
+"Jot notes and tasks — type “- ” for a checkbox. Anything that can’t be pasted lands here too." = "Notez idées et tâches — tapez « - » pour une case à cocher. Ce qui ne peut pas être collé arrive ici aussi.";
+"The gradient is mixed from the colors of the logo and sits behind every page. Charts and buttons take their colors from it." = "Le dégradé est composé des couleurs du logo et se trouve derrière chaque page. Les graphiques et les boutons reprennent ses couleurs.";
+
+/* Command key as a switch, pill hints, screen sharing (2026-11) */
+"Hide from screen sharing" = "Masquer lors du partage d’écran";
+"The meeting pill and the notes window stay visible to you, but are left out when you share your screen or record it." = "L’indicateur de réunion et la fenêtre de notes restent visibles pour vous, mais n’apparaissent pas quand vous partagez ou enregistrez votre écran.";
+"Listening for a format. Say it, then press %@ again." = "À l’écoute d’un format. Dites-le, puis appuyez à nouveau sur %@.";
+"Say the format, then press %@ again" = "Dites le format, puis appuyez à nouveau sur %@";
+"Checking…" = "Vérification…";
+"%1$@ on · press %2$@ twice to end" = "%1$@ activé · appuyez deux fois sur %2$@ pour terminer";
+"Format: %1$@. Press %2$@ twice to end it." = "Format : %1$@. Appuyez deux fois sur %2$@ pour le terminer.";
+"Press the format key once, say a format in any of your languages, then press the key again. If no format is caught, your words are simply kept as text." = "Appuyez une fois sur la touche de format, dites un format dans l’une de vos langues, puis appuyez à nouveau sur la touche. Si aucun format n’est reconnu, vos mots sont simplement conservés comme texte.";
+"Press %@ once and say a format" = "Appuyez une fois sur %@ et dites un format";
+"Press %@ again and keep talking — it comes out formatted" = "Appuyez à nouveau sur %@ et continuez à parler : le texte sort mis en forme";
+"Press the format key, say it, then press the key again." = "Appuyez sur la touche de format, dites-le, puis appuyez à nouveau sur la touche.";
+"%1$@ on · applied when you stop · %2$@ twice ends it" = "%1$@ activé · appliqué à l’arrêt · %2$@ deux fois pour terminer";

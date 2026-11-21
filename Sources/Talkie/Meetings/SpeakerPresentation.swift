@@ -39,23 +39,25 @@ enum SpeakerPresentation {
         return out
     }
 
-    /// Whether the transcript should render per-speaker labels: two or more distinct
-    /// speakers among the segments.
+    /// Whether segments can carry per-speaker labels at all: there is at least one.
+    /// (One speaker is labelled too: a meeting always says who spoke.)
     static func showsLabels(_ segments: [MeetingSegment]?) -> Bool {
         guard let segments else { return false }
-        return Set(segments.map(\.speaker)).count >= 2
+        return !segments.isEmpty
     }
 
     /// Whether the Meetings tab renders `meeting` as per-speaker turns built from its
-    /// segments. Only when diarization rewrote this meeting's labels AND its transcript
-    /// still equals what those segments render to (so a hand-edited transcript, whose
-    /// segments are stale, shows the user's text). Every other meeting — pre-feature,
-    /// unchanged/failed diarization, edited — renders `meeting.transcript` exactly as
-    /// before the feature.
+    /// segments. Only when the speaker pass ran to the end for this meeting (it told
+    /// people apart, or confirmed the labels as they were) AND its transcript still
+    /// equals the labelled layout those segments render to. So a hand-edited
+    /// transcript (whose segments are stale) shows the user's text, and a note saved
+    /// as plain prose (older solo meetings, solo imports) stays plain prose. Every
+    /// other meeting — pre-feature, timed-out or failed pass — renders
+    /// `meeting.transcript` exactly as before the feature.
     static func showsTurns(for meeting: Meeting) -> Bool {
-        guard meeting.diarization == .applied, let segments = meeting.segments,
-              showsLabels(segments) else { return false }
-        return MeetingTranscriptRenderer.render(segments: segments) == meeting.transcript
+        guard meeting.diarization == .applied || meeting.diarization == .unchanged,
+              let segments = meeting.segments, showsLabels(segments) else { return false }
+        return MeetingTranscriptRenderer.render(segments: segments, labelSolo: true) == meeting.transcript
     }
 
     /// True for each segment that starts a new turn (its speaker differs from the

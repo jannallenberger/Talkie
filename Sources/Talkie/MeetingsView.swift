@@ -53,7 +53,8 @@ struct MeetingsView: View {
     /// publishing through SwiftUI itself. Held via `@State` only so its IDENTITY
     /// survives across body re-evaluations; it is deliberately NOT an
     /// `ObservableObject` — mutating `.text` is silent by design.
-    @State private var notesDraftBox = NotesDraftBox()
+    private var notesDraftBox: NotesDraftBox { recorder.notesDraft }
+    @ObservedObject private var appearance = AppearanceStore.shared
 
     private static let listWidth: CGFloat = 256
     private static let pagePadding: CGFloat = Theme.Space.pageSide
@@ -92,7 +93,8 @@ struct MeetingsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Theme.canvas)
+        // A new accent repaints the page (colour tokens are plain reads).
+        .id(appearance.look.paintKey)
         .contentShape(Rectangle())
         .onAppear {
             selectedID = MeetingSelection.resolve(current: selectedID ?? initialSelection, old: [], new: meetingIDs)
@@ -122,7 +124,7 @@ struct MeetingsView: View {
                             .foregroundStyle(rejectedDrop ? Theme.featherRed : Theme.coral)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Capsule().fill(Theme.surface))
+                            .background(Capsule().fill(Theme.surfaceSolid))
                             .padding(.top, 18)
                     }
                     .allowsHitTesting(false)
@@ -187,6 +189,15 @@ struct MeetingsView: View {
         TalkiePageHeader(title: "Meetings") {
             languagePicker
             recordControl
+            Button {
+                AppDelegate.shared?.showMeetingNotesWindow()
+            } label: {
+                Image(systemName: "note.text")
+                    .font(.system(size: 14, weight: .medium))
+            }
+            .buttonStyle(.talkie(.quiet))
+            .help("Open the notes window".loc)
+            .accessibilityLabel("Open the notes window".loc)
             if let importer {
                 Button {
                     ImportPanel.run(importer)
@@ -260,13 +271,8 @@ struct MeetingsView: View {
             }
             .padding(.horizontal, 4)
             Button("Stop & summarize") {
-                // Flush the notes draft synchronously BEFORE stop() reads
-                // `recorder.notes` — `stop()` reads it a few lines after setting
-                // `isRecording = false`, with no `await` in between, so a
-                // debounce-driven commit reacting to `isRecording` flipping would
-                // always be too late. See `NotesDraftBox`.
-                recorder.notes = notesDraftBox.text
-                recorder.noteLines = notesDraftBox.lines
+                // `stop()` takes the editors' latest text itself (see
+                // `MeetingRecorder.notesDraft`), so the last keystroke is never lost.
                 Task { await recorder.stop() }
             }
             .buttonStyle(.talkie(.primary, tint: Theme.featherRed))
@@ -317,10 +323,8 @@ struct MeetingsView: View {
                     }
                 }
                 .padding(.horizontal, 8)
-                .padding(.top, 4)
-                .padding(.bottom, 12)
             }
-            .scrollEdgeEffectHidden(true, for: .top)
+            .talkieScrollEdgeFades(top: 6, bottom: 14)
             .focusable()
             .focusEffectDisabled()
             .focused($listFocused)
@@ -374,10 +378,9 @@ struct MeetingsView: View {
                 .id(meeting.id)
                 .padding(.leading, 4)
                 .padding(.trailing, Self.pagePadding)
-                .padding(.bottom, Self.pagePadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .scrollEdgeEffectHidden(true, for: .top)
+            .talkieScrollEdgeFades(top: 8, bottom: Self.pagePadding)
         }
     }
 
@@ -544,6 +547,61 @@ final class NotesDraftBox {
     var text: String = ""
     /// Per line, the meeting time it was started (kept in step with `text`).
     var lines: [MeetingNoteStamper.Line] = []
+    /// An editor has seeded or changed this draft during the current recording, so
+    /// it (not the recorder's last committed copy) is the newest text.
+    var isLive = false
+
+    func reset() {
+        text = ""
+        lines = []
+        isLive = false
+    }
+}
+
+/// The last things said in the running recording, newest last: what the small
+/// notes window shows under "Said just now". Publishes only when a turn lands.
+@MainActor
+final class LiveTranscriptTail: ObservableObject {
+    struct Line: Identifiable, Equatable {
+        let id: Int
+        let seconds: Double
+        let speaker: MeetingSpeaker
+        let text: String
+    }
+
+    @Published private(set) var lines: [Line] = []
+    private var knownCount = 0
+
+    /// A glance, not the transcript.
+    static let maxLines = 40
+
+    #if DEBUG
+    /// Test-only seam for the notes-window snapshot.
+    func stageForTesting(_ turns: [TurnLog.Turn]) {
+        lines = Self.lines(from: turns, totalCount: turns.count)
+    }
+    #endif
+
+    func reset() {
+        knownCount = 0
+        if !lines.isEmpty { lines = [] }
+    }
+
+    /// Pick up new turns from the log (a no-op when none arrived).
+    func refresh(from log: TurnLog) {
+        guard let tail = log.tail(Self.maxLines, ifCountDiffersFrom: knownCount) else { return }
+        knownCount = tail.count
+        lines = Self.lines(from: tail.turns, totalCount: tail.count)
+    }
+
+    /// The tail as display lines in spoken order. `id` is the turn's place in the
+    /// whole log, so a line keeps its identity as older ones scroll out.
+    static func lines(from turns: [TurnLog.Turn], totalCount: Int) -> [Line] {
+        let first = totalCount - turns.count
+        return turns.enumerated()
+            .map { Line(id: first + $0.offset, seconds: $0.element.elapsed, speaker: $0.element.speaker, text: $0.element.text) }
+            .sorted { ($0.seconds, $0.id) < ($1.seconds, $1.id) }
+    }
 }
 
 /// Live notes during a recording. Every line keeps the meeting time at which it was
@@ -564,6 +622,9 @@ final class NotesDraftBox {
 struct RecordingNotesEditor: View {
     @ObservedObject var recorder: MeetingRecorder
     let draftBox: NotesDraftBox
+    /// The editor takes all the height it is given (the notes window) instead of
+    /// the compact band of the Meetings page panel.
+    var fillsHeight = false
 
     @State private var draft: String = ""
     @FocusState private var isFocused: Bool
@@ -594,7 +655,7 @@ struct RecordingNotesEditor: View {
             TextEditor(text: $draft)
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.ink)
-                .frame(minHeight: 88, maxHeight: 150)
+                .frame(minHeight: 88, maxHeight: fillsHeight ? .infinity : 150)
                 .talkieWell()
                 .overlay(alignment: .topLeading) {
                     if draft.isEmpty {
@@ -614,19 +675,27 @@ struct RecordingNotesEditor: View {
         // The surrounding recording panel draws the card.
         .frame(maxWidth: .infinity)
         .onAppear {
-            // Seed from whatever `recorder.notes` already holds — a recording
-            // started before this page was opened, or recovered mid-flight —
-            // so re-opening the Meetings tab never shows a blank editor over
-            // real notes.
-            // Lines first, so seeding the text doesn't re-stamp them as new.
-            draftBox.lines = recorder.noteLines.map(\.text) == recorder.notes.components(separatedBy: "\n")
-                ? recorder.noteLines
-                : MeetingNoteStamper.lines(text: recorder.notes, notes: recorder.noteItems)
-            draft = recorder.notes
-            draftBox.text = draft
+            // Seed from the shared draft: another editor's newest text when one is
+            // already open, else whatever `recorder.notes` holds (a recording started
+            // before any editor was shown, or recovered mid-flight) — so opening an
+            // editor never shows a blank over real notes.
+            if !draftBox.isLive {
+                // Lines first, so seeding the text doesn't re-stamp them as new.
+                draftBox.lines = recorder.noteLines.map(\.text) == recorder.notes.components(separatedBy: "\n")
+                    ? recorder.noteLines
+                    : MeetingNoteStamper.lines(text: recorder.notes, notes: recorder.noteItems)
+                draftBox.text = recorder.notes
+                draftBox.isLive = true
+            }
+            draft = draftBox.text
+        }
+        // The other editor (Meetings page / notes window) typed: show its text here.
+        .onChange(of: recorder.notes) { _, committed in
+            if !isFocused, committed != draft { draft = committed }
         }
         .onChange(of: draft) { _, newValue in
             draftBox.text = newValue
+            draftBox.isLive = true
             // A line gets the meeting time at which the user started it.
             draftBox.lines = MeetingNoteStamper.restamp(draftBox.lines, text: newValue, now: recorder.elapsed)
             scheduleCommit(newValue)
@@ -661,16 +730,22 @@ struct RecordingNotesEditor: View {
 /// lands (about once a minute), so it never re-renders on the 1 Hz tick.
 struct LiveSoFarView: View {
     @ObservedObject var state: LiveSummaryState
+    /// Take the width and height offered (the notes window) instead of the fixed
+    /// column beside the Meetings page editor.
+    var fills = false
 
     var body: some View {
         if state.phase != .off {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .center, spacing: 8) {
-                    Eyebrow(text: "So far")
-                    Spacer()
-                    TalkieTag(text: "Provisional".loc)
+                // The notes window names this list on its own tab chip.
+                if !fills {
+                    HStack(alignment: .center, spacing: 8) {
+                        Eyebrow(text: "So far")
+                        Spacer()
+                        TalkieTag(text: "Provisional".loc)
+                    }
+                    .frame(minHeight: 24)
                 }
-                .frame(minHeight: 24)
                 if state.snapshot.isEmpty {
                     TalkieStatusLine(text: waitingText, tone: .progress)
                 } else {
@@ -682,14 +757,16 @@ struct LiveSoFarView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxHeight: 150)
-                    Text(footerText)
+                    .frame(maxHeight: fills ? .infinity : 150)
+                    .scrollEdgeEffectHidden(true, for: .all)
+                    Text(fills ? "Provisional. The final summary is written when you stop.".loc : footerText)
                         .font(.talkieHeading(11.5, weight: .regular))
                         .foregroundStyle(Theme.inkTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .frame(width: 300, alignment: .topLeading)
+            .frame(width: fills ? nil : 300, alignment: .topLeading)
+            .frame(maxWidth: fills ? .infinity : nil, maxHeight: fills ? .infinity : nil, alignment: .topLeading)
         }
     }
 
@@ -881,6 +958,16 @@ private struct MeetingDetail: View, Equatable {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .talkieCard(padding: 16)
                 }
+            } else if isSummarizing || isDiarizing {
+                // The summary is on its way (the status line above says which step):
+                // hold its place with a skeleton shaped like the summary card, so the
+                // transcript doesn't jump down when it lands.
+                VStack(alignment: .leading, spacing: 8) {
+                    Eyebrow(text: "Summary")
+                    SummarySkeleton()
+                        .talkieCard(padding: 16)
+                }
+                .transition(.opacity)
             }
             transcriptSection
         }
@@ -1051,12 +1138,16 @@ private struct MeetingDetail: View, Equatable {
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.inkTertiary)
             }
+            // No card behind the transcript: it is far taller than the window, and
+            // glass that tall is dropped and redrawn as it scrolls (the surface
+            // popped in and out). The text sits straight on the page.
             transcriptBody
-                .talkieCard(padding: 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 2)
         }
     }
 
-    /// The transcript itself, on a card under the section label: the editor, the
+    /// The transcript itself, under the section label: the editor, the
     /// click-to-play lines, speaker turns, or the plain text, plus any learn chips.
     @ViewBuilder
     private var transcriptBody: some View {
@@ -1076,11 +1167,7 @@ private struct MeetingDetail: View, Equatable {
             } else if SpeakerPresentation.showsTurns(for: meeting), let segments = meeting.segments {
                 SpeakerTurnsView(segments: segments)
             } else {
-                Text(meeting.namedTranscript)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                LongTranscriptText(text: meeting.namedTranscript)
             }
             if draft == nil, !learnable.isEmpty {
                 learnChips
@@ -1336,7 +1423,16 @@ struct MeetingPlaybackView: View {
         self.audioFiles = audioFiles
         self.folderURL = folderURL
         self.showsSpeakerLabels = showsSpeakerLabels
+        // Derived once per input, not on every playback tick (the body re-runs ~12×/s
+        // while audio plays).
+        self.showLabels = showsSpeakerLabels && SpeakerPresentation.showsLabels(segments)
+        self.colorSlots = SpeakerPresentation.colorIndices(for: segments.map(\.speaker))
+        self.turnStarts = SpeakerPresentation.turnStarts(segments)
     }
+
+    private let showLabels: Bool
+    private let colorSlots: [String: Int]
+    private let turnStarts: [Bool]
 
     /// The loaded player, or nil before the first tap. Recreated when a tap targets a
     /// different file than the one currently loaded (two-stream Me↔Them switch).
@@ -1351,9 +1447,6 @@ struct MeetingPlaybackView: View {
     /// the row shows an honest one-line notice instead of silently doing nothing.
     @State private var loadError = false
 
-    /// ~12 Hz is smooth enough for a moving highlight without busy-spinning; it only
-    /// does work while something is actually playing.
-    private let ticker = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
 
     /// The segment currently sounding (for the highlight), or nil when paused/stopped or
     /// playing a different file's stream. Pure function over the polled time.
@@ -1363,21 +1456,21 @@ struct MeetingPlaybackView: View {
             at: currentTime, segments: segments, fileName: currentFile, audioFiles: audioFiles)
     }
 
-    private var showLabels: Bool { showsSpeakerLabels && SpeakerPresentation.showsLabels(segments) }
-    private var colorSlots: [String: Int] { SpeakerPresentation.colorIndices(for: segments.map(\.speaker)) }
-    private var turnStarts: [Bool] { SpeakerPresentation.turnStarts(segments) }
-
     var body: some View {
         let slots = colorSlots
         let starts = turnStarts
-        VStack(alignment: .leading, spacing: 2) {
+        // Resolved once per render, not once per row (it scans the segments).
+        let active = activeIndex
+        // Lazy: a long meeting has hundreds to thousands of lines; only the ones near
+        // the visible part of the detail's scroll view are built.
+        LazyVStack(alignment: .leading, spacing: 2) {
             ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
                 if showLabels, starts[index] {
                     SpeakerLabel(speaker: segment.speaker, slot: slots[segment.speaker] ?? 0)
                         .padding(.leading, 6)
                         .padding(.top, index == 0 ? 0 : 8)
                 }
-                segmentRow(index: index, segment: segment)
+                segmentRow(index: index, segment: segment, isActive: active == index)
             }
             if loadError {
                 Text("That audio couldn’t be played — the file may be missing or incomplete.".loc)
@@ -1386,14 +1479,23 @@ struct MeetingPlaybackView: View {
                     .padding(.top, 4)
             }
         }
-        .onReceive(ticker) { _ in tick() }
+        // ~12 Hz is smooth enough for a moving highlight. The loop exists only while
+        // audio plays: it used to be a `Timer.publish` that fired forever (and was
+        // re-created on every parent render) even with nothing playing.
+        .task(id: isPlaying) {
+            guard isPlaying else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(80))
+                guard !Task.isCancelled else { return }
+                tick()
+            }
+        }
         .onDisappear(perform: teardown)
     }
 
     @ViewBuilder
-    private func segmentRow(index: Int, segment: MeetingSegment) -> some View {
+    private func segmentRow(index: Int, segment: MeetingSegment, isActive: Bool) -> some View {
         let playable = Meeting.audioFileName(forSpeaker: segment.audioKey, in: audioFiles) != nil
-        let isActive = activeIndex == index
         Button {
             toggle(segment: segment)
         } label: {
@@ -1525,6 +1627,64 @@ struct SpeakerLabel: View {
     }
 }
 
+/// A plain transcript. Short ones stay one selectable `Text`; a long one (an imported
+/// hour-long recording) is laid out paragraph by paragraph in a lazy stack, so only
+/// the visible part is typeset instead of tens of thousands of characters at once.
+/// (Selection then works within a paragraph; Copy still copies the whole transcript.)
+struct LongTranscriptText: View {
+    let text: String
+    private let paragraphs: [String]?
+
+    /// Above this many characters the transcript is split.
+    static let splitThreshold = 4_000
+
+    init(text: String) {
+        self.text = text
+        paragraphs = text.count > Self.splitThreshold
+            ? text.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            : nil
+    }
+
+    var body: some View {
+        if let paragraphs {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                    line(paragraph)
+                }
+            }
+        } else {
+            line(text)
+        }
+    }
+
+    private func line(_ value: String) -> some View {
+        Text(value)
+            .font(.system(size: 12.5))
+            .foregroundStyle(Theme.inkSecondary)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The summary card's placeholder: a lead sentence, then three bullets.
+struct SummarySkeleton: View {
+    var body: some View {
+        TalkieSkeletonGroup {
+            VStack(alignment: .leading, spacing: 6) {
+                TalkieSkeletonText(lines: 2, textSize: 13, lastLineFraction: 0.72)
+                ForEach([0.82, 0.64, 0.74], id: \.self) { fraction in
+                    HStack(spacing: 8) {
+                        TalkieSkeletonCircle(size: 5)
+                        TalkieSkeletonLine(fraction: fraction, textSize: 13)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 /// The read-only transcript for a meeting with two or more speakers (no kept audio):
 /// consecutive same-speaker segments merged into one turn under a single label.
 struct SpeakerTurnsView: View {
@@ -1532,7 +1692,8 @@ struct SpeakerTurnsView: View {
 
     var body: some View {
         let slots = SpeakerPresentation.colorIndices(for: segments.map(\.speaker))
-        VStack(alignment: .leading, spacing: 8) {
+        // Lazy like the playback list: only turns near the visible region are built.
+        LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(Array(SpeakerPresentation.turns(segments).enumerated()), id: \.offset) { _, turn in
                 VStack(alignment: .leading, spacing: 3) {
                     SpeakerLabel(speaker: turn.speaker, slot: slots[turn.speaker] ?? 0)

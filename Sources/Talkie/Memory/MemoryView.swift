@@ -16,7 +16,8 @@ struct MemoryView: View {
     @ObservedObject var contextGraph: ContextGraphStore
     @ObservedObject var history: HistoryStore
     @ObservedObject var searchEngine: SearchEngine
-    let meetingStore: MeetingStore
+    /// Observed so a renamed/deleted meeting updates its search row in place.
+    @ObservedObject var meetingStore: MeetingStore
     /// L4: kept in step with the visible history — deleting a dictation decrements
     /// its word/phrase counts, so the lifetime vocabulary never outlives the history
     /// it was built from.
@@ -47,6 +48,10 @@ struct MemoryView: View {
     /// every keystroke but on every unrelated re-render too (any `@Published`
     /// change on `history`/`contextGraph`/`meetingStore`/etc. recomputes `body`).
     @State private var hits: [SearchHit] = []
+    /// The query `hits` answers. While it differs from the field (debounce, or the
+    /// background search still running) the results are pending: the page shows a
+    /// skeleton, or the previous results dimmed — never a premature "No matches".
+    @State private var hitsQuery: String?
     /// A shorter retention the user picked that would delete entries, held until
     /// they confirm (or cancel) — the setting itself is untouched until then.
     @State private var pendingRetention: HistoryRetention?
@@ -76,22 +81,23 @@ struct MemoryView: View {
         }
     }
 
-    /// Waits ~200ms (debounce), then runs the same `SearchEngine.search` the old
-    /// inline-in-`body` call used — same query in, same results out — and caches
-    /// them into `hits` for `body` to render. `.task(id:)` cancels this task the
-    /// instant `trimmedQuery` changes again, so both the sleep and the scan below
-    /// bail out via `Task.isCancelled` for a superseded query rather than racing
-    /// a newer one to `hits`.
+    /// Waits ~200ms (debounce), then runs the same search the old inline call ran —
+    /// same query in, same results out — but OFF the main actor
+    /// (`searchInBackground`), and caches them into `hits` for `body` to render.
+    /// `.task(id:)` cancels this task the instant `trimmedQuery` changes again, so a
+    /// superseded query never races a newer one to `hits`.
     private func runSearch(for query: String) async {
         guard !query.isEmpty else {
             hits = []
+            hitsQuery = nil
             return
         }
         try? await Task.sleep(for: .milliseconds(200))
         guard !Task.isCancelled else { return }
-        let results = searchEngine.search(query)
+        let results = await searchEngine.searchInBackground(query)
         guard !Task.isCancelled else { return }
         hits = results
+        hitsQuery = query
     }
 
     // MARK: Page content (header + search + history)
@@ -255,7 +261,18 @@ struct MemoryView: View {
     /// populated by `runSearch(for:)` — `body` never scans inline.
     @ViewBuilder
     private var searchResults: some View {
-        if hits.isEmpty {
+        let pending = hitsQuery != trimmedQuery
+        if pending && hits.isEmpty {
+            // First results for this search are still coming: placeholders shaped
+            // like the result cards, so the feed doesn't jump when they land.
+            LazyVStack(spacing: 10) {
+                ForEach(0..<4, id: \.self) { i in
+                    MemoryRowSkeleton(lines: i % 2 == 0 ? 2 : 1)
+                }
+            }
+            .talkieSkeletonRegion(label: "Searching…")
+            .transition(.opacity)
+        } else if hits.isEmpty {
             emptyPrompt(title: "No matches",
                         subtitle: "Try a different word — this searches what you've said, your meetings, and what Talkie's picked up from them.",
                         icon: "magnifyingglass")
@@ -267,6 +284,10 @@ struct MemoryView: View {
                     resolvedRow(for: hit)
                 }
             }
+            // The previous query's results stay while the new ones are computed,
+            // dimmed so they read as "about to change".
+            .opacity(pending ? 0.55 : 1)
+            .animation(.easeOut(duration: 0.15), value: pending)
         }
     }
 
@@ -330,6 +351,24 @@ struct MemoryView: View {
 }
 
 /// One raw dictation row — copy, delete, date, source app.
+/// A placeholder shaped like `MemoryDictationRow`: the eyebrow meta line, then text.
+struct MemoryRowSkeleton: View {
+    var lines: Int = 2
+
+    var body: some View {
+        TalkieSkeletonGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    TalkieSkeletonLine(width: 120, textSize: 11)
+                    TalkieSkeletonLine(width: 56, textSize: 11)
+                }
+                TalkieSkeletonText(lines: lines, textSize: 13.5, lastLineFraction: lines == 1 ? 0.7 : 0.55)
+            }
+        }
+        .talkieCard(padding: 14)
+    }
+}
+
 private struct MemoryDictationRow: View {
     let entry: DictationEntry
     let formatter: DateFormatter
