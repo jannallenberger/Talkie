@@ -38,9 +38,8 @@ final class MeetingDigestBuilder: @unchecked Sendable {
     private var excerptIndex = 0
     private var graphTasks: [Task<[ContextGraphExtractor.Candidate], Never>] = []
     /// Every distinct speaker heard so far. A meeting that's only ever heard "Me" (the
-    /// common mic-only case) stays untagged -- matching `MeetingTranscriptRenderer`'s
-    /// solo branch, which emits bare untagged prose for a single-speaker transcript --
-    /// instead of always stamping "Me:"/"Them:" regardless of speaker count.
+    /// common mic-only case) stays untagged in the digest: the summary model gains
+    /// nothing from "Me:" on every line. (The saved transcript labels it all the same.)
     private var seenSpeakers: Set<MeetingSpeaker> = []
 
     /// Hard ceiling on LIVE map/graph-extract calls, mirroring `MeetingSummarizer`'s own

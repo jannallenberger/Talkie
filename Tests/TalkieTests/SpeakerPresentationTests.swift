@@ -27,9 +27,10 @@ final class SpeakerPresentationTests: XCTestCase {
         for v in m.values { XCTAssertTrue((1..<SpeakerPresentation.paletteSize).contains(v)) }
     }
 
-    func testShowsLabelsNeedsTwoDistinctSpeakers() {
+    func testShowsLabelsNeedsSegmentsNotTwoSpeakers() {
         XCTAssertFalse(SpeakerPresentation.showsLabels(nil))
-        XCTAssertFalse(SpeakerPresentation.showsLabels([seg("Me"), seg("Me")]))
+        XCTAssertFalse(SpeakerPresentation.showsLabels([]))
+        XCTAssertTrue(SpeakerPresentation.showsLabels([seg("Me"), seg("Me")]), "one speaker is labelled too")
         XCTAssertTrue(SpeakerPresentation.showsLabels([seg("Me"), seg("Them")]))
     }
 

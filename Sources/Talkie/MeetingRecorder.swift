@@ -898,7 +898,7 @@ final class MeetingRecorder: ObservableObject {
             startedAt: startedAt.timeIntervalSince1970,
             farEnd: farEnd,
             notes: notes,
-            transcript: MeetingTranscriptRenderer.render(turns),
+            transcript: MeetingTranscriptRenderer.render(turns, labelSolo: true),
             noteItems: noteItems
         )
         guard let data = Self.encodePartial(partial) else { return }
@@ -1114,7 +1114,9 @@ final class MeetingRecorder: ObservableObject {
         // Pass the meeting `duration` so the renderer can de-collapse a stalled-recognizer
         // timestamp collapse (a long run of one speaker's turns frozen under a single
         // timecode) into readable, spread-out lines. A no-op on healthy transcripts.
-        let transcript = MeetingTranscriptRenderer.render(finalTurns, duration: duration)
+        // A recorded meeting always says who spoke, also when only one person did
+        // (`labelSolo`): the mic lane is the user, so "Me" is a fact, not a guess.
+        let transcript = MeetingTranscriptRenderer.render(finalTurns, duration: duration, labelSolo: true)
         let clean = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         // Per-segment audio-clock timings for captions/click-to-play/chapters. Built
         // from the SAME final snapshot as the transcript, so they never disagree; the
