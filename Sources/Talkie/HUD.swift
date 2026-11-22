@@ -313,11 +313,20 @@ final class HUDController {
         }
     }
 
-    // Compact panel — the transparent canvas the pill floats in. The pill hugs the
-    // notch (top-anchored), so the extra height below is transparent headroom: it
-    // leaves room for the soft shadow, the drop-in entrance, and the copy-prompt
-    // pill expanding downward to a second line (the ⌥⌘V re-paste hint).
-    private static let panelSize = NSSize(width: 440, height: 104)
+    // The transparent canvas the pill floats in. The pill hugs the notch
+    // (top-anchored) and grows DOWNWARD: the live text (up to `PillLiveText` lines),
+    // the format status line, the copy-prompt's second line. Whatever the panel does
+    // not hold is cut off flat by the window edge, so it must fit the tallest pill
+    // plus its shadow: with the format line and a full tail in Increase Contrast the
+    // pill is 142 pt tall (its bottom 150 pt below the panel top), ×1.06 during the
+    // hands-free lock pop, + `pillShadowReach` ≈ 177 pt. The rest is transparent
+    // headroom whose clicks fall through (`PassthroughHostingView`).
+    // `PillPanelFitTests` keeps this honest.
+    static let panelSize = NSSize(width: 440, height: 184)
+
+    /// How far the pill's drop shadow reaches past its edge (`radius` 12 + `y` 6, see
+    /// `HUDView.pill`). The panel must leave this much room below the pill.
+    static let pillShadowReach: CGFloat = 18
 
     /// The pill's frame within the panel's content view, published by the SwiftUI
     /// layer. The pass-through hosting view consults it so clicks on the large
