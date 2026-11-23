@@ -1234,12 +1234,8 @@ struct TalkieScrollPage<Content: View>: View {
                 // A new accent, backdrop or card style repaints the page (colour
                 // tokens are plain reads).
                 .id(appearance.look.paintKey)
-                // No hover or clicks while the page moves (a fling otherwise sends a
-                // hover update to every row sliding under the pointer).
-                .talkieScrollContent()
         }
         .scrollContentBackground(.hidden)
-        .talkieCalmWhileScrolling()
         // The system's soft scroll edge effect, top and bottom (the bars it needs
         // take `Space.edgeBar` of each edge; the page padding is trimmed to match).
         .talkieScrollEdgeFades()

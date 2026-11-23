@@ -469,59 +469,6 @@ extension View {
     }
 }
 
-// MARK: - Calm while scrolling
-
-/// Turns hit testing off for a scroll view's content while it scrolls, and back on
-/// when it rests. Rows sliding under a still pointer otherwise each get a hover
-/// update, every frame of a fling — rows and button styles keep hover state, so a
-/// fast scroll re-rendered rows continuously on top of laying them out. A click
-/// can't land mid-scroll anyway; the first click still stops a scroll.
-private struct TalkieCalmWhileScrolling: ViewModifier {
-    @State private var scrolling = false
-
-    func body(content: Content) -> some View {
-        content
-            .environment(\.talkieIsScrolling, scrolling)
-            .onScrollPhaseChange { _, phase in
-                let now = phase.isScrolling
-                if now != scrolling { scrolling = now }
-            }
-    }
-}
-
-private struct TalkieIsScrollingKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
-extension EnvironmentValues {
-    /// True while the enclosing calm scroll view moves (see `talkieCalmWhileScrolling`).
-    var talkieIsScrolling: Bool {
-        get { self[TalkieIsScrollingKey.self] }
-        set { self[TalkieIsScrollingKey.self] = newValue }
-    }
-}
-
-/// The content side of `talkieCalmWhileScrolling`.
-private struct TalkieScrollContentCalm: ViewModifier {
-    @Environment(\.talkieIsScrolling) private var scrolling
-    func body(content: Content) -> some View {
-        content.allowsHitTesting(!scrolling)
-    }
-}
-
-extension View {
-    /// Put on a `ScrollView`: its content (marked `.talkieScrollContent()`) takes no
-    /// hover or clicks while it scrolls.
-    func talkieCalmWhileScrolling() -> some View {
-        modifier(TalkieCalmWhileScrolling())
-    }
-
-    /// Put on the content inside a `talkieCalmWhileScrolling` scroll view.
-    func talkieScrollContent() -> some View {
-        modifier(TalkieScrollContentCalm())
-    }
-}
-
 // MARK: - Scroll edge effect
 
 /// The system's own scroll edge effect (the soft blur content runs into under a
