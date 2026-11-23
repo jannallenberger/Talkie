@@ -56,6 +56,8 @@ struct MemoryView: View {
     /// they confirm (or cancel) — the setting itself is untouched until then.
     @State private var pendingRetention: HistoryRetention?
     @State private var pendingDeleteCount = 0
+    /// How many dictations the feed shows (it grows a page at a time, see `browseFeed`).
+    @State private var feedLimit = MemoryFeedPaging.pageSize
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -243,12 +245,32 @@ struct MemoryView: View {
                         subtitle: "Hold your dictation key and speak — what you say will show up here.",
                         icon: "text.bubble")
         } else {
+            // Paged: the feed starts with the newest `pageSize` dictations and grows a
+            // page at a time as the end comes into view. A thousand-row lazy stack
+            // made fast scrolling heavy (row heights are estimated until built, and a
+            // fling across 130,000 points kept re-estimating them); a few pages are
+            // all anyone scrolls through, and search reaches the rest.
+            let shown = history.entries.prefix(feedLimit)
             LazyVStack(spacing: 10) {
-                ForEach(history.entries) { entry in
+                ForEach(shown) { entry in
                     MemoryDictationRow(entry: entry, formatter: Self.dateFormatter) {
                         copyToClipboard(entry.text)
                     } onDelete: {
                         deleteDictation(entry)
+                    }
+                }
+                let remaining = history.entries.count - shown.count
+                if remaining > 0 {
+                    Button {
+                        feedLimit = MemoryFeedPaging.nextLimit(current: feedLimit, total: history.entries.count)
+                    } label: {
+                        Label(String(format: "Show older dictations (%d more)".loc, remaining),
+                              systemImage: "chevron.down")
+                    }
+                    .buttonStyle(.talkie(.secondary, size: .small))
+                    .padding(.vertical, 6)
+                    .onAppear {
+                        feedLimit = MemoryFeedPaging.nextLimit(current: feedLimit, total: history.entries.count)
                     }
                 }
             }
@@ -365,7 +387,7 @@ struct MemoryRowSkeleton: View {
                 TalkieSkeletonText(lines: lines, textSize: 13.5, lastLineFraction: lines == 1 ? 0.7 : 0.55)
             }
         }
-        .talkieCard(padding: 14)
+        .talkieRowCard(padding: 14)
     }
 }
 
@@ -429,7 +451,7 @@ private struct MemoryDictationRow: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .talkieCard(padding: 14)
+        .talkieRowCard(padding: 14)
         .onHover { hovering = $0 }
     }
 }
@@ -488,15 +510,26 @@ private struct MemoryMeetingRow: View {
                 .buttonStyle(.plain)
 
                 if expanded {
-                    Text(meeting.transcript)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Theme.inkSecondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                    // A meeting transcript can run to 100,000 characters. As one
+                    // selectable Text it was typeset whole, inside a lazy feed that
+                    // re-measures rows while it scrolls — the long-transcript view lays
+                    // it out a paragraph at a time, only the visible part.
+                    LongTranscriptText(text: meeting.transcript)
                         .padding(.top, 4)
                 }
             }
         }
-        .talkieCard(padding: 14)
+        .talkieRowCard(padding: 14)
+    }
+}
+
+/// How the Memory feed grows: one page of dictations at a time. Pure, so it is unit-tested.
+enum MemoryFeedPaging {
+    static let pageSize = 60
+
+    /// The next limit after `current`, never past `total` and never below one page.
+    static func nextLimit(current: Int, total: Int) -> Int {
+        let grown = max(pageSize, current) + pageSize
+        return min(max(total, pageSize), grown)
     }
 }

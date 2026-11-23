@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// L9 — the "Copy setup prompt" for the Connect-to-Claude card (`MCPConnectorCard`).
 ///
@@ -63,43 +64,70 @@ enum MCPSetupPrompt {
     static func setupPrompt(binaryPath: String) -> String {
         """
         Set up Talkie's MCP for yourself. Talkie is my local dictation app; its `talkie` \
-        MCP is a tiny bundled binary that runs 100% on-device with zero network — nothing \
-        it exposes leaves my Mac.
+        MCP is a small bundled binary that runs 100% on-device with zero network.
 
-        First run `claude mcp list`. If a `talkie` is already there (stale after an app \
-        update), remove it in whatever scope it shows, then add the current one and \
-        reconnect your MCP servers:
+        First run `claude mcp list`. If a stale `talkie` is there, remove it in its \
+        scope, then add the current one and reconnect your MCP servers:
         \(addCommand(binaryPath: binaryPath))
         Or, if you can't run commands, add this to my `.mcp.json`:
         \(mcpServersJSON(binaryPath: binaryPath))
 
-        You'll then have these `talkie` tools. Reads only touch my local stores:
-        - search — semantic + keyword search over meetings, dictations, entities
-        - get_recent_context — what I dictated / met about / mentioned lately
-        - graph_query — what's known about one person/project/term, with provenance
-        - get_stats — lifetime dictation stats (words, WPM, streak)
-        - get_dictionary — my vocabulary terms and spoken→written rules
-        - list_dictations — recent dictations, newest first
-        - read_scratchpad — my notes and checkbox tasks (read-only)
-        - list_meetings / get_meeting — recent meetings; one full meeting
-        - list_commitments — action items from meetings
-        - get_brief — today's on-device brief
-        - lookup_entity — resolve a person/project/term by name
+        Reads only touch my local stores: search, get_recent_context, graph_query, \
+        get_stats, get_dictionary, list_dictations, read_scratchpad, list_meetings, \
+        get_meeting, list_commitments, get_brief, lookup_entity, get_settings.
 
         Writes are SUGGESTIONS I can reverse: Talkie applies each right away with a \
         one-tap Undo pill (queued if Talkie is closed), so just call it and tell me \
-        what you queued.
-        - add_vocabulary_term — teach a name/product/acronym its spelling
-        - add_replacement — map a misheard form to what I meant (get hub → GitHub)
-        - remove_replacement / update_replacement — remove or retarget a rule
-        - remove_vocabulary_term — remove a term
+        what you queued: add_vocabulary_term, add_replacement (get hub → GitHub), \
+        remove_replacement, update_replacement, remove_vocabulary_term, \
+        retitle_meeting, set_meeting_summary (my own notes stay), update_settings \
+        (my name, the bird's name, the languages I speak, the app language, the look).
 
         Call get_dictionary before suggesting so you don't duplicate what I have; keep \
         it high-signal — one call per genuinely new or wrong term, no common words.
 
-        Verify: confirm `get_dictionary` is in your tools (if missing, you're on an old \
+        Verify: confirm `update_settings` is in your tools (if missing, you're on an old \
         build — tell me to update Talkie.app), then call `search` once and tell me it \
-        came back.
+        came back. Then set me up: call get_settings, ask me only for what is missing \
+        or what I want changed, and apply my answers with one update_settings call. \
+        Never guess a value.
         """
+    }
+}
+
+
+/// Where this Mac's `talkie-mcp` lives and how to hand it to Claude Desktop — shared
+/// by the Connect card in Settings and the onboarding's agent step.
+enum MCPConnector {
+    /// The `talkie-mcp` binary this machine should use. Prefers the copy bundled
+    /// inside THIS app (the common case for every installed Talkie); falls back to
+    /// the two dev-checkout build paths so a maker running from source still gets a
+    /// live path instead of a dead end.
+    static func binaryPath() -> String? {
+        let bundled = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS/talkie-mcp").path
+        let home = NSHomeDirectory()
+        let candidates = [
+            bundled,
+            "\(home)/Talkie/.build/release/talkie-mcp",   // dev checkout (release)
+            "\(home)/Talkie/.build/debug/talkie-mcp",     // dev checkout (debug)
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    /// The `.mcpb` bundled beside the app, if present.
+    static func mcpbURL() -> URL? {
+        guard let url = Bundle.main.url(forResource: "Talkie", withExtension: "mcpb") else { return nil }
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// Hands the bundled `.mcpb` to the OS (Claude Desktop is its handler); without a
+    /// handler, reveals it in Finder. Returns the status line to show.
+    @MainActor
+    static func openInClaudeDesktop() -> String {
+        guard let url = mcpbURL() else { return "Connector file not found in this build".loc }
+        if NSWorkspace.shared.open(url) { return "Opened in Claude Desktop".loc }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+        return "Revealed in Finder — drag it into Claude Desktop".loc
     }
 }

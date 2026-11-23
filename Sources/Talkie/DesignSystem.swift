@@ -13,7 +13,7 @@ import AppKit
 //   • Surfaces — cards are Liquid Glass over that backdrop (`talkieSurface`);
 //               opaque when the user picks Solid or the Mac reduces transparency.
 //   • Accent  — one feather leads the chrome (primary action, selection, focus).
-//               Macaw BLUE by default; the user can pick another. Kept under the
+//               EMBER by default; the user can pick another. Kept under the
 //               historical name `coral` so every existing call site stays valid.
 //   • Data    — the macaw's feathers (red / gold / blue / green / plum) are the
 //               categorical palette: charts, the streak heatmap, per-item nav
@@ -39,6 +39,11 @@ enum Theme {
     /// floating labels). Cards themselves use `.talkieSurface()` (Liquid Glass).
     static var surface: Color { ThemeState.flatSurfaces ? surfaceSolid : surfaceFrost }
     private static let surfaceFrost = dyn(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.62, darkAlpha: 0.10)
+    /// The row surface's fill when cards are Clear glass: thinner than the frost, so
+    /// rows of a long list read like the clear cards around them.
+    static let surfaceRowClear = dyn(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.42, darkAlpha: 0.07)
+    /// The row surface's fine light edge (the glass rim, as one colour).
+    static let rowRim = dyn(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.7, darkAlpha: 0.12)
     /// Inset wells, chart tracks, chips, empty heatmap cells: a translucent ink
     /// tint, so it reads as "pressed in" on glass and on the page alike.
     static let surfaceSunken = dyn(light: 0x1C1D20, dark: 0xFFFFFF, lightAlpha: 0.07, darkAlpha: 0.11)
@@ -57,7 +62,7 @@ enum Theme {
     /// Row dividers only — never an element outline.
     static let hairline      = dyn(light: 0xE6E8EB, dark: 0x2B2B2F)
 
-    // MARK: Brand accent — the feather the user picked (macaw blue by default)
+    // MARK: Brand accent — the feather the user picked (ember by default)
 
     /// The brand accent. Buttons, selection, focus, links.
     /// (Named `coral` for call-site compatibility; the value follows the
@@ -1226,13 +1231,15 @@ struct TalkieScrollPage<Content: View>: View {
             VStack(alignment: .leading, spacing: spacing) { content }
                 .talkiePagePadding()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // A new accent or backdrop repaints the page (colour tokens are
-                // plain reads).
+                // A new accent, backdrop or card style repaints the page (colour
+                // tokens are plain reads).
                 .id(appearance.look.paintKey)
+                // No hover or clicks while the page moves (a fling otherwise sends a
+                // hover update to every row sliding under the pointer).
+                .talkieScrollContent()
         }
         .scrollContentBackground(.hidden)
-        // The system edge effect is off: the page frosts its own top and bottom
-        // edge (`talkieScrollEdgeFades`), the same on every page.
+        .talkieCalmWhileScrolling()
         // The system's soft scroll edge effect, top and bottom (the bars it needs
         // take `Space.edgeBar` of each edge; the page padding is trimmed to match).
         .talkieScrollEdgeFades()
@@ -1338,7 +1345,7 @@ enum Brand {
     /// extension to tell the user, honestly, whether theirs is stale after an app
     /// upgrade — the trap that otherwise leaves a months-old 6-tool connector running
     /// silently. Bump all copies together via `scripts/bump-connector-version.sh`.
-    static let mcpConnectorVersion = "0.4.0"
+    static let mcpConnectorVersion = "0.5.0"
 
     /// Decoded-once cache. Without it, `image(_:)` re-read the PNG from the
     /// bundle on every SwiftUI `body` pass, handing `Image` a fresh `NSImage`

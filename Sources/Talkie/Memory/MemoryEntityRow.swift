@@ -57,7 +57,7 @@ struct MemoryEntityRow: View {
                 }
             }
         }
-        .talkieCard(padding: 14)
+        .talkieRowCard(padding: 14)
     }
 
     private var mentionsSubtitle: String {

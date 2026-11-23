@@ -29,6 +29,11 @@ final class DictionaryInbox {
     /// Optional so tests that exercise only the dictionary path can omit it; a meeting
     /// op with no store present is a graceful no-op.
     private let meetingStore: MeetingStore?
+    /// Setup by the agent (`update_settings`): the settings and look it may change.
+    /// Optional like `meetingStore`; a settings op with either missing is a no-op.
+    private let settings: AppSettings?
+    private let appearance: AppearanceStore?
+    private let defaults: UserDefaults
     private let directory: URL
 
     /// How a confirmed suggestion is surfaced. In the app this is
@@ -71,9 +76,11 @@ final class DictionaryInbox {
 
     /// App-facing init: surfaces suggestions through the live HUD.
     convenience init(dictionary: DictionaryStore, nicheVocab: NicheVocabStore, hud: HUDController,
-                     meetingStore: MeetingStore? = nil,
+                     meetingStore: MeetingStore? = nil, settings: AppSettings? = nil,
+                     appearance: AppearanceStore? = nil,
                      directory: URL = AppPaths.supportDirectory().appendingPathComponent("inbox", isDirectory: true)) {
-        self.init(dictionary: dictionary, nicheVocab: nicheVocab, meetingStore: meetingStore, directory: directory,
+        self.init(dictionary: dictionary, nicheVocab: nicheVocab, meetingStore: meetingStore,
+                  settings: settings, appearance: appearance, directory: directory,
                   presentPill: { message, onUndo in hud.showLearned(message, onUndo: onUndo) },
                   presentReverted: { hud.showReverted() })
     }
@@ -82,10 +89,14 @@ final class DictionaryInbox {
     /// temporary directory so the ingest logic is hermetic (no HUD panel, no real
     /// support dir).
     init(dictionary: DictionaryStore, nicheVocab: NicheVocabStore, meetingStore: MeetingStore? = nil,
+         settings: AppSettings? = nil, appearance: AppearanceStore? = nil, defaults: UserDefaults = .standard,
          directory: URL, presentPill: @escaping PillPresenter, presentReverted: @escaping @MainActor () -> Void) {
         self.dictionary = dictionary
         self.nicheVocab = nicheVocab
         self.meetingStore = meetingStore
+        self.settings = settings
+        self.appearance = appearance
+        self.defaults = defaults
         self.directory = directory
         self.presentPill = presentPill
         self.presentReverted = presentReverted
@@ -256,6 +267,11 @@ final class DictionaryInbox {
         // L15-b — meeting-notes management.
         case ("meeting", .retitleMeeting):
             return applyRetitleMeeting(idOrPrefix: s.meetingID, title: s.to)
+        case ("meeting", .setMeetingSummary):
+            return applyMeetingSummary(idOrPrefix: s.meetingID, text: s.text)
+        // Setup by the agent.
+        case ("settings", .updateSettings):
+            return applySettings(s.settings)
         default:
             // A well-formed op on the wrong kind (e.g. removeVocabularyTerm on a
             // "replacement" file) — reject rather than guess.
@@ -395,6 +411,56 @@ final class DictionaryInbox {
         return .appliedPillShown
     }
 
+    /// The longest summary an agent may write (a long meeting's notes run to a few
+    /// thousand characters; anything far beyond that is not a summary).
+    static let maxSummaryLength = 20_000
+
+    /// Write the AI agent's summary for a meeting behind the Undo pill (which puts the
+    /// previous summary back). The user's notes section is kept (`setAgentSummary`).
+    private func applyMeetingSummary(idOrPrefix rawID: String?, text rawText: String?) -> Outcome {
+        guard let store = meetingStore,
+              let id = rawID?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty,
+              let text = rawText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              text.count <= Self.maxSummaryLength else {
+            return .consumedNoPill
+        }
+        guard let result = store.setAgentSummary(idOrPrefix: id, to: text) else {
+            talkieDebugLog("DictionaryInbox: summary for meeting \"\(id)\" — no match or no change, no-op")
+            return .consumedNoPill
+        }
+        presentPill(String(format: "Your AI agent wrote the summary of “%@”".loc, result.title)) { [weak self] in
+            guard let self, let store = self.meetingStore else { return }
+            store.restoreSummary(id: result.id, to: result.oldSummary)
+            self.presentReverted()
+        }
+        return .appliedPillShown
+    }
+
+    /// Apply the agent's setup (`AgentSetup`): only supported values, only what
+    /// differs from now, one pill naming what changed, and an Undo that puts every
+    /// changed value back.
+    private func applySettings(_ change: AgentSettingsChange?) -> Outcome {
+        guard let change, let settings, let appearance else { return .consumedNoPill }
+        let before = AgentSetup.snapshot(settings: settings, appearance: appearance, defaults: defaults)
+        let delta = AgentSetup.changes(AgentSetup.plan(change), from: before)
+        guard !delta.isEmpty else {
+            talkieDebugLog("DictionaryInbox: settings suggestion changed nothing — skipping")
+            return .consumedNoPill
+        }
+        AgentSetup.apply(delta, settings: settings, appearance: appearance, defaults: defaults)
+        let undo = AgentSetup.undoPlan(for: delta, before: before)
+        var message = String(format: "Your AI agent set up %@".loc, AgentSetup.summary(of: delta))
+        if delta.appLanguage != nil {
+            message += " · " + String(format: "the app language changes when %@ restarts".loc, Brand.displayName)
+        }
+        presentPill(message) { [weak self] in
+            guard let self, let settings = self.settings, let appearance = self.appearance else { return }
+            AgentSetup.apply(undo, settings: settings, appearance: appearance, defaults: self.defaults)
+            self.presentReverted()
+        }
+        return .appliedPillShown
+    }
+
     // MARK: Validation + niche bookkeeping
 
     /// Trim, reject empty / over-length. Returns the cleaned term or nil (discard).
@@ -509,6 +575,10 @@ struct TalkieMCPSuggestion: Codable {
     /// L15-b: for `kind == "meeting"` — the meeting id (or 8-char prefix) to act on.
     /// (The new title travels in `to`, reusing the existing field.)
     var meetingID: String?
+    /// For `setMeetingSummary`: the summary the agent wrote (Markdown).
+    var text: String?
+    /// For `kind == "settings"` / `updateSettings`: what to change.
+    var settings: AgentSettingsChange?
     var note: String?
     var createdUnix: Double
     var version: Int
@@ -521,6 +591,8 @@ struct TalkieMCPSuggestion: Codable {
         case updateReplacement
         case removeVocabularyTerm
         case retitleMeeting
+        case setMeetingSummary
+        case updateSettings
     }
 
     /// The decoded op, defaulting to `.add` when the field is absent, and nil when

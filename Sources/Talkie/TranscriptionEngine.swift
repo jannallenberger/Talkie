@@ -250,6 +250,10 @@ actor TranscriptionEngine {
     /// (it spans several suspension points) backs off instead of swapping analyzers
     /// under the finalize.
     private var isFinishing = false
+    /// When the newest session claimed its generation and has not yet installed its
+    /// analyzer (nil once it has, or when it ends). `coldStartIfIdle` must not tear
+    /// down a start that is half-way through Apple's awaits.
+    private var sessionClaimedAt: Date?
 
     private var finalizedText: String = ""
     /// Each finalized segment, in spoken order. A new segment is committed every
@@ -889,6 +893,8 @@ actor TranscriptionEngine {
         let generation = sessionGeneration
         isFinishing = false
         liveEpoch += 1
+        sessionClaimedAt = Date()
+        defer { if generation == sessionGeneration { sessionClaimedAt = nil } }
 
         // Each await below is Apple's; a start that was abandoned by its timeout (and
         // superseded by a retry) may wake up late. It must not install state over the
@@ -1314,6 +1320,7 @@ actor TranscriptionEngine {
     /// session may be disturbed (idle after wake) or the session is already dead.
     func resetSpeechService() async {
         sessionGeneration += 1
+        sessionClaimedAt = nil
         await cancelSession()
         let target = locale
         _ = try? await SpeechStartRecovery.bounded(seconds: 3) {
@@ -1321,6 +1328,18 @@ actor TranscriptionEngine {
             guard let loc = supported else { return false }
             return (try? await AssetInventory.reserve(locale: loc)) ?? false
         }
+    }
+
+    /// The periodic idle cold start (`IdleColdStart`): the same reset as after wake —
+    /// drop everything bound to the speech service and re-reserve the locale — but
+    /// only when this engine has no session running, finishing or starting. Checked
+    /// inside the actor, so a dictation that began a moment ago is never torn down.
+    /// Returns whether it reset.
+    func coldStartIfIdle() async -> Bool {
+        let starting = sessionClaimedAt.map { Date().timeIntervalSince($0) < 30 } ?? false
+        guard analyzer == nil, inputContinuation == nil, !starting else { return false }
+        await resetSpeechService()
+        return true
     }
 
     // MARK: Buffer re-sampling (for cross-locale re-transcription)

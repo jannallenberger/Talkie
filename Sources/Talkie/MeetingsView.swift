@@ -323,7 +323,9 @@ struct MeetingsView: View {
                     }
                 }
                 .padding(.horizontal, 8)
+                .talkieScrollContent()
             }
+            .talkieCalmWhileScrolling()
             .talkieScrollEdgeFades(top: 6, bottom: 14)
             .focusable()
             .focusEffectDisabled()
@@ -379,7 +381,9 @@ struct MeetingsView: View {
                 .padding(.leading, 4)
                 .padding(.trailing, Self.pagePadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .talkieScrollContent()
             }
+            .talkieCalmWhileScrolling()
             .talkieScrollEdgeFades(top: 8, bottom: Self.pagePadding)
         }
     }

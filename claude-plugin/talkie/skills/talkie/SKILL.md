@@ -36,12 +36,17 @@ These do **not** change anything directly. Each call drops one suggestion into T
 | `remove_replacement` | Delete a replacement rule by its exact `from → to`. | `from`, `to`; optional `note` |
 | `remove_vocabulary_term` | Delete a vocabulary term by its exact spelling. | `term`; optional `note` |
 | `retitle_meeting` | Rename a meeting in the user's history (matched by `id` or 8-char prefix from `list_meetings`/`get_meeting`). | `id`, `title`; optional `note` |
+| `set_meeting_summary` | Write a meeting's summary (Markdown) after reading it with `get_meeting`; the user's own notes stay under it, Undo restores the old one. | `id`, `summary`; optional `note` |
+| `get_settings` | Read what `update_settings` can change (name, bird's name, spoken languages, app language, look) and the accepted values. | — |
+| `update_settings` | Set Talkie up for the user — only what they asked for or confirmed; one Undo pill puts everything back. The app language applies on restart. | any of `user_name`, `assistant_name`, `spoken_languages`, `app_language`, `accent`, `backdrop`, `appearance`; optional `note` |
 
 ## Workflows
 
 - **"Pull the action items from my last meeting."** `list_meetings` (limit 1) → `get_meeting` by that `id` → extract commitments; cross-check with `list_commitments`.
 - **"What did I say about <topic>?" / "what did we decide about X?"** Lead with `search` (`query` = the topic). Open promising hits with `get_meeting` for the full transcript.
 - **"What was I just working on?"** `get_recent_context`.
+- **"Summarize my last meeting."** `list_meetings` (limit 1) → `get_meeting` → write the summary in the meeting's language → `set_meeting_summary`. Say it shows in Talkie with an Undo.
+- **"Set Talkie up for me."** `get_settings`, then ask the user only what is missing (their name, the languages they dictate in, the app language, a look), then one `update_settings` call with what they confirmed, then `get_settings` again to confirm.
 - **"Who is <name>?" / "status of <project>?"** `lookup_entity`, or `graph_query` for what's known + co-occurring entities.
 - **"Cite today's brief."** `get_brief`, then quote the relevant line with its source.
 - **Teach a mis-heard term.** When the user writes a niche name recognition would mangle (or explicitly corrects one), `get_dictionary` first to avoid duplicates, then `add_vocabulary_term` (novel spelling) or `add_replacement` (you know the exact wrong→right). Tell them it's queued for their confirmation.

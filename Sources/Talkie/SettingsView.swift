@@ -857,23 +857,10 @@ private struct MCPConnectorCard: View {
     /// inside THIS app (the common case for every installed Talkie); falls back to
     /// the two dev-checkout build paths so a maker running from source still gets a
     /// live path instead of the old "not built yet" dead end.
-    private static func binaryPath() -> String? {
-        let bundled = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/MacOS/talkie-mcp").path
-        let home = NSHomeDirectory()
-        let candidates = [
-            bundled,
-            "\(home)/Talkie/.build/release/talkie-mcp",   // dev checkout (release)
-            "\(home)/Talkie/.build/debug/talkie-mcp",     // dev checkout (debug)
-        ]
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
+    private static func binaryPath() -> String? { MCPConnector.binaryPath() }
 
     /// The `.mcpb` bundled beside the app, if present.
-    private static func mcpbURL() -> URL? {
-        guard let url = Bundle.main.url(forResource: "Talkie", withExtension: "mcpb") else { return nil }
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }
+    private static func mcpbURL() -> URL? { MCPConnector.mcpbURL() }
 
     /// The exact `mcpServers` config both Claude Desktop and Claude Code accept
     /// (the old `{"tools": …}` shape was rejected by both).
@@ -1011,6 +998,9 @@ private struct MCPConnectorCard: View {
         .init(name: "update_replacement", write: true),
         .init(name: "remove_vocabulary_term", write: true),
         .init(name: "retitle_meeting", write: true),
+        .init(name: "set_meeting_summary", write: true),
+        .init(name: "get_settings", write: false),
+        .init(name: "update_settings", write: true),
     ]
 
     @State private var copiedConfig = false
@@ -1128,16 +1118,7 @@ private struct MCPConnectorCard: View {
     /// registered (Claude Desktop not installed), fall back to revealing the file in
     /// Finder so the user can drag it in manually (plan 07 §"Reveal in Finder").
     private func openDesktopConnector() {
-        guard let url = Self.mcpbURL() else {
-            desktopStatus = "Connector file not found in this build".loc
-            return
-        }
-        if NSWorkspace.shared.open(url) {
-            desktopStatus = "Opened in Claude Desktop".loc
-        } else {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-            desktopStatus = "Revealed in Finder — drag it into Claude Desktop".loc
-        }
+        desktopStatus = MCPConnector.openInClaudeDesktop()
     }
 
     private func copyToPasteboard(_ text: String) {
@@ -1435,9 +1416,9 @@ private struct AppUpdateSection: View {
         case .downloading(let progress):
             SettingsRow(title: "Downloading the update…") {
                 if let progress {
-                    ProgressView(value: progress).frame(width: 120)
+                    ProgressView(value: progress).frame(width: 120).tint(Theme.brand)
                 } else {
-                    ProgressView().controlSize(.small)
+                    ProgressView().controlSize(.small).tint(Theme.brand)
                 }
             }
         case .installing:
@@ -2105,7 +2086,9 @@ struct DictionarySettings: View {
                         }
                     }
                 }
-                .talkieCard()
+                // A long rule list makes this card taller than the window: no glass
+                // then (it was redrawn and held in memory while scrolling).
+                .talkieCard(long: dictionary.replacements.count > 8)
         }
         // A calm brand wash confirms a valid drag is over the pane.
         .background(isTargetedForDrop ? Theme.coral.opacity(0.08) : Color.clear)

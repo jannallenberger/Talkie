@@ -235,6 +235,54 @@ enum WakeRecovery {
     static let wakeSettleSeconds: Double = 2
 }
 
+// MARK: - Idle cold start
+
+/// "After a while without dictating, the first dictation doesn't start well and needs
+/// a couple of tries." The system speech service and the audio engine go stale while
+/// nothing uses them (the same failure the wake recovery handles, without a sleep in
+/// between). So while Talkie sits idle it periodically does the wake recovery's cold
+/// start on its own: rebuild the speech-service state, re-warm the models, rebuild
+/// the idle mic engine — never while a dictation, a meeting, an import or anything
+/// else is using speech or the mic. Pure, so the timing is unit-tested.
+enum IdleColdStart {
+    /// How long nothing has used speech before the first cold start.
+    static let idleAfter: TimeInterval = 15 * 60
+    /// The gap between cold starts while it stays idle.
+    static let repeatEvery: TimeInterval = 30 * 60
+    /// How often the app looks (a cheap check; the timer is allowed to drift).
+    static let checkEvery: TimeInterval = 60
+
+    /// What else can be using speech or the mic, beyond `WakeRecovery.Activity`.
+    struct Busy: Equatable, Sendable {
+        var activity: WakeRecovery.Activity
+        /// A file import is transcribing.
+        var importing: Bool = false
+        /// The Mac is about to sleep or just woke (the wake recovery owns that moment).
+        var nearPowerEvent: Bool = false
+
+        var isIdle: Bool { activity.isIdle && !importing && !nearPowerEvent }
+    }
+
+    /// Whether to cold start now. `lastSpeechUse` is when speech or the mic was last
+    /// in use (a dictation, a meeting, an import — or launch, which warms everything);
+    /// `lastColdStart` is the previous cold start, if any since then.
+    static func shouldColdStart(now: Date, lastSpeechUse: Date, lastColdStart: Date?, busy: Busy,
+                                idleAfter: TimeInterval = idleAfter,
+                                repeatEvery: TimeInterval = repeatEvery) -> Bool {
+        guard busy.isIdle else { return false }
+        guard now.timeIntervalSince(lastSpeechUse) >= idleAfter else { return false }
+        if let lastColdStart, lastColdStart > lastSpeechUse,
+           now.timeIntervalSince(lastColdStart) < repeatEvery {
+            return false
+        }
+        return true
+    }
+
+    /// The cold start's steps: the wake recovery's rebuild, in order — throw away the
+    /// idle mic engine first so the re-prewarm builds a fresh one.
+    static let actions: [WakeAction] = [.releasePrewarmedMic, .resetSpeechService, .rewarmSpeechModels, .reprewarmMic]
+}
+
 // MARK: - Debug simulation
 
 extension Dev {
@@ -253,6 +301,17 @@ extension Dev {
         guard remaining > 0 else { return false }
         UserDefaults.standard.set(remaining - 1, forKey: simulateStaleStartsKey)
         return true
+    }
+
+    /// Shortens the idle cold start's wait for trying it by hand (Dev builds only):
+    ///     defaults write com.coralate.talkie IdleColdStartAfterSeconds -int 90
+    /// It then repeats after twice as long. 0 or unset = the shipped timing.
+    static let idleColdStartAfterKey = "IdleColdStartAfterSeconds"
+
+    static var idleColdStartAfterOverride: TimeInterval? {
+        guard isEnabled else { return nil }
+        let seconds = UserDefaults.standard.integer(forKey: idleColdStartAfterKey)
+        return seconds > 0 ? TimeInterval(seconds) : nil
     }
 
     static var simulatedStaleError: NSError {

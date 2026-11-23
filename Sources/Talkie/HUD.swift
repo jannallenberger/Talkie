@@ -1120,10 +1120,10 @@ private struct CorrectionPopover: View {
                     .onSubmit { onSave(text) }
                 Button("Cancel".loc) { onCancel() }
                     .keyboardShortcut(.cancelAction)
+                    .buttonStyle(.talkie(.secondary))
                 Button("Save".loc) { onSave(text) }
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
             }
         }
         .padding(14)

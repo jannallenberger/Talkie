@@ -432,7 +432,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Watch the MCP inbox for Claude-queued dictionary suggestions and surface
         // each with an Undo pill. Started here so a suggestion written while the app
         // was closed is scanned and pinged at launch — never applied silently.
-        let inbox = DictionaryInbox(dictionary: dictionary, nicheVocab: nicheVocab, hud: hud, meetingStore: meetingStore)
+        let inbox = DictionaryInbox(dictionary: dictionary, nicheVocab: nicheVocab, hud: hud, meetingStore: meetingStore,
+                                    settings: settings, appearance: AppearanceStore.shared)
         inbox.start()
         dictionaryInbox = inbox
 
@@ -462,6 +463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         permissions.refresh()
         observeSettings()
         observePowerEvents()
+        startIdleColdStartTimer()
 
         // The always-on floating bird, if the user keeps it on.
         if settings.showBirdBuddy { birdBuddy.show() }
@@ -1451,6 +1453,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handlePowerEvent(_ event: PowerEvent) {
         talkieDebugLog("power: \(event)")
+        lastPowerEventAt = Date()
         if event == .willSleep {
             perform(WakeRecovery.actions(for: event, activity: currentActivity))
             return
@@ -1461,7 +1464,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         wakeRecoveryTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(WakeRecovery.wakeSettleSeconds))
             guard let self, !Task.isCancelled else { return }
-            self.perform(WakeRecovery.actions(for: event, activity: self.currentActivity))
+            let actions = WakeRecovery.actions(for: event, activity: self.currentActivity)
+            // The wake recovery is a cold start of its own: the idle timer starts
+            // counting again from here.
+            if actions.contains(.resetSpeechService) { self.lastIdleColdStart = Date() }
+            self.perform(actions)
+        }
+    }
+
+    // MARK: Idle cold start
+
+    private var idleColdStartTimer: Timer?
+    /// When speech or the mic was last in use (launch warms everything, so it counts).
+    private var lastSpeechUse = Date()
+    private var lastIdleColdStart: Date?
+    private var lastPowerEventAt: Date?
+
+    /// Checks once a minute whether Talkie has sat idle long enough for a cold start
+    /// (`IdleColdStart`). A cheap timer with a wide tolerance; it does not run while
+    /// the Mac sleeps (the wake recovery covers that).
+    private func startIdleColdStartTimer() {
+        guard idleColdStartTimer == nil else { return }
+        let timer = Timer(timeInterval: IdleColdStart.checkEvery, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.idleColdStartTick() }
+        }
+        timer.tolerance = 20
+        RunLoop.main.add(timer, forMode: .common)
+        idleColdStartTimer = timer
+    }
+
+    private var idleColdStartBusy: IdleColdStart.Busy {
+        let nearPower = lastPowerEventAt.map { Date().timeIntervalSince($0) < 60 } ?? false
+        return IdleColdStart.Busy(activity: currentActivity,
+                                  importing: fileImporter?.isImporting == true,
+                                  nearPowerEvent: nearPower)
+    }
+
+    private func idleColdStartTick(now: Date = Date()) {
+        let busy = idleColdStartBusy
+        guard busy.isIdle else {
+            // In use (or the wake recovery's moment): this counts as speech use.
+            if !busy.activity.isIdle || busy.importing { lastSpeechUse = now }
+            return
+        }
+        let override = Dev.idleColdStartAfterOverride
+        guard IdleColdStart.shouldColdStart(
+            now: now, lastSpeechUse: lastSpeechUse, lastColdStart: lastIdleColdStart, busy: busy,
+            idleAfter: override ?? IdleColdStart.idleAfter,
+            repeatEvery: override.map { $0 * 2 } ?? IdleColdStart.repeatEvery) else { return }
+        lastIdleColdStart = now
+        talkieDebugLog("idle cold start after \(Int(now.timeIntervalSince(lastSpeechUse)))s without speech")
+        // The mic: thrown away and prewarmed fresh in this one main-actor turn, so no
+        // dictation can start in between (`AudioCapture` refuses both while running).
+        audio.discardIdleEngine()
+        audio.prewarm(preferredDeviceUID: settings.preferredInputDeviceUID)
+        let engine = self.engine!
+        let languages = settings.spokenLanguages
+        let warmDictationModel = settings.dictationModel == .dictation
+        let style = settings.cleanupStyle(for: .other)
+        Task { @MainActor [weak self] in
+            // The engine checks for itself that no session is running, finishing or
+            // starting; if one is, nothing is touched.
+            guard await engine.coldStartIfIdle() else {
+                talkieDebugLog("idle cold start skipped — the engine is in use")
+                return
+            }
+            for lang in languages {
+                try? await engine.warmUp(localeIdentifier: lang)
+                if warmDictationModel { try? await engine.warmUp(localeIdentifier: lang, model: .dictation) }
+            }
+            self?.prewarmCleanup(style: style)
         }
     }
 
@@ -1524,6 +1596,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stopSilenceWatchdog()
 
         isDictating = true
+        lastSpeechUse = Date()
         handsFreeLocked = false
         sessionLive = false
         sessionFormatMarks = []

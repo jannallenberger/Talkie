@@ -72,6 +72,10 @@ struct TalkieStore {
         /// on (the new title travels in `to`). Defaulted so the dictionary writers
         /// above construct unchanged. MIRROR: `TalkieMCPSuggestion.meetingID`.
         var meetingID: String? = nil
+        /// For `setMeetingSummary`: the summary the agent wrote. MIRROR: `TalkieMCPSuggestion.text`.
+        var text: String? = nil
+        /// For `kind == "settings"` / `updateSettings`. MIRROR: `TalkieMCPSuggestion.settings`.
+        var settings: SettingsMirror? = nil
         /// Optional free-text note from Claude (why it's suggesting this). Surfaced
         /// nowhere yet; carried for provenance/inspection.
         var note: String?
@@ -171,6 +175,98 @@ struct TalkieStore {
             createdUnix: Date().timeIntervalSince1970, version: 1)
         return write(suggestion,
                      ok: "Queued a retitle to “\(t)” — \(BrandMirror.displayName) applies it right away and shows an Undo pill (if it is closed, it applies at its next launch).")
+    }
+
+    /// Queue the agent's own summary for a meeting (matched like `retitle_meeting`).
+    /// Same confirm-with-Undo contract; the app keeps the user's notes section and
+    /// the Undo restores the previous summary.
+    func queueMeetingSummary(id: String, summary: String, note: String?) -> String {
+        let mid = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !mid.isEmpty, !text.isEmpty else { return "Error: both id and summary are required." }
+        guard text.count <= 20_000 else { return "Error: the summary is too long (at most 20,000 characters)." }
+        let suggestion = DictionarySuggestion(
+            kind: "meeting", op: "setMeetingSummary", term: nil, from: nil, to: nil, newTo: nil,
+            meetingID: mid, text: text, note: note,
+            createdUnix: Date().timeIntervalSince1970, version: 1)
+        return write(suggestion,
+                     ok: "Queued the summary — \(BrandMirror.displayName) shows it on the meeting right away with an Undo pill (if it is closed, at its next launch). The user's own notes stay under it.")
+    }
+
+    // MARK: Setup by the agent
+
+    /// The settings an agent may change. MIRROR: `Sources/Talkie/AgentSetup.swift` →
+    /// `AgentSettingsChange` (same keys, all optional).
+    struct SettingsMirror: Codable {
+        var userName: String?
+        var assistantName: String?
+        var appLanguage: String?
+        var spokenLanguages: [String]?
+        var accent: String?
+        var backdrop: String?
+        var appearance: String?
+
+        var isEmpty: Bool {
+            userName == nil && assistantName == nil && appLanguage == nil && spokenLanguages == nil
+                && accent == nil && backdrop == nil && appearance == nil
+        }
+    }
+
+    /// MIRROR: `talkieLanguageCatalog` ids (Sources/Talkie/AppSettings.swift).
+    static let spokenLanguageChoices = ["en-US", "en-GB", "de-DE", "fr-FR", "es-ES", "it-IT", "pt-BR",
+                                        "nl-NL", "ja-JP", "ko-KR", "zh-CN"]
+    /// MIRROR: `AppLanguage.supported` (Sources/Talkie/AgentSetup.swift).
+    static let appLanguageChoices = ["system", "en", "de", "fr", "es", "it", "pt-BR", "nl", "ja", "ko", "zh-Hans"]
+    /// MIRROR: `TalkieAccent` / `TalkieBackdropStyle` / `TalkieAppearanceMode` raw values (Appearance.swift).
+    static let accentChoices = ["ember", "blue", "red", "gold", "green", "plum"]
+    static let backdropChoices = ["ember", "macaw", "lagoon", "dusk", "plain"]
+    static let appearanceChoices = ["system", "light", "dark"]
+
+    /// The app's preferences domain. FROZEN bundle id (see docs/REBRAND.md).
+    static let appDomain = "com.coralate.talkie"
+
+    /// The app's preferences. The bundled binary lives in Talkie.app/Contents/MacOS, so
+    /// its main bundle IS the app and `UserDefaults(suiteName:)` refuses the app's own
+    /// id (returns nil) — `.standard` is that domain then. Run from elsewhere (a dev
+    /// build, a plugin install), the suite reads the app's domain.
+    private var appDefaults: UserDefaults? {
+        Bundle.main.bundleIdentifier == Self.appDomain ? .standard : UserDefaults(suiteName: Self.appDomain)
+    }
+
+    /// What `update_settings` can change, as it is set now, with the accepted values.
+    func getSettings() -> String {
+        let d = appDefaults
+        func str(_ key: String) -> String? { d?.string(forKey: key).flatMap { $0.isEmpty ? nil : $0 } }
+        let langs = (d?.stringArray(forKey: "spokenLanguages")) ?? []
+        let appLang = (d?.persistentDomain(forName: Self.appDomain)?["AppleLanguages"] as? [String])?.first ?? "system"
+        var lines = ["# \(BrandMirror.displayName) settings (what update_settings can change)"]
+        lines.append("- userName: \(str("userName") ?? "(not set)")")
+        lines.append("- assistantName (the bird's name): \(str("parrotName") ?? "(not set)")")
+        lines.append("- spokenLanguages (primary first): \(langs.isEmpty ? "(not set)" : langs.joined(separator: ", "))")
+        lines.append("- appLanguage: \(appLang)")
+        lines.append("- accent: \(str("appearanceAccent") ?? "ember")")
+        lines.append("- backdrop: \(str("appearanceBackdrop") ?? "ember")")
+        lines.append("- appearance: \(str("appearanceMode") ?? "system")")
+        lines.append("")
+        lines.append("Accepted values:")
+        lines.append("- spokenLanguages: \(Self.spokenLanguageChoices.joined(separator: ", "))")
+        lines.append("- appLanguage: \(Self.appLanguageChoices.joined(separator: ", ")) (applies when \(BrandMirror.displayName) restarts)")
+        lines.append("- accent: \(Self.accentChoices.joined(separator: ", "))")
+        lines.append("- backdrop: \(Self.backdropChoices.joined(separator: ", ")) (a backdrop brings its own accent)")
+        lines.append("- appearance: \(Self.appearanceChoices.joined(separator: ", "))")
+        return lines.joined(separator: "\n")
+    }
+
+    /// Queue a settings change. The app keeps only supported values, applies what
+    /// differs, and shows one Undo pill that puts every changed value back.
+    func queueSettings(_ change: SettingsMirror, note: String?) -> String {
+        guard !change.isEmpty else { return "Error: nothing to change — pass at least one setting." }
+        let suggestion = DictionarySuggestion(
+            kind: "settings", op: "updateSettings", term: nil, from: nil, to: nil, newTo: nil,
+            settings: change, note: note,
+            createdUnix: Date().timeIntervalSince1970, version: 1)
+        return write(suggestion,
+                     ok: "Queued — \(BrandMirror.displayName) applies the supported values right away and shows an Undo pill (if it is closed, at its next launch). Call get_settings afterwards to confirm what was applied.")
     }
 
     /// Write one suggestion as an atomic, uuid-named JSON file. Deterministic key

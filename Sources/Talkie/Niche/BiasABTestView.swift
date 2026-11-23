@@ -70,7 +70,7 @@ struct BiasABTestView: View {
             if case .error(let message) = phase {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.danger)
             }
 
             if phase == .done {

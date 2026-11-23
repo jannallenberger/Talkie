@@ -20,9 +20,12 @@ final class AppearanceTests: XCTestCase {
         let (d, name) = makeDefaults()
         defer { d.removePersistentDomain(forName: name) }
         XCTAssertEqual(AppearanceStore(defaults: d).look, TalkieLook())
-        XCTAssertEqual(TalkieLook().backdrop, .macaw)
-        XCTAssertEqual(TalkieLook().glass, .frosted)
-        XCTAssertEqual(TalkieLook().accent, .blue)
+        // Talkie ships in ember, as a whisper on clear glass.
+        XCTAssertEqual(TalkieLook().backdrop, .ember)
+        XCTAssertEqual(TalkieLook().glass, .clear)
+        XCTAssertEqual(TalkieLook().accent, .ember)
+        XCTAssertEqual(TalkieLook().intensity, 0)
+        XCTAssertEqual(TalkieLook().angle, 111)
     }
 
     func testStorePersistsEveryChoice() {
@@ -64,8 +67,8 @@ final class AppearanceTests: XCTestCase {
         d.set("ultraviolet", forKey: "appearanceAccent")
         d.set("liquid-metal", forKey: "appearanceGlass")
         let look = AppearanceStore(defaults: d).look
-        XCTAssertEqual(look.accent, .blue)
-        XCTAssertEqual(look.glass, .frosted)
+        XCTAssertEqual(look.accent, TalkieLook().accent)
+        XCTAssertEqual(look.glass, TalkieLook().glass)
     }
 
     func testThemeTokensFollowTheAccentAndFlatSurfaces() {
@@ -172,7 +175,7 @@ final class AppearanceTests: XCTestCase {
 
     func testLightFeathersUseInkInDarkMode() {
         // White on dark-mode gold or green is unreadable; they carry ink instead.
-        for accent in [TalkieAccent.gold, .green] {
+        for accent in [TalkieAccent.gold, .green, .ember] {
             let p = accent.palette
             XCTAssertGreaterThanOrEqual(contrast(p.base, p.on, dark: true), 4.5, "\(accent) dark")
         }
@@ -240,11 +243,11 @@ final class AppearanceTests: XCTestCase {
     }
 
     func testEveryBackdropBringsAnAccent() {
-        XCTAssertEqual(TalkieBackdropStyle.ember.accent, .red)
+        XCTAssertEqual(TalkieBackdropStyle.ember.accent, .ember)
         XCTAssertEqual(TalkieBackdropStyle.lagoon.accent, .green)
         XCTAssertEqual(TalkieBackdropStyle.dusk.accent, .plum)
         XCTAssertEqual(TalkieBackdropStyle.macaw.accent, .blue)
-        XCTAssertNotEqual(TalkieLook().paintKey, { var l = TalkieLook(); l.backdrop = .ember; return l.paintKey }(),
+        XCTAssertNotEqual(TalkieLook().paintKey, { var l = TalkieLook(); l.backdrop = .lagoon; return l.paintKey }(),
                           "a new backdrop repaints pages")
     }
 

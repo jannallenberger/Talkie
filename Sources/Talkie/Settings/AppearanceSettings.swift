@@ -148,7 +148,7 @@ struct AppearanceSettings: View {
 // MARK: - Swatches
 
 /// One accent choice: a lit dot of the colour; the selected one wears a ring and a check.
-private struct AccentSwatch: View {
+struct AccentSwatch: View {
     let accent: TalkieAccent
     let selected: Bool
     let action: () -> Void
@@ -183,7 +183,7 @@ private struct AccentSwatch: View {
 }
 
 /// One backdrop choice: a small tile of the gradient with its name under it.
-private struct BackdropSwatch: View {
+struct BackdropSwatch: View {
     let style: TalkieBackdropStyle
     let angle: Double
     let selected: Bool

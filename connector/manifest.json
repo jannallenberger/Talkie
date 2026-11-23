@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "talkie",
   "display_name": "Talkie",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Query your local Talkie meetings, daily brief, context graph, and dictation history — on-device, no network.",
   "long_description": "Talkie's local MCP server exposes your meetings, today's brief, your personal context graph (people, projects, commitments), and your dictation history to Claude — 100% on-device. Nothing leaves your Mac. Reads are direct; the dictionary tools (add / update / remove vocabulary terms and replacement rules) are suggestions that Talkie applies right away, visibly, with a one-tap Undo pill — so a session can never change your speech recognition out of sight.",
   "author": {
@@ -36,7 +36,10 @@
     { "name": "remove_replacement", "description": "Remove a spoken→written replacement rule (by its exact from → to) from the user's dictionary — applied by Talkie right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
     { "name": "update_replacement", "description": "Change an existing replacement rule's target (the rule matched by from/to should produce new_to) — applied by Talkie right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
     { "name": "remove_vocabulary_term", "description": "Remove a niche/jargon vocabulary term from the user's dictionary — applied by Talkie right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
-    { "name": "retitle_meeting", "description": "Rename a meeting in the user's meeting history (matched by id or 8-char prefix) — applied right away with a visible one-tap Undo pill (queued only while Talkie is closed)." }
+    { "name": "retitle_meeting", "description": "Rename a meeting in the user's meeting history (matched by id or 8-char prefix) — applied right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
+    { "name": "set_meeting_summary", "description": "Write a meeting's summary (Markdown) after reading its transcript — the user's own notes stay under it; applied right away with a visible one-tap Undo pill (queued only while Talkie is closed)." },
+    { "name": "get_settings", "description": "Read the settings an agent can set up — the user's name, the bird's name, spoken languages, app language and look — with the accepted values." },
+    { "name": "update_settings", "description": "Set up Talkie for the user (name, bird's name, spoken languages, app language, look) — only what they asked for; applied right away with a visible one-tap Undo pill that puts everything back (queued only while Talkie is closed)." }
   ],
   "compatibility": {
     "platforms": ["darwin"]

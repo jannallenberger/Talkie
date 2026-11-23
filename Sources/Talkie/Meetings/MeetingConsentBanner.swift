@@ -126,12 +126,11 @@ private struct BannerView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
                     Button(action: model.onRecord) {
-                        Text("Record".loc).fontWeight(.semibold)
+                        Text("Record".loc)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
                     Button("Dismiss".loc, action: model.onDismiss)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.talkie(.secondary))
                 }
                 .controlSize(.regular)
                 .padding(.top, 5)
@@ -140,14 +139,8 @@ private struct BannerView: View {
         }
         .padding(16)
         .frame(width: 440, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .fill(.regularMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                        .strokeBorder(.white.opacity(0.10), lineWidth: 0.5)
-                )
-        )
-        .shadow(color: .black.opacity(0.28), radius: 18, x: 0, y: 10)
+        // The card surface every page uses (Liquid Glass, or the opaque card for
+        // Solid cards / Reduce Transparency), not a hand-rolled material.
+        .talkieSurface()
     }
 }
