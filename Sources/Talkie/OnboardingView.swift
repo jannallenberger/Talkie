@@ -368,6 +368,15 @@ struct OnboardingView: View {
                 Label("All set", systemImage: "checkmark.seal.fill")
                     .font(.talkieHeading(13, weight: .semibold))
                     .foregroundStyle(Theme.positive)
+            } else {
+                // A switch that is already on in System Settings can belong to an
+                // older copy of Talkie (a different signature); toggling it never
+                // helps, only removing the entry and adding it again does.
+                Text("Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again.")
+                    .font(.talkieHeading(12, weight: .regular))
+                    .foregroundStyle(Theme.inkTertiary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

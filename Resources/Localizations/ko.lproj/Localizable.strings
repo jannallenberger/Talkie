@@ -335,19 +335,9 @@
 "Added “%@” — it’ll be fixed automatically next time." = "“%@” 추가됨 — 다음부터 자동으로 수정됩니다.";
 "Learn “%@”?" = "“%@”를 학습할까요?";
 "was “%@”" = "이전: “%@”";
-"Hold %@ to talk · tap twice to lock" = "%@ 를 누른 채 말하기 · 두 번 눌러 고정";
 "Hold to talk · tap twice to lock" = "누른 채 말하기 · 두 번 눌러 고정";
-"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "키를 누른 채 말한 다음 놓으면 삽입됩니다. 두 번 누르면 핸즈프리로 고정되어 아무것도 누르지 않아도 녹음이 계속되며, 한 번 누르면 멈추고 삽입합니다.";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
-"Hold to talk · keep holding to lock" = "누른 채 말하기 · 계속 누르고 있으면 고정";
-"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "키를 누른 채 말한 다음 놓으면 삽입됩니다. 계속 누르고 있으면 핸즈프리로 고정되어 아무것도 누르지 않아도 녹음이 계속되며, 한 번 누르면 멈추고 삽입합니다.";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "측면 버튼은 사용 중인 앱에서 원래 기능을 그대로 수행합니다. Talkie는 이를 듣기만 하며, 버튼이 실제 버튼으로 macOS에 전달되어야 합니다(일부 마우스는 자체 소프트웨어에서 버튼을 재지정합니다).";
-"Hold, speak, release — or tap twice to go hands-free" = "누르고, 말하고, 놓기 — 또는 두 번 눌러 핸즈프리로";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "키를 누른 채 쓰고 싶은 내용을 말하고 놓으면 — Talkie가 입력 중인 곳에 텍스트를 넣어 줍니다. 급하신가요? 키를 두 번 눌러 녹음을 핸즈프리로 고정하고, 한 번 눌러 멈추세요.";
-"Listening, hands-free. Recording is locked — tap your key once to stop." = "핸즈프리로 듣는 중입니다. 녹음이 고정되었습니다 — 키를 한 번 누르면 멈춥니다.";
-"still listening — say something or it'll wrap up" = "계속 듣고 있어요 — 말하지 않으면 곧 종료돼요";
-"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "계속 듣고 있어요 — 조용해서 곧 녹음을 멈춰요. 계속하려면 말해 주세요.";
-"Hold your key to talk, or tap it twice to lock hands-free recording." = "키를 누른 채 말하거나, 두 번 눌러 핸즈프리 녹음을 고정하세요.";
 "Click here, then hold %@ and speak…" = "여기를 클릭한 다음 %@ 를 누른 채 말하세요…";
 
 // MARK: - Secure-input culprit (B3)
@@ -925,7 +915,6 @@
 "Downloading the speech model (one time)…" = "음성 모델을 다운로드하는 중 (처음 한 번만)…";
 "macOS does this one download itself — this app never connects to the internet. After it, everything runs offline." = "이 다운로드는 macOS가 직접 처리합니다. Talkie는 인터넷에 연결하지 않습니다. 이후에는 모든 것이 오프라인으로 작동합니다.";
 "Once the speech model is on this Mac, you can try dictation with the Wi-Fi off." = "음성 모델이 이 Mac에 설치되면 Wi-Fi를 끈 상태로 Talkie를 시험해 볼 수 있습니다.";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. Want it hands-free? Keep holding the key a moment and recording locks; tap once to stop." = "키를 누른 채 쓰고 싶은 말을 한 다음 손을 떼세요. Talkie가 입력 중인 곳에 텍스트를 넣어 줍니다. 핸즈프리를 원하면 키를 잠시 더 누르고 있으면 녹음이 고정되고, 한 번 탭하면 멈춥니다.";
 "Stop recording" = "녹음 중지";
 "Your dictated words" = "받아쓴 내용";
 "Empty" = "비어 있음";
@@ -1347,7 +1336,6 @@
 "Smart cleanup" = "스마트 정리";
 "Show live words in the pill" = "필에 실시간 단어 표시";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "말하는 동안 받아쓴 내용이 파형 아래로 흘러요. 필은 옆이 아니라 아래로 커져요.";
-"Stop hands-free when I go quiet" = "조용해지면 핸즈프리 중지";
 "A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "고정된 세션은 일정 시간 조용하면 끝나요. 끄면 탭해서 멈출 때까지 계속 들어요. 카운트다운은 없어요.";
 "Custom vocabulary" = "사용자 정의 어휘";
 "Add a word or phrase…" = "단어 또는 문구 추가…";
@@ -1374,7 +1362,6 @@
 "%@ — hold your dictation key and speak" = "%@ — 받아쓰기 키를 누른 채 말하세요";
 "Recovered meeting · " = "복구된 회의 · ";
 "Meeting · " = "회의 · ";
-"Hold your key to talk; keep holding it to lock hands-free recording." = "키를 누르고 있는 동안 말하세요. 계속 누르고 있으면 핸즈프리 녹음이 고정돼요.";
 "Rejects this correction so it stops being made." = "이 교정을 거부해 더 이상 적용되지 않게 해요.";
 "Press" = "텍스트 필드에 붙여넣으려면";
 "to paste into a text field" = "키를 누르세요";
@@ -1393,7 +1380,6 @@
 "Dictionary…" = "사전…";
 "%@ — speech unavailable" = "%@ — 음성 인식을 사용할 수 없음";
 "%@ — needs permissions" = "%@ — 권한 필요";
-"Hold %@ to talk · keep holding to lock" = "%@ 키를 누르고 말하기 · 계속 누르면 고정";
 "Recording you + the call…" = "사용자와 통화 녹음 중…";
 "Recording (mic only)…" = "녹음 중 (마이크만)…";
 "This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone." = "회의 중에 통합된 메모를 포함해 요약 전체가 받아쓴 내용만으로 만든 새 요약으로 바뀌어요. 되돌릴 수 없어요.";
@@ -1491,3 +1477,11 @@
 "Mon" = "월";
 "Fri" = "금";
 "%lld words" = "%lld단어";
+
+/* Hold to talk, let go to insert (no hands-free lock) */
+"Hold to talk · let go to insert" = "누른 채로 말하기 · 떼면 입력";
+"Hold %@ to talk · let go to insert" = "%@ 키를 누른 채로 말하기 · 떼면 입력";
+"Hold your key to talk. Let go and the text is inserted." = "키를 누른 채로 말하세요. 키를 떼면 텍스트가 입력돼요.";
+"Hold the key and speak. Let go and the text is inserted." = "키를 누른 채로 말하세요. 키를 떼면 텍스트가 입력돼요.";
+"After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "입력 모니터링 또는 손쉬운 사용을 허용한 뒤에는 변경 사항이 적용되도록 Talkie를 종료했다가 다시 열어야 할 수 있어요. 이미 켜져 있는데도 허용되지 않으면 시스템 설정에서 Talkie를 −로 제거한 뒤 다시 추가하세요.";
+"Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "이미 켜져 있는데도 허용되지 않나요? 시스템 설정에서 Talkie를 −로 제거한 뒤 다시 추가하세요.";

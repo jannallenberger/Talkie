@@ -339,19 +339,9 @@
 "Added “%@” — it’ll be fixed automatically next time." = "Added “%@” — it’ll be fixed automatically next time.";
 "Learn “%@”?" = "Learn “%@”?";
 "was “%@”" = "was “%@”";
-"Hold %@ to talk · tap twice to lock" = "Hold %@ to talk · tap twice to lock";
 "Hold to talk · tap twice to lock" = "Hold to talk · tap twice to lock";
-"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
-"Hold to talk · keep holding to lock" = "Hold to talk · keep holding to lock";
-"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert.";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software).";
-"Hold, speak, release — or tap twice to go hands-free" = "Hold, speak, release — or tap twice to go hands-free";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop.";
-"Listening, hands-free. Recording is locked — tap your key once to stop." = "Listening, hands-free. Recording is locked — tap your key once to stop.";
-"still listening — say something or it'll wrap up" = "still listening — say something or it'll wrap up";
-"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "Still listening — it's quiet, so recording will stop soon. Say something to keep going.";
-"Hold your key to talk, or tap it twice to lock hands-free recording." = "Hold your key to talk, or tap it twice to lock hands-free recording.";
 "Click here, then hold %@ and speak…" = "Click here, then hold %@ and speak…";
 
 // MARK: - Secure-input culprit (B3)
@@ -936,7 +926,6 @@
 "Downloading the speech model (one time)…" = "Downloading the speech model (one time)…";
 "macOS does this one download itself — this app never connects to the internet. After it, everything runs offline." = "macOS does this one download itself — this app never connects to the internet. After it, everything runs offline.";
 "Once the speech model is on this Mac, you can try dictation with the Wi-Fi off." = "Once the speech model is on this Mac, you can try dictation with the Wi-Fi off.";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. Want it hands-free? Keep holding the key a moment and recording locks; tap once to stop." = "Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. Want it hands-free? Keep holding the key a moment and recording locks; tap once to stop.";
 "Stop recording" = "Stop recording";
 "Your dictated words" = "Your dictated words";
 "Empty" = "Empty";
@@ -1354,7 +1343,6 @@
 "Smart cleanup" = "Smart cleanup";
 "Show live words in the pill" = "Show live words in the pill";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "The transcript flows below the waveform as you speak — the pill grows downward, not sideways.";
-"Stop hands-free when I go quiet" = "Stop hands-free when I go quiet";
 "A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown.";
 "Custom vocabulary" = "Custom vocabulary";
 "Add a word or phrase…" = "Add a word or phrase…";
@@ -1380,7 +1368,6 @@
 "%@ — hold your dictation key and speak" = "%@ — hold your dictation key and speak";
 "Recovered meeting · " = "Recovered meeting · ";
 "Meeting · " = "Meeting · ";
-"Hold your key to talk; keep holding it to lock hands-free recording." = "Hold your key to talk; keep holding it to lock hands-free recording.";
 "Rejects this correction so it stops being made." = "Rejects this correction so it stops being made.";
 "Press" = "Press";
 "to paste into a text field" = "to paste into a text field";
@@ -1399,7 +1386,6 @@
 "Dictionary…" = "Dictionary…";
 "%@ — speech unavailable" = "%@ — speech unavailable";
 "%@ — needs permissions" = "%@ — needs permissions";
-"Hold %@ to talk · keep holding to lock" = "Hold %@ to talk · keep holding to lock";
 "Recording you + the call…" = "Recording you + the call…";
 "Recording (mic only)…" = "Recording (mic only)…";
 "This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone." = "This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone.";
@@ -1494,3 +1480,11 @@
 "Mon" = "Mon";
 "Fri" = "Fri";
 "%lld words" = "%lld words";
+
+/* Hold to talk, let go to insert (no hands-free lock) */
+"Hold to talk · let go to insert" = "Hold to talk · let go to insert";
+"Hold %@ to talk · let go to insert" = "Hold %@ to talk · let go to insert";
+"Hold your key to talk. Let go and the text is inserted." = "Hold your key to talk. Let go and the text is inserted.";
+"Hold the key and speak. Let go and the text is inserted." = "Hold the key and speak. Let go and the text is inserted.";
+"After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again.";
+"Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again.";

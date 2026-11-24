@@ -335,19 +335,9 @@
 "Added “%@” — it’ll be fixed automatically next time." = "“%@”を追加しました — 次回から自動で修正されます。";
 "Learn “%@”?" = "“%@”を覚えますか？";
 "was “%@”" = "元は“%@”";
-"Hold %@ to talk · tap twice to lock" = "%@ を押し続けて話す・2回タップで固定";
 "Hold to talk · tap twice to lock" = "押し続けて話す・2回タップで固定";
-"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "キーを押しながら話し、離すと挿入されます。2回タップするとハンズフリーで固定され、何も押さなくても録音が続きます。もう一度タップすると停止して挿入します。";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
-"Hold to talk · keep holding to lock" = "押し続けて話す・そのまま押し続けて固定";
-"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "キーを押しながら話し、離すと挿入されます。そのまま押し続けるとハンズフリーで固定され、何も押さなくても録音が続きます。もう一度タップすると停止して挿入します。";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "サイドボタンは使用中のアプリで通常どおり機能します。Talkie はそれを聞き取るだけで、ボタンは実際のボタンとして macOS に届く必要があります（一部のマウスは独自のソフトウェアでボタンを再割り当てします）。";
-"Hold, speak, release — or tap twice to go hands-free" = "押して、話して、離す — または2回タップでハンズフリー";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "キーを押しながら書きたいことを話し、離すだけ — Talkie が入力中の場所にテキストを挿入します。急いでいるときは、キーを2回タップして録音をハンズフリーで固定し、1回タップで停止します。";
-"Listening, hands-free. Recording is locked — tap your key once to stop." = "ハンズフリーで聞き取り中です。録音は固定されています。キーを1回タップすると停止します。";
-"still listening — say something or it'll wrap up" = "まだ聞いています — 話さないと終了します";
-"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "まだ聞いています — 静かなので、まもなく録音を停止します。続けるには話してください。";
-"Hold your key to talk, or tap it twice to lock hands-free recording." = "キーを押し続けて話すか、2回タップしてハンズフリー録音を固定します。";
 "Click here, then hold %@ and speak…" = "ここをクリックし、%@ を押しながら話してください…";
 
 // MARK: - Secure-input culprit (B3)
@@ -925,7 +915,6 @@
 "Downloading the speech model (one time)…" = "音声モデルをダウンロード中（初回のみ）…";
 "macOS does this one download itself — this app never connects to the internet. After it, everything runs offline." = "このダウンロードはmacOSが自分で行います。Talkieがインターネットに接続することはありません。完了後はすべてオフラインで動作します。";
 "Once the speech model is on this Mac, you can try dictation with the Wi-Fi off." = "音声モデルがこのMacに入ったら、Wi-Fiをオフにした状態でTalkieを試せます。";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. Want it hands-free? Keep holding the key a moment and recording locks; tap once to stop." = "キーを押したまま、書きたいことを話し、離してください。Talkieが入力中の場所にテキストを入れます。ハンズフリーにしたいときは、キーをしばらく押し続けると録音がロックされ、もう一度タップすると止まります。";
 "Stop recording" = "録音を停止";
 "Your dictated words" = "話した内容";
 "Empty" = "空";
@@ -1347,7 +1336,6 @@
 "Smart cleanup" = "スマート整形";
 "Show live words in the pill" = "ピルにライブで単語を表示";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "話している間、文字起こしが波形の下に流れます。ピルは横ではなく下に広がります。";
-"Stop hands-free when I go quiet" = "静かになったらハンズフリーを停止";
 "A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "ロックしたセッションは、しばらく無音が続くと終了します。オフにすると、タップして止めるまで聞き続けます。カウントダウンはありません。";
 "Custom vocabulary" = "カスタム語彙";
 "Add a word or phrase…" = "単語やフレーズを追加…";
@@ -1374,7 +1362,6 @@
 "%@ — hold your dictation key and speak" = "%@ — 音声入力キーを押しながら話します";
 "Recovered meeting · " = "復元した会議 · ";
 "Meeting · " = "会議 · ";
-"Hold your key to talk; keep holding it to lock hands-free recording." = "キーを押している間は話せます。押し続けるとハンズフリー録音にロックされます。";
 "Rejects this correction so it stops being made." = "この修正を拒否し、今後は行わないようにします。";
 "Press" = "テキストフィールドに貼り付けるには";
 "to paste into a text field" = "を押す";
@@ -1393,7 +1380,6 @@
 "Dictionary…" = "辞書…";
 "%@ — speech unavailable" = "%@ — 音声認識を利用できません";
 "%@ — needs permissions" = "%@ — 権限が必要です";
-"Hold %@ to talk · keep holding to lock" = "%@ を押している間は話せます · 押し続けるとロック";
 "Recording you + the call…" = "あなたと通話を録音中…";
 "Recording (mic only)…" = "録音中（マイクのみ）…";
 "This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone." = "これにより、会議中に取り込まれたメモを含む要約全体が、文字起こしのみに基づく新しい要約に置き換わります。元に戻せません。";
@@ -1491,3 +1477,11 @@
 "Mon" = "月";
 "Fri" = "金";
 "%lld words" = "%lld語";
+
+/* Hold to talk, let go to insert (no hands-free lock) */
+"Hold to talk · let go to insert" = "押したまま話す · 離すと入力";
+"Hold %@ to talk · let go to insert" = "%@ を押したまま話す · 離すと入力";
+"Hold your key to talk. Let go and the text is inserted." = "キーを押したまま話してください。離すとテキストが入力されます。";
+"Hold the key and speak. Let go and the text is inserted." = "キーを押したまま話してください。離すとテキストが入力されます。";
+"After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "入力監視またはアクセシビリティを許可した後、変更を反映するには Talkie を終了して開き直す必要がある場合があります。すでにオンなのに許可されない場合は、システム設定で Talkie を − で削除してから、もう一度追加してください。";
+"Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "オンなのに許可されない場合は、システム設定で Talkie を − で削除してから、もう一度追加してください。";

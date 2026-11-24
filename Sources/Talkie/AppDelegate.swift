@@ -130,11 +130,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var servicesProvider: ServicesProvider?
 
     private var isDictating = false
-    /// True while the current session is locked hands-free (a tap-tap put it in
-    /// locked mode). Purely presentational on the app side — the gesture machine in
-    /// HotKeyMonitor owns the real lock state; this mirrors it so begin/end can
-    /// reset the pill's lock glyph. Reset on every begin and end.
-    private var handsFreeLocked = false
     /// "Format while you dictate": this session's command-key marks (audio time),
     /// collected while recording and consumed by `endDictation`. Empty unless the
     /// command key was used — then the normal pipeline runs unchanged.
@@ -775,8 +770,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hintLine() -> String {
-        // One gesture for everyone: hold to talk, tap twice to lock hands-free.
-        return String(format: "Hold %@ to talk · keep holding to lock".loc, settings.activationKey.displayName)
+        return String(format: "Hold %@ to talk · let go to insert".loc, settings.activationKey.displayName)
     }
 
     private func updateStatusUI() {
@@ -799,12 +793,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await engine.setUpdateHandler { update in
                 Task { @MainActor in
                     guard !update.isComplete else { return }
-                    // B5: a partial arrived — the recognizer is emitting words, so the
-                    // user is speaking even if their voice never clears the level floor
-                    // (the load-bearing quiet-speaker case). Count it as activity so the
-                    // auto-stop watchdog resets its silence clock / cancels a countdown.
-                    // Non-nil only for a locked session, so held sessions are unaffected.
-                    AppDelegate.shared?.silenceWatchdog?.transcriptChanged()
                     // C1: hand the pill STRUCTURE (committed head + volatile tail), not
                     // the flattened `combined`, so it can render the still-changing tail
                     // fainter and let words firm up as they finalize. Display only — the
@@ -861,21 +849,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Hotkey
 
-    private enum DictationEvent: Sendable { case begin, end, lock, format(FormatKeyGesture.Output) }
+    private enum DictationEvent: Sendable { case begin, end, format(FormatKeyGesture.Output) }
     private var eventTask: Task<Void, Never>?
-    /// The dictation event stream's continuation. Hoisted from a `setupHotKey` local
-    /// to a property (B5) so the silence auto-stop watchdog can yield `.end` into the
-    /// SAME ordered stream a manual key-release goes through — the auto-stop is then
-    /// byte-identical to a real tap (same `endDictation`, same FIFO ordering vs any
-    /// in-flight begin). Still captured by the `HotKeyMonitor` closures below exactly as
-    /// before; storing it changes nothing about the tap path.
+    /// The dictation event stream's continuation (also captured by the
+    /// `HotKeyMonitor` closures below).
     private var dictationEventContinuation: AsyncStream<DictationEvent>.Continuation?
 
     private func setupHotKey() {
-        // Funnel press/release/lock edges through ONE ordered stream so a begin can
+        // Funnel press/release edges through ONE ordered stream so a begin can
         // never be scheduled after its matching end (two independent Tasks have
         // no FIFO guarantee on the MainActor executor). The gesture machine lives in
-        // HotKeyMonitor on the tap thread; it hands us already-decided begin/end/lock.
+        // HotKeyMonitor on the tap thread; it hands us already-decided begin/end.
         let (stream, continuation) = AsyncStream<DictationEvent>.makeStream()
         dictationEventContinuation = continuation
         eventTask = Task { @MainActor [weak self] in
@@ -884,7 +868,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 switch event {
                 case .begin: self.beginDictation()
                 case .end: self.endDictation()
-                case .lock: self.lockDictation()
                 case .format(let output): self.handleFormatKey(output)
                 }
             }
@@ -895,7 +878,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             config: config,
             onActivate: { continuation.yield(.begin) },
             onDeactivate: { continuation.yield(.end) },
-            onLock: { continuation.yield(.lock) },
             onPasteLast: { [weak self] in
                 Task { @MainActor in self?.pasteLastTranscript() }
             },
@@ -1108,54 +1090,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return max(0, t - start)
     }
 
-    // MARK: Hands-free auto-stop (B5)
-
-    /// The silence auto-stop watchdog for the CURRENT session — non-nil only while a
-    /// hands-free-LOCKED session is live. A held (push-to-talk) session never gets one,
-    /// so it can never auto-stop. Created in `lockDictation` (the moment the session
-    /// becomes locked), fed by the `onLevel` closure + the engine's volatile handler,
-    /// and torn down on every session-end path. `@MainActor`-confined like everything
-    /// on the dictation path, so no locking is needed.
-    private var silenceWatchdog: SilenceWatchdogDriver?
-
-    /// Build + start the watchdog for a session that just locked hands-free. On its
-    /// `.stop` it yields `.end` into the dictation event stream — the auto-stop then
-    /// runs the exact same teardown a manual tap does. The countdown/cancel callbacks
-    /// only touch the HUD pill.
-    private func startSilenceWatchdog() {
-        silenceWatchdog?.stop()   // defensive: never leak a prior session's watchdog
-        // Opt-out: when auto-stop-on-silence is off, a latched hands-free session keeps
-        // listening until you tap to stop — no watchdog, no countdown, no ring.
-        guard settings.autoStopOnSilence else { silenceWatchdog = nil; return }
-        let myID = sessionID
-        silenceWatchdog = SilenceWatchdogDriver(
-            onCountdownStarted: { [weak self] remaining in
-                // Ignore a stale callback from a superseded session.
-                guard let self, self.sessionID == myID else { return }
-                self.hud.showSilenceCountdown(remaining: remaining)
-            },
-            onCancelled: { [weak self] in
-                guard let self, self.sessionID == myID else { return }
-                self.hud.cancelSilenceCountdown()
-            },
-            onStop: { [weak self] in
-                guard let self, self.sessionID == myID else { return }
-                // Clear the countdown UI, then end exactly as a manual tap would by
-                // yielding `.end` into the ordered event stream (not calling
-                // `endDictation()` directly — the stream keeps begin/end ordering).
-                self.hud.cancelSilenceCountdown()
-                self.dictationEventContinuation?.yield(.end)
-            })
-        silenceWatchdog?.start()
-    }
-
-    /// Tear down the current session's watchdog (every end path calls this). Safe to
-    /// call when there is none.
-    private func stopSilenceWatchdog() {
-        silenceWatchdog?.stop()
-        silenceWatchdog = nil
-    }
-
     /// Register Talkie's two macOS Services ("Transcribe with Talkie", "Clean up
     /// with Talkie"). `NSApp.servicesProvider` is a WEAK reference, so we hold the
     /// provider in a stored property (`servicesProvider`) for the app's lifetime;
@@ -1170,22 +1104,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.servicesProvider = provider
         servicesProvider = provider
         NSUpdateDynamicServices()
-    }
-
-    /// A tap-tap locked recording hands-free. Recording is already running (it
-    /// began on the first tap's key-down), so this only flips the presentation to
-    /// the hands-free/locked look: a lock glyph in the pill, a lock earcon, and the
-    /// bird's locked state. Guarded so a stray lock without a live session is inert.
-    private func lockDictation() {
-        guard isDictating, sessionLive else { return }
-        handsFreeLocked = true
-        hud.setHandsFreeLocked(true)
-        Feedback.locked()
-        // B5: only a LOCKED hands-free session can auto-stop on silence (a held session
-        // ends when the key is released, so it never needs — and never gets — a
-        // watchdog). Start it here, the moment the session becomes locked, and feed it
-        // from the live level + volatile-transcript signals below.
-        startSilenceWatchdog()
     }
 
     private func observeSettings() {
@@ -1589,13 +1507,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // taking over. (Learning now happens live, the instant you fix a word; see
         // `beginWatching` at insertion time, below.)
         learning.stopWatching()
-        // B5 defensive: a fresh session starts un-locked and unwatched — never inherit a
-        // prior session's auto-stop watchdog (it's re-created if/when this one locks).
-        stopSilenceWatchdog()
 
         isDictating = true
         lastSpeechUse = Date()
-        handsFreeLocked = false
         sessionLive = false
         sessionFormatMarks = []
         sessionLiveCommands = []
@@ -1923,12 +1837,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 Task { @MainActor in
                                     AppDelegate.sharedHUD?.updateLevel(level)
                                     self?.birdBuddy.updateLevel(level)
-                                    // B5: feed the same normalized level to the hands-free
-                                    // auto-stop watchdog. Non-nil only for a locked session, so
-                                    // a held session is never watched. A level above the floor
-                                    // (speech) cancels a running countdown; sustained sub-floor
-                                    // level is the silence that arms + eventually stops.
-                                    self?.silenceWatchdog?.observe(level: level)
                                 }
                             },
                             onCaptureFailed: { error in
@@ -2107,9 +2015,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func handleCaptureFailure(_ error: Error, sessionID: Int) {
         guard isDictating, self.sessionID == sessionID else { return }
         isDictating = false
-        stopSilenceWatchdog()   // B5: a dead mic ends the session — drop its watchdog too
-        handsFreeLocked = false
-        hud.setHandsFreeLocked(false)
         sessionLive = false
         recordingStartedAt = nil
         Feedback.stop()
@@ -2150,15 +2055,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func endDictation() {
         guard isDictating else { return }
         isDictating = false
-        // B5: the session is ending (manual tap OR the watchdog yielded `.end`) — tear
-        // the watchdog down so no timer outlives the session. Idempotent, so the
-        // auto-stop path that just fired this is fine to re-tear here.
-        stopSilenceWatchdog()
-        // The session is ending — clear the hands-free lock so the next pill doesn't
-        // inherit a stale lock glyph (the pill moves to processing/insert below).
-        let wasHandsFreeLocked = handsFreeLocked
-        handsFreeLocked = false
-        hud.setHandsFreeLocked(false)
         updateStatusUI()
         // Key released — mic stops, so the bird drops back to its calm idle look.
         birdBuddy.setActive(false)
@@ -2191,11 +2087,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         closeOpenFormatSpan()
         let duration = Date().timeIntervalSince(recordingStartedAt ?? Date())
         recordingStartedAt = nil
-        // A "lone quick tap" is a session that never latched hands-free and whose live
-        // capture was very short — i.e. the user tapped once (maybe not realizing it's
-        // hold-to-talk) rather than holding a beat. Used only to decide whether to
+        // A "lone quick tap": the live capture was very short — the user tapped once
+        // (maybe not realizing it's hold-to-talk). Used only to decide whether to
         // surface the one-time gesture hint when such a tap yields nothing.
-        let wasLoneShortTap = !wasHandsFreeLocked && duration < ActivationGesture.latchThreshold
+        let wasLoneShortTap = duration < ActivationGesture.quickTapThreshold
 
         Feedback.stop()
         // No live language restart may START after this point; one already in

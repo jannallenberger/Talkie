@@ -335,19 +335,9 @@
 "Added “%@” — it’ll be fixed automatically next time." = "已添加“%@”——下次会自动修正。";
 "Learn “%@”?" = "学会“%@”？";
 "was “%@”" = "原为“%@”";
-"Hold %@ to talk · tap twice to lock" = "按住 %@ 说话 · 点按两次锁定";
 "Hold to talk · tap twice to lock" = "按住说话 · 点按两次锁定";
-"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "按住按键说话，松开即可插入。点按两次可免手锁定——无需按住任何键即可持续录音；再点按一次即可停止并插入。";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
-"Hold to talk · keep holding to lock" = "按住说话 · 持续按住以锁定";
-"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "按住按键说话，松开即可插入。持续按住可免手锁定——无需按住任何键即可持续录音；再点按一次即可停止并插入。";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "侧键在你正在使用的应用中仍执行其原本的功能——Talkie 只是监听它，并且该按键必须作为真实按键传达给 macOS（部分鼠标会在其自有软件中重新映射该按键）。";
-"Hold, speak, release — or tap twice to go hands-free" = "按住、说话、松开 — 或点按两次进入免手模式";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "按住按键，说出你想写的内容，然后松开——Talkie 会把文字放到你正在输入的地方。赶时间？点按按键两次即可免手锁定录音，再点按一次即可停止。";
-"Listening, hands-free. Recording is locked — tap your key once to stop." = "正在免手聆听。录音已锁定——点按按键一次即可停止。";
-"still listening — say something or it'll wrap up" = "还在听 — 说点什么，否则就结束了";
-"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "还在听 — 周围很安静，录音即将停止。说点什么以继续。";
-"Hold your key to talk, or tap it twice to lock hands-free recording." = "按住按键说话，或点按两次锁定免手录音。";
 "Click here, then hold %@ and speak…" = "点击这里，然后按住 %@ 说话…";
 
 // MARK: - Secure-input culprit (B3)
@@ -925,7 +915,6 @@
 "Downloading the speech model (one time)…" = "正在下载语音模型（仅此一次）…";
 "macOS does this one download itself — this app never connects to the internet. After it, everything runs offline." = "这次下载由 macOS 自己完成，Talkie 从不连接互联网。之后一切都离线运行。";
 "Once the speech model is on this Mac, you can try dictation with the Wi-Fi off." = "语音模型装好后，你就可以关闭 Wi-Fi 试用 Talkie。";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. Want it hands-free? Keep holding the key a moment and recording locks; tap once to stop." = "按住你的按键，说出想写的内容，然后松开——Talkie 会把文字放到你正在输入的位置。想免手持？继续按住一会儿，录音就会锁定；再点一下即可停止。";
 "Stop recording" = "停止录音";
 "Your dictated words" = "你听写的文字";
 "Empty" = "空";
@@ -1347,7 +1336,6 @@
 "Smart cleanup" = "智能整理";
 "Show live words in the pill" = "在胶囊中显示实时文字";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "说话时，转写内容会显示在波形下方；胶囊向下扩展，而不是向两侧。";
-"Stop hands-free when I go quiet" = "安静下来时停止免提";
 "A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "锁定的会话会在一段静音后结束。关闭后会一直监听，直到你轻点停止，没有倒计时。";
 "Custom vocabulary" = "自定义词汇";
 "Add a word or phrase…" = "添加单词或短语…";
@@ -1374,7 +1362,6 @@
 "%@ — hold your dictation key and speak" = "%@ — 按住听写键并说话";
 "Recovered meeting · " = "已恢复的会议 · ";
 "Meeting · " = "会议 · ";
-"Hold your key to talk; keep holding it to lock hands-free recording." = "按住按键说话；继续按住可锁定免提录音。";
 "Rejects this correction so it stops being made." = "拒绝此更正，使其不再被应用。";
 "Press" = "按";
 "to paste into a text field" = "以粘贴到文本字段";
@@ -1393,7 +1380,6 @@
 "Dictionary…" = "词典…";
 "%@ — speech unavailable" = "%@ — 语音不可用";
 "%@ — needs permissions" = "%@ — 需要权限";
-"Hold %@ to talk · keep holding to lock" = "按住 %@ 说话 · 继续按住可锁定";
 "Recording you + the call…" = "正在录制你和通话…";
 "Recording (mic only)…" = "正在录制（仅麦克风）…";
 "This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone." = "这会用仅基于转写内容的新摘要替换整个摘要，包括会议期间并入其中的备注。此操作无法撤销。";
@@ -1491,3 +1477,11 @@
 "Mon" = "周一";
 "Fri" = "周五";
 "%lld words" = "%lld 个词";
+
+/* Hold to talk, let go to insert (no hands-free lock) */
+"Hold to talk · let go to insert" = "按住说话 · 松开即输入";
+"Hold %@ to talk · let go to insert" = "按住 %@ 说话 · 松开即输入";
+"Hold your key to talk. Let go and the text is inserted." = "按住按键说话。松开后文本即被输入。";
+"Hold the key and speak. Let go and the text is inserted." = "按住按键说话。松开后文本即被输入。";
+"After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "授予输入监控或辅助功能权限后，可能需要退出并重新打开 Talkie，更改才会生效。如果 Talkie 在那里已开启但仍未获得权限，请在系统设置中用 − 移除它，然后重新添加。";
+"Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "已开启但仍未获得权限？请在系统设置中用 − 移除 Talkie，然后重新添加。";

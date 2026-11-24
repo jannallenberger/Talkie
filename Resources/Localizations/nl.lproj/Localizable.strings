@@ -335,19 +335,9 @@
 "Added “%@” — it’ll be fixed automatically next time." = "“%@” toegevoegd — wordt de volgende keer automatisch gecorrigeerd.";
 "Learn “%@”?" = "“%@” leren?";
 "was “%@”" = "was “%@”";
-"Hold %@ to talk · tap twice to lock" = "Houd %@ ingedrukt om te praten · tik tweemaal om te vergrendelen";
 "Hold to talk · tap twice to lock" = "Houd ingedrukt om te praten · tik tweemaal om te vergrendelen";
-"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Houd de toets ingedrukt en spreek, laat dan los om in te voegen. Tik er tweemaal op om handsfree te vergrendelen — de opname loopt door zonder iets ingedrukt te houden; tik één keer om te stoppen en in te voegen.";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
-"Hold to talk · keep holding to lock" = "Houd ingedrukt om te praten · blijf ingedrukt houden om te vergrendelen";
-"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Houd de toets ingedrukt en spreek, laat dan los om in te voegen. Blijf ingedrukt houden om handsfree te vergrendelen — de opname loopt door zonder iets ingedrukt te houden; tik één keer om te stoppen en in te voegen.";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "De zijknop blijft zijn normale functie vervullen in de app die je gebruikt — Talkie luistert er alleen naar, en de knop moet macOS als een echte knop bereiken (sommige muizen wijzen hem in hun eigen software opnieuw toe).";
-"Hold, speak, release — or tap twice to go hands-free" = "Ingedrukt houden, praten, loslaten — of tik tweemaal voor handsfree";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Houd je toets ingedrukt, zeg wat je wilt schrijven en laat los — Talkie plaatst de tekst waar je aan het typen bent. Haast? Tik tweemaal op de toets om de opname handsfree te vergrendelen en één keer om te stoppen.";
-"Listening, hands-free. Recording is locked — tap your key once to stop." = "Luistert, handsfree. De opname is vergrendeld — tik één keer op je toets om te stoppen.";
-"still listening — say something or it'll wrap up" = "nog aan het luisteren — zeg iets of het stopt";
-"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "Nog aan het luisteren — het is stil, dus de opname stopt binnenkort. Zeg iets om door te gaan.";
-"Hold your key to talk, or tap it twice to lock hands-free recording." = "Houd je toets ingedrukt om te praten, of tik er tweemaal op om handsfree opnemen te vergrendelen.";
 "Click here, then hold %@ and speak…" = "Klik hier, houd dan %@ ingedrukt en spreek…";
 
 // MARK: - Secure-input culprit (B3)
@@ -925,7 +915,6 @@
 "Downloading the speech model (one time)…" = "Het spraakmodel wordt gedownload (eenmalig)…";
 "macOS does this one download itself — this app never connects to the internet. After it, everything runs offline." = "macOS doet deze ene download zelf: Talkie maakt nooit verbinding met internet. Daarna werkt alles offline.";
 "Once the speech model is on this Mac, you can try dictation with the Wi-Fi off." = "Zodra het spraakmodel op deze Mac staat, kun je Talkie proberen met wifi uit.";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. Want it hands-free? Keep holding the key a moment and recording locks; tap once to stop." = "Houd je toets ingedrukt, zeg wat je wilt schrijven en laat los: Talkie zet de tekst waar je aan het typen bent. Liever handsfree? Houd de toets even langer vast, dan vergrendelt de opname; tik één keer om te stoppen.";
 "Stop recording" = "Opname stoppen";
 "Your dictated words" = "Je gedicteerde woorden";
 "Empty" = "Leeg";
@@ -1347,7 +1336,6 @@
 "Smart cleanup" = "Slim opschonen";
 "Show live words in the pill" = "Toon live woorden in de pil";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "De transcriptie loopt onder de golfvorm door terwijl je spreekt: de pil groeit naar beneden, niet opzij.";
-"Stop hands-free when I go quiet" = "Handsfree stoppen als ik stil word";
 "A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "Een vergrendelde sessie rondt af na een stilte. Uit houdt hem luisterend tot je tikt om te stoppen, zonder aftelling.";
 "Custom vocabulary" = "Eigen woordenschat";
 "Add a word or phrase…" = "Voeg een woord of zin toe…";
@@ -1374,7 +1362,6 @@
 "%@ — hold your dictation key and speak" = "%@ — houd je dicteertoets ingedrukt en spreek";
 "Recovered meeting · " = "Herstelde vergadering · ";
 "Meeting · " = "Vergadering · ";
-"Hold your key to talk; keep holding it to lock hands-free recording." = "Houd je toets ingedrukt om te praten; blijf hem vasthouden om handsfree opnemen te vergrendelen.";
 "Rejects this correction so it stops being made." = "Weigert deze correctie zodat ze niet meer wordt toegepast.";
 "Press" = "Druk op";
 "to paste into a text field" = "om in een tekstveld te plakken";
@@ -1393,7 +1380,6 @@
 "Dictionary…" = "Woordenboek…";
 "%@ — speech unavailable" = "%@ — spraak niet beschikbaar";
 "%@ — needs permissions" = "%@ — heeft rechten nodig";
-"Hold %@ to talk · keep holding to lock" = "Houd %@ ingedrukt om te praten · blijf vasthouden om te vergrendelen";
 "Recording you + the call…" = "Jou + het gesprek opnemen…";
 "Recording (mic only)…" = "Opnemen (alleen microfoon)…";
 "This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone." = "Dit vervangt de hele samenvatting, inclusief notities die tijdens de vergadering erin zijn verwerkt, door een nieuwe samenvatting op basis van alleen de transcriptie. Dit kan niet ongedaan worden gemaakt.";
@@ -1491,3 +1477,11 @@
 "Mon" = "ma";
 "Fri" = "vr";
 "%lld words" = "%lld woorden";
+
+/* Hold to talk, let go to insert (no hands-free lock) */
+"Hold to talk · let go to insert" = "Houd ingedrukt om te praten · laat los om in te voegen";
+"Hold %@ to talk · let go to insert" = "Houd %@ ingedrukt om te praten · laat los om in te voegen";
+"Hold your key to talk. Let go and the text is inserted." = "Houd je toets ingedrukt om te praten. Laat los en de tekst wordt ingevoegd.";
+"Hold the key and speak. Let go and the text is inserted." = "Houd de toets ingedrukt en praat. Laat los en de tekst wordt ingevoegd.";
+"After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "Na het toekennen van Invoerbewaking of Toegankelijkheid moet je Talkie mogelijk afsluiten en opnieuw openen om de wijziging door te voeren. Staat Talkie daar al aan maar heeft het nog geen toestemming, verwijder het dan met − in Systeeminstellingen en voeg het opnieuw toe.";
+"Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "Staat het al aan maar heeft het nog geen toestemming? Verwijder Talkie met − in Systeeminstellingen en voeg het opnieuw toe.";
