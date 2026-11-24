@@ -457,7 +457,7 @@ private struct SidebarList: View {
         .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 3) {
-                Eyebrow(text: "Hold to talk · let go to insert")
+                Eyebrow(text: "Press to talk · press again to insert")
                 Text(settings.activationKey.displayName)
                     .font(.talkieHeading(12, weight: .medium))
                     .foregroundStyle(Theme.inkSecondary)
@@ -1786,7 +1786,7 @@ struct ActivationSettings: View {
     /// it must reach macOS as a real button (vendor drivers that remap it to a
     /// keystroke are out of Talkie's hands).
     private var activationFooter: String {
-        let base = "Hold the key and speak. Let go and the text is inserted.".loc
+        let base = "Press the key and speak. Press it again and the text is inserted.".loc
         guard settings.activationKey.isMouseButton else { return base }
         let note = "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software).".loc
         return base + "\n\n" + note
@@ -1896,6 +1896,10 @@ private struct BehaviorSettings: View {
                 SettingsToggleRow(title: "Show live words in the pill".loc,
                                   subtitle: "The transcript flows below the waveform as you speak — the pill grows downward, not sideways.".loc,
                                   isOn: $settings.showLivePillText)
+                SettingsDivider()
+                SettingsToggleRow(title: "Stop when I go quiet".loc,
+                                  subtitle: "After a stretch of silence the recording ends and the text is inserted.".loc,
+                                  isOn: $settings.autoStopOnSilence)
             }
         }
     }

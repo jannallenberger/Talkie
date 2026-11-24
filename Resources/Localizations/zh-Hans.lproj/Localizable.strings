@@ -30,7 +30,6 @@
 "Grant" = "授权";
 "Grant the permissions to try it now — or skip and start using Talkie." = "授予权限以立即试用——或跳过并开始使用 Talkie。";
 "Hit Start recording before your next call." = "在下次通话前点按“开始录制”。";
-"Hold your dictation key and speak — what you say will show up here." = "按住听写键并说话——你说的内容会显示在此处。";
 "Inherit" = "继承";
 "Inserted" = "已插入";
 "Jot key points — Talkie expands them with the transcript…" = "记下要点——Talkie 会结合转录文本展开…";
@@ -338,7 +337,6 @@
 "Hold to talk · tap twice to lock" = "按住说话 · 点按两次锁定";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "侧键在你正在使用的应用中仍执行其原本的功能——Talkie 只是监听它，并且该按键必须作为真实按键传达给 macOS（部分鼠标会在其自有软件中重新映射该按键）。";
-"Click here, then hold %@ and speak…" = "点击这里，然后按住 %@ 说话…";
 
 // MARK: - Secure-input culprit (B3)
 "Password field — I don’t peek. Tap to copy." = "密码栏 — 我不偷看。轻点以复制。";
@@ -766,7 +764,6 @@
 "Hide %@" = "隐藏 %@";
 "Quit %@" = "退出 %@";
 "Open %@" = "打开 %@";
-"%@ — hold your key to dictate" = "%@ — 按住按键即可口述";
 "%@ is listening." = "%@ 正在聆听。";
 "%@ dictation indicator. Hold your dictation key and speak." = "%@ 口述指示器。按住口述键并说话。";
 "%@ — Nothing leaves this Mac." = "%@ — 没有任何内容离开这台 Mac。";
@@ -919,7 +916,6 @@
 "Your dictated words" = "你听写的文字";
 "Empty" = "空";
 "Try dictation here" = "在这里试试听写";
-"Hold your dictation key and speak; the words appear in this field." = "按住听写键并说话，文字会出现在这个输入框中。";
 "Introduction" = "简介";
 "Replay introduction" = "重新查看简介";
 "Opening the welcome flow…" = "正在打开欢迎流程…";
@@ -1096,7 +1092,6 @@
 "For example, your address" = "例如：你的地址";
 "Formatting while you dictate is off. Turn it on in Options below." = "听写时设置格式已关闭。请在下方“选项”中打开。";
 "Hold %@ and talk" = "按住 %@ 说话";
-"Hold a second key while you dictate and say how the next words should look." = "听写时按住第二个键，说出接下来的文字要变成什么样。";
 "Insert a fixed text" = "插入固定文本";
 "Listen for the format key during a dictation." = "听写时留意格式键。";
 "Make it" = "改为";
@@ -1265,11 +1260,8 @@
 "Restart now" = "立即重新启动";
 "Open in Claude Desktop" = "在 Claude Desktop 中打开";
 "The connector isn't part of this build." = "此版本不含连接器。";
-"Hold a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "按住一个键说话，文字就会输入到光标所在处。一切都在这台 Mac 上运行。";
 "Try it" = "试一试";
 "Click the button and say something." = "点击按钮，说点什么。";
-"Hold, talk, let go" = "按住、说话、松开";
-"Hold the key while you talk. When you let go, the text is typed where your cursor is." = "说话时按住按键。松开后，文字会输入到光标所在处。";
 "To record without holding, keep the key down a moment longer. Tap it once to stop." = "如需免按住录音，请多按住一会儿。轻按一次即可停止。";
 "Try it here, or start using it." = "在这里试一试，或者直接开始使用。";
 "About you" = "关于你";
@@ -1289,7 +1281,6 @@
 "To type the text into the app you're using." = "用于把文字输入到你正在使用的应用中。";
 
 /* 1.1.0: strings that had no translation */
-"Hold your dictation key and speak — your stats will fill in here." = "按住听写键并说话——你的统计数据会显示在这里。";
 "%@ words dictated, all on-device." = "已听写 %@ 个词，全部在设备上完成。";
 "An office typist holds ~40 wpm" = "办公室打字员约为 40 词/分";
 "%.1f× an office typist's pace" = "办公室打字员速度的 %.1f×";
@@ -1336,7 +1327,6 @@
 "Smart cleanup" = "智能整理";
 "Show live words in the pill" = "在胶囊中显示实时文字";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "说话时，转写内容会显示在波形下方；胶囊向下扩展，而不是向两侧。";
-"A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "锁定的会话会在一段静音后结束。关闭后会一直监听，直到你轻点停止，没有倒计时。";
 "Custom vocabulary" = "自定义词汇";
 "Add a word or phrase…" = "添加单词或短语…";
 "These words are also used to auto-correct misrecognitions in what you dictate." = "这些词也会用于自动纠正你听写内容中的识别错误。";
@@ -1359,7 +1349,6 @@
 "Japanese" = "日语";
 "Korean" = "韩语";
 "Chinese (Simplified)" = "中文（简体）";
-"%@ — hold your dictation key and speak" = "%@ — 按住听写键并说话";
 "Recovered meeting · " = "已恢复的会议 · ";
 "Meeting · " = "会议 · ";
 "Rejects this correction so it stops being made." = "拒绝此更正，使其不再被应用。";
@@ -1479,9 +1468,25 @@
 "%lld words" = "%lld 个词";
 
 /* Hold to talk, let go to insert (no hands-free lock) */
-"Hold to talk · let go to insert" = "按住说话 · 松开即输入";
 "Hold %@ to talk · let go to insert" = "按住 %@ 说话 · 松开即输入";
-"Hold your key to talk. Let go and the text is inserted." = "按住按键说话。松开后文本即被输入。";
-"Hold the key and speak. Let go and the text is inserted." = "按住按键说话。松开后文本即被输入。";
 "After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "授予输入监控或辅助功能权限后，可能需要退出并重新打开 Talkie，更改才会生效。如果 Talkie 在那里已开启但仍未获得权限，请在系统设置中用 − 移除它，然后重新添加。";
 "Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "已开启但仍未获得权限？请在系统设置中用 − 移除 Talkie，然后重新添加。";
+
+/* Press to start, press again to stop (on/off key) */
+"Press your dictation key and speak. Your stats will show up here." = "按下听写键并说话。你的统计数据会显示在这里。";
+"Press to talk · press again to insert" = "按下说话 · 再按一次输入";
+"Press the key and speak. Press it again and the text is inserted." = "按下按键并说话。再按一次，文本即被输入。";
+"Stop when I go quiet" = "安静时停止";
+"After a stretch of silence the recording ends and the text is inserted." = "安静一段时间后，录音结束并输入文本。";
+"%@ — press your dictation key and speak" = "%@ — 按下听写键并说话";
+"It's quiet, so recording stops soon. Say something to keep going." = "现在很安静，录音即将结束。说点什么即可继续。";
+"Press your key to talk. Press it again and the text is inserted." = "按下按键说话。再按一次，文本即被输入。";
+"Stopping soon · say something to keep going" = "即将结束 · 说点什么即可继续";
+"%@ — press your key to dictate" = "%@ — 按下按键开始听写";
+"Press %@ to talk · press again to insert" = "按下 %@ 说话 · 再按一次输入";
+"Press a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "按下一个键并说话，你的话会出现在光标所在位置。一切都在这台 Mac 上运行。";
+"Press, talk, press again" = "按下、说话、再按一次";
+"Press the key and talk. Press it again and the text is typed where your cursor is." = "按下按键并说话。再按一次，文本会出现在光标所在位置。";
+"Press your dictation key and speak; the words appear in this field." = "按下听写键并说话；文字会出现在此字段中。";
+"Press your dictation key and speak. What you say will show up here." = "按下听写键并说话。你说的内容会显示在这里。";
+"Click here, then press %@ and speak…" = "点按这里，然后按下 %@ 并说话…";

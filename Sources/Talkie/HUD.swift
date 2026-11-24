@@ -189,6 +189,22 @@ final class HUDModel: ObservableObject {
     /// 1 whenever no ring countdown is running.
     @Published var countdownProgress: Double = 1
 
+    /// True while a session is in its silence auto-stop
+    /// countdown (B5). It does NOT change `phase` — the pill stays in `.listening` —
+    /// it just overlays the depleting `CountdownRing` and swaps the lock caption for a
+    /// "still listening — say something or it'll wrap up" line, so the impending
+    /// auto-stop is visible and one word (or a level spike) cancels it. Reset on
+    /// cancel and on every session end.
+    @Published var silenceCountingDown: Bool = false
+    /// Bumped each time the silence countdown (re)starts so the ring restarts from full
+    /// even if a cancel→re-arm happens back to back. Its own tick so it never fights the
+    /// learned/launch rings over animation identity.
+    @Published var silenceCountdownTick: Int = 0
+    /// How long the silence countdown ring takes to deplete — set by the watchdog when
+    /// it arms (the pure core's `countdownDuration`), so the ring's drain matches the
+    /// actual auto-stop deadline rather than a hardcoded guess.
+    @Published var silenceCountdownDuration: TimeInterval = 3
+
     /// System accessibility display preferences, mirrored so the SwiftUI pill can
     /// react to them. `highContrast` drives a fuller-opacity, brighter, ringed pill
     /// with slightly larger type; `reduceTransparency` drops the translucent chip
@@ -395,6 +411,7 @@ final class HUDController {
         resetLevels()
         resetFormatState()              // and in normal text, with no format feedback
         model.isHoveringPill = false    // nor a stale hover carried in from a prior pill
+        model.silenceCountingDown = false   // and never inherits a stale auto-stop countdown
         model.phase = .arming
         model.text = ""
         model.volatileText = ""
@@ -853,6 +870,27 @@ final class HUDController {
     }
     private var formatFlashTask: Task<Void, Never>?
 
+    /// B5: begin the visible, cancelable auto-stop countdown on the LISTENING pill
+    /// (the coral ring drains over `remaining`, and the tail swaps to "still listening
+    /// — say something or it'll wrap up"). Called by the hub's `SilenceWatchdogDriver`
+    /// for a session that's gone quiet. It does NOT change the phase — the pill is still
+    /// `.listening` — so a cancel just clears the flag and the plain pill returns. Bumps the ring's tick so a re-arm restarts it full.
+    func showSilenceCountdown(remaining: TimeInterval) {
+        model.silenceCountdownDuration = remaining
+        model.silenceCountdownTick &+= 1
+        model.silenceCountingDown = true
+        // Announce it: a VoiceOver user who can't see the ring must still
+        // hear that recording is about to stop and that a word keeps it going.
+        announce("It's quiet, so recording stops soon. Say something to keep going.".loc)
+    }
+
+    /// B5: the user spoke again (level spike or new partial) during the countdown —
+    /// abandon it and restore the plain pill. Purely presentational; the hub's
+    /// watchdog owns the timing.
+    func cancelSilenceCountdown() {
+        model.silenceCountingDown = false
+    }
+
     /// Show the one-time gesture-teaching pill (after a lone quick tap that captured
     /// nothing). Non-interactive; announces itself and auto-hides. The caller gates
     /// how often this appears (see `GestureHint`).
@@ -864,8 +902,8 @@ final class HUDController {
         reposition()
         panel.orderFrontRegardless()
         // Non-focusable transient pill — announce the gesture so a VoiceOver user who
-        // just tapped-and-got-nothing still learns to hold the key.
-        announce("Hold your key to talk. Let go and the text is inserted.".loc)
+        // pressed twice and got nothing still learns how the key works.
+        announce("Press your key to talk. Press it again and the text is inserted.".loc)
         hide(after: 2.6)
     }
 
@@ -1013,6 +1051,7 @@ final class HUDController {
     private func finishHide() {
         panel?.ignoresMouseEvents = true
         resetFormatState()                // nor a format chip / notice
+        model.silenceCountingDown = false // nor a stale auto-stop countdown
         model.isHoveringPill = false      // nor a stale hover (which would freeze the next timer)
         model.countdownProgress = 1
         model.phase = .hidden
@@ -1444,46 +1483,81 @@ struct HUDView: View {
             let formatBlueWave = recording && model.formatState.waveformIsBlue
             let waveTint = formatBlueWave ? Self.formatBlue : tint
             Group {
-                // The pill hugs its content: as wide as the status row needs, growing
-                // sideways only as far as the live words below need (they wrap at
-                // `liveTailWidth`, then the pill grows downward). The waveform sits dead
-                // centre whenever there's room for it.
-                PillColumnLayout(spacing: 5, maxTailWidth: Self.liveTailWidth) {
-                    CenteredRowLayout(gap: 8) {
+                if model.silenceCountingDown {
+                    // B5: the auto-stop countdown owns the row (and hides the live tail).
+                    VStack(spacing: 5) {
+                    HStack(spacing: 8) {
                         StatusDot(color: tint, filled: recording)
                             .animation(.easeInOut(duration: 0.25), value: recording)
                         // A red waveform: equal-width bars whose heights move with your
                         // voice. A one-shot wave of opacity sweeps across it the instant
                         // recording starts, then it settles to steady red.
                         Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID,
-                             fullStrength: formatBlueWave)
+                                 fullStrength: formatBlueWave)
                             .accessibilityHidden(true)
-                        HStack(spacing: 8) {
-                            // Feature 14: the active cleanup style/level, tappable to cycle —
-                            // change how the dictation is polished without leaving the record.
-                            // Hidden entirely when no switcher is wired (today's pill).
-                            CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
-                        }
+                        // Feature 14: the active cleanup style/level, tappable to cycle —
+                        // change how the dictation is polished without leaving the record.
+                        // Hidden entirely when no switcher is wired (today's pill).
+                        CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
+                        // The row says so in plain words — a gentle nudge that one word (or
+                        // reaching the key) keeps it going. It takes the tail slot so the
+                        // pill doesn't also carry the transcript during the wrap-up moment.
+                        Text("Stopping soon · say something to keep going")
+                            .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
+                            .foregroundStyle(ink(0.72))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .transition(.blurReplace)
                     }
-                    // "Format while you dictate": its status sits on its own line,
-                    // centred directly below the waveform row (never beside it).
                     if hasFormatStatus { formatStatusLine }
-                    // C1: the live tail of what's being heard flows BELOW the waveform
-                    // as wrapping text. Gated by the Settings toggle; absent until there
-                    // are words — so the bare pill is just the compact status row.
-                    if showLivePillText, !model.text.isEmpty || !model.volatileText.isEmpty {
-                        liveTailBlock
+                    }
+                } else {
+                    // The pill hugs its content: as wide as the status row needs, growing
+                    // sideways only as far as the live words below need (they wrap at
+                    // `liveTailWidth`, then the pill grows downward). The waveform sits dead
+                    // centre whenever there's room for it.
+                    PillColumnLayout(spacing: 5, maxTailWidth: Self.liveTailWidth) {
+                        CenteredRowLayout(gap: 8) {
+                            StatusDot(color: tint, filled: recording)
+                                .animation(.easeInOut(duration: 0.25), value: recording)
+                            // A red waveform: equal-width bars whose heights move with your
+                            // voice. A one-shot wave of opacity sweeps across it the instant
+                            // recording starts, then it settles to steady red.
+                            Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID,
+                                 fullStrength: formatBlueWave)
+                                .accessibilityHidden(true)
+                            HStack(spacing: 8) {
+                                // Feature 14: the active cleanup style/level, tappable to cycle —
+                                // change how the dictation is polished without leaving the record.
+                                // Hidden entirely when no switcher is wired (today's pill).
+                                CleanupSwitcher(model: model, chipFill: chipFill(0.13), ink: ink(0.82))
+                            }
+                        }
+                        // "Format while you dictate": its status sits on its own line,
+                        // centred directly below the waveform row (never beside it).
+                        if hasFormatStatus { formatStatusLine }
+                        // C1: the live tail of what's being heard flows BELOW the waveform
+                        // as wrapping text. Gated by the Settings toggle; absent until there
+                        // are words — so the bare pill is just the compact status row.
+                        if showLivePillText, !model.text.isEmpty || !model.volatileText.isEmpty {
+                            liveTailBlock
+                        }
                     }
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.formatState)
+            .animation(.easeInOut(duration: 0.2), value: model.silenceCountingDown)
             .transition(.blurReplace)
             // The dot + waveform are one status glyph to VoiceOver: state it plainly
             // rather than exposing a decorative waveform. The cleanup switcher stays
             // a separate, labeled control (its own element inside this group).
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(recording ? "Listening. Talkie is recording your voice.".loc
-                                          : "Getting ready to listen.".loc)
+            .accessibilityLabel(
+                model.silenceCountingDown
+                    ? "It's quiet, so recording stops soon. Say something to keep going.".loc
+                    : (recording ? "Listening. Talkie is recording your voice.".loc
+                                 : "Getting ready to listen.".loc)
+            )
         case .processing:
             HStack(spacing: 7) {
                 ProgressView()
@@ -1899,7 +1973,7 @@ struct HUDView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(ink(0.85))
                     .accessibilityHidden(true)
-                Text("Hold to talk · let go to insert")
+                Text("Press to talk · press again to insert")
                     .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
                     .foregroundStyle(ink(0.9))
                     .lineLimit(1)
@@ -1907,7 +1981,7 @@ struct HUDView: View {
             }
             .transition(.blurReplace)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Hold your key to talk. Let go and the text is inserted.".loc)
+            .accessibilityLabel("Press your key to talk. Press it again and the text is inserted.".loc)
         case .error(let message):
             HStack(spacing: 7) {
                 Image(systemName: "exclamationmark.triangle.fill")

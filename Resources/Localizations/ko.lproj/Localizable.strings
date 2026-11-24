@@ -30,7 +30,6 @@
 "Grant" = "허용";
 "Grant the permissions to try it now — or skip and start using Talkie." = "지금 사용해 보려면 권한을 허용하세요 — 또는 건너뛰고 Talkie를 시작하세요.";
 "Hit Start recording before your next call." = "다음 통화 전에 녹음 시작을 누르세요.";
-"Hold your dictation key and speak — what you say will show up here." = "받아쓰기 키를 누른 채 말하세요 — 말한 내용이 여기에 표시됩니다.";
 "Inherit" = "상속";
 "Inserted" = "삽입됨";
 "Jot key points — Talkie expands them with the transcript…" = "핵심 내용을 적어두세요 — Talkie가 전사로 확장합니다…";
@@ -338,7 +337,6 @@
 "Hold to talk · tap twice to lock" = "누른 채 말하기 · 두 번 눌러 고정";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "측면 버튼은 사용 중인 앱에서 원래 기능을 그대로 수행합니다. Talkie는 이를 듣기만 하며, 버튼이 실제 버튼으로 macOS에 전달되어야 합니다(일부 마우스는 자체 소프트웨어에서 버튼을 재지정합니다).";
-"Click here, then hold %@ and speak…" = "여기를 클릭한 다음 %@ 를 누른 채 말하세요…";
 
 // MARK: - Secure-input culprit (B3)
 "Password field — I don’t peek. Tap to copy." = "암호 입력란 — 엿보지 않아요. 탭하여 복사.";
@@ -766,7 +764,6 @@
 "Hide %@" = "%@ 가리기";
 "Quit %@" = "%@ 종료";
 "Open %@" = "%@ 열기";
-"%@ — hold your key to dictate" = "%@ — 키를 누른 채 받아쓰기";
 "%@ is listening." = "%@가 듣고 있습니다.";
 "%@ dictation indicator. Hold your dictation key and speak." = "%@ 받아쓰기 표시기. 받아쓰기 키를 누른 채 말하세요.";
 "%@ — Nothing leaves this Mac." = "%@ — 이 Mac에서 아무것도 나가지 않습니다.";
@@ -919,7 +916,6 @@
 "Your dictated words" = "받아쓴 내용";
 "Empty" = "비어 있음";
 "Try dictation here" = "여기서 받아쓰기 해 보기";
-"Hold your dictation key and speak; the words appear in this field." = "받아쓰기 키를 누른 채 말하면 이 필드에 단어가 나타납니다.";
 "Introduction" = "소개";
 "Replay introduction" = "소개 다시 보기";
 "Opening the welcome flow…" = "환영 안내를 여는 중…";
@@ -1096,7 +1092,6 @@
 "For example, your address" = "예: 주소";
 "Formatting while you dictate is off. Turn it on in Options below." = "받아쓰는 동안 서식 적용이 꺼져 있습니다. 아래 옵션에서 켜세요.";
 "Hold %@ and talk" = "%@ 를 누른 채 말하기";
-"Hold a second key while you dictate and say how the next words should look." = "받아쓰는 동안 두 번째 키를 누른 채, 다음 말이 어떤 모양이어야 하는지 말하세요.";
 "Insert a fixed text" = "정해진 텍스트 넣기";
 "Listen for the format key during a dictation." = "받아쓰는 동안 서식 키를 인식합니다.";
 "Make it" = "바꾸기";
@@ -1265,11 +1260,8 @@
 "Restart now" = "지금 다시 시작";
 "Open in Claude Desktop" = "Claude Desktop에서 열기";
 "The connector isn't part of this build." = "이 빌드에는 커넥터가 없어요.";
-"Hold a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "키를 누른 채 말하면 커서 위치에 입력돼요. 모든 것이 이 Mac에서 실행돼요.";
 "Try it" = "해 보기";
 "Click the button and say something." = "버튼을 클릭하고 아무 말이나 해 보세요.";
-"Hold, talk, let go" = "누르고, 말하고, 놓기";
-"Hold the key while you talk. When you let go, the text is typed where your cursor is." = "말하는 동안 키를 누르고 있으세요. 놓으면 커서 위치에 텍스트가 입력돼요.";
 "To record without holding, keep the key down a moment longer. Tap it once to stop." = "누르지 않고 녹음하려면 키를 조금 더 길게 누르세요. 멈추려면 한 번 누르세요.";
 "Try it here, or start using it." = "여기서 해 보거나 바로 사용해 보세요.";
 "About you" = "내 정보";
@@ -1289,7 +1281,6 @@
 "To type the text into the app you're using." = "사용 중인 앱에 텍스트를 입력하는 데 써요.";
 
 /* 1.1.0: strings that had no translation */
-"Hold your dictation key and speak — your stats will fill in here." = "받아쓰기 키를 누른 채 말하세요. 통계가 여기에 채워집니다.";
 "%@ words dictated, all on-device." = "%@ 단어를 받아썼습니다. 모두 기기 내에서 처리했습니다.";
 "An office typist holds ~40 wpm" = "사무직 타이피스트는 약 40 wpm";
 "%.1f× an office typist's pace" = "사무직 타이피스트 속도의 %.1f×";
@@ -1336,7 +1327,6 @@
 "Smart cleanup" = "스마트 정리";
 "Show live words in the pill" = "필에 실시간 단어 표시";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "말하는 동안 받아쓴 내용이 파형 아래로 흘러요. 필은 옆이 아니라 아래로 커져요.";
-"A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "고정된 세션은 일정 시간 조용하면 끝나요. 끄면 탭해서 멈출 때까지 계속 들어요. 카운트다운은 없어요.";
 "Custom vocabulary" = "사용자 정의 어휘";
 "Add a word or phrase…" = "단어 또는 문구 추가…";
 "These words are also used to auto-correct misrecognitions in what you dictate." = "이 단어들은 받아쓴 내용의 잘못된 인식을 자동으로 교정하는 데에도 쓰여요.";
@@ -1359,7 +1349,6 @@
 "Japanese" = "일본어";
 "Korean" = "한국어";
 "Chinese (Simplified)" = "중국어(간체)";
-"%@ — hold your dictation key and speak" = "%@ — 받아쓰기 키를 누른 채 말하세요";
 "Recovered meeting · " = "복구된 회의 · ";
 "Meeting · " = "회의 · ";
 "Rejects this correction so it stops being made." = "이 교정을 거부해 더 이상 적용되지 않게 해요.";
@@ -1479,9 +1468,25 @@
 "%lld words" = "%lld단어";
 
 /* Hold to talk, let go to insert (no hands-free lock) */
-"Hold to talk · let go to insert" = "누른 채로 말하기 · 떼면 입력";
 "Hold %@ to talk · let go to insert" = "%@ 키를 누른 채로 말하기 · 떼면 입력";
-"Hold your key to talk. Let go and the text is inserted." = "키를 누른 채로 말하세요. 키를 떼면 텍스트가 입력돼요.";
-"Hold the key and speak. Let go and the text is inserted." = "키를 누른 채로 말하세요. 키를 떼면 텍스트가 입력돼요.";
 "After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "입력 모니터링 또는 손쉬운 사용을 허용한 뒤에는 변경 사항이 적용되도록 Talkie를 종료했다가 다시 열어야 할 수 있어요. 이미 켜져 있는데도 허용되지 않으면 시스템 설정에서 Talkie를 −로 제거한 뒤 다시 추가하세요.";
 "Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "이미 켜져 있는데도 허용되지 않나요? 시스템 설정에서 Talkie를 −로 제거한 뒤 다시 추가하세요.";
+
+/* Press to start, press again to stop (on/off key) */
+"Press your dictation key and speak. Your stats will show up here." = "받아쓰기 키를 누르고 말하세요. 여기에 통계가 표시돼요.";
+"Press to talk · press again to insert" = "눌러서 말하기 · 다시 누르면 입력";
+"Press the key and speak. Press it again and the text is inserted." = "키를 누르고 말하세요. 다시 누르면 텍스트가 입력돼요.";
+"Stop when I go quiet" = "조용해지면 중지";
+"After a stretch of silence the recording ends and the text is inserted." = "잠시 조용하면 녹음이 끝나고 텍스트가 입력돼요.";
+"%@ — press your dictation key and speak" = "%@ — 받아쓰기 키를 누르고 말하세요";
+"It's quiet, so recording stops soon. Say something to keep going." = "조용해서 곧 녹음이 끝나요. 계속하려면 말해 보세요.";
+"Press your key to talk. Press it again and the text is inserted." = "키를 누르고 말하세요. 다시 누르면 텍스트가 입력돼요.";
+"Stopping soon · say something to keep going" = "곧 종료 · 계속하려면 말해 보세요";
+"%@ — press your key to dictate" = "%@ — 키를 눌러 받아쓰기";
+"Press %@ to talk · press again to insert" = "%@ 키를 눌러 말하기 · 다시 누르면 입력";
+"Press a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "키를 누르고 말하면 커서가 있는 곳에 입력돼요. 모든 것이 이 Mac에서 실행돼요.";
+"Press, talk, press again" = "누르고, 말하고, 다시 누르기";
+"Press the key and talk. Press it again and the text is typed where your cursor is." = "키를 누르고 말하세요. 다시 누르면 커서가 있는 곳에 텍스트가 입력돼요.";
+"Press your dictation key and speak; the words appear in this field." = "받아쓰기 키를 누르고 말하면 이 필드에 표시돼요.";
+"Press your dictation key and speak. What you say will show up here." = "받아쓰기 키를 누르고 말하세요. 말한 내용이 여기에 표시돼요.";
+"Click here, then press %@ and speak…" = "여기를 클릭한 다음 %@ 키를 누르고 말하세요…";

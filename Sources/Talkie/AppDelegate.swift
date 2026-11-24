@@ -129,7 +129,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `applicationDidFinishLaunching` (see `setupServices`).
     private var servicesProvider: ServicesProvider?
 
-    private var isDictating = false
+    private var isDictating = false {
+        // The key is an on/off switch: whenever a session stops — by the key, silence,
+        // a failure or an error — the switch must be off again, so the next press
+        // starts a new session instead of "stopping" one that is already over.
+        didSet { if oldValue && !isDictating { hotKey?.noteSessionEnded() } }
+    }
     /// "Format while you dictate": this session's command-key marks (audio time),
     /// collected while recording and consumed by `endDictation`. Empty unless the
     /// command key was used — then the normal pipeline runs unchanged.
@@ -721,7 +726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if button.image == nil {
                 button.title = Brand.displayName
             }
-            button.toolTip = String(format: "%@ — hold your key to dictate".loc, Brand.displayName)
+            button.toolTip = String(format: "%@ — press your key to dictate".loc, Brand.displayName)
         }
         item.menu = buildMenu()
         statusItem = item
@@ -770,7 +775,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hintLine() -> String {
-        return String(format: "Hold %@ to talk · let go to insert".loc, settings.activationKey.displayName)
+        return String(format: "Press %@ to talk · press again to insert".loc, settings.activationKey.displayName)
     }
 
     private func updateStatusUI() {
@@ -793,6 +798,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await engine.setUpdateHandler { update in
                 Task { @MainActor in
                     guard !update.isComplete else { return }
+                    // A partial means the user is speaking even if their voice stays
+                    // under the level floor: reset the auto-stop's silence clock.
+                    AppDelegate.shared?.silenceWatchdog?.transcriptChanged()
                     // C1: hand the pill STRUCTURE (committed head + volatile tail), not
                     // the flattened `combined`, so it can render the still-changing tail
                     // fainter and let words firm up as they finalize. Display only — the
@@ -1088,6 +1096,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func audioTime(forUptime t: TimeInterval) -> Double {
         guard let start = audioStartUptime else { return 0 }
         return max(0, t - start)
+    }
+
+    // MARK: Hands-free auto-stop (B5)
+
+    /// The silence auto-stop watchdog for the CURRENT session. The key is an on/off
+    /// switch, so a forgotten session would keep the mic open; this ends it after a
+    /// stretch of silence. Created when the session goes live, fed by the `onLevel`
+    /// closure + the engine's volatile handler, and torn down on every end path. `@MainActor`-confined like everything
+    /// on the dictation path, so no locking is needed.
+    private var silenceWatchdog: SilenceWatchdogDriver?
+
+    /// Build + start the watchdog for a session that just went live. On its
+    /// `.stop` it yields `.end` into the dictation event stream — the auto-stop then
+    /// runs the exact same teardown a manual tap does. The countdown/cancel callbacks
+    /// only touch the HUD pill.
+    private func startSilenceWatchdog() {
+        silenceWatchdog?.stop()   // defensive: never leak a prior session's watchdog
+        // Opt-out: when auto-stop-on-silence is off, a session keeps listening until
+        // the key is pressed again — no watchdog, no countdown.
+        guard settings.autoStopOnSilence else { silenceWatchdog = nil; return }
+        let myID = sessionID
+        silenceWatchdog = SilenceWatchdogDriver(
+            onCountdownStarted: { [weak self] remaining in
+                // Ignore a stale callback from a superseded session.
+                guard let self, self.sessionID == myID else { return }
+                self.hud.showSilenceCountdown(remaining: remaining)
+            },
+            onCancelled: { [weak self] in
+                guard let self, self.sessionID == myID else { return }
+                self.hud.cancelSilenceCountdown()
+            },
+            onStop: { [weak self] in
+                guard let self, self.sessionID == myID else { return }
+                // Clear the countdown UI, then end exactly as a key press would by
+                // yielding `.end` into the ordered event stream (not calling
+                // `endDictation()` directly — the stream keeps begin/end ordering).
+                self.hud.cancelSilenceCountdown()
+                self.dictationEventContinuation?.yield(.end)
+            })
+        silenceWatchdog?.start()
+    }
+
+    /// Tear down the current session's watchdog (every end path calls this). Safe to
+    /// call when there is none.
+    private func stopSilenceWatchdog() {
+        silenceWatchdog?.stop()
+        silenceWatchdog = nil
     }
 
     /// Register Talkie's two macOS Services ("Transcribe with Talkie", "Clean up
@@ -1508,6 +1563,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `beginWatching` at insertion time, below.)
         learning.stopWatching()
 
+        stopSilenceWatchdog()
         isDictating = true
         lastSpeechUse = Date()
         sessionLive = false
@@ -1837,6 +1893,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 Task { @MainActor in
                                     AppDelegate.sharedHUD?.updateLevel(level)
                                     self?.birdBuddy.updateLevel(level)
+                                    // Feed the silence auto-stop: speech cancels a
+                                    // countdown, sustained quiet arms it.
+                                    self?.silenceWatchdog?.observe(level: level)
                                 }
                             },
                             onCaptureFailed: { error in
@@ -1863,6 +1922,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let session = started else { return }
                 let sessionReadyMs = Int(Date().timeIntervalSince(keyDown) * 1000)
                 self.sessionLive = true
+                self.startSilenceWatchdog()
                 self.audioStartUptime = ProcessInfo.processInfo.systemUptime
                 self.recordingStartedAt = Date()
                 talkieDebugLog("dictationStart: session ready \(sessionReadyMs) ms, mic live \(Int(Date().timeIntervalSince(keyDown) * 1000)) ms after key-down")
@@ -2015,6 +2075,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func handleCaptureFailure(_ error: Error, sessionID: Int) {
         guard isDictating, self.sessionID == sessionID else { return }
         isDictating = false
+        stopSilenceWatchdog()
         sessionLive = false
         recordingStartedAt = nil
         Feedback.stop()
@@ -2055,6 +2116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func endDictation() {
         guard isDictating else { return }
         isDictating = false
+        stopSilenceWatchdog()
         updateStatusUI()
         // Key released — mic stops, so the bird drops back to its calm idle look.
         birdBuddy.setActive(false)

@@ -30,7 +30,6 @@
 "Grant" = "許可";
 "Grant the permissions to try it now — or skip and start using Talkie." = "権限を許可して今すぐ試すか、スキップしてTalkieを使い始めましょう。";
 "Hit Start recording before your next call." = "次の通話の前に「録音を開始」を押してください。";
-"Hold your dictation key and speak — what you say will show up here." = "音声入力キーを押しながら話すと、内容がここに表示されます。";
 "Inherit" = "継承";
 "Inserted" = "挿入しました";
 "Jot key points — Talkie expands them with the transcript…" = "要点をメモすると、Talkieが文字起こしをもとに展開します…";
@@ -338,7 +337,6 @@
 "Hold to talk · tap twice to lock" = "押し続けて話す・2回タップで固定";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "サイドボタンは使用中のアプリで通常どおり機能します。Talkie はそれを聞き取るだけで、ボタンは実際のボタンとして macOS に届く必要があります（一部のマウスは独自のソフトウェアでボタンを再割り当てします）。";
-"Click here, then hold %@ and speak…" = "ここをクリックし、%@ を押しながら話してください…";
 
 // MARK: - Secure-input culprit (B3)
 "Password field — I don’t peek. Tap to copy." = "パスワード欄 — のぞき見しません。タップしてコピー。";
@@ -766,7 +764,6 @@
 "Hide %@" = "%@を隠す";
 "Quit %@" = "%@を終了";
 "Open %@" = "%@を開く";
-"%@ — hold your key to dictate" = "%@ — キーを押しながら口述";
 "%@ is listening." = "%@ が聞き取っています。";
 "%@ dictation indicator. Hold your dictation key and speak." = "%@ の口述インジケーター。口述キーを押しながら話してください。";
 "%@ — Nothing leaves this Mac." = "%@ — この Mac から何も出ていきません。";
@@ -919,7 +916,6 @@
 "Your dictated words" = "話した内容";
 "Empty" = "空";
 "Try dictation here" = "ここでディクテーションを試す";
-"Hold your dictation key and speak; the words appear in this field." = "ディクテーションキーを押したまま話すと、このフィールドに言葉が表示されます。";
 "Introduction" = "はじめに";
 "Replay introduction" = "はじめにをもう一度見る";
 "Opening the welcome flow…" = "ウェルカムフローを開いています…";
@@ -1096,7 +1092,6 @@
 "For example, your address" = "例：住所";
 "Formatting while you dictate is off. Turn it on in Options below." = "音声入力中の書式設定はオフです。下の「オプション」でオンにできます。";
 "Hold %@ and talk" = "%@ を押したまま話す";
-"Hold a second key while you dictate and say how the next words should look." = "音声入力中にもう一つのキーを押したまま、次の言葉をどう整えるかを言います。";
 "Insert a fixed text" = "決まった文章を入れる";
 "Listen for the format key during a dictation." = "音声入力中に書式キーを受け付けます。";
 "Make it" = "変換先";
@@ -1265,11 +1260,8 @@
 "Restart now" = "今すぐ再起動";
 "Open in Claude Desktop" = "Claude Desktopで開く";
 "The connector isn't part of this build." = "このビルドにはコネクタが含まれていません。";
-"Hold a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "キーを押したまま話すと、カーソルの位置に入力されます。すべてこのMac上で動きます。";
 "Try it" = "試してみる";
 "Click the button and say something." = "ボタンをクリックして、何か話してください。";
-"Hold, talk, let go" = "押す、話す、離す";
-"Hold the key while you talk. When you let go, the text is typed where your cursor is." = "話している間キーを押したままにします。離すと、カーソルの位置に入力されます。";
 "To record without holding, keep the key down a moment longer. Tap it once to stop." = "押し続けずに録音するには、少し長めに押します。止めるには1回押します。";
 "Try it here, or start using it." = "ここで試すか、そのまま使い始めてください。";
 "About you" = "あなたについて";
@@ -1289,7 +1281,6 @@
 "To type the text into the app you're using." = "使っているアプリに文字を入力するために使います。";
 
 /* 1.1.0: strings that had no translation */
-"Hold your dictation key and speak — your stats will fill in here." = "音声入力キーを押しながら話すと、ここに統計が表示されます。";
 "%@ words dictated, all on-device." = "%@ 語を音声入力しました。すべてデバイス上で処理しています。";
 "An office typist holds ~40 wpm" = "オフィスのタイピストは約40 wpm";
 "%.1f× an office typist's pace" = "オフィスのタイピストの %.1f× のペース";
@@ -1336,7 +1327,6 @@
 "Smart cleanup" = "スマート整形";
 "Show live words in the pill" = "ピルにライブで単語を表示";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "話している間、文字起こしが波形の下に流れます。ピルは横ではなく下に広がります。";
-"A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "ロックしたセッションは、しばらく無音が続くと終了します。オフにすると、タップして止めるまで聞き続けます。カウントダウンはありません。";
 "Custom vocabulary" = "カスタム語彙";
 "Add a word or phrase…" = "単語やフレーズを追加…";
 "These words are also used to auto-correct misrecognitions in what you dictate." = "これらの単語は、音声入力の誤認識を自動修正するためにも使われます。";
@@ -1359,7 +1349,6 @@
 "Japanese" = "日本語";
 "Korean" = "韓国語";
 "Chinese (Simplified)" = "中国語（簡体字）";
-"%@ — hold your dictation key and speak" = "%@ — 音声入力キーを押しながら話します";
 "Recovered meeting · " = "復元した会議 · ";
 "Meeting · " = "会議 · ";
 "Rejects this correction so it stops being made." = "この修正を拒否し、今後は行わないようにします。";
@@ -1479,9 +1468,25 @@
 "%lld words" = "%lld語";
 
 /* Hold to talk, let go to insert (no hands-free lock) */
-"Hold to talk · let go to insert" = "押したまま話す · 離すと入力";
 "Hold %@ to talk · let go to insert" = "%@ を押したまま話す · 離すと入力";
-"Hold your key to talk. Let go and the text is inserted." = "キーを押したまま話してください。離すとテキストが入力されます。";
-"Hold the key and speak. Let go and the text is inserted." = "キーを押したまま話してください。離すとテキストが入力されます。";
 "After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "入力監視またはアクセシビリティを許可した後、変更を反映するには Talkie を終了して開き直す必要がある場合があります。すでにオンなのに許可されない場合は、システム設定で Talkie を − で削除してから、もう一度追加してください。";
 "Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "オンなのに許可されない場合は、システム設定で Talkie を − で削除してから、もう一度追加してください。";
+
+/* Press to start, press again to stop (on/off key) */
+"Press your dictation key and speak. Your stats will show up here." = "音声入力キーを押して話してください。ここに統計が表示されます。";
+"Press to talk · press again to insert" = "押して話す · もう一度押すと入力";
+"Press the key and speak. Press it again and the text is inserted." = "キーを押して話してください。もう一度押すとテキストが入力されます。";
+"Stop when I go quiet" = "無音で停止";
+"After a stretch of silence the recording ends and the text is inserted." = "しばらく無音が続くと録音が終わり、テキストが入力されます。";
+"%@ — press your dictation key and speak" = "%@ — 音声入力キーを押して話してください";
+"It's quiet, so recording stops soon. Say something to keep going." = "無音のため、まもなく録音が終わります。続けるには何か話してください。";
+"Press your key to talk. Press it again and the text is inserted." = "キーを押して話してください。もう一度押すとテキストが入力されます。";
+"Stopping soon · say something to keep going" = "まもなく終了 · 続けるには何か話してください";
+"%@ — press your key to dictate" = "%@ — キーを押して音声入力";
+"Press %@ to talk · press again to insert" = "%@ を押して話す · もう一度押すと入力";
+"Press a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "キーを押して話すと、カーソルのある場所に文字が入力されます。すべてこの Mac 上で動作します。";
+"Press, talk, press again" = "押す、話す、もう一度押す";
+"Press the key and talk. Press it again and the text is typed where your cursor is." = "キーを押して話してください。もう一度押すと、カーソルのある場所にテキストが入力されます。";
+"Press your dictation key and speak; the words appear in this field." = "音声入力キーを押して話すと、このフィールドに文字が表示されます。";
+"Press your dictation key and speak. What you say will show up here." = "音声入力キーを押して話してください。話した内容がここに表示されます。";
+"Click here, then press %@ and speak…" = "ここをクリックして、%@ を押して話してください…";

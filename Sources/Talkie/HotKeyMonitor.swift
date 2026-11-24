@@ -45,7 +45,7 @@ final class HotKeyMonitor: @unchecked Sendable {
     private var isStarted = false
     /// True while the settings key recorder is listening; `handle()` ignores all input.
     private var suspended = false
-    /// The activation gesture (hold to talk, release to transcribe), driven by the
+    /// The activation gesture (press to start, press again to stop), driven by the
     /// edges `handle()` feeds it. All access is under `lock` because `handle()` runs
     /// on the tap thread while the health/reconcile timer runs on another queue.
     private var gesture = ActivationGesture()
@@ -338,9 +338,8 @@ final class HotKeyMonitor: @unchecked Sendable {
         }
     }
 
-    /// If we think a key is physically *held* but the live modifier state says it
-    /// isn't (a key-up event was dropped), synthesize the release so a hold can't
-    /// stay on forever. Only a running hold is eligible; idle has no session to end.
+    /// If we think the key is physically down but the live state says it isn't (a
+    /// key-up was dropped), forget the press so the next one switches again.
     private func reconcileLiveState() {
         // A dropped command-key release must not leave the key "down" in the machine
         // (it would swallow the next press). Forget that press; command listening
@@ -362,17 +361,19 @@ final class HotKeyMonitor: @unchecked Sendable {
         // button state — same intent (is the trigger still physically down?).
         guard !cfg.key.isPhysicallyDown(sessionState: .combinedSessionState) else { return }
 
-        var fire: (@Sendable () -> Void)?
+        // The key is a switch, so a lost release only means the next press must be
+        // seen as a press: forget the "down", never end the session here.
         lock.lock()
-        // Re-check under the lock — the phase may have changed between the two
-        // critical sections. Only a still-held session is force-released, and the
-        // machine's `reset` emits no action so we own the single `onDeactivate`.
-        if gesture.isHeld {
-            gesture.reset()
-            fire = onDeactivate
-        }
+        if gesture.isHeld { gesture.releaseLost() }
         lock.unlock()
-        fire?()
+    }
+
+    /// The app ended the session without the key (silence auto-stop, a capture
+    /// failure, an error), so the next press must start a new one.
+    func noteSessionEnded() {
+        lock.lock()
+        gesture.sessionEndedElsewhere()
+        lock.unlock()
     }
 }
 

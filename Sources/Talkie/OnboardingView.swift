@@ -173,7 +173,7 @@ struct OnboardingView: View {
             Text("Welcome to Talkie")
                 .font(.talkieDisplay(32))
                 .foregroundStyle(Theme.ink)
-            Text("Hold a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac.")
+            Text("Press a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac.")
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -275,18 +275,14 @@ struct OnboardingView: View {
 
     private var gesture: some View {
         VStack(spacing: 16) {
-            Text("Hold, talk, let go")
+            Text("Press, talk, press again")
                 .font(.talkieDisplay(27))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Hold the key while you talk. When you let go, the text is typed where your cursor is.")
+            Text("Press the key and talk. Press it again and the text is typed where your cursor is.")
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("To record without holding, keep the key down a moment longer. Tap it once to stop.")
-                .font(.talkieHeading(12.5, weight: .regular))
-                .foregroundStyle(Theme.inkTertiary)
                 .fixedSize(horizontal: false, vertical: true)
             // One row, evenly spaced, never wraps: keycap → speak → typed.
             HStack(spacing: 10) {
@@ -406,7 +402,7 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 TextField(
-                    "Click here, then hold \(settings.activationKey.displayName) and speak…",
+                    "Click here, then press \(settings.activationKey.displayName) and speak…",
                     text: $tryText,
                     axis: .vertical
                 )
@@ -418,7 +414,7 @@ struct OnboardingView: View {
                 .background(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(Theme.surface.opacity(0.55)))
                 .accessibilityLabel("Try dictation here")
-                .accessibilityHint("Hold your dictation key and speak; the words appear in this field.")
+                .accessibilityHint("Press your dictation key and speak; the words appear in this field.")
 
                 if !readiness.canDictate {
                     HStack(alignment: .center, spacing: 10) {

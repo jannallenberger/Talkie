@@ -30,7 +30,6 @@
 "Grant" = "Sta toe";
 "Grant the permissions to try it now — or skip and start using Talkie." = "Geef de toestemmingen om het nu te proberen — of sla over en ga aan de slag met Talkie.";
 "Hit Start recording before your next call." = "Druk op Start opname vóór uw volgende gesprek.";
-"Hold your dictation key and speak — what you say will show up here." = "Houd uw dicteertoets ingedrukt en spreek — wat u zegt verschijnt hier.";
 "Inherit" = "Overerven";
 "Inserted" = "Ingevoegd";
 "Jot key points — Talkie expands them with the transcript…" = "Noteer kernpunten — Talkie werkt ze uit met de transcriptie…";
@@ -338,7 +337,6 @@
 "Hold to talk · tap twice to lock" = "Houd ingedrukt om te praten · tik tweemaal om te vergrendelen";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "De zijknop blijft zijn normale functie vervullen in de app die je gebruikt — Talkie luistert er alleen naar, en de knop moet macOS als een echte knop bereiken (sommige muizen wijzen hem in hun eigen software opnieuw toe).";
-"Click here, then hold %@ and speak…" = "Klik hier, houd dan %@ ingedrukt en spreek…";
 
 // MARK: - Secure-input culprit (B3)
 "Password field — I don’t peek. Tap to copy." = "Wachtwoordveld — ik gluur niet. Tik om te kopiëren.";
@@ -766,7 +764,6 @@
 "Hide %@" = "Verberg %@";
 "Quit %@" = "Stop %@";
 "Open %@" = "Open %@";
-"%@ — hold your key to dictate" = "%@ — houd je toets ingedrukt om te dicteren";
 "%@ is listening." = "%@ luistert.";
 "%@ dictation indicator. Hold your dictation key and speak." = "%@-dicteerindicator. Houd je dicteertoets ingedrukt en spreek.";
 "%@ — Nothing leaves this Mac." = "%@ — Niets verlaat deze Mac.";
@@ -919,7 +916,6 @@
 "Your dictated words" = "Je gedicteerde woorden";
 "Empty" = "Leeg";
 "Try dictation here" = "Probeer dicteren hier";
-"Hold your dictation key and speak; the words appear in this field." = "Houd je dicteertoets ingedrukt en spreek; de woorden verschijnen in dit veld.";
 "Introduction" = "Introductie";
 "Replay introduction" = "Introductie opnieuw afspelen";
 "Opening the welcome flow…" = "De welkomstintroductie wordt geopend…";
@@ -1096,7 +1092,6 @@
 "For example, your address" = "Bijvoorbeeld je adres";
 "Formatting while you dictate is off. Turn it on in Options below." = "Opmaken tijdens dicteren staat uit. Zet het hieronder aan bij Opties.";
 "Hold %@ and talk" = "Houd %@ ingedrukt en praat";
-"Hold a second key while you dictate and say how the next words should look." = "Houd tijdens het dicteren een tweede toets ingedrukt en zeg hoe de volgende woorden eruit moeten zien.";
 "Insert a fixed text" = "Een vaste tekst invoegen";
 "Listen for the format key during a dictation." = "Tijdens het dicteren op de opmaaktoets letten.";
 "Make it" = "Maak het";
@@ -1265,11 +1260,8 @@
 "Restart now" = "Nu opnieuw starten";
 "Open in Claude Desktop" = "Openen in Claude Desktop";
 "The connector isn't part of this build." = "De connector zit niet in deze build.";
-"Hold a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "Houd een toets ingedrukt, praat, en je woorden verschijnen waar je cursor staat. Alles draait op deze Mac.";
 "Try it" = "Probeer het";
 "Click the button and say something." = "Klik op de knop en zeg iets.";
-"Hold, talk, let go" = "Vasthouden, praten, loslaten";
-"Hold the key while you talk. When you let go, the text is typed where your cursor is." = "Houd de toets vast terwijl je praat. Laat je los, dan verschijnt de tekst waar je cursor staat.";
 "To record without holding, keep the key down a moment longer. Tap it once to stop." = "Om op te nemen zonder vast te houden, houd je de toets iets langer ingedrukt. Tik één keer om te stoppen.";
 "Try it here, or start using it." = "Probeer het hier of ga meteen aan de slag.";
 "About you" = "Over jou";
@@ -1289,7 +1281,6 @@
 "To type the text into the app you're using." = "Om de tekst in de app te typen die je gebruikt.";
 
 /* 1.1.0: strings that had no translation */
-"Hold your dictation key and speak — your stats will fill in here." = "Houd je dicteertoets ingedrukt en spreek — je statistieken verschijnen hier.";
 "%@ words dictated, all on-device." = "%@ woorden gedicteerd, alles op het apparaat.";
 "An office typist holds ~40 wpm" = "Een kantoortypist haalt ~40 wpm";
 "%.1f× an office typist's pace" = "%.1f× het tempo van een kantoortypist";
@@ -1336,7 +1327,6 @@
 "Smart cleanup" = "Slim opschonen";
 "Show live words in the pill" = "Toon live woorden in de pil";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "De transcriptie loopt onder de golfvorm door terwijl je spreekt: de pil groeit naar beneden, niet opzij.";
-"A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "Een vergrendelde sessie rondt af na een stilte. Uit houdt hem luisterend tot je tikt om te stoppen, zonder aftelling.";
 "Custom vocabulary" = "Eigen woordenschat";
 "Add a word or phrase…" = "Voeg een woord of zin toe…";
 "These words are also used to auto-correct misrecognitions in what you dictate." = "Deze woorden worden ook gebruikt om herkenningsfouten in wat je dicteert automatisch te corrigeren.";
@@ -1359,7 +1349,6 @@
 "Japanese" = "Japans";
 "Korean" = "Koreaans";
 "Chinese (Simplified)" = "Chinees (vereenvoudigd)";
-"%@ — hold your dictation key and speak" = "%@ — houd je dicteertoets ingedrukt en spreek";
 "Recovered meeting · " = "Herstelde vergadering · ";
 "Meeting · " = "Vergadering · ";
 "Rejects this correction so it stops being made." = "Weigert deze correctie zodat ze niet meer wordt toegepast.";
@@ -1479,9 +1468,25 @@
 "%lld words" = "%lld woorden";
 
 /* Hold to talk, let go to insert (no hands-free lock) */
-"Hold to talk · let go to insert" = "Houd ingedrukt om te praten · laat los om in te voegen";
 "Hold %@ to talk · let go to insert" = "Houd %@ ingedrukt om te praten · laat los om in te voegen";
-"Hold your key to talk. Let go and the text is inserted." = "Houd je toets ingedrukt om te praten. Laat los en de tekst wordt ingevoegd.";
-"Hold the key and speak. Let go and the text is inserted." = "Houd de toets ingedrukt en praat. Laat los en de tekst wordt ingevoegd.";
 "After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "Na het toekennen van Invoerbewaking of Toegankelijkheid moet je Talkie mogelijk afsluiten en opnieuw openen om de wijziging door te voeren. Staat Talkie daar al aan maar heeft het nog geen toestemming, verwijder het dan met − in Systeeminstellingen en voeg het opnieuw toe.";
 "Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "Staat het al aan maar heeft het nog geen toestemming? Verwijder Talkie met − in Systeeminstellingen en voeg het opnieuw toe.";
+
+/* Press to start, press again to stop (on/off key) */
+"Press your dictation key and speak. Your stats will show up here." = "Druk op je dicteertoets en praat. Hier verschijnen je cijfers.";
+"Press to talk · press again to insert" = "Druk om te praten · druk opnieuw om in te voegen";
+"Press the key and speak. Press it again and the text is inserted." = "Druk op de toets en praat. Druk nogmaals en de tekst wordt ingevoegd.";
+"Stop when I go quiet" = "Stoppen als ik stil ben";
+"After a stretch of silence the recording ends and the text is inserted." = "Na een tijdje stilte stopt de opname en wordt de tekst ingevoegd.";
+"%@ — press your dictation key and speak" = "%@ — druk op je dicteertoets en praat";
+"It's quiet, so recording stops soon. Say something to keep going." = "Het is stil, de opname stopt zo. Zeg iets om door te gaan.";
+"Press your key to talk. Press it again and the text is inserted." = "Druk op je toets om te praten. Druk nogmaals en de tekst wordt ingevoegd.";
+"Stopping soon · say something to keep going" = "Stopt zo · zeg iets om door te gaan";
+"%@ — press your key to dictate" = "%@ — druk op je toets om te dicteren";
+"Press %@ to talk · press again to insert" = "Druk op %@ om te praten · opnieuw om in te voegen";
+"Press a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "Druk op een toets, praat, en je woorden verschijnen waar je cursor staat. Alles draait op deze Mac.";
+"Press, talk, press again" = "Drukken, praten, opnieuw drukken";
+"Press the key and talk. Press it again and the text is typed where your cursor is." = "Druk op de toets en praat. Druk nogmaals en de tekst verschijnt waar je cursor staat.";
+"Press your dictation key and speak; the words appear in this field." = "Druk op je dicteertoets en praat; de woorden verschijnen in dit veld.";
+"Press your dictation key and speak. What you say will show up here." = "Druk op je dicteertoets en praat. Wat je zegt, verschijnt hier.";
+"Click here, then press %@ and speak…" = "Klik hier, druk dan op %@ en praat…";

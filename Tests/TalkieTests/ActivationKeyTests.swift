@@ -143,7 +143,8 @@ final class ActivationKeyTests: XCTestCase {
         }
         XCTAssertNotEqual(feed(.keyDown(keyCode: 122, isAutorepeat: false)), .none)
         XCTAssertEqual(feed(.keyDown(keyCode: 122, isAutorepeat: true)), .none)
-        XCTAssertEqual(feed(.keyUp(keyCode: 122)), .end)
+        XCTAssertEqual(feed(.keyUp(keyCode: 122)), .none, "the key is a switch: releasing keeps recording")
+        XCTAssertEqual(feed(.keyDown(keyCode: 122, isAutorepeat: false)), .end)
     }
 
     // MARK: Paste-last chord never collides

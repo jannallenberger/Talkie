@@ -236,7 +236,7 @@ private struct BirdBuddyView: View {
             .onChange(of: model.mood) { _, newMood in
                 playMood(newMood)
             }
-            .help(String(format: "%@ — hold your dictation key and speak".loc, Brand.displayName))
+            .help(String(format: "%@ — press your dictation key and speak".loc, Brand.displayName))
             // The macaw's color/grayscale state is the whole signal, invisible to a
             // VoiceOver user — so name it, and state whether it's currently
             // listening, rather than exposing a bare, unlabeled image.

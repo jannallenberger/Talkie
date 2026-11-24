@@ -440,6 +440,13 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(showLivePillText, forKey: Keys.showLivePillText) }
     }
 
+    /// End a session after a stretch of silence. The key is an on/off switch, so this
+    /// catches a forgotten session; a short countdown in the pill comes first and one
+    /// word cancels it. When OFF, a session runs until the key is pressed again.
+    @Published var autoStopOnSilence: Bool {
+        didSet { defaults.set(autoStopOnSilence, forKey: Keys.autoStopOnSilence) }
+    }
+
 
     private func notifyChanged() {
         NotificationCenter.default.post(name: .talkieSettingsChanged, object: nil)
@@ -523,6 +530,7 @@ final class AppSettings: ObservableObject {
             Keys.pauseMusicWhileDictating: true,
             Keys.showBirdBuddy: true,
             Keys.showLivePillText: true,
+            Keys.autoStopOnSilence: true,
         ])
         activationKey = ActivationKey(rawValue: d.string(forKey: Keys.activationKey) ?? "") ?? .rightOption
         formatCommandKey = ActivationKey(rawValue: d.string(forKey: Keys.formatCommandKey) ?? "")
@@ -604,6 +612,7 @@ final class AppSettings: ObservableObject {
         pauseMusicWhileDictating = d.bool(forKey: Keys.pauseMusicWhileDictating)
         showBirdBuddy = d.bool(forKey: Keys.showBirdBuddy)
         showLivePillText = d.bool(forKey: Keys.showLivePillText)
+        autoStopOnSilence = d.bool(forKey: Keys.autoStopOnSilence)
         // H1: drop the four toggle-sweep keys from the plist so nothing stale lingers.
         // Their behaviors are now unconditional-by-construction (see the property
         // deletions above); leaving orphaned values would be harmless but untidy.
@@ -809,5 +818,6 @@ final class AppSettings: ObservableObject {
         static let pauseMusicMediaKeyFallback = "pauseMusicMediaKeyFallback"
         static let showBirdBuddy = "showBirdBuddy"
         static let showLivePillText = "showLivePillText"
+        static let autoStopOnSilence = "autoStopOnSilence"
     }
 }
