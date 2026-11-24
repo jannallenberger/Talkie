@@ -340,8 +340,8 @@ struct OnboardingView: View {
                     // Reads as an already-done confirmation for anyone who used the
                     // try-it; still tappable for those who skipped straight here.
                     why: permissions.microphone
-                        ? "Granted while you tried it out."
-                        : "To hear you while you dictate.",
+                        ? "Granted while you tried it out.".loc
+                        : "To hear you while you dictate.".loc,
                     action: permissions.rowAction(.microphone)
                 ) { permissions.performRowAction(.microphone) }
                 OnboardPermissionRow(
@@ -561,10 +561,10 @@ private struct TryItRecordButton: View {
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
-        .accessibilityLabel(active ? "Stop recording" : "Start recording")
+        .accessibilityLabel(active ? "Stop recording".loc : "Start recording".loc)
         .accessibilityHint(active
-            ? "Stops the demo and shows what you said."
-            : "Records your voice and shows your words. Only the microphone is used.")
+            ? "Stops the demo and shows what you said.".loc
+            : "Records your voice and shows your words. Only the microphone is used.".loc)
         .onChange(of: active) { _, isActive in
             pulse = false
             if isActive {

@@ -1319,12 +1319,18 @@ enum Brand {
             ?? "Talkie"
     }
 
-    /// The marketing / project home URL. Today the product's home IS its public
-    /// GitHub repository, so this is a documented alias of `repoURL` (same
-    /// Info.plist-sourced value, kept out of Swift source so `check-no-network.sh`
-    /// stays green). Kept as a distinct accessor so a future marketing site can be
-    /// pointed at its own Info.plist key without touching call sites.
-    @MainActor static var marketingURL: String? { repoURL }
+    /// The website's base URL from the `TalkieWebsiteURL` Info.plist key (kept out
+    /// of Swift source for `check-no-network.sh`); nil when absent. Only ever
+    /// handed to the browser.
+    nonisolated static var websiteURL: String? {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "TalkieWebsiteURL") as? String
+        else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The product's home page: the website, else the repository.
+    @MainActor static var marketingURL: String? { websiteURL ?? repoURL }
 
     /// The name to show for the on-device MCP connector in user-facing copy — a
     /// documented alias of `displayName`. The MCP *protocol* id stays the frozen

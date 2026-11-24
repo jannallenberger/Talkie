@@ -116,7 +116,7 @@ private struct BannerView: View {
                 .foregroundStyle(Theme.coral)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
+                Text(title.loc)
                     .font(.talkieHeading(14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .fixedSize(horizontal: false, vertical: true)

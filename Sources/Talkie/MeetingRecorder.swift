@@ -1811,7 +1811,7 @@ final class MeetingRecorder: ObservableObject {
         let id = UUID()
         return Meeting(
             id: id,
-            title: "Recovered meeting · " + titleFormatter.string(from: plan.start),
+            title: "Recovered meeting · ".loc + titleFormatter.string(from: plan.start),
             startUnix: plan.start.timeIntervalSince1970,
             durationSec: plan.duration,
             transcript: plan.transcript,
@@ -1938,6 +1938,6 @@ final class MeetingRecorder: ObservableObject {
     }()
 
     private static func makeTitle(start: Date) -> String {
-        "Meeting · " + titleFormatter.string(from: start)
+        "Meeting · ".loc + titleFormatter.string(from: start)
     }
 }

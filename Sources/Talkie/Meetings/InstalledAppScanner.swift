@@ -56,8 +56,8 @@ extension InstalledApp {
     /// Friendly label for `category`'s `LSApplicationCategoryType`, for the
     /// picker's "All apps" section headers. Falls back to "Other".
     var categoryLabel: String {
-        guard let category, let name = Self.categoryNames[category] else { return "Other" }
-        return name
+        guard let category, let name = Self.categoryNames[category] else { return "Other".loc }
+        return name.loc
     }
 
     private static let categoryNames: [String: String] = [

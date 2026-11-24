@@ -547,7 +547,7 @@ private struct VerifyRow: View {
                 .frame(width: 20, height: 20)
                 .background(Circle().fill(Theme.coral))
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
+                Text(title.loc)
                     .font(.talkieHeading(14, weight: .medium))
                     .foregroundStyle(Theme.ink)
                 Text(command)
@@ -579,7 +579,7 @@ private struct BulletRow: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.inkTertiary)
                 .frame(width: 16)
-            Text(text)
+            Text(text.loc)
                 .font(.callout)
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)

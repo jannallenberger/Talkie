@@ -100,8 +100,8 @@ struct LanguageSettings: View {
             .padding(.vertical, 2)
 
             Text(settings.spokenLanguages.count > 1
-                 ? "Talkie auto-detects which of these you're speaking each time."
-                 : "Pick more than one to have Talkie auto-detect your language.")
+                 ? "Talkie auto-detects which of these you're speaking each time.".loc
+                 : "Pick more than one to have Talkie auto-detect your language.".loc)
                 .font(.callout)
                 .foregroundStyle(Theme.inkTertiary)
                 .padding(.horizontal, 4)
@@ -151,7 +151,7 @@ private struct LanguageStripTile: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(locked ? "Talkie keeps at least one language"
+        .help(locked ? "Talkie keeps at least one language".loc
                      : (selected ? "Tap to remove" : "Tap to add"))
     }
 
@@ -241,8 +241,8 @@ struct AllLanguagesPage: View {
                     }
                 }
                 Text(settings.spokenLanguages.count > 1
-                     ? "Talkie auto-detects which of these you're speaking each time."
-                     : "Pick more than one to have Talkie auto-detect your language.")
+                     ? "Talkie auto-detects which of these you're speaking each time.".loc
+                     : "Pick more than one to have Talkie auto-detect your language.".loc)
                     .font(.callout)
                     .foregroundStyle(Theme.inkTertiary)
                     .padding(.horizontal, 4)
@@ -304,7 +304,7 @@ private struct LanguageCard: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(locked ? "Talkie keeps at least one language"
+        .help(locked ? "Talkie keeps at least one language".loc
                      : (selected ? "Tap to remove" : "Tap to add"))
     }
 

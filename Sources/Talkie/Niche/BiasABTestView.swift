@@ -92,7 +92,7 @@ struct BiasABTestView: View {
         case .preparing, .transcribing:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(phase == .preparing ? "Warming up the model…" : "Transcribing & correcting…")
+                Text(phase == .preparing ? "Warming up the model…".loc : "Transcribing & correcting…".loc)
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSecondary)
             }
@@ -119,7 +119,7 @@ struct BiasABTestView: View {
                 .foregroundStyle(Theme.inkSecondary)
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    Label("Auto-correct fixed \(fixes.count) \(fixes.count == 1 ? "word" : "words"):",
+                    Label("Auto-correct fixed \(fixes.count) \(fixes.count == 1 ? "word".loc : "words".loc):",
                           systemImage: "checkmark.seal.fill")
                     .font(.subheadline)
                     .foregroundStyle(Theme.coral)

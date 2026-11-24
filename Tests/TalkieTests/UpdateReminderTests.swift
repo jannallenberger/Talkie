@@ -33,4 +33,21 @@ final class UpdateReminderTests: XCTestCase {
         XCTAssertNil(UpdateReminder.parseBuildDate(nil))
         XCTAssertNil(UpdateReminder.parseBuildDate(""))
     }
+    func testLatestVersionOpensWebsiteChangelog() {
+        XCTAssertEqual(UpdateReminder.latestVersionURL(website: "https://try-talkie.com", repo: "https://github.com/x/y")?.absoluteString,
+                       "https://try-talkie.com/changelog/")
+        XCTAssertEqual(UpdateReminder.latestVersionURL(website: "https://try-talkie.com/", repo: nil)?.absoluteString,
+                       "https://try-talkie.com/changelog/")
+    }
+    func testLatestVersionFallsBackToReleases() {
+        XCTAssertEqual(UpdateReminder.latestVersionURL(website: nil, repo: "https://github.com/x/y")?.absoluteString,
+                       "https://github.com/x/y/releases/latest")
+        XCTAssertNil(UpdateReminder.latestVersionURL(website: "", repo: nil))
+    }
+    func testBundledPlistPointsAtWebsite() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Resources/Info.plist")
+        let plist = try XCTUnwrap(NSDictionary(contentsOf: url))
+        XCTAssertEqual(plist["TalkieWebsiteURL"] as? String, "https://try-talkie.com")
+    }
 }

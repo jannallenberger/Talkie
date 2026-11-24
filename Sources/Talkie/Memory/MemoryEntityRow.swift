@@ -39,7 +39,9 @@ struct MemoryEntityRow: View {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10, weight: .semibold))
                             .rotationEffect(.degrees(expanded ? 90 : 0))
-                        Text(expanded ? "Hide sources" : "Show \(entity.provenance.count) source\(entity.provenance.count == 1 ? "" : "s")")
+                        Text(expanded ? LocalizedStringKey("Hide sources")
+                             : entity.provenance.count == 1 ? LocalizedStringKey("Show 1 source")
+                             : LocalizedStringKey("Show \(entity.provenance.count) sources"))
                             .font(.talkieEyebrow)
                     }
                     .foregroundStyle(Theme.coral)
@@ -61,8 +63,10 @@ struct MemoryEntityRow: View {
     }
 
     private var mentionsSubtitle: String {
-        let times = entity.mentions == 1 ? "once" : "\(entity.mentions) times"
-        return "Mentioned \(times) · last \(Self.relativeFormatter.localizedString(for: entity.lastSeen, relativeTo: Date()))"
+        let last = Self.relativeFormatter.localizedString(for: entity.lastSeen, relativeTo: Date())
+        return entity.mentions == 1
+            ? String(format: "Mentioned once · last %@".loc, last)
+            : String(format: "Mentioned %lld times · last %@".loc, entity.mentions, last)
     }
 
     private var kindIcon: String {

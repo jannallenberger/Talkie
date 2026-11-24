@@ -1315,8 +1315,8 @@ struct HUDView: View {
                     .accessibilityHidden(true)
                 // A format the model writes cannot be shown while you speak: say so.
                 Text(String(format: (model.formatAppliedAtEnd
-                                     ? "%1$@ on · applied when you stop · %2$@ twice ends it"
-                                     : "%1$@ on · press %2$@ twice to end").loc, name, model.formatKeyName))
+                                     ? "%1$@ on · applied when you stop · %2$@ twice ends it".loc
+                                     : "%1$@ on · press %2$@ twice to end".loc).loc, name, model.formatKeyName))
                     .font(.system(size: size, weight: .medium))
             }
             .foregroundStyle(Self.formatBlue)
@@ -1814,7 +1814,7 @@ struct HUDView: View {
                     // Implicit-fallback path only: the user never selected anything
                     // themselves, so this is their only visual anchor for what
                     // "Insert" is about to replace. Required, not decorative.
-                    Text("Replacing your last dictation: \u{201c}\(replacing.prefix(60))\u{201d}")
+                    Text("Replacing your last dictation: \u{201c}\(String(replacing.prefix(60)))\u{201d}")
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(ink(0.55))
                         .lineLimit(1)

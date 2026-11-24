@@ -490,7 +490,7 @@ struct MeetingRecordingPanel: View {
                 Image(systemName: recorder.capturingFarEnd ? "person.2.wave.2" : "mic")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.featherRed)
-                Text(recorder.capturingFarEnd ? "Recording you + the call…" : "Recording (mic only)…")
+                Text(recorder.capturingFarEnd ? "Recording you + the call…".loc : "Recording (mic only)…".loc)
                     .font(.talkieHeading(14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
             }
@@ -1525,7 +1525,7 @@ struct MeetingPlaybackView: View {
         }
         .buttonStyle(.plain)
         .disabled(!playable)
-        .help(playable ? "Play from here".loc : "")
+        .help(playable ? "Play from here".loc : "".loc)
     }
 
     /// Tapping a segment: pause if it's the one already playing; otherwise seek this

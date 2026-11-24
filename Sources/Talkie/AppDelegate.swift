@@ -680,7 +680,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(withTitle: String(format: "About %@".loc, Brand.displayName),
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        let settingsItem = appMenu.addItem(withTitle: "Settings…",
+        let settingsItem = appMenu.addItem(withTitle: "Settings…".loc,
                                            action: #selector(openSettingsMenu), keyEquivalent: ",")
         settingsItem.target = self
         appMenu.addItem(.separator())
@@ -691,22 +691,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let editItem = NSMenuItem()
         mainMenu.addItem(editItem)
-        let editMenu = NSMenu(title: "Edit")
+        let editMenu = NSMenu(title: "Edit".loc)
         editItem.submenu = editMenu
-        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(withTitle: "Undo".loc, action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo".loc, action: Selector(("redo:")), keyEquivalent: "Z")
         editMenu.addItem(.separator())
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(withTitle: "Cut".loc, action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy".loc, action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste".loc, action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All".loc, action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
         let windowItem = NSMenuItem()
         mainMenu.addItem(windowItem)
-        let windowMenu = NSMenu(title: "Window")
+        let windowMenu = NSMenu(title: "Window".loc)
         windowItem.submenu = windowMenu
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: "Minimize".loc, action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Close".loc, action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
         NSApp.mainMenu = mainMenu
         NSApp.windowsMenu = windowMenu
@@ -755,9 +755,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(withTitle: "Meeting notes".loc, action: #selector(openMeetingNotes), keyEquivalent: "n")
             .target = self
-        menu.addItem(withTitle: "Dictionary…", action: #selector(openDictionary), keyEquivalent: "d")
+        menu.addItem(withTitle: "Dictionary…".loc, action: #selector(openDictionary), keyEquivalent: "d")
             .target = self
-        menu.addItem(withTitle: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: ",")
+        menu.addItem(withTitle: "Settings…".loc, action: #selector(openSettingsMenu), keyEquivalent: ",")
             .target = self
 
         menu.addItem(.separator())
@@ -768,12 +768,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func statusLine() -> String {
-        // Pure menu-bar chrome — the brand name is interpolated verbatim (these
-        // short status lines are deliberately unlocalized). `Brand.displayName`
-        // keeps them following a rebrand; the "— …" tail stays as-is.
-        if !TranscriptionEngine.isAvailable { return "\(Brand.displayName) — speech unavailable" }
-        if !permissions.allGranted { return "\(Brand.displayName) — needs permissions" }
-        return isDictating ? "\(Brand.displayName) — listening…" : "\(Brand.displayName) — ready"
+        // `Brand.displayName` keeps these following a rebrand.
+        if !TranscriptionEngine.isAvailable { return String(format: "%@ — speech unavailable".loc, Brand.displayName) }
+        if !permissions.allGranted { return String(format: "%@ — needs permissions".loc, Brand.displayName) }
+        return String(format: (isDictating ? "%@ — listening…" : "%@ — ready").loc, Brand.displayName)
     }
 
     private func hintLine() -> String {

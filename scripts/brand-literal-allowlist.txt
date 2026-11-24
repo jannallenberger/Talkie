@@ -30,7 +30,7 @@
 1 Sources/Talkie/BugBundle.swift
 1 Sources/Talkie/CommandsView.swift
 1 Sources/Talkie/DashboardView.swift
-3 Sources/Talkie/DesignSystem.swift
+4 Sources/Talkie/DesignSystem.swift
 2 Sources/Talkie/DevTools.swift
 1 Sources/Talkie/DictionaryStore.swift
 1 Sources/Talkie/Export/ObsidianVaultDestination.swift

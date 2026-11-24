@@ -826,8 +826,8 @@ private struct DeveloperSettings: View {
                 SettingsToggleRow(
                     title: "Repair mangled jargon with the on-device LLM",
                     subtitle: LLMJargonRepair.isAvailable
-                        ? "Post-hoc, after the phonetic corrector. Guarded so it can only swap in your saved terms."
-                        : "Needs Apple Intelligence to be on.",
+                        ? "Post-hoc, after the phonetic corrector. Guarded so it can only swap in your saved terms.".loc
+                        : "Needs Apple Intelligence to be on.".loc,
                     isOn: $llmJargonRepair
                 )
             }
@@ -1510,7 +1510,7 @@ struct SettingsCard<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .talkieSurface()
             if let footer {
-                Text(footer).font(.callout).foregroundStyle(Theme.inkTertiary)
+                Text(footer.loc).font(.callout).foregroundStyle(Theme.inkTertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
@@ -1537,9 +1537,9 @@ struct SettingsRow<Trailing: View>: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                Text(title.loc).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
                 if let subtitle {
-                    Text(subtitle).font(.talkieHeading(12, weight: .regular))
+                    Text(subtitle.loc).font(.talkieHeading(12, weight: .regular))
                         .foregroundStyle(Theme.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1564,9 +1564,9 @@ struct SettingsToggleRow: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                Text(title.loc).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
                 if let subtitle {
-                    Text(subtitle).font(.talkieHeading(12, weight: .regular))
+                    Text(subtitle.loc).font(.talkieHeading(12, weight: .regular))
                         .foregroundStyle(Theme.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1599,7 +1599,7 @@ struct SettingsNote: View {
             if let icon {
                 Image(systemName: icon).font(.system(size: 11, weight: .semibold))
             }
-            Text(text)
+            Text(text.loc)
         }
         .font(.callout)
         .foregroundStyle(tone)
@@ -1639,7 +1639,7 @@ struct LearnMoreRow: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Theme.coral)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
-                    Text(title)
+                    Text(title.loc)
                         .font(.talkieHeading(13, weight: .medium))
                         .foregroundStyle(Theme.coral)
                     Spacer(minLength: 0)
@@ -1654,7 +1654,7 @@ struct LearnMoreRow: View {
             .accessibilityHint("Shows a short explanation of how this works.".loc)
 
             if expanded {
-                Text(text)
+                Text(text.loc)
                     .font(.callout)
                     .foregroundStyle(Theme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2130,7 +2130,7 @@ struct DictionarySettings: View {
                                     set: { if !$0 { importError = nil } })) {
             Button("OK", role: .cancel) { importError = nil }
         } message: {
-            Text(importError ?? "")
+            Text(importError ?? "".loc)
         }
         .alert("Dictionary imported",
                isPresented: Binding(get: { mergeResult != nil },
@@ -2264,7 +2264,7 @@ struct DictionarySettings: View {
         let defaultName = Host.current().localizedName ?? "Talkie"
         let pack = dictionary.exportPack(name: defaultName, description: nil, attribution: nil)
         let panel = NSSavePanel()
-        panel.title = "Export dictionary"
+        panel.title = "Export dictionary".loc
         panel.nameFieldStringValue = pack.suggestedFileName
         panel.canCreateDirectories = true
         if let type = UTType(filenameExtension: TalkiePack.fileExtension) {
@@ -2284,7 +2284,7 @@ struct DictionarySettings: View {
 
     private func presentImportPanel() {
         let panel = NSOpenPanel()
-        panel.title = "Import dictionary"
+        panel.title = "Import dictionary".loc
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
@@ -2471,7 +2471,7 @@ private struct ReplacementRow: View {
                 .foregroundStyle(Theme.coral)
                 .opacity(rule.isLearned ? 1 : 0)
                 .frame(width: 13)
-                .help(rule.isLearned ? "Learned automatically from your edits" : "")
+                .help(rule.isLearned ? "Learned automatically from your edits".loc : "".loc)
             Toggle("Aa", isOn: $rule.caseSensitive)
                 .toggleStyle(.talkieChip).help("Case sensitive")
             Toggle("W", isOn: $rule.wholeWord)
@@ -2638,7 +2638,7 @@ private struct ImportPreviewSheet: View {
             Button("Cancel", action: onCancel)
                 .buttonStyle(.talkie(.secondary))
                 .keyboardShortcut(.cancelAction)
-            Button(preview.hasSomethingToAdd ? "Add to dictionary" : "Nothing to add",
+            Button(preview.hasSomethingToAdd ? "Add to dictionary".loc : "Nothing to add".loc,
                    action: onConfirm)
                 .buttonStyle(.talkie(.primary))
                 .keyboardShortcut(.defaultAction)
@@ -2783,9 +2783,9 @@ private struct PermissionRow: View {
                     .frame(width: 26)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.talkieHeading(14, weight: .medium))
+                Text(title.loc).font(.talkieHeading(14, weight: .medium))
                     .foregroundStyle(Theme.ink)
-                Text(detail).font(.callout).foregroundStyle(Theme.inkSecondary)
+                Text(detail.loc).font(.callout).foregroundStyle(Theme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)

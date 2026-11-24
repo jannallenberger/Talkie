@@ -34,7 +34,7 @@
         <string>zh-Hans</string>
     </array>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
@@ -45,6 +45,11 @@
          so the on-device core carries no https:// literal (check-no-network.sh). -->
     <key>TalkieRepoURL</key>
     <string>https://github.com/jannallenberger/Talkie</string>
+    <!-- Talkie's website. "See the latest version" opens its changelog page
+         (TalkieWebsiteURL + "/changelog/") in the user's browser; never fetched
+         in-process. Kept out of Swift source for check-no-network.sh. -->
+    <key>TalkieWebsiteURL</key>
+    <string>https://try-talkie.com</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>ATSApplicationFontsPath</key>

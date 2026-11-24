@@ -86,7 +86,7 @@ struct OnboardingAboutStep: View {
                                 get: { settings.spokenLanguages.contains(language.id) },
                                 set: { _ in toggleSpokenLanguage(language.id, in: settings) }
                             )) {
-                                Text(verbatim: "\(language.flag) \(language.name)")
+                                Text(verbatim: "\(language.flag) \(language.displayName)")
                                     .font(.talkieHeading(12, weight: .medium))
                                     .padding(.vertical, 2)
                             }
