@@ -432,7 +432,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Watch the MCP inbox for Claude-queued dictionary suggestions and surface
         // each with an Undo pill. Started here so a suggestion written while the app
         // was closed is scanned and pinged at launch — never applied silently.
-        let inbox = DictionaryInbox(dictionary: dictionary, nicheVocab: nicheVocab, hud: hud, meetingStore: meetingStore)
+        let inbox = DictionaryInbox(dictionary: dictionary, nicheVocab: nicheVocab, hud: hud, meetingStore: meetingStore,
+                                    settings: settings, appearance: AppearanceStore.shared)
         inbox.start()
         dictionaryInbox = inbox
 
@@ -462,6 +463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         permissions.refresh()
         observeSettings()
         observePowerEvents()
+        startIdleColdStartTimer()
 
         // The always-on floating bird, if the user keeps it on.
         if settings.showBirdBuddy { birdBuddy.show() }
@@ -678,7 +680,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(withTitle: String(format: "About %@".loc, Brand.displayName),
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        let settingsItem = appMenu.addItem(withTitle: "Settings…",
+        let settingsItem = appMenu.addItem(withTitle: "Settings…".loc,
                                            action: #selector(openSettingsMenu), keyEquivalent: ",")
         settingsItem.target = self
         appMenu.addItem(.separator())
@@ -689,22 +691,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let editItem = NSMenuItem()
         mainMenu.addItem(editItem)
-        let editMenu = NSMenu(title: "Edit")
+        let editMenu = NSMenu(title: "Edit".loc)
         editItem.submenu = editMenu
-        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(withTitle: "Undo".loc, action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo".loc, action: Selector(("redo:")), keyEquivalent: "Z")
         editMenu.addItem(.separator())
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(withTitle: "Cut".loc, action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy".loc, action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste".loc, action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All".loc, action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
         let windowItem = NSMenuItem()
         mainMenu.addItem(windowItem)
-        let windowMenu = NSMenu(title: "Window")
+        let windowMenu = NSMenu(title: "Window".loc)
         windowItem.submenu = windowMenu
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: "Minimize".loc, action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Close".loc, action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
         NSApp.mainMenu = mainMenu
         NSApp.windowsMenu = windowMenu
@@ -753,9 +755,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(withTitle: "Meeting notes".loc, action: #selector(openMeetingNotes), keyEquivalent: "n")
             .target = self
-        menu.addItem(withTitle: "Dictionary…", action: #selector(openDictionary), keyEquivalent: "d")
+        menu.addItem(withTitle: "Dictionary…".loc, action: #selector(openDictionary), keyEquivalent: "d")
             .target = self
-        menu.addItem(withTitle: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: ",")
+        menu.addItem(withTitle: "Settings…".loc, action: #selector(openSettingsMenu), keyEquivalent: ",")
             .target = self
 
         menu.addItem(.separator())
@@ -766,12 +768,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func statusLine() -> String {
-        // Pure menu-bar chrome — the brand name is interpolated verbatim (these
-        // short status lines are deliberately unlocalized). `Brand.displayName`
-        // keeps them following a rebrand; the "— …" tail stays as-is.
-        if !TranscriptionEngine.isAvailable { return "\(Brand.displayName) — speech unavailable" }
-        if !permissions.allGranted { return "\(Brand.displayName) — needs permissions" }
-        return isDictating ? "\(Brand.displayName) — listening…" : "\(Brand.displayName) — ready"
+        // `Brand.displayName` keeps these following a rebrand.
+        if !TranscriptionEngine.isAvailable { return String(format: "%@ — speech unavailable".loc, Brand.displayName) }
+        if !permissions.allGranted { return String(format: "%@ — needs permissions".loc, Brand.displayName) }
+        return String(format: (isDictating ? "%@ — listening…" : "%@ — ready").loc, Brand.displayName)
     }
 
     private func hintLine() -> String {
@@ -1451,6 +1451,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handlePowerEvent(_ event: PowerEvent) {
         talkieDebugLog("power: \(event)")
+        lastPowerEventAt = Date()
         if event == .willSleep {
             perform(WakeRecovery.actions(for: event, activity: currentActivity))
             return
@@ -1461,7 +1462,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         wakeRecoveryTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(WakeRecovery.wakeSettleSeconds))
             guard let self, !Task.isCancelled else { return }
-            self.perform(WakeRecovery.actions(for: event, activity: self.currentActivity))
+            let actions = WakeRecovery.actions(for: event, activity: self.currentActivity)
+            // The wake recovery is a cold start of its own: the idle timer starts
+            // counting again from here.
+            if actions.contains(.resetSpeechService) { self.lastIdleColdStart = Date() }
+            self.perform(actions)
+        }
+    }
+
+    // MARK: Idle cold start
+
+    private var idleColdStartTimer: Timer?
+    /// When speech or the mic was last in use (launch warms everything, so it counts).
+    private var lastSpeechUse = Date()
+    private var lastIdleColdStart: Date?
+    private var lastPowerEventAt: Date?
+
+    /// Checks once a minute whether Talkie has sat idle long enough for a cold start
+    /// (`IdleColdStart`). A cheap timer with a wide tolerance; it does not run while
+    /// the Mac sleeps (the wake recovery covers that).
+    private func startIdleColdStartTimer() {
+        guard idleColdStartTimer == nil else { return }
+        let timer = Timer(timeInterval: IdleColdStart.checkEvery, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.idleColdStartTick() }
+        }
+        timer.tolerance = 20
+        RunLoop.main.add(timer, forMode: .common)
+        idleColdStartTimer = timer
+    }
+
+    private var idleColdStartBusy: IdleColdStart.Busy {
+        let nearPower = lastPowerEventAt.map { Date().timeIntervalSince($0) < 60 } ?? false
+        return IdleColdStart.Busy(activity: currentActivity,
+                                  importing: fileImporter?.isImporting == true,
+                                  nearPowerEvent: nearPower)
+    }
+
+    private func idleColdStartTick(now: Date = Date()) {
+        let busy = idleColdStartBusy
+        guard busy.isIdle else {
+            // In use (or the wake recovery's moment): this counts as speech use.
+            if !busy.activity.isIdle || busy.importing { lastSpeechUse = now }
+            return
+        }
+        let override = Dev.idleColdStartAfterOverride
+        guard IdleColdStart.shouldColdStart(
+            now: now, lastSpeechUse: lastSpeechUse, lastColdStart: lastIdleColdStart, busy: busy,
+            idleAfter: override ?? IdleColdStart.idleAfter,
+            repeatEvery: override.map { $0 * 2 } ?? IdleColdStart.repeatEvery) else { return }
+        lastIdleColdStart = now
+        talkieDebugLog("idle cold start after \(Int(now.timeIntervalSince(lastSpeechUse)))s without speech")
+        // The mic: thrown away and prewarmed fresh in this one main-actor turn, so no
+        // dictation can start in between (`AudioCapture` refuses both while running).
+        audio.discardIdleEngine()
+        audio.prewarm(preferredDeviceUID: settings.preferredInputDeviceUID)
+        let engine = self.engine!
+        let languages = settings.spokenLanguages
+        let warmDictationModel = settings.dictationModel == .dictation
+        let style = settings.cleanupStyle(for: .other)
+        Task { @MainActor [weak self] in
+            // The engine checks for itself that no session is running, finishing or
+            // starting; if one is, nothing is touched.
+            guard await engine.coldStartIfIdle() else {
+                talkieDebugLog("idle cold start skipped — the engine is in use")
+                return
+            }
+            for lang in languages {
+                try? await engine.warmUp(localeIdentifier: lang)
+                if warmDictationModel { try? await engine.warmUp(localeIdentifier: lang, model: .dictation) }
+            }
+            self?.prewarmCleanup(style: style)
         }
     }
 
@@ -1524,6 +1594,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stopSilenceWatchdog()
 
         isDictating = true
+        lastSpeechUse = Date()
         handsFreeLocked = false
         sessionLive = false
         sessionFormatMarks = []

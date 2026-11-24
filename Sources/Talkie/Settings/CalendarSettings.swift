@@ -66,7 +66,7 @@ struct CalendarSettings: View {
         } else if status == .denied || status == .restricted {
             Button("Open Settings") { openCalendarSettings() }
         } else {
-            Button(requesting ? "Requesting…" : "Enable") { requestAccess() }
+            Button(requesting ? "Requesting…".loc : "Enable".loc) { requestAccess() }
                 .buttonStyle(.talkie(.primary))
                 .disabled(requesting)
         }
@@ -99,7 +99,7 @@ private struct BulletNote: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.coral)
                 .frame(width: 16)
-            Text(text)
+            Text(text.loc)
                 .font(.callout)
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -476,6 +476,46 @@ final class MeetingStore: ObservableObject {
         return (meetings[index].id, old)
     }
 
+    /// The AI agent's summary for a meeting (MCP `set_meeting_summary`), matched like
+    /// `retitle`. The user's own notes stay: a meeting with notes keeps its notes
+    /// section under the agent's text (unless the agent already included it), the
+    /// same "never lose a note" promise a regenerated summary keeps. Returns the id,
+    /// title and previous summary for the Undo pill; nil when nothing matches, the
+    /// text is blank, or nothing would change.
+    func setAgentSummary(idOrPrefix: String, to text: String) -> (id: UUID, title: String, oldSummary: String)? {
+        let key = idOrPrefix.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty, let index = meetings.firstIndex(where: {
+            let u = $0.id.uuidString.lowercased()
+            return u == key || u.hasPrefix(key)
+        }) else { return nil }
+        let meeting = meetings[index]
+        guard let composed = Self.agentSummary(text, notes: meeting.notes ?? [], transcript: meeting.transcript),
+              composed != meeting.summary else { return nil }
+        let old = meeting.summary
+        meetings[index].summary = composed
+        writeMarkdown(meetings[index])
+        save()
+        return (meeting.id, meeting.title, old)
+    }
+
+    /// Undo for `setAgentSummary`.
+    func restoreSummary(id: UUID, to oldSummary: String) {
+        guard let index = meetings.firstIndex(where: { $0.id == id }) else { return }
+        meetings[index].summary = oldSummary
+        writeMarkdown(meetings[index])
+        save()
+    }
+
+    /// The agent's text with the user's notes section kept under it. Pure (tested).
+    nonisolated static func agentSummary(_ text: String, notes: [MeetingNote], transcript: String) -> String? {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return nil }
+        let notesSection = MeetingRecorder.notesSummary(notes, transcript: transcript)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !notesSection.isEmpty, !body.contains(notesSection) else { return body }
+        return body + "\n\n" + notesSection
+    }
+
     /// Name (or, with nil/blank, un-name) one speaker of a meeting by hand. Applies to
     /// every turn of that label; a manual name overrides automatic ones. Returns the
     /// updated names, or nil when the meeting is gone or the label is "Me".

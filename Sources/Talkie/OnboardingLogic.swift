@@ -58,8 +58,8 @@ enum OnboardingPermissionsCopy {
     /// Localisation key for the body.
     static func bodyKey(missing: Int) -> String {
         missing <= 0
-            ? "Everything dictation needs is on. Each is used only on this Mac."
-            : "To hear you, notice your dictation key, and place your text into other apps, dictation needs these. Each is used only on this Mac."
+            ? "Everything dictation needs is on. Each is used only on this Mac.".loc
+            : "To hear you, notice your dictation key, and place your text into other apps, dictation needs these. Each is used only on this Mac.".loc
     }
 }
 

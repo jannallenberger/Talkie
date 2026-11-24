@@ -59,3 +59,19 @@ tell me you did. Don't spam it: one call per genuinely new term.
 - The suggestion is recorded as a *passive* signal in Talkie's niche-vocabulary
   store (a plain occurrence), not as a strong "the user typed this themselves"
   confirmation. Surviving the Undo window is the only passive confirmation it earns.
+
+## Beyond the dictionary (connector 0.5.0)
+
+The same inbox carries two more kinds of suggestion, under the same contract
+(applied right away, one Undo pill, queued while Talkie is closed, rate-capped):
+
+- **`set_meeting_summary`** — the agent writes a meeting's summary after reading it
+  with `get_meeting` (the on-device model's summaries are limited). It replaces the
+  summary; the user's own notes section stays under it, and Undo restores the old
+  summary.
+- **`update_settings`** (with the read `get_settings`) — setup by the agent: the
+  user's name, the bird's name, the languages they speak (primary first), the app
+  language (applies on restart) and the look (accent, backdrop, light/dark). Only
+  values Talkie supports are kept (`AgentSetup.plan`), only what differs is applied,
+  and one Undo puts every changed value back. The agent should ask the user first
+  and never guess. Onboarding offers this as its "Set up with your AI agent" step.

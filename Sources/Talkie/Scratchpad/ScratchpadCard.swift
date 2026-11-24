@@ -127,7 +127,7 @@ private struct ScratchpadRow: View {
                         .foregroundStyle(line.done ? Theme.positive : Theme.inkTertiary)
                 }
                 .buttonStyle(.plain)
-                .help(line.done ? "Mark as not done" : "Mark as done")
+                .help(line.done ? "Mark as not done".loc : "Mark as done".loc)
             } else if line.addedByAI {
                 // L2-b: a line Talkie suggested from your dictation — a subtle coral
                 // sparkle marks it as auto-added, not typed by you. It's a visible,

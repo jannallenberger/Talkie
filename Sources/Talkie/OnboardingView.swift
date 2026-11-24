@@ -4,13 +4,18 @@ import AppKit
 /// First-run welcome — a live aurora-glass backdrop with each step floating on a
 /// frosted panel.
 ///
-/// Shaped by the archetype review:
-///   • The on-device **privacy promise gets its own panel, before any permission**
-///     is requested (a dictation app asking for Accessibility + Input Monitoring
-///     is keylogger-shaped until you explain it).
-///   • Each permission row carries a one-line *why*.
-///   • **No required typing** before first use — the name lives in Settings.
-///   • A short, skippable spine: impatient users can jump straight to permissions.
+/// Shaped by the archetype review, then cut down (2026-11-23, Jann: fewer steps,
+/// plainer copy):
+///   • The on-device promise is one line on the welcome; each permission row
+///     carries a one-line *why* and says it is used only on this Mac. (The separate
+///     privacy panel and its Wi-Fi dare were removed as an extra step.)
+///   • **No required typing** before first use: "About you" (name, app language,
+///     spoken languages) and "Style" (colours, how text comes out) come after the
+///     try-it, apply as you choose and can be left with Continue.
+///   • Copy: a title, at most one plain line under it. No slogans.
+///   • A skippable spine: impatient users can jump straight to permissions.
+///   • After the permissions, the AI-agent step connects Claude (or another agent)
+///     over the local MCP, which can then finish the setup (`update_settings`).
 ///   • The final panel is an **accessible try-it**: it adapts to hold vs. toggle,
 ///     and confirms visually (the words land in the field), not by sound alone.
 ///   • Motion + transparency defer to the system accessibility settings — handled
@@ -24,13 +29,17 @@ struct OnboardingView: View {
     // One-time speech-model download state (macOS performs it; Talkie only reports it).
     @ObservedObject private var modelTracker = SpeechModelInstallTracker.shared
 
-    // Speak-first order (H5): the mic-only try-it comes BEFORE the privacy promise,
+    // Speak-first order (H5): the mic-only try-it comes BEFORE the setup steps,
     // the gesture, and — crucially — before Input Monitoring or Accessibility are ever
     // mentioned. A new user speaks and sees their words within ~15s of first launch.
     // The `ready` step keeps the real-hotkey try-it as the graduation moment.
-    // Room is deliberately left after `tryIt` for one more step later (the A-series
-    // profession packs) — adding a case here needs no other change.
-    private enum Step: CaseIterable { case welcome, tryIt, privacy, gesture, permissions, ready }
+    // Adding a case here needs no other change (the dots, Back/Continue and the
+    // snapshot indices all follow `Step.allCases`).
+    private enum Step: CaseIterable {
+        case welcome, tryIt, about, gesture, style, permissions, agent, ready
+    }
+    /// Where a restart for a new app language comes back to (the step after `about`).
+    static let resumeStepKey = "onboardingResumeStep"
     private let steps = Step.allCases
     @State private var step = 0
     /// Index of the final "You're ready" step (snapshot tests).
@@ -43,21 +52,6 @@ struct OnboardingView: View {
     @State private var tryItText = ""
     @State private var tryItActive = false
     @State private var tryItError: String?
-    // The privacy-step (`privacy`) offline dare (H6): the same sealed try-it, but
-    // collapsed by default so the step stays calm, and with its OWN state so a
-    // success here is scoped to this step (it fires the parrot salute). It reuses
-    // H5's `TryItRecordButton` + `AppDelegate.toggleTryItDictation` seam verbatim —
-    // no connectivity check is (or may be) added here: proving offline mode by
-    // pinging the network would falsify the very claim being demonstrated. The
-    // Wi-Fi toggle is the user's own act of verification; the code stays silent.
-    @State private var privacyTryExpanded = false
-    @State private var privacyTryText = ""
-    @State private var privacyTryActive = false
-    @State private var privacyTryError: String?
-    // Latched true on the first successful step-local dictation; swaps the button
-    // row for the salute. Never auto-detects connectivity — it only observes that a
-    // fully on-device dictation produced words.
-    @State private var privacySaluted = false
 
     private var current: Step { steps[step] }
     private var permissionsIndex: Int { steps.firstIndex(of: .permissions) ?? 4 }
@@ -82,6 +76,13 @@ struct OnboardingView: View {
         // while System Settings changes land. Idempotent; stopped when the view goes.
         .onAppear {
             if step == 0, initialStep > 0 { step = min(initialStep, steps.count - 1) }
+            // Back from the restart that switched the app language: carry on where
+            // the user was.
+            let resume = UserDefaults.standard.integer(forKey: Self.resumeStepKey)
+            if resume > 0, initialStep == 0 {
+                step = min(resume, steps.count - 1)
+                UserDefaults.standard.removeObject(forKey: Self.resumeStepKey)
+            }
             permissions.refresh()
             permissions.startPolling()
         }
@@ -156,9 +157,11 @@ struct OnboardingView: View {
         switch current {
         case .welcome:     welcome
         case .tryIt:       tryIt
-        case .privacy:     privacy
+        case .about:       OnboardingAboutStep(settings: settings, onRestartForLanguage: restartForLanguage)
         case .gesture:     gesture
+        case .style:       OnboardingStyleStep(settings: settings)
         case .permissions: permissionsStep
+        case .agent:       OnboardingAgentStep()
         case .ready:       ready
         }
     }
@@ -170,7 +173,7 @@ struct OnboardingView: View {
             Text("Welcome to Talkie")
                 .font(.talkieDisplay(32))
                 .foregroundStyle(Theme.ink)
-            Text("Speak, and Talkie writes it for you — in any app, wherever your cursor is. It all runs on this Mac.")
+            Text("Hold a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac.")
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -187,12 +190,12 @@ struct OnboardingView: View {
     /// copied, learned, or stored.
     private var tryIt: some View {
         VStack(spacing: 18) {
-            Text("Try it — just talk")
+            Text("Try it")
                 .font(.talkieDisplay(29))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("No setup needed — click, speak, see your words.")
+            Text("Click the button and say something.")
                 .font(.talkieHeading(14.5, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -270,180 +273,20 @@ struct OnboardingView: View {
         }
     }
 
-    private var privacy: some View {
-        VStack(spacing: 16) {
-            Text("Private by design")
-                .font(.talkieDisplay(30))
-                .foregroundStyle(Theme.ink)
-            Text("Your voice never leaves this Mac. Talkie transcribes and tidies your words entirely on-device — no servers, no account, nothing uploaded.")
-                .font(.talkieHeading(15, weight: .regular))
-                .foregroundStyle(Theme.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 9) {
-                PrivacyChip(icon: "lock.fill", text: "On-device".loc)
-                PrivacyChip(icon: "wifi.slash", text: "No cloud".loc)
-                PrivacyChip(icon: "person.crop.circle.badge.xmark", text: "No account".loc)
-            }
-            .padding(.top, 2)
-
-            privacyDare
-        }
-        // If the user walks away mid-recording (Back/Continue), stop the sealed
-        // session so no dictation is left running behind the onboarding — same
-        // guard the `tryIt` step uses.
-        .onDisappear { if privacyTryActive { AppDelegate.shared?.toggleTryItDictation(
-            onInterim: { _ in }, onFinal: { _ in }, onError: { _ in }, onEnded: {}) } }
-    }
-
-    // MARK: Airplane-mode proof moment (H6)
-
-    /// Turns the privacy claim into a dare. One quiet line + a button that, when
-    /// tapped, reveals an inline instance of H5's sealed try-it (collapsed by
-    /// default so the step stays calm). The invitation is to cut Wi-Fi first and
-    /// watch it work anyway — but the code never checks connectivity: that would
-    /// falsify the very promise. On the first successful step-local dictation the
-    /// button row is replaced by a spring-in parrot salute.
-    @ViewBuilder
-    private var privacyDare: some View {
-        VStack(spacing: 12) {
-            // The dare needs the model on this Mac: with the Wi-Fi off before it is
-            // installed, dictation would fail or hang. Until then show the download.
-            if !modelTracker.phase.offersOfflineDare && !privacySaluted {
-                if modelTracker.phase.showsDownloadNotice {
-                    modelDownloadNotice
-                } else {
-                    Text("Once the speech model is on this Mac, you can try dictation with the Wi-Fi off.")
-                        .font(.talkieHeading(12.5, weight: .regular))
-                        .foregroundStyle(Theme.inkTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } else {
-            Text("Don't take our word for it — turn off Wi-Fi and dictate.")
-                .font(.talkieHeading(13, weight: .semibold))
-                .foregroundStyle(Theme.inkSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if privacySaluted {
-                privacySalute
-            } else if privacyTryExpanded {
-                privacyTryInline
-            } else {
-                Button {
-                    withAnimation(.smooth(duration: 0.28)) { privacyTryExpanded = true }
-                } label: {
-                    Label("Try it offline", systemImage: "wifi.slash")
-                        .font(.talkieHeading(13, weight: .semibold))
-                }
-                .buttonStyle(.talkie(.secondary))
-                .controlSize(.small)
-            }
-            }
-        }
-        .padding(.top, 4)
-        .animation(.smooth(duration: 0.28), value: privacyTryExpanded)
-    }
-
-    /// The inline sealed try-it for the privacy step — H5's record button + a
-    /// read-only results field, driven by the SAME `toggleTryItDictation` seam but
-    /// with this step's own state so a success here (and only here) fires the salute.
-    private var privacyTryInline: some View {
-        VStack(spacing: 12) {
-            TryItRecordButton(active: privacyTryActive) { togglePrivacyTry() }
-
-            ScrollView {
-                Text(privacyTryResultsDisplay)
-                    .font(.talkieHeading(13.5, weight: .regular))
-                    .foregroundStyle(privacyTryText.isEmpty ? Theme.inkTertiary : Theme.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .multilineTextAlignment(.leading)
-                    .textSelection(.enabled)
-            }
-            .frame(minHeight: 52, maxHeight: 84)
-            .padding(11)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.surface.opacity(0.55)))
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Your dictated words, offline")
-            .accessibilityValue(privacyTryText.isEmpty ? "Empty" : privacyTryText)
-
-            if let privacyTryError {
-                Label(privacyTryError, systemImage: "exclamationmark.triangle")
-                    .font(.talkieHeading(11.5, weight: .regular))
-                    .foregroundStyle(Theme.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    /// The reward: the parrot mark springing in with a small confirmation. Reuses
-    /// `Brand.logo` (no new art) — a spring scale/opacity entrance keyed off the
-    /// salute latch. This renders ONLY after a real on-device dictation succeeded
-    /// from this step; nothing about the network was ever queried to earn it.
-    private var privacySalute: some View {
-        VStack(spacing: 10) {
-            Image(nsImage: Brand.logo)
-                .resizable()
-                .frame(width: 44, height: 44)
-                .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
-                .accessibilityHidden(true)
-            Text("Told you. Nothing left this Mac.")
-                .font(.talkieHeading(14, weight: .semibold))
-                .foregroundStyle(Theme.positive)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.top, 2)
-        .transition(.scale(scale: 0.6).combined(with: .opacity))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Told you. Nothing left this Mac.")
-    }
-
-    /// Placeholder-or-content for the privacy try-it results field.
-    private var privacyTryResultsDisplay: String {
-        if !privacyTryText.isEmpty { return privacyTryText }
-        return privacyTryActive
-            ? "Listening… say anything.".loc
-            : "Cut Wi-Fi, then speak — it still works.".loc
-    }
-
-    private func togglePrivacyTry() {
-        guard let app = AppDelegate.shared else { return }
-        if privacyTryActive {
-            app.toggleTryItDictation(
-                onInterim: { _ in }, onFinal: { _ in }, onError: { _ in }, onEnded: {})
-        } else {
-            privacyTryError = nil
-            privacyTryText = ""
-            let started = app.toggleTryItDictation(
-                onInterim: { privacyTryText = $0 },
-                onFinal: { finished in
-                    privacyTryText = finished
-                    // The salute fires on ANY successful step-local dictation — the
-                    // arrival of finished on-device text IS the proof. No connectivity
-                    // is (or ever should be) checked here.
-                    let landed = finished.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !landed.isEmpty {
-                        withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
-                            privacySaluted = true
-                        }
-                    }
-                },
-                onError: { privacyTryError = $0; privacyTryActive = false },
-                onEnded: { privacyTryActive = false }
-            )
-            privacyTryActive = started
-        }
-    }
-
     private var gesture: some View {
         VStack(spacing: 16) {
-            Text("Hold, speak, release — or keep holding to go hands-free")
+            Text("Hold, talk, let go")
                 .font(.talkieDisplay(27))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. Want it hands-free? Keep holding the key a moment and recording locks; tap once to stop.")
+            Text("Hold the key while you talk. When you let go, the text is typed where your cursor is.")
                 .font(.talkieHeading(15, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("To record without holding, keep the key down a moment longer. Tap it once to stop.")
+                .font(.talkieHeading(12.5, weight: .regular))
+                .foregroundStyle(Theme.inkTertiary)
                 .fixedSize(horizontal: false, vertical: true)
             // One row, evenly spaced, never wraps: keycap → speak → typed.
             HStack(spacing: 10) {
@@ -497,20 +340,20 @@ struct OnboardingView: View {
                     // Reads as an already-done confirmation for anyone who used the
                     // try-it; still tappable for those who skipped straight here.
                     why: permissions.microphone
-                        ? "Granted while you tried it out."
-                        : "To hear you while you dictate.",
+                        ? "Granted while you tried it out.".loc
+                        : "To hear you while you dictate.".loc,
                     action: permissions.rowAction(.microphone)
                 ) { permissions.performRowAction(.microphone) }
                 OnboardPermissionRow(
                     icon: "IconKeyboard",
                     title: "Input Monitoring",
-                    why: "To notice your one dictation key — nothing else you type.",
+                    why: "Only to notice your dictation key.",
                     action: permissions.rowAction(.inputMonitoring)
                 ) { permissions.performRowAction(.inputMonitoring, retryHotKey: onRetryHotKey) }
                 OnboardPermissionRow(
                     icon: "IconAccessibility",
                     title: "Accessibility",
-                    why: "To place the finished text into the app you're using.",
+                    why: "To type the text into the app you're using.",
                     action: permissions.rowAction(.accessibility)
                 ) { permissions.performRowAction(.accessibility) }
             }
@@ -547,7 +390,7 @@ struct OnboardingView: View {
             Text("You're ready")
                 .font(.talkieDisplay(30))
                 .foregroundStyle(Theme.ink)
-            Text("Give it a go right here — or jump straight in.")
+            Text("Try it here, or start using it.")
                 .font(.talkieHeading(14.5, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -640,6 +483,13 @@ struct OnboardingView: View {
 
     // MARK: Navigation
 
+    /// Restart into the app language just chosen, then come back to the next step.
+    private func restartForLanguage() {
+        let next = (steps.firstIndex(of: .about) ?? 0) + 1
+        UserDefaults.standard.set(next, forKey: Self.resumeStepKey)
+        permissions.relaunch()
+    }
+
     private func advance() {
         if step >= steps.count - 1 {
             settings.hasOnboarded = true
@@ -660,22 +510,6 @@ struct OnboardingView: View {
 }
 
 // MARK: - Pieces
-
-private struct PrivacyChip: View {
-    let icon: String
-    /// Already localised by the caller (`.loc`).
-    let text: String
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon).font(.system(size: 10, weight: .semibold))
-            Text(verbatim: text).font(.talkieHeading(11.5, weight: .semibold))
-        }
-        .foregroundStyle(Theme.inkSecondary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Capsule().fill(Theme.surface.opacity(0.6)))
-    }
-}
 
 private struct Keycap: View {
     let text: String
@@ -727,10 +561,10 @@ private struct TryItRecordButton: View {
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
-        .accessibilityLabel(active ? "Stop recording" : "Start recording")
+        .accessibilityLabel(active ? "Stop recording".loc : "Start recording".loc)
         .accessibilityHint(active
-            ? "Stops the demo and shows what you said."
-            : "Records your voice and shows your words. Only the microphone is used.")
+            ? "Stops the demo and shows what you said.".loc
+            : "Records your voice and shows your words. Only the microphone is used.".loc)
         .onChange(of: active) { _, isActive in
             pulse = false
             if isActive {

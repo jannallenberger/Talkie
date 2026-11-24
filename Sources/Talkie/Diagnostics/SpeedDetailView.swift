@@ -279,10 +279,10 @@ private struct DiagnosticLine: View {
                 .foregroundStyle(tint)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(title.loc)
                     .font(.talkieHeading(14, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text(detail)
+                Text(detail.loc)
                     .font(.talkieHeading(12, weight: .regular))
                     .foregroundStyle(Theme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)

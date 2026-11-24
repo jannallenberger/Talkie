@@ -87,7 +87,7 @@ struct MilestonesView: View {
             Text(currentTierName)
                 .font(.talkieHeading(15, weight: .medium))
                 .foregroundStyle(Theme.featherCoral)
-            Text(subtitle)
+            Text(subtitle.loc)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
         }
@@ -233,7 +233,7 @@ private struct BestsCard: View {
                     label: "Longest streak",
                     value: activity.longestStreak > 0
                         ? String(format: "%d days".loc, activity.longestStreak)
-                        : "—",
+                        : "—".loc,
                     color: Theme.featherGold)
         }
         .talkieCard(fill: true)

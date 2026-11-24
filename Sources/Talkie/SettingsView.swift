@@ -826,8 +826,8 @@ private struct DeveloperSettings: View {
                 SettingsToggleRow(
                     title: "Repair mangled jargon with the on-device LLM",
                     subtitle: LLMJargonRepair.isAvailable
-                        ? "Post-hoc, after the phonetic corrector. Guarded so it can only swap in your saved terms."
-                        : "Needs Apple Intelligence to be on.",
+                        ? "Post-hoc, after the phonetic corrector. Guarded so it can only swap in your saved terms.".loc
+                        : "Needs Apple Intelligence to be on.".loc,
                     isOn: $llmJargonRepair
                 )
             }
@@ -857,23 +857,10 @@ private struct MCPConnectorCard: View {
     /// inside THIS app (the common case for every installed Talkie); falls back to
     /// the two dev-checkout build paths so a maker running from source still gets a
     /// live path instead of the old "not built yet" dead end.
-    private static func binaryPath() -> String? {
-        let bundled = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/MacOS/talkie-mcp").path
-        let home = NSHomeDirectory()
-        let candidates = [
-            bundled,
-            "\(home)/Talkie/.build/release/talkie-mcp",   // dev checkout (release)
-            "\(home)/Talkie/.build/debug/talkie-mcp",     // dev checkout (debug)
-        ]
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
+    private static func binaryPath() -> String? { MCPConnector.binaryPath() }
 
     /// The `.mcpb` bundled beside the app, if present.
-    private static func mcpbURL() -> URL? {
-        guard let url = Bundle.main.url(forResource: "Talkie", withExtension: "mcpb") else { return nil }
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }
+    private static func mcpbURL() -> URL? { MCPConnector.mcpbURL() }
 
     /// The exact `mcpServers` config both Claude Desktop and Claude Code accept
     /// (the old `{"tools": …}` shape was rejected by both).
@@ -1011,6 +998,9 @@ private struct MCPConnectorCard: View {
         .init(name: "update_replacement", write: true),
         .init(name: "remove_vocabulary_term", write: true),
         .init(name: "retitle_meeting", write: true),
+        .init(name: "set_meeting_summary", write: true),
+        .init(name: "get_settings", write: false),
+        .init(name: "update_settings", write: true),
     ]
 
     @State private var copiedConfig = false
@@ -1128,16 +1118,7 @@ private struct MCPConnectorCard: View {
     /// registered (Claude Desktop not installed), fall back to revealing the file in
     /// Finder so the user can drag it in manually (plan 07 §"Reveal in Finder").
     private func openDesktopConnector() {
-        guard let url = Self.mcpbURL() else {
-            desktopStatus = "Connector file not found in this build".loc
-            return
-        }
-        if NSWorkspace.shared.open(url) {
-            desktopStatus = "Opened in Claude Desktop".loc
-        } else {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-            desktopStatus = "Revealed in Finder — drag it into Claude Desktop".loc
-        }
+        desktopStatus = MCPConnector.openInClaudeDesktop()
     }
 
     private func copyToPasteboard(_ text: String) {
@@ -1435,9 +1416,9 @@ private struct AppUpdateSection: View {
         case .downloading(let progress):
             SettingsRow(title: "Downloading the update…") {
                 if let progress {
-                    ProgressView(value: progress).frame(width: 120)
+                    ProgressView(value: progress).frame(width: 120).tint(Theme.brand)
                 } else {
-                    ProgressView().controlSize(.small)
+                    ProgressView().controlSize(.small).tint(Theme.brand)
                 }
             }
         case .installing:
@@ -1529,7 +1510,7 @@ struct SettingsCard<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .talkieSurface()
             if let footer {
-                Text(footer).font(.callout).foregroundStyle(Theme.inkTertiary)
+                Text(footer.loc).font(.callout).foregroundStyle(Theme.inkTertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
@@ -1556,9 +1537,9 @@ struct SettingsRow<Trailing: View>: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                Text(title.loc).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
                 if let subtitle {
-                    Text(subtitle).font(.talkieHeading(12, weight: .regular))
+                    Text(subtitle.loc).font(.talkieHeading(12, weight: .regular))
                         .foregroundStyle(Theme.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1583,9 +1564,9 @@ struct SettingsToggleRow: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
+                Text(title.loc).font(.talkieHeading(14, weight: .medium)).foregroundStyle(Theme.ink)
                 if let subtitle {
-                    Text(subtitle).font(.talkieHeading(12, weight: .regular))
+                    Text(subtitle.loc).font(.talkieHeading(12, weight: .regular))
                         .foregroundStyle(Theme.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1618,7 +1599,7 @@ struct SettingsNote: View {
             if let icon {
                 Image(systemName: icon).font(.system(size: 11, weight: .semibold))
             }
-            Text(text)
+            Text(text.loc)
         }
         .font(.callout)
         .foregroundStyle(tone)
@@ -1658,7 +1639,7 @@ struct LearnMoreRow: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Theme.coral)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
-                    Text(title)
+                    Text(title.loc)
                         .font(.talkieHeading(13, weight: .medium))
                         .foregroundStyle(Theme.coral)
                     Spacer(minLength: 0)
@@ -1673,7 +1654,7 @@ struct LearnMoreRow: View {
             .accessibilityHint("Shows a short explanation of how this works.".loc)
 
             if expanded {
-                Text(text)
+                Text(text.loc)
                     .font(.callout)
                     .foregroundStyle(Theme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2105,7 +2086,9 @@ struct DictionarySettings: View {
                         }
                     }
                 }
-                .talkieCard()
+                // A long rule list makes this card taller than the window: no glass
+                // then (it was redrawn and held in memory while scrolling).
+                .talkieCard(long: dictionary.replacements.count > 8)
         }
         // A calm brand wash confirms a valid drag is over the pane.
         .background(isTargetedForDrop ? Theme.coral.opacity(0.08) : Color.clear)
@@ -2147,7 +2130,7 @@ struct DictionarySettings: View {
                                     set: { if !$0 { importError = nil } })) {
             Button("OK", role: .cancel) { importError = nil }
         } message: {
-            Text(importError ?? "")
+            Text(importError ?? "".loc)
         }
         .alert("Dictionary imported",
                isPresented: Binding(get: { mergeResult != nil },
@@ -2281,7 +2264,7 @@ struct DictionarySettings: View {
         let defaultName = Host.current().localizedName ?? "Talkie"
         let pack = dictionary.exportPack(name: defaultName, description: nil, attribution: nil)
         let panel = NSSavePanel()
-        panel.title = "Export dictionary"
+        panel.title = "Export dictionary".loc
         panel.nameFieldStringValue = pack.suggestedFileName
         panel.canCreateDirectories = true
         if let type = UTType(filenameExtension: TalkiePack.fileExtension) {
@@ -2301,7 +2284,7 @@ struct DictionarySettings: View {
 
     private func presentImportPanel() {
         let panel = NSOpenPanel()
-        panel.title = "Import dictionary"
+        panel.title = "Import dictionary".loc
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
@@ -2488,7 +2471,7 @@ private struct ReplacementRow: View {
                 .foregroundStyle(Theme.coral)
                 .opacity(rule.isLearned ? 1 : 0)
                 .frame(width: 13)
-                .help(rule.isLearned ? "Learned automatically from your edits" : "")
+                .help(rule.isLearned ? "Learned automatically from your edits".loc : "".loc)
             Toggle("Aa", isOn: $rule.caseSensitive)
                 .toggleStyle(.talkieChip).help("Case sensitive")
             Toggle("W", isOn: $rule.wholeWord)
@@ -2655,7 +2638,7 @@ private struct ImportPreviewSheet: View {
             Button("Cancel", action: onCancel)
                 .buttonStyle(.talkie(.secondary))
                 .keyboardShortcut(.cancelAction)
-            Button(preview.hasSomethingToAdd ? "Add to dictionary" : "Nothing to add",
+            Button(preview.hasSomethingToAdd ? "Add to dictionary".loc : "Nothing to add".loc,
                    action: onConfirm)
                 .buttonStyle(.talkie(.primary))
                 .keyboardShortcut(.defaultAction)
@@ -2800,9 +2783,9 @@ private struct PermissionRow: View {
                     .frame(width: 26)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.talkieHeading(14, weight: .medium))
+                Text(title.loc).font(.talkieHeading(14, weight: .medium))
                     .foregroundStyle(Theme.ink)
-                Text(detail).font(.callout).foregroundStyle(Theme.inkSecondary)
+                Text(detail.loc).font(.callout).foregroundStyle(Theme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)

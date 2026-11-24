@@ -161,8 +161,8 @@ struct DashboardView: View {
 
     private var greeting: String {
         let total = stats.totalWords
-        if total == 0 { return "Hold your dictation key and speak — your stats will fill in here." }
-        return "\(total.formatted()) words dictated, all on-device."
+        if total == 0 { return "Hold your dictation key and speak — your stats will fill in here.".loc }
+        return String(format: "%@ words dictated, all on-device.".loc, total.formatted())
     }
 
     // MARK: Bento
@@ -639,10 +639,10 @@ private struct GaugeCard: View {
                 Gauge(fraction: min(1, avg / SpeedBenchmark.worldRecord))
                     .frame(height: 86)
                 VStack(spacing: 0) {
-                    Text(hasData ? "\(Int(avg.rounded()))" : "—")
+                    Text(hasData ? "\(Int(avg.rounded()))" : "—".loc)
                         .font(.talkieMetric(36))
                         .foregroundStyle(Theme.ink)
-                    Text(LocalizedStringKey(hasData ? "avg wpm" : "no data yet"))
+                    Text(LocalizedStringKey(hasData ? "avg wpm".loc : "no data yet".loc))
                         .font(.talkieHeading(11, weight: .medium))
                         .foregroundStyle(Theme.inkSecondary)
                 }
@@ -660,16 +660,16 @@ private struct GaugeCard: View {
     }
 
     private var officeComparison: String {
-        guard hasData else { return "An office typist holds ~40 wpm" }
+        guard hasData else { return "An office typist holds ~40 wpm".loc }
         let mult = avg / SpeedBenchmark.officeWorker
-        if mult >= 1 { return String(format: "%.1f× an office typist's pace", mult) }
-        return "\(Int((mult * 100).rounded()))% of an office typist's pace"
+        if mult >= 1 { return String(format: "%.1f× an office typist's pace".loc, mult) }
+        return String(format: "%lld%% of an office typist's pace".loc, Int((mult * 100).rounded()))
     }
 
     private var recordComparison: String {
-        guard hasData else { return "World record is 212 wpm (B. Blackburn)" }
+        guard hasData else { return "World record is 212 wpm (B. Blackburn)".loc }
         let pct = avg / SpeedBenchmark.worldRecord * 100
-        return "\(Int(pct.rounded()))% of the world record (212 wpm)"
+        return String(format: "%lld%% of the world record (212 wpm)".loc, Int(pct.rounded()))
     }
 }
 
@@ -682,7 +682,7 @@ private struct ComparisonLine: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Theme.dataColor(series: 1))
                 .frame(width: 14)
-            Text(text)
+            Text(text.loc)
                 .font(.talkieHeading(12, weight: .medium))
                 .foregroundStyle(Theme.inkSecondary)
                 .lineLimit(1)
@@ -1047,7 +1047,7 @@ private struct RecordsCard: View {
                 MiniStat(icon: "calendar", label: "Biggest word day",
                          value: activity.biggestWordDay > 0
                              ? activity.biggestWordDay.formatted() + " words"
-                             : "—")
+                             : "—".loc)
             }
         }
         .talkieCard(padding: 16, fill: true)
@@ -1102,7 +1102,7 @@ private struct UsageCard: View {
                 Eyebrow(text: "Where your words go")
                 Spacer()
                 if appUsage.distinctApps > 0 {
-                    Text("\(appUsage.distinctApps) app\(appUsage.distinctApps == 1 ? "" : "s")")
+                    Text(appUsage.distinctApps == 1 ? LocalizedStringKey("1 app") : LocalizedStringKey("\(appUsage.distinctApps) apps"))
                         .font(.talkieEyebrow)
                         .foregroundStyle(Theme.inkTertiary)
                 }
@@ -1187,7 +1187,7 @@ private struct StreakCard: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.brand)
                     .accessibilityHidden(true)
-                Eyebrow(text: "\(activity.currentStreak)-day streak")
+                Eyebrow(text: String(format: "%lld-day streak".loc, activity.currentStreak))
                 Spacer()
                 Text("Longest \(activity.longestStreak)")
                     .font(.talkieEyebrow)
@@ -1262,7 +1262,7 @@ private struct Heatmap: View {
                                     .fill(cellData.isFuture ? Color.clear : Theme.emberHeat(cellData.level))
                                     .frame(width: cell, height: cell)
                                     .help(cellData.date != nil && cellData.words > 0
-                                          ? "\(cellData.words) words" : "")
+                                          ? String(format: "%lld words".loc, cellData.words) : "")
                             }
                         }
                     }
@@ -1290,7 +1290,7 @@ struct EmptyHint: View {
             Image(systemName: icon)
                 .font(.system(size: 18))
                 .foregroundStyle(Theme.inkTertiary)
-            Text(text)
+            Text(text.loc)
                 .font(.talkieHeading(13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
                 .fixedSize(horizontal: false, vertical: true)

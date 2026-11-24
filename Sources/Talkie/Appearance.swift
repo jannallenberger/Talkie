@@ -34,13 +34,15 @@ enum TalkieAppearanceMode: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// The feather that leads the chrome: primary buttons, selection, focus, links.
+/// Ember — the glow where the logo's red runs into its gold — is Talkie's own.
 enum TalkieAccent: String, CaseIterable, Identifiable, Sendable {
-    case blue, red, gold, green, plum
+    case ember, blue, red, gold, green, plum
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .ember: return "Ember".loc
         case .blue:  return "Blue".loc
         case .red:   return "Red".loc
         case .gold:  return "Gold".loc
@@ -63,6 +65,7 @@ enum TalkieAccent: String, CaseIterable, Identifiable, Sendable {
 
     var palette: Palette {
         switch self {
+        case .ember: return Self.emberPalette
         case .blue:  return Self.bluePalette
         case .red:   return Self.redPalette
         case .gold:  return Self.goldPalette
@@ -74,6 +77,10 @@ enum TalkieAccent: String, CaseIterable, Identifiable, Sendable {
     // Built once: `Theme.brand` is read on every render pass.
     private static let white: UInt32 = 0xFFFFFF
     private static let ink: UInt32 = 0x1C1D20
+    /// Light: a deep ember (5.2:1 under white). Dark: the glow itself, with ink on it.
+    private static let emberPalette = Palette(
+        base: Theme.dyn(light: 0xC2410C, dark: 0xF2743F), deep: Theme.dyn(light: 0x9A3412, dark: 0xF79A6E),
+        wash: Theme.dyn(light: 0xFCE9DE, dark: 0x3A1C10), on: Theme.dyn(light: white, dark: ink))
     private static let bluePalette = Palette(
         base: Theme.dyn(light: 0x1F66B3, dark: 0x4AA0E6), deep: Theme.dyn(light: 0x18548F, dark: 0x79B8EE),
         wash: Theme.dyn(light: 0xE1ECF6, dark: 0x122739), on: Theme.dyn(light: white, dark: white))
@@ -93,10 +100,10 @@ enum TalkieAccent: String, CaseIterable, Identifiable, Sendable {
 
 /// The gradient behind every page, mixed from the logo's feathers.
 enum TalkieBackdropStyle: String, CaseIterable, Identifiable, Sendable {
+    /// The warm half: red into gold. Talkie's own.
+    case ember
     /// All four logo colours: gold, red, blue, green.
     case macaw
-    /// The warm half: red into gold.
-    case ember
     /// The cool half: green into blue.
     case lagoon
     /// Plum into blue.
@@ -147,7 +154,7 @@ enum TalkieBackdropStyle: String, CaseIterable, Identifiable, Sendable {
     var accent: TalkieAccent {
         switch self {
         case .macaw, .plain: return .blue
-        case .ember:  return .red
+        case .ember:  return .ember
         case .lagoon: return .green
         case .dusk:   return .plum
         }
@@ -181,36 +188,43 @@ enum TalkieGlassStyle: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Everything the appearance settings decide, as one value.
+/// Everything the appearance settings decide, as one value. The defaults are the
+/// look Talkie ships with: ember, as a whisper of light falling from the top left,
+/// on clear glass.
 struct TalkieLook: Equatable, Sendable {
     var mode: TalkieAppearanceMode = .system
-    var accent: TalkieAccent = .blue
-    var backdrop: TalkieBackdropStyle = .macaw
+    var accent: TalkieAccent = .ember
+    var backdrop: TalkieBackdropStyle = .ember
     /// 0 (a whisper) … 1 (vivid).
-    var intensity: Double = 0.5
+    var intensity: Double = 0
     /// Direction the gradient runs in, degrees clockwise from "left to right".
-    var angle: Double = 135
+    var angle: Double = 111
     /// Each page turns the gradient a step further, so pages are told apart.
     var variesByPage = true
-    var glass: TalkieGlassStyle = .frosted
+    var glass: TalkieGlassStyle = .clear
 
-    /// Changes whenever a colour token changes value (accent or backdrop): page
-    /// content re-identifies on it, because tokens are plain reads.
-    var paintKey: String { "\(accent.rawValue)-\(backdrop.rawValue)" }
+    /// Changes whenever a colour token or plain-read surface changes value (accent,
+    /// backdrop, card style): page content re-identifies on it, because tokens are
+    /// plain reads.
+    var paintKey: String { "\(accent.rawValue)-\(backdrop.rawValue)-\(glass.rawValue)" }
 }
 
 /// The token side of the look: what `Theme.brand` and friends read. Kept outside
 /// the main-actor store so colour tokens stay plain static reads from anywhere.
 enum ThemeState {
-    nonisolated(unsafe) static var accent: TalkieAccent = .blue
-    nonisolated(unsafe) static var backdrop: TalkieBackdropStyle = .macaw
+    nonisolated(unsafe) static var accent: TalkieAccent = TalkieLook().accent
+    nonisolated(unsafe) static var backdrop: TalkieBackdropStyle = TalkieLook().backdrop
     /// True when small raised fills must be opaque: Solid cards, or no gradient
     /// behind them (a frosted white tile would vanish on the plain white canvas).
     nonisolated(unsafe) static var flatSurfaces = false
+    /// The card style, for surfaces that read it without observing the store
+    /// (`TalkieRowSurface`).
+    nonisolated(unsafe) static var glass: TalkieGlassStyle = TalkieLook().glass
 
     static func adopt(_ look: TalkieLook) {
         accent = look.accent
         backdrop = look.backdrop
+        glass = look.glass
         flatSurfaces = look.glass == .solid || look.backdrop == .plain
     }
 }
@@ -391,6 +405,67 @@ struct TalkieGlassSurface: ViewModifier {
                 .clipShape(shape)
                 .glassEffect(appearance.look.glass == .clear ? .clear : .regular, in: shape)
         }
+    }
+}
+
+// MARK: - Row surface (long lists)
+
+/// The surface for a row of a long list (the Memory feed, search results) and for a
+/// card that grows taller than the window (the dictionary's rules): the card
+/// squircle with a frost fill and the top-edge rim, but no Liquid Glass.
+///
+/// Glass on every row made fast scrolling heavy: each row that scrolls into view
+/// resolves and draws its own glass entry, which cost about 1.8× the main-thread
+/// time per scroll jump and kept a few hundred MB of glass alive on a 1,000-row
+/// feed (`ScrollStressTests`). The rows still read as cards on the backdrop; Solid
+/// cards and Reduce Transparency get the same opaque card as everywhere else.
+struct TalkieRowSurface: ViewModifier {
+    var cornerRadius: CGFloat = Theme.Radius.card
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        // A plain read, no store observation per row: a new glass style re-identifies
+        // the page (`TalkieLook.paintKey`), which rebuilds the rows.
+        if reduceTransparency || ThemeState.glass == .solid {
+            content
+                .clipShape(shape)
+                .background(shape.fill(Theme.surfaceSolid))
+        } else {
+            content
+                .clipShape(shape)
+                .background(
+                    // A plain one-colour rim: a gradient stroke is rasterised per row
+                    // and held while the feed scrolls (≈2.7× the footprint, measured).
+                    shape.fill(ThemeState.glass == .clear ? Theme.surfaceRowClear : Theme.surface)
+                        .overlay(shape.strokeBorder(Theme.rowRim, lineWidth: 0.75))
+                )
+        }
+    }
+}
+
+extension View {
+    /// A row of a long list, or a card that grows taller than the window: the card
+    /// shape without Liquid Glass (see `TalkieRowSurface`).
+    func talkieRowSurface(cornerRadius: CGFloat = Theme.Radius.card) -> some View {
+        modifier(TalkieRowSurface(cornerRadius: cornerRadius))
+    }
+
+    /// `talkieCard`'s padding and frame on the row surface.
+    func talkieRowCard(padding: CGFloat = Theme.Space.card) -> some View {
+        self
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .talkieRowSurface()
+    }
+
+    /// A card whose content can grow past the window (a list of rules): glass while
+    /// it is short, the row surface once `long` (DESIGN_GUIDELINES §9, no glass behind
+    /// long content).
+    @ViewBuilder
+    func talkieCard(padding: CGFloat = Theme.Space.card, long: Bool) -> some View {
+        if long { talkieRowCard(padding: padding) } else { talkieCard(padding: padding) }
     }
 }
 

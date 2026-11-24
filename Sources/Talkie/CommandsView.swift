@@ -74,7 +74,7 @@ struct EditCommandCard: View {
         VStack(alignment: .leading, spacing: 9) {
             CommandIllustration(kind: .edit(kind), height: 46)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(title.loc)
                     .font(.talkieHeading(13, weight: .medium))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)

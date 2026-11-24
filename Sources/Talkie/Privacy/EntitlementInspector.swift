@@ -82,7 +82,7 @@ enum EntitlementInspector {
         guard let (ents, _) = readSigningInfo() else { return [] }
         var found: [Capability] = []
         for entry in known where (ents[entry.key] as? Bool) == true {
-            found.append(Capability(label: entry.label, key: entry.key,
+            found.append(Capability(label: entry.label.loc, key: entry.key,
                                     isNetwork: entry.key.contains("network")))
         }
         return found

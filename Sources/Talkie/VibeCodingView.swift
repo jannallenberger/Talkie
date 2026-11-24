@@ -120,8 +120,8 @@ struct VibeCodingView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = true
-        panel.prompt = "Add Folder"
-        panel.message = "Pick one or more project roots you're vibe coding in."
+        panel.prompt = "Add Folder".loc
+        panel.message = "Pick one or more project roots you're vibe coding in.".loc
         if panel.runModal() == .OK {
             projectIndex.addFolders(panel.urls)
         }

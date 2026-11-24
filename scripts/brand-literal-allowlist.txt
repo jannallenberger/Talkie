@@ -30,7 +30,7 @@
 1 Sources/Talkie/BugBundle.swift
 1 Sources/Talkie/CommandsView.swift
 1 Sources/Talkie/DashboardView.swift
-3 Sources/Talkie/DesignSystem.swift
+4 Sources/Talkie/DesignSystem.swift
 2 Sources/Talkie/DevTools.swift
 1 Sources/Talkie/DictionaryStore.swift
 1 Sources/Talkie/Export/ObsidianVaultDestination.swift
@@ -46,7 +46,7 @@
 # file. Lowered to the real floor per the checker (--print).
 2 Sources/Talkie/Memory/MemoryView.swift
 1 Sources/Talkie/Niche/BiasABTestView.swift
-7 Sources/Talkie/OnboardingView.swift
+4 Sources/Talkie/OnboardingView.swift
 10 Sources/Talkie/Privacy/DoctorReport.swift
 1 Sources/Talkie/Scratchpad/ScratchpadCard.swift
 # Pre-existing drift reconciled at J2: E8 (8d77ed4) added the "…Talkie translates
@@ -78,7 +78,11 @@
 # These are LocalizedStringKey source strings that double as their own .strings
 # keys, so routing through Brand.displayName would break the .loc lookup — the same
 # unavoidable case as the other subtitle literals already counted in this file.
-40 Sources/Talkie/SettingsView.swift
+37 Sources/Talkie/SettingsView.swift
+# MCPConnector, hoisted out of the connector card (SettingsView −3): the bundled
+# Talkie.mcpb resource name and the two ~/Talkie dev-checkout build paths — file
+# names, not copy.
+3 Sources/Talkie/MCPSetupPrompt.swift
 3 Sources/Talkie/SystemAudioCapture.swift
 2 Sources/Talkie/TalkiePack.swift
 2 Sources/Talkie/VibeCodingView.swift

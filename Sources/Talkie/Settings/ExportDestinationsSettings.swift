@@ -92,9 +92,9 @@ final class ExportPreferences: ObservableObject {
     /// The settings-index subtitle ("Talkie folder" / a folder name / "Pick a folder").
     var summary: String {
         switch destination {
-        case .talkieFolder: return "Talkie folder"
+        case .talkieFolder: return String(format: "%@ folder".loc, Brand.displayName)
         case .folder:
-            guard !folderPath.isEmpty else { return "Pick a folder" }
+            guard !folderPath.isEmpty else { return "Pick a folder".loc }
             return URL(fileURLWithPath: folderPath).lastPathComponent
         }
     }
@@ -196,7 +196,7 @@ struct ExportDestinationsSettings: View {
                             ? "No folder chosen yet".loc
                             : prefs.folderPath
                     ) {
-                        Button(prefs.folderPath.isEmpty ? "Choose…" : "Change…", action: pickFolder)
+                        Button(prefs.folderPath.isEmpty ? "Choose…".loc : "Change…".loc, action: pickFolder)
                     }
                     if !prefs.folderPath.isEmpty, !prefs.folderIsAccessible {
                         // Bad path takes priority: say why, and that nothing is lost.

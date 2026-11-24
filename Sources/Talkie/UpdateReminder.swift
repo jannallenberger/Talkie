@@ -40,11 +40,24 @@ enum UpdateReminder {
         parseBuildDate(Bundle.main.object(forInfoDictionaryKey: "TalkieBuildDate") as? String)
     }
 
-    /// Opens the releases page in the user's default browser. The base comes from
-    /// `Brand.repoURL` (Info.plist `TalkieRepoURL`) + "/releases/latest"; nothing
-    /// is fetched in-process.
+    /// The page "See the latest version" opens: the website's changelog (newest
+    /// version, its download, what changed), from `Brand.websiteURL`.
+    /// Without that key it falls back to the GitHub releases page.
+    static func latestVersionURL(website: String?, repo: String?) -> URL? {
+        if let website, !website.isEmpty {
+            let base = website.hasSuffix("/") ? String(website.dropLast()) : website
+            return URL(string: base + "/changelog/")
+        }
+        if let repo, !repo.isEmpty { return URL(string: repo + "/releases/latest") }
+        return nil
+    }
+
+    /// Opens that page in the user's default browser; nothing is fetched in-process.
     @MainActor static func openLatestRelease() {
-        guard let base = Brand.repoURL, let url = URL(string: base + "/releases/latest") else { return }
+        guard let url = latestVersionURL(
+            website: Brand.websiteURL,
+            repo: Brand.repoURL
+        ) else { return }
         NSWorkspace.shared.open(url)
     }
 }
@@ -60,7 +73,7 @@ struct UpdateReminderLine: View {
             icon: "clock.arrow.circlepath",
             onDismiss: onDismiss
         ) {
-            if Brand.repoURL != nil {
+            if Brand.marketingURL != nil {
                 Button("See the latest version".loc) { UpdateReminder.openLatestRelease() }
                     .buttonStyle(.talkie(.secondary, size: .small))
             }
@@ -83,7 +96,7 @@ struct VersionRow: View {
     var body: some View {
         SettingsCard(header: "Version") {
             SettingsRow(title: info, subtitle: "Talkie never goes online, so it cannot check for updates.".loc) {
-                if Brand.repoURL != nil {
+                if Brand.marketingURL != nil {
                     Button("See the latest version".loc) { UpdateReminder.openLatestRelease() }
                         .buttonStyle(.talkie(.secondary))
                 }

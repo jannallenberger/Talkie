@@ -187,8 +187,8 @@ struct MeetingsSettings: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Watch"
-        panel.message = "Pick a folder to watch. Audio and video files that land in it will be transcribed into notes and moved into a “Transcribed” subfolder."
+        panel.prompt = "Watch".loc
+        panel.message = "Pick a folder to watch. Audio and video files that land in it will be transcribed into notes and moved into a “Transcribed” subfolder.".loc
         if !inboxWatch.folderPath.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: inboxWatch.folderPath)
         }
@@ -463,7 +463,7 @@ struct KnownVoicesCard: View {
                     .buttonStyle(.talkie(.destructive))
             }
         }
-        .confirmationDialog(VoiceDeletionConfirm.person(name: pendingDelete?.name ?? "").title,
+        .confirmationDialog(VoiceDeletionConfirm.person(name: pendingDelete?.name ?? "".loc).title,
                             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                             titleVisibility: .visible) {
             Button(VoiceDeletionConfirm.person(name: "").verb, role: .destructive) {

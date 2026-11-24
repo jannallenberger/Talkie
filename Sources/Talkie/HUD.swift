@@ -313,11 +313,20 @@ final class HUDController {
         }
     }
 
-    // Compact panel — the transparent canvas the pill floats in. The pill hugs the
-    // notch (top-anchored), so the extra height below is transparent headroom: it
-    // leaves room for the soft shadow, the drop-in entrance, and the copy-prompt
-    // pill expanding downward to a second line (the ⌥⌘V re-paste hint).
-    private static let panelSize = NSSize(width: 440, height: 104)
+    // The transparent canvas the pill floats in. The pill hugs the notch
+    // (top-anchored) and grows DOWNWARD: the live text (up to `PillLiveText` lines),
+    // the format status line, the copy-prompt's second line. Whatever the panel does
+    // not hold is cut off flat by the window edge, so it must fit the tallest pill
+    // plus its shadow: with the format line and a full tail in Increase Contrast the
+    // pill is 142 pt tall (its bottom 150 pt below the panel top), ×1.06 during the
+    // hands-free lock pop, + `pillShadowReach` ≈ 177 pt. The rest is transparent
+    // headroom whose clicks fall through (`PassthroughHostingView`).
+    // `PillPanelFitTests` keeps this honest.
+    static let panelSize = NSSize(width: 440, height: 184)
+
+    /// How far the pill's drop shadow reaches past its edge (`radius` 12 + `y` 6, see
+    /// `HUDView.pill`). The panel must leave this much room below the pill.
+    static let pillShadowReach: CGFloat = 18
 
     /// The pill's frame within the panel's content view, published by the SwiftUI
     /// layer. The pass-through hosting view consults it so clicks on the large
@@ -1120,10 +1129,10 @@ private struct CorrectionPopover: View {
                     .onSubmit { onSave(text) }
                 Button("Cancel".loc) { onCancel() }
                     .keyboardShortcut(.cancelAction)
+                    .buttonStyle(.talkie(.secondary))
                 Button("Save".loc) { onSave(text) }
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
+                    .buttonStyle(.talkie(.primary))
             }
         }
         .padding(14)
@@ -1306,8 +1315,8 @@ struct HUDView: View {
                     .accessibilityHidden(true)
                 // A format the model writes cannot be shown while you speak: say so.
                 Text(String(format: (model.formatAppliedAtEnd
-                                     ? "%1$@ on · applied when you stop · %2$@ twice ends it"
-                                     : "%1$@ on · press %2$@ twice to end").loc, name, model.formatKeyName))
+                                     ? "%1$@ on · applied when you stop · %2$@ twice ends it".loc
+                                     : "%1$@ on · press %2$@ twice to end".loc).loc, name, model.formatKeyName))
                     .font(.system(size: size, weight: .medium))
             }
             .foregroundStyle(Self.formatBlue)
@@ -1805,7 +1814,7 @@ struct HUDView: View {
                     // Implicit-fallback path only: the user never selected anything
                     // themselves, so this is their only visual anchor for what
                     // "Insert" is about to replace. Required, not decorative.
-                    Text("Replacing your last dictation: \u{201c}\(replacing.prefix(60))\u{201d}")
+                    Text("Replacing your last dictation: \u{201c}\(String(replacing.prefix(60)))\u{201d}")
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(ink(0.55))
                         .lineLimit(1)

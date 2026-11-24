@@ -18,7 +18,7 @@ struct MCPServer {
             return ok(id, [
                 "protocolVersion": protocolVersion,
                 "capabilities": ["tools": ["listChanged": false]],
-                "serverInfo": ["name": "talkie", "version": "0.4.0"],
+                "serverInfo": ["name": "talkie", "version": "0.5.0"],
             ])
         case "notifications/initialized", "initialized", "notifications/cancelled":
             return nil
@@ -115,6 +115,19 @@ struct MCPServer {
                 return toolErr(id, "retitle_meeting requires id and title")
             }
             text = store.queueRetitleMeeting(id: mid, title: title)
+        case "set_meeting_summary":
+            guard let mid = strArg("id"), let summary = strArg("summary") else {
+                return toolErr(id, "set_meeting_summary requires id and summary")
+            }
+            text = store.queueMeetingSummary(id: mid, summary: summary, note: strArg("note"))
+        case "get_settings":
+            text = store.getSettings()
+        case "update_settings":
+            let change = TalkieStore.SettingsMirror(
+                userName: args["user_name"] as? String, assistantName: args["assistant_name"] as? String,
+                appLanguage: strArg("app_language"), spokenLanguages: strArr("spoken_languages"),
+                accent: strArg("accent"), backdrop: strArg("backdrop"), appearance: strArg("appearance"))
+            text = store.queueSettings(change, note: strArg("note"))
         default:
             return err(id, -32602, "Unknown tool: \(name)")
         }
@@ -224,6 +237,25 @@ struct MCPServer {
                   "title": strProp("The new title for the meeting."),
                   "note": strProp("Optional: why you're suggesting the rename (kept for the user's provenance).")],
                  required: ["id", "title"], mutating: true),
+            // The agent writes the summary (the on-device model's are limited). Same
+            // queued confirm-with-Undo contract; the user's notes section is kept.
+            spec("set_meeting_summary", "Write the summary of a meeting in the user's \(BrandMirror.displayName) history (matched by its id or 8-char id prefix from list_meetings / get_meeting) — e.g. after reading its transcript with get_meeting, when the user asks you to summarize it. Markdown: a short overview, then sections such as decisions and action items. Replaces the on-device summary; the user's own notes stay under it. Applied by \(BrandMirror.displayName) right away, visibly, with a one-tap Undo pill for the user (queued only while the app is closed), and the Undo restores the previous summary.",
+                 ["id": strProp("The meeting's id, or its 8-char prefix, exactly as list_meetings / get_meeting shows it."),
+                  "summary": strProp("The summary, in Markdown, in the meeting's language. At most 20,000 characters."),
+                  "note": strProp("Optional: why you're writing it (kept for the user's provenance).")],
+                 required: ["id", "summary"], mutating: true),
+            // Setup by the agent: a read and one queued writer.
+            spec("get_settings", "Read the \(BrandMirror.displayName) settings an agent can set up — the user's name, the bird's name, the languages they speak, the app language and the look — with the values each accepts. Call it before update_settings, and after it to confirm.", [:]),
+            spec("update_settings", "Set up \(BrandMirror.displayName) for the user: their name, the bird's name, the languages they speak (primary first), the app language, and the look (accent, backdrop, light/dark). Pass only what the user asked for or confirmed — ask them first, never guess. Unsupported values are ignored. Applied by \(BrandMirror.displayName) right away, visibly, with a one-tap Undo pill that puts every changed value back (queued only while the app is closed). The app language takes effect when \(BrandMirror.displayName) restarts.",
+                 ["user_name": strProp("The user's name (empty clears it)."),
+                  "assistant_name": strProp("A name for the \(BrandMirror.displayName) bird (empty clears it)."),
+                  "spoken_languages": arrProp("Languages the user dictates in, primary first, e.g. [\"en-US\", \"de-DE\"]. See get_settings for the accepted values."),
+                  "app_language": strProp("The interface language: a code from get_settings, or \"system\" to follow the Mac."),
+                  "accent": strProp("The accent colour: ember, blue, red, gold, green or plum."),
+                  "backdrop": strProp("The page gradient: ember, macaw, lagoon, dusk or plain."),
+                  "appearance": strProp("system, light or dark."),
+                  "note": strProp("Optional: why (kept for the user's provenance).")],
+                 mutating: true),
         ]
     }
 

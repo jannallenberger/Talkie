@@ -33,17 +33,17 @@ enum FileImportError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .unsupportedType(let name):
-            return "Talkie can’t import “\(name)” — it isn’t an audio or video file it recognizes."
+            return String(format: "%@ can’t import “%@” — it isn’t an audio or video file it recognizes.".loc, Brand.displayName, name)
         case .cannotOpen(let name):
-            return "Talkie couldn’t open “\(name)”."
+            return String(format: "%@ couldn’t open “%@”.".loc, Brand.displayName, name)
         case .noAudioTrack(let name):
-            return "“\(name)” has no audio track to transcribe."
+            return String(format: "“%@” has no audio track to transcribe.".loc, name)
         case .speechUnavailable:
-            return "On-device speech recognition isn’t available on this Mac."
+            return "On-device speech recognition isn’t available on this Mac.".loc
         case .emptyTranscript:
-            return "Talkie couldn’t make out any speech in that file."
+            return String(format: "%@ couldn’t make out any speech in that file.".loc, Brand.displayName)
         case .cancelled:
-            return "Import cancelled."
+            return "Import cancelled.".loc
         }
     }
 }

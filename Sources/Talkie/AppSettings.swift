@@ -114,7 +114,19 @@ struct TalkieLanguage: Identifiable, Hashable {
     /// Used as the card's second line so every tile has a uniform two-line label.
     var regionName: String {
         let region = id.split(separator: "-").last.map(String.init) ?? ""
-        return Locale(identifier: "en_US").localizedString(forRegionCode: region) ?? region
+        let ui = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
+        return ui.localizedString(forRegionCode: region) ?? region
+    }
+
+    /// `name` in the app's UI language ("German" → "Deutsch"). `name` itself stays
+    /// English because agent setup matches spoken names against it.
+    var displayName: String { name.loc }
+
+    /// `displayName` without the region qualifier.
+    var shortDisplayName: String {
+        let n = displayName
+        guard let paren = n.firstIndex(of: "(") else { return n }
+        return String(n[..<paren]).trimmingCharacters(in: .whitespaces)
     }
 
     /// The language grid tile's primary label: the short name, but the full
@@ -122,7 +134,7 @@ struct TalkieLanguage: Identifiable, Hashable {
     /// two English variants don't both read just "English".
     var gridTitle: String {
         let collides = talkieLanguageCatalog.filter { $0.shortName == shortName }.count > 1
-        return collides ? name : shortName
+        return collides ? displayName : shortDisplayName
     }
 }
 

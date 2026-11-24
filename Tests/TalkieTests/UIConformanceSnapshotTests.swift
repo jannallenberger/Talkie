@@ -204,10 +204,10 @@ final class UIConformanceSnapshotTests: XCTestCase {
                 OnboardPermissionRow(icon: "IconMic", title: "Microphone", why: "Granted while you tried it out.",
                                      action: .granted) {}
                 OnboardPermissionRow(icon: "IconKeyboard", title: "Input Monitoring",
-                                     why: "To notice your one dictation key — nothing else you type.",
+                                     why: "Only to notice your dictation key.",
                                      action: .request) {}
                 OnboardPermissionRow(icon: "IconAccessibility", title: "Accessibility",
-                                     why: "To place the finished text into the app you're using.",
+                                     why: "To type the text into the app you're using.",
                                      action: .openSettings) {}
             }
         }

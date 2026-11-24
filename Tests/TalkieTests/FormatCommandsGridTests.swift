@@ -478,13 +478,15 @@ final class PillPaletteTests: XCTestCase {
         }
     }
 
-    /// It is the brand blue's dark-surface value, at full strength.
+    /// It is the brand blue's dark-surface value, at full strength — the blue accent's,
+    /// not the current accent's: the format state is fixed (DESIGN_GUIDELINES §12) and
+    /// the default accent is ember now.
     @MainActor
     func testFormatBlueIsTheBrandBluesDarkValue() throws {
         let dark = try XCTUnwrap(NSAppearance(named: .darkAqua))
         var resolved: NSColor?
         dark.performAsCurrentDrawingAppearance {
-            resolved = NSColor(Theme.coral).usingColorSpace(.sRGB)
+            resolved = NSColor(TalkieAccent.blue.palette.base).usingColorSpace(.sRGB)
         }
         let c = try XCTUnwrap(resolved)
         XCTAssertEqual(c.redComponent * 255, PillPalette.formatBlue.r, accuracy: 1)
