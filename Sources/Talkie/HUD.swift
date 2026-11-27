@@ -112,11 +112,6 @@ enum HUDPhase: Equatable {
 @MainActor
 final class HUDModel: ObservableObject {
     @Published var phase: HUDPhase = .hidden
-    /// True while the current capture is locked hands-free (tap-tap). Drives a small
-    /// lock glyph in the listening pill so the locked state is unmistakable — you can
-    /// let go of the key and it keeps recording until you tap once to stop. Only
-    /// meaningful during the capture phases; reset when a session ends.
-    @Published var handsFreeLocked: Bool = false
     /// "Format while you dictate": what the capture pill shows for the format key
     /// (blue while it's held, the active format's chip, "Not recognised"). The pure
     /// `PillFormatState`; reset when a session ends.
@@ -145,14 +140,6 @@ final class HUDModel: ObservableObject {
     @Published var busyNudge: Int = 0
     /// Bumped when audio goes live, to fire the one-shot waveform "start" sweep.
     @Published var recordStartID: Int = 0
-    /// Bumped the instant a hold begins (key-down), so the capture pill can run a
-    /// "hold-to-lock" progress fill that sweeps across it over exactly
-    /// `ActivationGesture.latchThreshold`. If the user releases before it completes it
-    /// was a plain push-to-talk tap (the pill leaves the capture phase and the fill
-    /// vanishes); if they keep holding, the fill reaches full right as the session
-    /// latches hands-free and `handsFreeLocked` flips — which pops the pill. Its own
-    /// tick so each fresh hold restarts the fill from empty even back-to-back.
-    @Published var latchArmedTick: Int = 0
     /// Text held for the tap-to-copy fallback when a paste couldn't land.
     @Published var copyText: String = ""
     /// Keyboard shortcut to surface in the copy-prompt pill (e.g. "⌥⌘V" to re-paste
@@ -202,7 +189,7 @@ final class HUDModel: ObservableObject {
     /// 1 whenever no ring countdown is running.
     @Published var countdownProgress: Double = 1
 
-    /// True while a hands-free-locked session (B4) is in its silence auto-stop
+    /// True while a session is in its silence auto-stop
     /// countdown (B5). It does NOT change `phase` — the pill stays in `.listening` —
     /// it just overlays the depleting `CountdownRing` and swaps the lock caption for a
     /// "still listening — say something or it'll wrap up" line, so the impending
@@ -422,11 +409,9 @@ final class HUDController {
     func showArming() {
         cancelHide()
         resetLevels()
-        model.handsFreeLocked = false   // fresh session starts un-locked
         resetFormatState()              // and in normal text, with no format feedback
         model.isHoveringPill = false    // nor a stale hover carried in from a prior pill
         model.silenceCountingDown = false   // and never inherits a stale auto-stop countdown
-        model.latchArmedTick &+= 1      // (re)start the hold-to-lock progress fill from empty
         model.phase = .arming
         model.text = ""
         model.volatileText = ""
@@ -885,27 +870,22 @@ final class HUDController {
     }
     private var formatFlashTask: Task<Void, Never>?
 
-    func setHandsFreeLocked(_ locked: Bool) {
-        model.handsFreeLocked = locked
-    }
-
     /// B5: begin the visible, cancelable auto-stop countdown on the LISTENING pill
     /// (the coral ring drains over `remaining`, and the tail swaps to "still listening
     /// — say something or it'll wrap up"). Called by the hub's `SilenceWatchdogDriver`
-    /// only for a hands-free-locked session that's gone quiet. It does NOT change the
-    /// phase — the pill is still `.listening` — so a cancel just clears the flag and the
-    /// plain locked pill returns. Bumps the ring's tick so a re-arm restarts it full.
+    /// for a session that's gone quiet. It does NOT change the phase — the pill is still
+    /// `.listening` — so a cancel just clears the flag and the plain pill returns. Bumps the ring's tick so a re-arm restarts it full.
     func showSilenceCountdown(remaining: TimeInterval) {
         model.silenceCountdownDuration = remaining
         model.silenceCountdownTick &+= 1
         model.silenceCountingDown = true
-        // Announce it: a hands-free VoiceOver user who can't see the ring must still
+        // Announce it: a VoiceOver user who can't see the ring must still
         // hear that recording is about to stop and that a word keeps it going.
-        announce("Still listening — it's quiet, so recording will stop soon. Say something to keep going.".loc)
+        announce("It's quiet, so recording stops soon. Say something to keep going.".loc)
     }
 
     /// B5: the user spoke again (level spike or new partial) during the countdown —
-    /// abandon it and restore the plain locked pill. Purely presentational; the hub's
+    /// abandon it and restore the plain pill. Purely presentational; the hub's
     /// watchdog owns the timing.
     func cancelSilenceCountdown() {
         model.silenceCountingDown = false
@@ -922,8 +902,8 @@ final class HUDController {
         reposition()
         panel.orderFrontRegardless()
         // Non-focusable transient pill — announce the gesture so a VoiceOver user who
-        // just tapped-and-got-nothing still learns hold vs tap-tap.
-        announce("Hold your key to talk; keep holding it to lock hands-free recording.".loc)
+        // pressed twice and got nothing still learns how the key works.
+        announce("Press your key to talk. Press it again and the text is inserted.".loc)
         hide(after: 2.6)
     }
 
@@ -1070,7 +1050,6 @@ final class HUDController {
     /// next session. Shared by `hide(after:)` and the hover-pausable `autoDismiss`.
     private func finishHide() {
         panel?.ignoresMouseEvents = true
-        model.handsFreeLocked = false     // never carry a lock glyph into the next session
         resetFormatState()                // nor a format chip / notice
         model.silenceCountingDown = false // nor a stale auto-stop countdown
         model.isHoveringPill = false      // nor a stale hover (which would freeze the next timer)
@@ -1192,11 +1171,6 @@ struct HUDView: View {
     /// writes — `AppSettings` persists to `.standard`.
     @AppStorage("showLivePillText") private var showLivePillText = true
 
-    /// Drives the one-shot "pop" the instant a hold latches hands-free: a quick spring
-    /// scale-up that snaps back, so locking reads as a satisfying click rather than a
-    /// silent state change. Toggled true→false around the `handsFreeLocked` edge.
-    @State private var lockPop = false
-
     private static let hudSpace = "talkieHUD"
 
     // MARK: Accessibility-aware styling helpers
@@ -1238,21 +1212,6 @@ struct HUDView: View {
 
     /// The widest the live tail gets before it wraps (then the pill grows downward).
     private static let liveTailWidth: CGFloat = 260
-
-    /// Hands-free lock: a small lock glyph so it's obvious you can release the key and
-    /// it keeps recording until you tap to stop. Only while genuinely locked; it slides
-    /// in without disturbing the dot/waveform. Recording red, matching the dot — it is
-    /// part of the "still recording" state. Accessibility is folded into the group label.
-    @ViewBuilder
-    private var lockGlyph: some View {
-        if model.handsFreeLocked {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.featherRed)
-                .transition(.scale.combined(with: .opacity))
-                .accessibilityHidden(true)
-        }
-    }
 
     /// "Format while you dictate", in the capture pill. Every state says what happens
     /// next: after the first press "Say the format, then press ⌃ again" in blue;
@@ -1447,14 +1406,6 @@ struct HUDView: View {
                 // is half its height, so it ballooned rounder as the pill got taller.
                 RoundedRectangle(cornerRadius: hudPillRadius, style: .continuous)
                     .fill(.black)
-                    // Change #2: hold-to-lock progress. A subtle coral fill sweeps in
-                    // from the leading edge over exactly `latchThreshold`; if the user
-                    // keeps holding it reaches full right as the session latches, then
-                    // the pill pops (below). A quick release leaves the capture phase
-                    // and the fill vanishes — so a plain push-to-talk tap barely shows it.
-                    .overlay(alignment: .leading) {
-                        LatchProgressFill(model: model, cornerRadius: hudPillRadius)
-                    }
                     .overlay(
                         RoundedRectangle(cornerRadius: hudPillRadius, style: .continuous)
                             .strokeBorder(
@@ -1463,16 +1414,6 @@ struct HUDView: View {
                             )
                     )
             )
-            // The lock "pop": a brief spring scale keyed on the hands-free latch edge.
-            .scaleEffect(lockPop ? 1.06 : 1.0, anchor: .top)
-            .onChange(of: model.handsFreeLocked) {
-                guard model.handsFreeLocked else { return }
-                withAnimation(.spring(response: 0.16, dampingFraction: 0.4)) { lockPop = true }
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(160))
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.62)) { lockPop = false }
-                }
-            }
             // Learned/launch/keep pings all drain the SAME coral ring — a wordless
             // "this dismisses itself" that traces the pill. It reads `countdownProgress`
             // straight from the controller's hover-pausable ticker, so the ring and the
@@ -1554,7 +1495,6 @@ struct HUDView: View {
                         Waveform(levels: model.levels, tint: waveTint, sweepTrigger: model.recordStartID,
                                  fullStrength: formatBlueWave)
                             .accessibilityHidden(true)
-                        lockGlyph
                         // Feature 14: the active cleanup style/level, tappable to cycle —
                         // change how the dictation is polished without leaving the record.
                         // Hidden entirely when no switcher is wired (today's pill).
@@ -1562,7 +1502,7 @@ struct HUDView: View {
                         // The row says so in plain words — a gentle nudge that one word (or
                         // reaching the key) keeps it going. It takes the tail slot so the
                         // pill doesn't also carry the transcript during the wrap-up moment.
-                        Text("still listening — say something or it'll wrap up")
+                        Text("Stopping soon · say something to keep going")
                             .font(.system(size: model.highContrast ? 12 : 11, weight: .medium))
                             .foregroundStyle(ink(0.72))
                             .lineLimit(1)
@@ -1587,7 +1527,6 @@ struct HUDView: View {
                                  fullStrength: formatBlueWave)
                                 .accessibilityHidden(true)
                             HStack(spacing: 8) {
-                                lockGlyph
                                 // Feature 14: the active cleanup style/level, tappable to cycle —
                                 // change how the dictation is polished without leaving the record.
                                 // Hidden entirely when no switcher is wired (today's pill).
@@ -1606,25 +1545,18 @@ struct HUDView: View {
                     }
                 }
             }
-            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.handsFreeLocked)
             .animation(.spring(response: 0.28, dampingFraction: 0.7), value: model.formatState)
             .animation(.easeInOut(duration: 0.2), value: model.silenceCountingDown)
             .transition(.blurReplace)
             // The dot + waveform are one status glyph to VoiceOver: state it plainly
             // rather than exposing a decorative waveform. The cleanup switcher stays
-            // a separate, labeled control (its own element inside this group). When
-            // locked, say so — a hands-free VoiceOver user must hear that releasing
-            // the key won't stop it (a single tap will). During the auto-stop countdown
-            // say THAT — a hands-free user must hear it's about to wrap up and that a
-            // word keeps it going.
+            // a separate, labeled control (its own element inside this group).
             .accessibilityElement(children: .contain)
             .accessibilityLabel(
                 model.silenceCountingDown
-                    ? "Still listening — it's quiet, so recording will stop soon. Say something to keep going.".loc
-                    : (model.handsFreeLocked
-                        ? "Listening, hands-free. Recording is locked — tap your key once to stop.".loc
-                        : (recording ? "Listening. Talkie is recording your voice.".loc
-                                     : "Getting ready to listen.".loc))
+                    ? "It's quiet, so recording stops soon. Say something to keep going.".loc
+                    : (recording ? "Listening. Talkie is recording your voice.".loc
+                                 : "Getting ready to listen.".loc)
             )
         case .processing:
             HStack(spacing: 7) {
@@ -2041,7 +1973,7 @@ struct HUDView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(ink(0.85))
                     .accessibilityHidden(true)
-                Text("Hold to talk · keep holding to lock")
+                Text("Press to talk · press again to insert")
                     .font(.system(size: model.highContrast ? 13 : 12, weight: .medium))
                     .foregroundStyle(ink(0.9))
                     .lineLimit(1)
@@ -2049,7 +1981,7 @@ struct HUDView: View {
             }
             .transition(.blurReplace)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Hold your key to talk; keep holding it to lock hands-free recording.".loc)
+            .accessibilityLabel("Press your key to talk. Press it again and the text is inserted.".loc)
         case .error(let message):
             HStack(spacing: 7) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -2068,50 +2000,6 @@ struct HUDView: View {
         case .hidden:
             EmptyView()
         }
-    }
-}
-
-/// Change #2 — the "hold-to-lock" progress fill inside the capture pill. A subtle
-/// coral wash grows from the leading edge to full over exactly
-/// `ActivationGesture.latchThreshold`, so a hold visibly "charges up" to the
-/// hands-free latch. It shows only during live capture and only until the session
-/// latches (`handsFreeLocked`), so a quick push-to-talk tap barely reveals it, while
-/// a deliberate hold fills it right as the lock fires and the pill pops. Keyed off
-/// `latchArmedTick`, which the controller bumps on every new hold, so each press
-/// restarts the fill from empty — even two holds back to back.
-private struct LatchProgressFill: View {
-    @ObservedObject var model: HUDModel
-    var cornerRadius: CGFloat
-    @State private var fill: CGFloat = 0
-
-    /// The fill is meaningful only while genuinely capturing and not yet latched —
-    /// once locked, the lock glyph + pop own the moment, so the fill steps aside.
-    private var active: Bool {
-        switch model.phase {
-        case .arming, .listening, .transcribing: return !model.handsFreeLocked
-        default: return false
-        }
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Theme.featherRed.opacity(0.16))
-                .frame(width: max(0, geo.size.width * fill))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .opacity(active ? 1 : 0)
-        .allowsHitTesting(false)
-        .onAppear { if active { start() } }
-        // A fresh hold: restart the sweep from empty.
-        .onChange(of: model.latchArmedTick) { start() }
-        // Session ended (or latched): drop the fill instantly so the next hold starts clean.
-        .onChange(of: active) { if !active { fill = 0 } }
-    }
-
-    private func start() {
-        fill = 0
-        withAnimation(.linear(duration: ActivationGesture.latchThreshold)) { fill = 1 }
     }
 }
 

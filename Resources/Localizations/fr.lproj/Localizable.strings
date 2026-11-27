@@ -30,7 +30,6 @@
 "Grant" = "Autoriser";
 "Grant the permissions to try it now — or skip and start using Talkie." = "Accordez les autorisations pour l’essayer — ou passez et commencez à utiliser Talkie.";
 "Hit Start recording before your next call." = "Touchez Démarrer l’enregistrement avant votre prochain appel.";
-"Hold your dictation key and speak — what you say will show up here." = "Maintenez votre touche de dictée et parlez — ce que vous dites apparaîtra ici.";
 "Inherit" = "Hériter";
 "Inserted" = "Inséré";
 "Jot key points — Talkie expands them with the transcript…" = "Notez les points clés — Talkie les développe avec la transcription…";
@@ -335,20 +334,9 @@
 "Added “%@” — it’ll be fixed automatically next time." = "« %@ » ajouté — sera corrigé automatiquement la prochaine fois.";
 "Learn “%@”?" = "Apprendre « %@ » ?";
 "was “%@”" = "était « %@ »";
-"Hold %@ to talk · tap twice to lock" = "Maintenez %@ pour parler · appuyez deux fois pour verrouiller";
 "Hold to talk · tap twice to lock" = "Maintenez pour parler · appuyez deux fois pour verrouiller";
-"Hold the key and speak, then release to insert. Tap it twice to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Maintenez la touche et parlez, puis relâchez pour insérer. Appuyez deux fois pour verrouiller en mains libres — l’enregistrement continue sans rien maintenir ; appuyez une fois pour arrêter et insérer.";
 /* Track 4 — hold-to-latch replaces the old double-tap gesture */
-"Hold to talk · keep holding to lock" = "Maintenez pour parler · continuez à maintenir pour verrouiller";
-"Hold the key and speak, then release to insert. Keep holding to lock hands-free — recording keeps going with nothing held; tap once to stop and insert." = "Maintenez la touche et parlez, puis relâchez pour insérer. Continuez à maintenir pour verrouiller en mains libres — l’enregistrement continue sans rien maintenir ; appuyez une fois pour arrêter et insérer.";
 "The side button still does its normal job in the app you're using — Talkie only listens for it, and it must reach macOS as a real button (some mice remap it in their own software)." = "Le bouton latéral continue de remplir sa fonction habituelle dans l’app que vous utilisez — Talkie se contente de l’écouter, et il doit parvenir à macOS en tant que vrai bouton (certaines souris le réattribuent dans leur propre logiciel).";
-"Hold, speak, release — or tap twice to go hands-free" = "Maintenez, parlez, relâchez — ou appuyez deux fois pour les mains libres";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. In a hurry? Tap the key twice to lock recording hands-free, then tap once to stop." = "Maintenez votre touche, dites ce que vous voulez écrire, puis relâchez — Talkie insère le texte là où vous tapez. Pressé ? Appuyez deux fois sur la touche pour verrouiller l’enregistrement en mains libres, puis une fois pour l’arrêter.";
-"Listening, hands-free. Recording is locked — tap your key once to stop." = "À l’écoute, mains libres. L’enregistrement est verrouillé — appuyez une fois sur votre touche pour l’arrêter.";
-"still listening — say something or it'll wrap up" = "toujours à l'écoute — dis quelque chose ou ça va s'arrêter";
-"Still listening — it's quiet, so recording will stop soon. Say something to keep going." = "Toujours à l'écoute — c'est silencieux, l'enregistrement va donc bientôt s'arrêter. Dis quelque chose pour continuer.";
-"Hold your key to talk, or tap it twice to lock hands-free recording." = "Maintenez votre touche pour parler, ou appuyez deux fois pour verrouiller l’enregistrement mains libres.";
-"Click here, then hold %@ and speak…" = "Cliquez ici, puis maintenez %@ et parlez…";
 
 // MARK: - Secure-input culprit (B3)
 "Password field — I don’t peek. Tap to copy." = "Champ de mot de passe — je ne regarde pas. Touchez pour copier.";
@@ -776,7 +764,6 @@
 "Hide %@" = "Masquer %@";
 "Quit %@" = "Quitter %@";
 "Open %@" = "Ouvrir %@";
-"%@ — hold your key to dictate" = "%@ — maintiens ta touche pour dicter";
 "%@ is listening." = "%@ est à l’écoute.";
 "%@ dictation indicator. Hold your dictation key and speak." = "Indicateur de dictée %@. Maintiens ta touche de dictée et parle.";
 "%@ — Nothing leaves this Mac." = "%@ — Rien ne quitte ce Mac.";
@@ -925,12 +912,10 @@
 "Downloading the speech model (one time)…" = "Téléchargement du modèle vocal (une seule fois)…";
 "macOS does this one download itself — this app never connects to the internet. After it, everything runs offline." = "macOS effectue lui-même ce seul téléchargement : Talkie ne se connecte jamais à internet. Ensuite, tout fonctionne hors ligne.";
 "Once the speech model is on this Mac, you can try dictation with the Wi-Fi off." = "Une fois le modèle vocal installé sur ce Mac, vous pourrez essayer Talkie avec le Wi-Fi coupé.";
-"Hold your key, say what you want to write, and let go — Talkie drops the text in wherever you're typing. Want it hands-free? Keep holding the key a moment and recording locks; tap once to stop." = "Maintenez votre touche, dites ce que vous voulez écrire, puis relâchez : Talkie dépose le texte là où vous tapez. En mains libres ? Gardez la touche enfoncée un instant et l’enregistrement se verrouille ; touchez une fois pour arrêter.";
 "Stop recording" = "Arrêter l’enregistrement";
 "Your dictated words" = "Vos mots dictés";
 "Empty" = "Vide";
 "Try dictation here" = "Essayez la dictée ici";
-"Hold your dictation key and speak; the words appear in this field." = "Maintenez votre touche de dictée et parlez ; les mots apparaissent dans ce champ.";
 "Introduction" = "Introduction";
 "Replay introduction" = "Rejouer l’introduction";
 "Opening the welcome flow…" = "Ouverture du parcours de bienvenue…";
@@ -1107,7 +1092,6 @@
 "For example, your address" = "Par exemple, votre adresse";
 "Formatting while you dictate is off. Turn it on in Options below." = "La mise en forme pendant la dictée est désactivée. Activez-la ci-dessous dans Options.";
 "Hold %@ and talk" = "Maintenez %@ et parlez";
-"Hold a second key while you dictate and say how the next words should look." = "Maintenez une seconde touche pendant la dictée et dites à quoi doivent ressembler les mots suivants.";
 "Insert a fixed text" = "Insérer un texte fixe";
 "Listen for the format key during a dictation." = "Écouter la touche de format pendant une dictée.";
 "Make it" = "Mettre en";
@@ -1276,11 +1260,8 @@
 "Restart now" = "Redémarrer maintenant";
 "Open in Claude Desktop" = "Ouvrir dans Claude Desktop";
 "The connector isn't part of this build." = "Le connecteur ne fait pas partie de cette version.";
-"Hold a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "Maintenez une touche, parlez, et vos mots s’écrivent là où se trouve le curseur. Tout fonctionne sur ce Mac.";
 "Try it" = "Essayer";
 "Click the button and say something." = "Cliquez sur le bouton et dites quelque chose.";
-"Hold, talk, let go" = "Maintenir, parler, relâcher";
-"Hold the key while you talk. When you let go, the text is typed where your cursor is." = "Maintenez la touche pendant que vous parlez. Quand vous la relâchez, le texte s’écrit là où se trouve le curseur.";
 "To record without holding, keep the key down a moment longer. Tap it once to stop." = "Pour enregistrer sans maintenir, gardez la touche enfoncée un peu plus longtemps. Touchez-la une fois pour arrêter.";
 "Try it here, or start using it." = "Essayez ici, ou commencez à l’utiliser.";
 "About you" = "À propos de vous";
@@ -1300,7 +1281,6 @@
 "To type the text into the app you're using." = "Pour écrire le texte dans l’app que vous utilisez.";
 
 /* 1.1.0: strings that had no translation */
-"Hold your dictation key and speak — your stats will fill in here." = "Maintenez votre touche de dictée et parlez — vos statistiques s’afficheront ici.";
 "%@ words dictated, all on-device." = "%@ mots dictés, le tout sur l’appareil.";
 "An office typist holds ~40 wpm" = "Un dactylo de bureau tape ~40 mpm";
 "%.1f× an office typist's pace" = "%.1f× le rythme d’un dactylo de bureau";
@@ -1347,8 +1327,6 @@
 "Smart cleanup" = "Nettoyage intelligent";
 "Show live words in the pill" = "Afficher les mots en direct dans la pastille";
 "The transcript flows below the waveform as you speak — the pill grows downward, not sideways." = "La transcription défile sous la forme d’onde pendant que vous parlez : la pastille s’agrandit vers le bas, pas sur les côtés.";
-"Stop hands-free when I go quiet" = "Arrêter le mains libres quand je me tais";
-"A latched session wraps up after a stretch of silence. Off keeps it listening until you tap to stop — no countdown." = "Une session verrouillée se termine après un moment de silence. Désactivé, elle continue d’écouter jusqu’à ce que vous touchiez pour arrêter, sans compte à rebours.";
 "Custom vocabulary" = "Vocabulaire personnalisé";
 "Add a word or phrase…" = "Ajouter un mot ou une expression…";
 "These words are also used to auto-correct misrecognitions in what you dictate." = "Ces mots servent aussi à corriger automatiquement les erreurs de reconnaissance dans ce que vous dictez.";
@@ -1371,10 +1349,8 @@
 "Japanese" = "Japonais";
 "Korean" = "Coréen";
 "Chinese (Simplified)" = "Chinois (simplifié)";
-"%@ — hold your dictation key and speak" = "%@ — maintenez votre touche de dictée et parlez";
 "Recovered meeting · " = "Réunion récupérée · ";
 "Meeting · " = "Réunion · ";
-"Hold your key to talk; keep holding it to lock hands-free recording." = "Maintenez votre touche pour parler ; continuez à la maintenir pour verrouiller l’enregistrement mains libres.";
 "Rejects this correction so it stops being made." = "Rejette cette correction pour qu’elle ne soit plus appliquée.";
 "Press" = "Appuyez sur";
 "to paste into a text field" = "pour coller dans un champ de texte";
@@ -1393,7 +1369,6 @@
 "Dictionary…" = "Dictionnaire…";
 "%@ — speech unavailable" = "%@ — voix indisponible";
 "%@ — needs permissions" = "%@ — autorisations requises";
-"Hold %@ to talk · keep holding to lock" = "Maintenez %@ pour parler · continuez pour verrouiller";
 "Recording you + the call…" = "Enregistrement de vous + de l’appel…";
 "Recording (mic only)…" = "Enregistrement (micro uniquement)…";
 "This replaces the whole summary — including any notes fused into it during the meeting — with a fresh, transcript-only summary. This can't be undone." = "Cela remplace tout le résumé, y compris les notes qui y ont été intégrées pendant la réunion, par un nouveau résumé basé uniquement sur la transcription. Cette action est irréversible.";
@@ -1491,3 +1466,27 @@
 "Mon" = "lun.";
 "Fri" = "ven.";
 "%lld words" = "%lld mots";
+
+/* Hold to talk, let go to insert (no hands-free lock) */
+"Hold %@ to talk · let go to insert" = "Maintenez %@ pour parler · relâchez pour insérer";
+"After granting Input Monitoring or Accessibility, you may need to quit and reopen Talkie for the change to take effect. If Talkie is already switched on there but still not allowed, remove it with − in System Settings and add it again." = "Après avoir accordé Surveillance de l’entrée ou Accessibilité, il peut être nécessaire de quitter et rouvrir Talkie pour que le changement prenne effet. Si Talkie y est déjà activé mais toujours pas autorisé, supprimez-le avec − dans Réglages Système, puis ajoutez-le à nouveau.";
+"Already switched on but still not allowed? Remove Talkie with − in System Settings, then add it again." = "Déjà activé mais toujours pas autorisé ? Supprimez Talkie avec − dans Réglages Système, puis ajoutez-le à nouveau.";
+
+/* Press to start, press again to stop (on/off key) */
+"Press your dictation key and speak. Your stats will show up here." = "Appuyez sur votre touche de dictée et parlez. Vos statistiques apparaîtront ici.";
+"Press to talk · press again to insert" = "Appuyez pour parler · appuyez à nouveau pour insérer";
+"Press the key and speak. Press it again and the text is inserted." = "Appuyez sur la touche et parlez. Appuyez à nouveau et le texte est inséré.";
+"Stop when I go quiet" = "Arrêter quand je me tais";
+"After a stretch of silence the recording ends and the text is inserted." = "Après un moment de silence, l’enregistrement s’arrête et le texte est inséré.";
+"%@ — press your dictation key and speak" = "%@ — appuyez sur votre touche de dictée et parlez";
+"It's quiet, so recording stops soon. Say something to keep going." = "C’est silencieux, l’enregistrement va s’arrêter. Dites quelque chose pour continuer.";
+"Press your key to talk. Press it again and the text is inserted." = "Appuyez sur votre touche pour parler. Appuyez à nouveau et le texte est inséré.";
+"Stopping soon · say something to keep going" = "Arrêt imminent · dites quelque chose pour continuer";
+"%@ — press your key to dictate" = "%@ — appuyez sur votre touche pour dicter";
+"Press %@ to talk · press again to insert" = "Appuyez sur %@ pour parler · à nouveau pour insérer";
+"Press a key, talk, and your words are typed wherever your cursor is. Everything runs on this Mac." = "Appuyez sur une touche, parlez, et vos mots s’écrivent là où se trouve votre curseur. Tout fonctionne sur ce Mac.";
+"Press, talk, press again" = "Appuyez, parlez, appuyez à nouveau";
+"Press the key and talk. Press it again and the text is typed where your cursor is." = "Appuyez sur la touche et parlez. Appuyez à nouveau et le texte s’écrit là où se trouve votre curseur.";
+"Press your dictation key and speak; the words appear in this field." = "Appuyez sur votre touche de dictée et parlez ; les mots apparaissent dans ce champ.";
+"Press your dictation key and speak. What you say will show up here." = "Appuyez sur votre touche de dictée et parlez. Ce que vous dites apparaîtra ici.";
+"Click here, then press %@ and speak…" = "Cliquez ici, puis appuyez sur %@ et parlez…";

@@ -242,7 +242,7 @@ struct MemoryView: View {
     private var browseFeed: some View {
         if history.entries.isEmpty {
             emptyPrompt(title: "No dictations yet",
-                        subtitle: "Hold your dictation key and speak — what you say will show up here.",
+                        subtitle: "Press your dictation key and speak. What you say will show up here.",
                         icon: "text.bubble")
         } else {
             // Paged: the feed starts with the newest `pageSize` dictations and grows a

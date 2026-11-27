@@ -22,11 +22,6 @@ final class HotKeyMonitor: @unchecked Sendable {
 
     private let onActivate: @Sendable () -> Void
     private let onDeactivate: @Sendable () -> Void
-    /// Fired when holding past the latch threshold locks recording hands-free.
-    /// Recording is already running (it began on the press's key-down), so this
-    /// only tells the app to switch to the locked/hands-free presentation — it
-    /// must NOT start a second session.
-    private let onLock: @Sendable () -> Void
     /// Fired on a global "paste my last transcript" chord — ⌘ + (Control or Option,
     /// whichever the activation key does NOT use) + V, so it can't double as a
     /// dictation trigger. Detected on the same listen-only tap, so the chord is never
@@ -50,16 +45,10 @@ final class HotKeyMonitor: @unchecked Sendable {
     private var isStarted = false
     /// True while the settings key recorder is listening; `handle()` ignores all input.
     private var suspended = false
-    /// The one activation gesture family (hold / hold-to-latch / tap-stop), driven
-    /// entirely by the timestamped edges `handle()` feeds it. All access is under
-    /// `lock` because `handle()` runs on the tap thread while the latch timer
-    /// and the health/reconcile timer run on other queues.
+    /// The activation gesture (press to start, press again to stop), driven by the
+    /// edges `handle()` feeds it. All access is under `lock` because `handle()` runs
+    /// on the tap thread while the health/reconcile timer runs on another queue.
     private var gesture = ActivationGesture()
-    /// The one-shot timer that resolves the latch deadline: if the key is still held
-    /// when it fires, recording latches hands-free; a release before then cancels it
-    /// and the hold ends as a plain push-to-talk press. Rearmed on each new hold,
-    /// cancelled on release or lock. Guarded by `lock`.
-    private var deferTimer: DispatchSourceTimer?
     /// The command-key machine. Fed only while `gesture.isActive` (a dictation is
     /// running) and `config.commandKey` is set; reset otherwise. Guarded by `lock`.
     private var formatGesture = FormatKeyGesture()
@@ -71,14 +60,12 @@ final class HotKeyMonitor: @unchecked Sendable {
         config: Config,
         onActivate: @escaping @Sendable () -> Void,
         onDeactivate: @escaping @Sendable () -> Void,
-        onLock: @escaping @Sendable () -> Void = {},
         onPasteLast: @escaping @Sendable () -> Void = {},
         onFormatKey: @escaping @Sendable (FormatKeyGesture.Output) -> Void = { _ in }
     ) {
         self.config = config
         self.onActivate = onActivate
         self.onDeactivate = onDeactivate
-        self.onLock = onLock
         self.onPasteLast = onPasteLast
         self.onFormatKey = onFormatKey
     }
@@ -170,8 +157,6 @@ final class HotKeyMonitor: @unchecked Sendable {
         self.runLoopSource = nil
         self.threadRunLoop = nil
         self.isStarted = false
-        self.deferTimer?.cancel()
-        self.deferTimer = nil
         self.gesture.reset()
         self.formatGesture.reset()
         lock.unlock()
@@ -185,7 +170,7 @@ final class HotKeyMonitor: @unchecked Sendable {
     }
 
     /// Swap the bound key. Only tears down an in-flight activation when the binding
-    /// actually changed — rebinding during an unrelated hold (or a locked session)
+    /// actually changed — rebinding during an unrelated hold
     /// must force-end it, since the edges for the *new* key can't cleanly finish a
     /// session that began under the old one. The gesture machine is reset and, if a
     /// session was active, we synthesize the deactivate here (the machine's `reset`
@@ -199,8 +184,6 @@ final class HotKeyMonitor: @unchecked Sendable {
         self.config = newConfig
         var wasActive = false
         if changed {
-            deferTimer?.cancel()
-            deferTimer = nil
             wasActive = gesture.reset()
         }
         lock.unlock()
@@ -211,14 +194,12 @@ final class HotKeyMonitor: @unchecked Sendable {
     }
 
     /// Suspend/resume all trigger and paste-last handling (key recorder is listening).
-    /// Suspending force-ends any in-flight hold/lock exactly like a rebind does.
+    /// Suspending force-ends any in-flight hold exactly like a rebind does.
     func setSuspended(_ value: Bool) {
         lock.lock()
         suspended = value
         var wasActive = false
         if value {
-            deferTimer?.cancel()
-            deferTimer = nil
             wasActive = gesture.reset()
             formatGesture.reset()
         }
@@ -257,7 +238,7 @@ final class HotKeyMonitor: @unchecked Sendable {
             return
         }
 
-        // Suspended while the key recorder listens: no dictation, latch or paste-last.
+        // Suspended while the key recorder listens: no dictation or paste-last.
         lock.lock()
         let isSuspended = suspended
         lock.unlock()
@@ -337,79 +318,28 @@ final class HotKeyMonitor: @unchecked Sendable {
 
     /// Feed one down/up edge into the pure gesture machine and return the callback it
     /// decides on. **Must be called with `lock` already held** (the tap thread must
-    /// not race the latch / health timers); the caller unlocks before invoking the
+    /// not race the health timer); the caller unlocks before invoking the
     /// callback so no app code runs under the tap-thread lock. Shared by the
     /// keyboard-modifier and mouse-button paths so both drive the identical machine.
     private func feedEdgeLockedReturningFire(down: Bool) -> (@Sendable () -> Void)? {
-        // One monotonic seconds clock for edges AND the latch timer, so the
-        // pure machine can compare an edge's timestamp against the timer's fire
-        // timestamp. (The event's own timestamp is in different units; using uptime
-        // for both keeps them commensurable.)
         let now = ProcessInfo.processInfo.systemUptime
         let action = down ? gesture.keyDown(at: now) : gesture.keyUp(at: now)
         return applyLocked(action)
     }
 
-    /// Translate a gesture `Action` into the callback to fire (or nil), performing
-    /// any timer bookkeeping. **Must be called with `lock` held** — it touches
-    /// `deferTimer`. Returns the callback to invoke *after* unlocking (so we never
-    /// run app code while holding the tap-thread lock).
+    /// Translate a gesture `Action` into the callback to fire (or nil). **Must be
+    /// called with `lock` held.** Returns the callback to invoke *after* unlocking
+    /// (so we never run app code while holding the tap-thread lock).
     private func applyLocked(_ action: ActivationGesture.Action) -> (@Sendable () -> Void)? {
         switch action {
-        case .none:
-            return nil
-        case .beginArmingLatch(let fireAt):
-            // Begin now and arm the latch timer: if the key is still held when it
-            // fires, the machine returns `.lock` (see the timer handler) and recording
-            // latches hands-free. A release before then ends synchronously via `.end`.
-            armDeferTimerLocked(fireAt: fireAt)
-            return onActivate
-        case .end:
-            cancelDeferTimerLocked()
-            return onDeactivate
-        case .lock:
-            // The hold latched hands-free: the latch timer has fired and done its job.
-            cancelDeferTimerLocked()
-            return onLock
+        case .none: return nil
+        case .begin: return onActivate
+        case .end: return onDeactivate
         }
     }
 
-    /// Arm (or re-arm) the one-shot latch timer to fire at uptime `fireAt`. When it
-    /// fires it feeds `timerFired` back into the machine on the same lock; if the
-    /// key is still held, the machine returns `.lock` and we fire `onLock`.
-    /// Must be called with `lock` held.
-    private func armDeferTimerLocked(fireAt: TimeInterval) {
-        deferTimer?.cancel()
-        let timer = DispatchSource.makeTimerSource(queue: .global())
-        let delay = max(0, fireAt - ProcessInfo.processInfo.systemUptime)
-        timer.schedule(deadline: .now() + delay)
-        timer.setEventHandler { [weak self] in
-            guard let self else { return }
-            let fireNow = ProcessInfo.processInfo.systemUptime
-            self.lock.lock()
-            let action = self.gesture.timerFired(at: fireNow)
-            let fire = self.applyLocked(action)
-            // This timer has done its job; drop the reference so a later cancel is
-            // a no-op and we don't hold a spent source.
-            if self.deferTimer === timer { self.deferTimer = nil }
-            self.lock.unlock()
-            fire?()
-        }
-        deferTimer = timer
-        timer.resume()
-    }
-
-    /// Cancel any pending latch timer. Must be called with `lock` held.
-    private func cancelDeferTimerLocked() {
-        deferTimer?.cancel()
-        deferTimer = nil
-    }
-
-    /// If we think a key is physically *held* but the live modifier state says it
-    /// isn't (a key-up event was dropped), synthesize the release so a hold can't
-    /// latch on forever. ONLY the held phase is eligible: a locked hands-free
-    /// session has no key down (ending it here would kill the lock), and idle has
-    /// no session to end at all. So we gate strictly on `gesture.isHeld`.
+    /// If we think the key is physically down but the live state says it isn't (a
+    /// key-up was dropped), forget the press so the next one switches again.
     private func reconcileLiveState() {
         // A dropped command-key release must not leave the key "down" in the machine
         // (it would swallow the next press). Forget that press; command listening
@@ -431,18 +361,19 @@ final class HotKeyMonitor: @unchecked Sendable {
         // button state — same intent (is the trigger still physically down?).
         guard !cfg.key.isPhysicallyDown(sessionState: .combinedSessionState) else { return }
 
-        var fire: (@Sendable () -> Void)?
+        // The key is a switch, so a lost release only means the next press must be
+        // seen as a press: forget the "down", never end the session here.
         lock.lock()
-        // Re-check under the lock — the phase may have changed between the two
-        // critical sections. Only a still-held session is force-released, and the
-        // machine's `reset` emits no action so we own the single `onDeactivate`.
-        if gesture.isHeld {
-            cancelDeferTimerLocked()
-            gesture.reset()
-            fire = onDeactivate
-        }
+        if gesture.isHeld { gesture.releaseLost() }
         lock.unlock()
-        fire?()
+    }
+
+    /// The app ended the session without the key (silence auto-stop, a capture
+    /// failure, an error), so the next press must start a new one.
+    func noteSessionEnded() {
+        lock.lock()
+        gesture.sessionEndedElsewhere()
+        lock.unlock()
     }
 }
 

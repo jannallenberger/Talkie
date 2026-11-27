@@ -15,10 +15,6 @@ enum Feedback {
     static func stop()      { play("chirp-stop",      fallback: "Pop") }
     static func done()      { play("chirp-done",      fallback: "Morse"); haptic(.alignment) }
     static func abort()     { play(nil,               fallback: "Funk") }
-    /// A tap-tap latched hands-free recording — a distinct "it's locked, you can let
-    /// go" cue, kept clearly apart from start/stop so the lock is audible, plus a
-    /// firmer trackpad tap so the latch is *felt*, not only heard.
-    static func locked()    { play("chirp-lock",      fallback: "Bottle"); haptic(.levelChange) }
     /// Distinct alert for when dictation couldn't be pasted (no editable field
     /// focused) — the text was left on the clipboard instead.
     static func notPasted() { play("chirp-clipboard", fallback: "Submarine") }

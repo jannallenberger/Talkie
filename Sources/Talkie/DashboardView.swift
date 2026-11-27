@@ -161,7 +161,7 @@ struct DashboardView: View {
 
     private var greeting: String {
         let total = stats.totalWords
-        if total == 0 { return "Hold your dictation key and speak — your stats will fill in here.".loc }
+        if total == 0 { return "Press your dictation key and speak. Your stats will show up here.".loc }
         return String(format: "%@ words dictated, all on-device.".loc, total.formatted())
     }
 

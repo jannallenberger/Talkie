@@ -440,13 +440,13 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(showLivePillText, forKey: Keys.showLivePillText) }
     }
 
-    /// Auto-stop a hands-free (latched) session after a stretch of silence. When ON,
-    /// a quiet latched session wraps itself up (no draining ring — just a calm text
-    /// cue). When OFF, a latched session keeps listening until you tap to stop — no
-    /// watchdog, no countdown at all.
+    /// End a session after a stretch of silence. The key is an on/off switch, so this
+    /// catches a forgotten session; a short countdown in the pill comes first and one
+    /// word cancels it. When OFF, a session runs until the key is pressed again.
     @Published var autoStopOnSilence: Bool {
         didSet { defaults.set(autoStopOnSilence, forKey: Keys.autoStopOnSilence) }
     }
+
 
     private func notifyChanged() {
         NotificationCenter.default.post(name: .talkieSettingsChanged, object: nil)
